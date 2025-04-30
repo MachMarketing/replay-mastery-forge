@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
@@ -14,6 +13,7 @@ interface AuthContextType {
   resendVerificationEmail: (email: string) => Promise<{ error: any }>;
   isEmailNotConfirmed: boolean;
   emailPendingVerification: string | null;
+  checkUsernameAvailability: (username: string) => Promise<boolean>;
 }
 
 // Define admin email for bypassing email verification (case insensitive comparison)
@@ -189,8 +189,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // New function to check if a username is already taken
+  const checkUsernameAvailability = async (username: string): Promise<boolean> => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('username')
+        .eq('username', username)
+        .single();
+      
+      if (error && error.code === 'PGRST116') {
+        // Error code when no rows returned - username is available
+        return true;
+      }
+      
+      // If we got data back, username exists
+      return !data;
+    } catch (error) {
+      console.error('Error checking username availability:', error);
+      return false; // Assume username is taken if there's an error
+    }
+  };
+
   const signUp = async (email: string, password: string, username: string) => {
     try {
+      // First check if the username is already taken
+      const isUsernameAvailable = await checkUsernameAvailability(username);
+      
+      if (!isUsernameAvailable) {
+        toast({
+          title: 'Username already taken',
+          description: 'Please choose a different username.',
+          variant: 'destructive'
+        });
+        return { error: { message: 'Username already taken' } };
+      }
+      
       const { error } = await supabase.auth.signUp({
         email,
         password,
@@ -221,6 +255,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { error: null };
     } catch (error: any) {
       console.error('Sign up error:', error);
+      toast({
+        title: 'Signup failed',
+        description: error.message || 'An unexpected error occurred',
+        variant: 'destructive'
+      });
       return { error };
     }
   };
@@ -251,7 +290,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     signOut,
     resendVerificationEmail,
     isEmailNotConfirmed,
-    emailPendingVerification
+    emailPendingVerification,
+    checkUsernameAvailability
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

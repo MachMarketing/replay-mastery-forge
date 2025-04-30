@@ -13,6 +13,8 @@ import { Twitch } from '@/components/icons/Twitch';
 import { useAuth } from '@/context/AuthContext';
 import { Loader2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useToast } from '@/hooks/use-toast';
+import debounce from 'lodash/debounce';
 
 const SignupPage = () => {
   const [email, setEmail] = useState('');
@@ -21,8 +23,11 @@ const SignupPage = () => {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showVerificationMessage, setShowVerificationMessage] = useState(false);
-  const { signUp, user, resendVerificationEmail, emailPendingVerification } = useAuth();
+  const [isCheckingUsername, setIsCheckingUsername] = useState(false);
+  const [isUsernameAvailable, setIsUsernameAvailable] = useState<boolean | null>(null);
+  const { signUp, user, resendVerificationEmail, emailPendingVerification, checkUsernameAvailability } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
   
   useEffect(() => {
     // If user is already logged in, redirect to replays page
@@ -31,10 +36,52 @@ const SignupPage = () => {
     }
   }, [user, navigate]);
   
+  // Create a debounced function to check username availability
+  const debouncedUsernameCheck = debounce(async (usernameToCheck: string) => {
+    if (!usernameToCheck || usernameToCheck.length < 3) {
+      setIsUsernameAvailable(null);
+      return;
+    }
+    
+    setIsCheckingUsername(true);
+    try {
+      const isAvailable = await checkUsernameAvailability(usernameToCheck);
+      setIsUsernameAvailable(isAvailable);
+    } catch (error) {
+      console.error('Error checking username:', error);
+    } finally {
+      setIsCheckingUsername(false);
+    }
+  }, 500);
+  
+  useEffect(() => {
+    if (username) {
+      debouncedUsernameCheck(username);
+    }
+    
+    return () => {
+      debouncedUsernameCheck.cancel();
+    };
+  }, [username]);
+  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!agreedToTerms) {
+      toast({
+        title: 'Terms agreement required',
+        description: 'Please agree to the Terms of Service and Privacy Policy.',
+        variant: 'destructive'
+      });
+      return;
+    }
+    
+    if (!isUsernameAvailable && isUsernameAvailable !== null) {
+      toast({
+        title: 'Username not available',
+        description: 'Please choose a different username.',
+        variant: 'destructive'
+      });
       return;
     }
     
@@ -177,15 +224,29 @@ const SignupPage = () => {
                   
                   <div className="space-y-2">
                     <label htmlFor="username" className="text-sm font-medium">Username</label>
-                    <Input
-                      id="username"
-                      type="text"
-                      placeholder="Your in-game name"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      required
-                      disabled={isSubmitting}
-                    />
+                    <div className="relative">
+                      <Input
+                        id="username"
+                        type="text"
+                        placeholder="Your in-game name"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        required
+                        disabled={isSubmitting}
+                        className={username.length > 0 ? isUsernameAvailable === true ? "border-green-500" : isUsernameAvailable === false ? "border-red-500" : "" : ""}
+                      />
+                      {isCheckingUsername && (
+                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        </div>
+                      )}
+                    </div>
+                    {username.length > 0 && !isCheckingUsername && (
+                      <p className={`text-xs ${isUsernameAvailable ? "text-green-500" : isUsernameAvailable === false ? "text-red-500" : "text-muted-foreground"}`}>
+                        {isUsernameAvailable === true && "Username is available"}
+                        {isUsernameAvailable === false && "Username is already taken"}
+                      </p>
+                    )}
                   </div>
                   
                   <div className="space-y-2">
@@ -230,7 +291,7 @@ const SignupPage = () => {
                   <Button 
                     type="submit" 
                     className="w-full" 
-                    disabled={!agreedToTerms || isSubmitting}
+                    disabled={!agreedToTerms || isSubmitting || (username.length > 0 && isUsernameAvailable === false)}
                   >
                     {isSubmitting ? (
                       <>
