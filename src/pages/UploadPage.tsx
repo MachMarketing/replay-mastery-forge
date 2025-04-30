@@ -13,10 +13,10 @@ import { ParsedReplayResult } from '@/services/replayParserService';
 
 // Define an interface that extends ParsedReplayResult with the additional fields needed by AnalysisResult
 interface ReplayData extends ParsedReplayResult {
-  id?: string;
-  strengths?: string[];
-  weaknesses?: string[];
-  recommendations?: string[];
+  id: string; // Make id required, not optional
+  strengths: string[]; // Make strengths required, not optional
+  weaknesses: string[]; // Make weaknesses required, not optional
+  recommendations: string[]; // Make recommendations required, not optional
 }
 
 const UploadPage = () => {
@@ -37,7 +37,7 @@ const UploadPage = () => {
       // Extend the parsedReplayData with the additional fields needed by AnalysisResult
       const extendedData: ReplayData = {
         ...parsedReplayData,
-        // Add default values for the required fields
+        // Add required values for the fields
         id: crypto.randomUUID(),
         strengths: ["Good macro", "Consistent worker production"],
         weaknesses: ["Delayed expansion", "Insufficient scouting"],
