@@ -22,17 +22,17 @@ const Index = () => {
 
   return (
     <div className="flex flex-col min-h-screen relative overflow-hidden">
-      {/* Full cover hero background */}
+      {/* Full cover background image that covers entire page */}
       <div 
-        className="absolute top-0 left-0 w-full h-screen bg-[url('/background.jpg')] bg-cover bg-center z-0"
+        className="fixed top-0 left-0 w-full h-full bg-[url('/background.jpg')] bg-cover bg-center z-0"
         style={{
           backgroundAttachment: 'fixed',
-          backgroundPosition: 'center 30%',
+          backgroundPosition: 'center center',
           backgroundRepeat: 'no-repeat'
         }}
       >
-        {/* Dark overlay for text readability */}
-        <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/60 to-background"></div>
+        {/* Dark overlay for text readability across entire page */}
+        <div className="absolute inset-0 bg-gradient-to-b from-background/90 via-background/80 to-background/90"></div>
       </div>
       
       <Navbar />
