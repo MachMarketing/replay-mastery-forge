@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-import { parseReplayFile, analyzeReplayData, ParsedReplayData } from '@/services/replayParserService';
+import { parseReplayFile, analyzeReplayData, ParsedReplayData, DEFAULT_SCREP_API_URL } from '@/services/replayParser';
 import { useToast } from '@/hooks/use-toast';
 
 interface ReplayParserResult {
@@ -20,7 +20,7 @@ export function useReplayParser(): ReplayParserResult {
   const { toast } = useToast();
   
   // Get the URL of the SCREP parser service from the environment or use a default
-  const defaultUrl = import.meta.env.VITE_SCREP_API_URL || 'http://localhost:8080/parse';
+  const defaultUrl = import.meta.env.VITE_SCREP_API_URL || DEFAULT_SCREP_API_URL;
   const [parserUrl, setParserUrl] = useState<string>(defaultUrl);
 
   const parseReplay = async (file: File) => {
