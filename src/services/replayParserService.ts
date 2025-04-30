@@ -1,7 +1,8 @@
 
 import { Buffer } from 'buffer';
 import { parse } from 'jssuh';
-import type { ParsedReplayResult } from './replayParser/types';
+import { transformJSSUHData } from './replayParser/transformer';
+import type { ParsedReplayResult, ParsedReplayData } from './replayParser/types';
 
 /**
  * Parse a StarCraft: Brood War .rep file using jssuh
@@ -41,6 +42,25 @@ export async function parseReplayFile(file: File): Promise<ParsedReplayResult> {
   } catch (error) {
     console.error('Error parsing replay file with jssuh:', error);
     throw new Error('Failed to parse replay file. Is this a valid StarCraft replay?');
+  }
+}
+
+/**
+ * Process the raw parsed data into application format
+ */
+export function processReplayData(rawData: ParsedReplayResult): ParsedReplayData {
+  try {
+    // Transform the raw data using our transformer
+    return transformJSSUHData({
+      players: rawData.header.players,
+      mapName: rawData.header.mapName,
+      durationMS: rawData.header.durationMS,
+      gameStartDate: rawData.header.gameStartDate,
+      actions: rawData.actions
+    });
+  } catch (error) {
+    console.error('Error processing replay data:', error);
+    throw new Error('Failed to process replay data');
   }
 }
 

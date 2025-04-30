@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -123,6 +122,12 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       if (!parsedData) {
         throw new Error('Failed to parse replay file');
       }
+
+      // Add analysis data to the parsed data for easier access
+      const enrichedData = {
+        ...parsedData,
+        analysis
+      };
       
       // Third step: Save the metadata to the database
       if (data?.filename && data?.path) {
@@ -151,7 +156,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       });
       
       if (onUploadComplete && parsedData) {
-        onUploadComplete(file, parsedData);
+        onUploadComplete(file, enrichedData);
       }
     } catch (error) {
       console.error('Error processing file:', error);
@@ -222,16 +227,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
             e.dataTransfer.dropEffect = 'copy';
             setIsDragging(true);
           }}
-          onDrop={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setIsDragging(false);
-            
-            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-              const droppedFile = e.dataTransfer.files[0];
-              processFile(droppedFile);
-            }
-          }}
+          onDrop={handleDrop}
         >
           <div className="h-16 w-16 rounded-full bg-primary/20 flex items-center justify-center mb-4">
             <Upload className="h-8 w-8 text-primary" />
@@ -246,12 +242,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
             ref={fileInputRef}
             className="hidden"
             accept=".rep"
-            onChange={(e) => {
-              if (e.target.files && e.target.files.length > 0) {
-                const selectedFile = e.target.files[0];
-                processFile(selectedFile);
-              }
-            }}
+            onChange={handleFileChange}
           />
           <p className="text-xs text-muted-foreground mt-4">
             Max file size: {maxFileSize}MB | Supported format: .rep

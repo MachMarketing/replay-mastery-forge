@@ -8,7 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Loader2 } from 'lucide-react';
 import { useReplays, Replay } from '@/hooks/useReplays';
 import { useToast } from '@/hooks/use-toast';
-import { ParsedReplayData, analyzeReplayData } from '@/services/replayParserService';
 import { useReplayParser } from '@/hooks/useReplayParser';
 
 const UploadPage = () => {
@@ -16,22 +15,19 @@ const UploadPage = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const [isPremium] = useState(false);
-  const [replayData, setReplayData] = useState<ParsedReplayData | null>(null);
+  const [replayData, setReplayData] = useState<any>(null);
   const [analysisData, setAnalysisData] = useState<any>(null);
   const { replays, fetchReplays } = useReplays();
   const { toast } = useToast();
-  const { error: parserError } = useReplayParser();
+  const { parseReplay, error: parserError } = useReplayParser();
 
-  const handleUploadComplete = async (uploadedFile: File, parsedReplayData: ParsedReplayData) => {
+  const handleUploadComplete = async (uploadedFile: File, parsedReplayData: any) => {
     setFile(uploadedFile);
     setReplayData(parsedReplayData);
     setIsAnalyzing(true);
     
     try {
-      // Analyze the replay data
-      const analysis = await analyzeReplayData(parsedReplayData);
-      
-      // Update analysis data with all the information
+      // Use our parsed data directly since it already includes analysis
       setAnalysisData({
         id: `rep-${Date.now()}`,
         playerName: parsedReplayData.playerName,
@@ -47,10 +43,10 @@ const UploadPage = () => {
         matchup: parsedReplayData.matchup,
         buildOrder: parsedReplayData.buildOrder,
         resourcesGraph: parsedReplayData.resourcesGraph,
-        strengths: analysis.strengths,
-        weaknesses: analysis.weaknesses,
-        recommendations: analysis.recommendations,
-        trainingPlan: analysis.trainingPlan
+        strengths: parsedReplayData.analysis?.strengths || [],
+        weaknesses: parsedReplayData.analysis?.weaknesses || [],
+        recommendations: parsedReplayData.analysis?.recommendations || [],
+        trainingPlan: parsedReplayData.analysis?.trainingPlan || []
       });
       
       setIsAnalyzing(false);
