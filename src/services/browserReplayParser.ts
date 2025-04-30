@@ -25,9 +25,12 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     const data = await readFileAsUint8Array(file);
     
     // 3) Parse the replay
-    console.log('Parsing replay with bundled screp-js...');
+    console.log('Parsing replay with bundled screp-js...', parseReplayWasm ? 'Parser available' : 'PARSER NOT FOUND');
     let result;
     try {
+      if (!parseReplayWasm || typeof parseReplayWasm !== 'function') {
+        throw new Error('screp-js parseReplay function not available');
+      }
       result = await parseReplayWasm(data);
     } catch (e) {
       console.error('screp-js parse error:', e);

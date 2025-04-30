@@ -17,7 +17,7 @@ export default defineConfig(({ command }: ConfigEnv) => ({
     process.env.NODE_ENV !== 'production' && componentTagger(),
     wasm({
       // Explicitly specify that we want to load WASM files as URL
-      targetEnv: 'auto',
+      targetEnv: 'auto', 
       maxFileSize: 10000000, // Allow for large WASM files (10MB)
     }),
   ].filter(Boolean),
