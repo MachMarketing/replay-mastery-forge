@@ -54,9 +54,10 @@ export default defineConfig(({ command }: ConfigEnv) => ({
       plugins: [rollupNodePolyFill() as any],
       // Handle CommonJS modules during build
       output: {
-        format: 'es',
+        // Need to use explicit types for the format instead of just 'string'
+        format: 'es' as const,
         manualChunks: {
-          vendor: ['buffer'],
+          vendor: ['buffer']
         }
       },
     },

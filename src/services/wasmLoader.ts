@@ -20,7 +20,8 @@ async function loadScrepJs() {
   try {
     // Dynamic import to handle potential require/ESM conflicts
     const module = await import('screp-js');
-    console.log('Successfully imported screp-js module:', module);
+    console.log('🔍 screp-js exports:', Object.keys(module));
+    console.log('🔍 screp-js ready:', !!module.ready);
     return module;
   } catch (error) {
     console.error('Failed to load screp-js module:', error);
@@ -38,7 +39,6 @@ export async function initParserWasm(): Promise<void> {
     // Load the module if not already loaded
     if (!screpJsModule) {
       screpJsModule = await loadScrepJs();
-      console.log('Available screp-js exports:', Object.keys(screpJsModule));
     }
     
     // Wait for WASM initialization if supported

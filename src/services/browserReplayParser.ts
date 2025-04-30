@@ -47,11 +47,11 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       throw new Error('WASM parser function not available - module may not be properly loaded');
     }
     
-    console.log('Calling parseReplayWasm with data...');
+    console.log('Parsing replay with bundled screp-js…');
     let result;
     try {
       result = await parseReplayWasm(data);
-      console.log('Raw parsing result:', result);
+      console.log('screp-js parsing result:', result);
       
       if (!result) {
         throw new Error('Parser returned empty result');
@@ -65,7 +65,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     console.log('Mapping raw data to domain model...');
     try {
       const parsedData = mapRawToParsed(result);
-      console.log('Successfully parsed and mapped replay data:', parsedData);
+      console.log('Successfully parsed replay data:', parsedData);
       return parsedData;
     } catch (mappingError) {
       console.error('Data mapping error:', mappingError);
