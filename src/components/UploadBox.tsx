@@ -1,10 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
+import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, X, FileText, CheckCircle, AlertCircle } from 'lucide-react';
-import { parseReplayFile } from '@/services/replayParserService';
+import { parseReplayFile, processReplayData } from '@/services/replayParserService';
 import type { ParsedReplayData } from '@/services/replayParser/types';
 import { useReplayParser } from '@/hooks/useReplayParser';
 import { uploadReplayFile, saveReplayMetadata } from '@/services/uploadService';
@@ -23,26 +24,27 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   const { toast } = useToast();
   const { parseReplay } = useReplayParser();
   
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
-
-  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
     setIsDragging(false);
-  };
+    if (acceptedFiles.length === 0) return;
+    
+    const file = acceptedFiles[0];
+    if (!validateFile(file)) return;
+    
+    await processFile(file);
+  }, []);
 
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.dataTransfer.dropEffect = 'copy';
-    setIsDragging(true);
-  };
+  const { getRootProps, getInputProps, open } = useDropzone({
+    onDrop,
+    noClick: true,
+    noKeyboard: true,
+    onDragEnter: () => setIsDragging(true),
+    onDragLeave: () => setIsDragging(false),
+    accept: {
+      'application/octet-stream': ['.rep']
+    },
+    maxSize: maxFileSize * 1024 * 1024
+  });
 
   const validateFile = (file: File): boolean => {
     // Check file size
@@ -173,30 +175,6 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     }
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const droppedFile = e.dataTransfer.files[0];
-      processFile(droppedFile);
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const selectedFile = e.target.files[0];
-      processFile(selectedFile);
-    }
-  };
-
-  const handleButtonClick = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
-
   const handleCancel = () => {
     setFile(null);
     setProgress(0);
@@ -208,15 +186,12 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     <div className="w-full">
       {uploadStatus === 'idle' ? (
         <div
+          {...getRootProps()}
           className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center transition-all ${
             isDragging 
               ? 'border-primary bg-primary/10 upload-pulse' 
               : 'border-border hover:border-primary/50 hover:bg-secondary/50'
           }`}
-          onDragEnter={handleDragEnter}
-          onDragLeave={handleDragLeave}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
         >
           <div className="h-16 w-16 rounded-full bg-primary/20 flex items-center justify-center mb-4">
             <Upload className="h-8 w-8 text-primary" />
@@ -225,13 +200,10 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
           <p className="text-sm text-muted-foreground mb-4 text-center">
             Drag and drop your .rep file here, or click to browse
           </p>
-          <Button onClick={() => fileInputRef.current?.click()} variant="outline">Select File</Button>
+          <Button onClick={open} variant="outline">Select File</Button>
           <input
-            type="file"
-            ref={fileInputRef}
-            className="hidden"
+            {...getInputProps()}
             accept=".rep"
-            onChange={handleFileChange}
           />
           <p className="text-xs text-muted-foreground mt-4">
             Max file size: {maxFileSize}MB | Supported format: .rep
@@ -253,12 +225,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => {
-                  setFile(null);
-                  setProgress(0);
-                  setUploadStatus('idle');
-                  setStatusMessage('');
-                }}
+                onClick={handleCancel}
                 className="text-muted-foreground hover:text-destructive"
               >
                 <X className="h-4 w-4" />
@@ -311,12 +278,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
                 size="sm" 
                 variant="outline" 
                 className="mt-2" 
-                onClick={() => {
-                  setFile(null);
-                  setProgress(0);
-                  setUploadStatus('idle');
-                  setStatusMessage('');
-                }}
+                onClick={handleCancel}
               >
                 Try Again
               </Button>
