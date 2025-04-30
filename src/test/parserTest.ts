@@ -3,6 +3,7 @@ import { parseReplayInBrowser } from '../services/browserReplayParser';
 import { Buffer } from 'buffer';
 import fs from 'fs';
 import path from 'path';
+import { ParsedReplayResult } from '../services/replayParserService';
 
 // Logger utility to make console output more readable
 const logger = {
@@ -33,7 +34,7 @@ function createFileFromPath(filePath: string, fileName: string = path.basename(f
 /**
  * Run the test with a provided .rep file path
  */
-export async function runParserTest(replayFilePath?: string): Promise<void> {
+export async function runParserTest(replayFilePath?: string): Promise<ParsedReplayResult> {
   logger.section('WASM PARSER TEST');
   
   try {
