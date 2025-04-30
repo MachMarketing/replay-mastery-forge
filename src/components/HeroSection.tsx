@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -31,7 +30,7 @@ const HeroSection = () => {
 
   return (
     <div className="pt-16 relative z-10">
-      {/* Full screen background image with improved visibility */}
+      {/* Full screen background image with no overlay */}
       <div 
         className="absolute inset-0 z-0" 
         style={{
@@ -47,8 +46,7 @@ const HeroSection = () => {
           zIndex: -1,
         }}
       >
-        {/* Lighter overlay for better image visibility */}
-        <div className="absolute inset-0 bg-gradient-to-r from-background/80 to-background/60"></div>
+        {/* Overlay completely removed */}
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32 relative">
