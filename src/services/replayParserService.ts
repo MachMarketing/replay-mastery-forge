@@ -2,7 +2,7 @@
 import { ReplayParser } from 'jssuh';
 import { Buffer } from 'buffer';
 import type { ParsedReplayData } from './replayParser/types';
-import { transformJSSUHData } from './replayParser/transformer';
+import { transformJSSUHData } from './replayParser';
 
 export interface ParsedReplayResult {
   header: any;
