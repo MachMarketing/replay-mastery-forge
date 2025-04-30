@@ -7,29 +7,64 @@ import { ParsedReplayResult } from './replayParserService';
 
 /**
  * Loads screp-js from CDN as <script> and initializes WASM.
+ * Attempts multiple CDNs in case of failure.
  */
 async function loadScrepJs(): Promise<void> {
   // If already loaded (ready-Promise exists), just wait on it
   if (typeof (window as any).parseReplay === 'function'
       && (window as any).ready?.then) {
+    console.log('screp-js already loaded, waiting on ready promise');
     return (window as any).ready;
   }
 
+  // List of CDNs to try in order of preference
+  const cdnUrls = [
+    'https://unpkg.com/screp-js@0.3.0/dist/index.umd.js',
+    'https://cdn.jsdelivr.net/npm/screp-js@0.3.0/dist/index.umd.js',
+    'https://esm.run/screp-js@0.3.0/dist/index.umd.js'
+  ];
+  
+  let lastError: Error | null = null;
+  
+  // Try each CDN URL in sequence
+  for (const url of cdnUrls) {
+    console.log(`Attempting to load screp-js from ${url}`);
+    try {
+      await loadScriptFromUrl(url);
+      console.log(`Successfully loaded screp-js from ${url}`);
+      return; // If we get here, loading was successful
+    } catch (error) {
+      console.error(`Failed to load screp-js from ${url}:`, error);
+      lastError = error instanceof Error ? error : new Error(String(error));
+      // Continue to next URL
+    }
+  }
+  
+  // If we get here, all CDNs failed
+  throw lastError || new Error('Failed to load screp-js from any CDN');
+}
+
+/**
+ * Load a script from a URL and wait for it to initialize
+ */
+function loadScriptFromUrl(url: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    // Correct URL via unpkg
-    script.src = 'https://unpkg.com/screp-js@0.3.0/dist/index.umd.js';
+    script.src = url;
     script.async = true;
+    script.crossOrigin = 'anonymous'; // Try with CORS support
+    
     script.onload = () => {
+      console.log(`Script from ${url} loaded, checking for screp-js API`);
       // The UMD build attaches two globals:
       //   window.parseReplay(data: Uint8Array) => Promise<ReplayResult>
       //   window.ready: Promise<void>
-      console.log('screp-js UMD script loaded from CDN');
       if (typeof (window as any).parseReplay !== 'function'
           || !(window as any).ready?.then) {
         console.error('screp-js UMD global API not found');
         return reject(new Error('screp-js UMD global API not found'));
       }
+      
       (window as any).ready
         .then(() => {
           console.log('screp-js WASM initialized successfully');
@@ -40,10 +75,12 @@ async function loadScrepJs(): Promise<void> {
           reject(e);
         });
     };
+    
     script.onerror = () => {
-      console.error('Failed to load screp-js script from CDN');
-      reject(new Error('Failed to load screp-js from CDN'));
+      console.error(`Failed to load screp-js script from ${url}`);
+      reject(new Error(`Failed to load screp-js from ${url}`));
     };
+    
     document.body.appendChild(script);
   });
 }
