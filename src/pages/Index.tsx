@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -21,8 +22,8 @@ const Index = () => {
 
   return (
     <div className="flex flex-col min-h-screen relative overflow-hidden">
-      {/* Background with starfield effect */}
-      <div className="fixed inset-0 bg-[url('/background.jpg')] bg-cover bg-center bg-no-repeat bg-fixed opacity-20 z-0"></div>
+      {/* Background with subtle starfield effect - adjusted opacity and positioning */}
+      <div className="fixed top-0 left-0 right-0 h-[50vh] bg-[url('/background.jpg')] bg-cover bg-top opacity-30 z-0"></div>
       
       <Navbar />
       
