@@ -31,7 +31,7 @@ const HeroSection = () => {
 
   return (
     <div className="pt-16 relative z-10">
-      {/* Full screen background image */}
+      {/* Full screen background image with improved visibility */}
       <div 
         className="absolute inset-0 z-0" 
         style={{
@@ -43,16 +43,17 @@ const HeroSection = () => {
           height: '100vh',
           position: 'fixed',
           top: 0,
-          left: 0
+          left: 0,
+          zIndex: -1,
         }}
       >
-        {/* Dark overlay for better text readability */}
-        <div className="absolute inset-0 bg-gradient-to-r from-background/95 to-background/80"></div>
+        {/* Lighter overlay for better image visibility */}
+        <div className="absolute inset-0 bg-gradient-to-r from-background/80 to-background/60"></div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32 relative">
-        {/* Tech Grid Background */}
-        <div className="absolute inset-0 grid-tech-bg opacity-40"></div>
+        {/* Tech Grid Background with reduced opacity */}
+        <div className="absolute inset-0 grid-tech-bg opacity-30"></div>
         
         {/* Animated geometric elements */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
