@@ -10,12 +10,10 @@ import ReplayFilters from '@/components/replays/ReplayFilters';
 import EmptyReplaysState from '@/components/replays/EmptyReplaysState';
 import ReplaysPagination from '@/components/replays/ReplaysPagination';
 import { useReplays } from '@/hooks/useReplays';
-import { useAuth } from '@/context/AuthContext';
 
 const ITEMS_PER_PAGE = 10;
 
 const ReplaysPage = () => {
-  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [raceFilter, setRaceFilter] = useState('');
   const [resultFilter, setResultFilter] = useState('');
@@ -36,7 +34,7 @@ const ReplaysPage = () => {
 
   return (
     <div className="flex flex-col min-h-screen">
-      <Navbar isLoggedIn={!!user} />
+      <Navbar />
       
       <main className="flex-1 py-16 mt-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

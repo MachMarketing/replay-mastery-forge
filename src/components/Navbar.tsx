@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -6,16 +7,11 @@ import { Menu, X, LogOut, Settings, User } from 'lucide-react';
 import Logo from '@/components/Logo';
 import { useAuth } from '@/context/AuthContext';
 
-interface NavbarProps {
-  isLoggedIn: boolean;
-  username?: string | null;
-}
-
-const Navbar: React.FC<NavbarProps> = ({ isLoggedIn, username }) => {
+const Navbar = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
-  const { signOut } = useAuth();
+  const { user, signOut } = useAuth();
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
@@ -39,6 +35,10 @@ const Navbar: React.FC<NavbarProps> = ({ isLoggedIn, username }) => {
     await signOut();
     navigate('/login');
   };
+
+  // Determine if user is logged in
+  const isLoggedIn = !!user;
+  const username = user?.user_metadata?.username || user?.email;
 
   return (
     <header className="bg-background border-b border-border fixed top-0 left-0 w-full z-50">
