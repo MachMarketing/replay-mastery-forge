@@ -1,9 +1,10 @@
+
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, X, FileText, CheckCircle, AlertCircle } from 'lucide-react';
-import { parseReplayFile } from '../services/replayParserService';
+import { parseReplayFile } from '@/services/replayParserService';
 import type { ParsedReplayData } from '@/services/replayParser/types';
 import { useReplayParser } from '@/hooks/useReplayParser';
 import { uploadReplayFile, saveReplayMetadata } from '@/services/uploadService';

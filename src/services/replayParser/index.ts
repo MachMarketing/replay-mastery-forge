@@ -1,7 +1,8 @@
 
 import { analyzeReplayData } from './analyzer';
 import { transformJSSUHData } from './transformer';
-import type { ParsedReplayData, ReplayAnalysis, ParsedReplayResult } from './types';
+import type { ParsedReplayData, ReplayAnalysis } from './types';
+import type { ParsedReplayResult } from '../replayParserService';
 
 export { analyzeReplayData, transformJSSUHData };
 export type { ParsedReplayData, ReplayAnalysis, ParsedReplayResult };
