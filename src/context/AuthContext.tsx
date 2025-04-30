@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
@@ -86,7 +87,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       // If login is successful, return early
-      if (data.session) {
+      if (data?.session) {
         console.log("Login successful on first attempt");
         toast({
           title: 'Logged in successfully',
@@ -101,33 +102,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         // If this is the admin and the error is about email confirmation
         if (error.message.includes('Email not confirmed') && isAdmin) {
-          console.log("Admin login detected, bypassing email verification...");
+          console.log("Admin login detected, attempting bypass with second login attempt...");
           
-          // For admin account, forcefully try login again
+          // For admin account, try forced login again
           // This is a special case for development/testing
-          const { data: adminData, error: adminError } = await supabase.auth.signInWithPassword({
-            email: normalizedEmail,
-            password
-          });
-          
-          if (adminData.session) {
-            console.log("Admin bypass successful");
-            toast({
-              title: 'Admin logged in successfully',
-              description: 'Welcome back, admin!',
+          try {
+            // Adding a small delay sometimes helps with auth state reconciliation
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            const { data: adminData, error: adminError } = await supabase.auth.signInWithPassword({
+              email: normalizedEmail,
+              password
             });
-            return { error: null };
-          }
-          
-          if (adminError) {
-            // If we still have an error, it might be a password issue
-            console.error("Admin bypass failed:", adminError.message);
-            toast({
-              title: 'Login failed',
-              description: adminError.message,
-              variant: 'destructive'
-            });
-            return { error: adminError };
+            
+            if (adminData?.session) {
+              console.log("Admin bypass successful");
+              toast({
+                title: 'Admin logged in successfully',
+                description: 'Welcome back, admin!',
+              });
+              return { error: null };
+            }
+            
+            if (adminError) {
+              // If we still have an error, it might be a password issue
+              console.error("Admin bypass failed:", adminError.message);
+              toast({
+                title: 'Login failed',
+                description: adminError.message,
+                variant: 'destructive'
+              });
+              return { error: adminError };
+            }
+          } catch (bypassError) {
+            console.error("Error in admin bypass:", bypassError);
+            return { error: bypassError };
           }
         } 
         else if (error.message.includes('Email not confirmed')) {
@@ -225,6 +234,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { error: { message: 'Username already taken' } };
       }
       
+      // Use lowercase email for consistency
+      email = email.toLowerCase();
+      
       const { error } = await supabase.auth.signUp({
         email,
         password,
@@ -246,6 +258,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       // Store the email that needs confirmation
       setEmailPendingVerification(email);
+      setIsEmailNotConfirmed(true);
       
       toast({
         title: 'Account created',

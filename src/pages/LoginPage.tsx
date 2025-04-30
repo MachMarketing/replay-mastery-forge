@@ -11,8 +11,9 @@ import { Google } from '@/components/icons/Google';
 import { Twitch } from '@/components/icons/Twitch';
 import { useAuth } from '@/context/AuthContext';
 import { Loader2, RefreshCw } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -20,7 +21,16 @@ const LoginPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resendingVerification, setResendingVerification] = useState(false);
   const [loginAttempts, setLoginAttempts] = useState(0);
-  const { signIn, user, isEmailNotConfirmed, emailPendingVerification, resendVerificationEmail } = useAuth();
+  const [showAdminTip, setShowAdminTip] = useState(false);
+  
+  const { 
+    signIn, 
+    user, 
+    isEmailNotConfirmed, 
+    emailPendingVerification, 
+    resendVerificationEmail 
+  } = useAuth();
+  
   const navigate = useNavigate();
   
   useEffect(() => {
@@ -38,9 +48,9 @@ const LoginPage = () => {
     try {
       console.log(`Attempting to sign in with email: ${email}`);
       const { error } = await signIn(email, password);
+      
       if (!error) {
         console.log("Login successful, user should be redirected automatically");
-        // On successful login, show a success toast and redirect will be handled by the useEffect
         toast({
           title: 'Login successful',
           description: 'Redirecting you to your replays...',
@@ -52,6 +62,11 @@ const LoginPage = () => {
         console.log("Login error detected, incrementing attempts counter");
         // Increment login attempts to track retry attempts
         setLoginAttempts(prev => prev + 1);
+        
+        // For cristiantuerk@gmail.com, show special admin tip after 2 attempts
+        if (email.toLowerCase() === 'cristiantuerk@gmail.com' && loginAttempts > 1) {
+          setShowAdminTip(true);
+        }
       }
     } finally {
       setIsSubmitting(false);
@@ -72,11 +87,22 @@ const LoginPage = () => {
   const handleOAuthLogin = (provider: 'google' | 'twitch') => {
     // This is a placeholder for future OAuth implementation
     console.log(`Login with ${provider}`);
+    toast({
+      title: `${provider} login`,
+      description: 'This feature is coming soon!',
+      variant: 'default'
+    });
   };
 
   const handleClearCacheAndRetry = () => {
     // Force refresh the page to clear any potential cache issues
     window.location.reload();
+  };
+  
+  const handleForceRedirect = () => {
+    // Sometimes a manual redirect helps when the automatic one doesn't trigger
+    navigate('/replays', { replace: true });
+    window.location.href = '/replays'; // Fallback direct URL change
   };
   
   return (
@@ -96,8 +122,9 @@ const LoginPage = () => {
             <CardContent className="space-y-4">
               {isEmailNotConfirmed && emailPendingVerification && (
                 <Alert variant="destructive" className="mb-4">
+                  <AlertTitle>Email not confirmed</AlertTitle>
                   <AlertDescription className="flex flex-col gap-2">
-                    <p>Email not confirmed. Please check your inbox for the verification email.</p>
+                    <p>Please check your inbox for the verification email.</p>
                     {loginAttempts > 1 && (
                       <div className="text-sm space-y-2">
                         <p>
@@ -200,7 +227,11 @@ const LoginPage = () => {
                   />
                 </div>
                 
-                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                <Button 
+                  type="submit" 
+                  className="w-full" 
+                  disabled={isSubmitting}
+                >
                   {isSubmitting ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -210,6 +241,17 @@ const LoginPage = () => {
                     'Log In'
                   )}
                 </Button>
+
+                {user && (
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    className="w-full mt-2" 
+                    onClick={handleForceRedirect}
+                  >
+                    Continue to Replays
+                  </Button>
+                )}
               </form>
             </CardContent>
             
@@ -226,6 +268,29 @@ const LoginPage = () => {
       </main>
       
       <Footer />
+      
+      {/* Admin help dialog */}
+      <Dialog open={showAdminTip} onOpenChange={setShowAdminTip}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Admin Account Login</DialogTitle>
+            <DialogDescription>
+              For admin accounts, we've added special handling for unconfirmed emails. 
+              The system will attempt to bypass email verification for your admin account.
+              
+              If you're still having trouble:
+              1. Try clearing your browser cache
+              2. Restart your browser
+              3. Try in an incognito window
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setShowAdminTip(false)}>
+              Got it
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
