@@ -5,6 +5,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Upload, X, FileText, CheckCircle, AlertCircle } from 'lucide-react';
 import { uploadReplayFile, saveReplayMetadata } from '@/services/uploadService';
 import { parseReplayFile, ParsedReplayData } from '@/services/replayParserService';
+import { useReplayParser } from '@/hooks/useReplayParser';
 
 interface UploadBoxProps {
   onUploadComplete?: (file: File, replayData: ParsedReplayData) => void;
@@ -18,6 +19,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'parsing' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState('');
   const { toast } = useToast();
+  const { parserUrl } = useReplayParser();
   
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -112,8 +114,8 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         setProgress(parsingProgress);
       }, 300);
       
-      // Parse the file with the real SCREP parser
-      const replayData = await parseReplayFile(file);
+      // Parse the file with the real SCREP parser - now passing both file and parserUrl
+      const replayData = await parseReplayFile(file, parserUrl);
       
       clearInterval(parsingInterval);
       
