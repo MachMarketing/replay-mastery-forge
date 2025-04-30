@@ -1,4 +1,3 @@
-
 /**
  * Browser-based StarCraft: Brood War replay parser using screp-js (WASM) loaded from CDN
  */
@@ -9,26 +8,27 @@ import { ParsedReplayResult } from './replayParserService';
  * Loads screp-js from CDN as <script> and initializes WASM.
  */
 async function loadScrepJs(): Promise<void> {
-  if ((window as any).ScrepJS) {
-    // Already loaded
-    return (window as any).ScrepJS.ready;
+  // If already loaded (ready-Promise exists), just wait on it
+  if ((window as any).parseReplay && (window as any).ready) {
+    return (window as any).ready;
   }
 
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    // Load UMD build instead of regular script
-    script.src = 'https://cdn.jsdelivr.net/npm/screp-js@1.0.0/dist/index.umd.js';
+    // Correct version is 0.3.0
+    script.src = 'https://cdn.jsdelivr.net/npm/screp-js@0.3.0/dist/index.umd.js';
     script.async = true;
     script.onload = () => {
-      // Check if ScrepJS was loaded correctly
+      // The UMD build attaches two globals:
+      //   window.parseReplay(data: Uint8Array) => Promise<ReplayResult>
+      //   window.ready: Promise<void>
       console.log('screp-js UMD script loaded from CDN');
-      const S = (window as any).ScrepJS;
-      if (!S || typeof S.ready !== 'object' || typeof S.parseReplay !== 'function') {
-        console.error('ScrepJS global object not found or malformed');
-        return reject(new Error('ScrepJS global object not found or malformed'));
+      if (typeof (window as any).parseReplay !== 'function'
+          || !(window as any).ready?.then) {
+        console.error('screp-js UMD global API not found');
+        return reject(new Error('screp-js UMD global API not found'));
       }
-      // Initialize WASM
-      S.ready
+      (window as any).ready
         .then(() => {
           console.log('screp-js WASM initialized successfully');
           resolve();
@@ -144,18 +144,16 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
   console.log('Parsing replay file in browser:', file.name);
   
   try {
-    // 1) Load screp-js from CDN and initialize WASM
+    // 1) Load screp-js UMD from CDN and initialize WASM
     console.log('Loading screp-js from CDN...');
     await loadScrepJs();
     console.log('screp-js loaded and WASM initialized');
     
-    // 2) Get parseReplay from the ScrepJS global object
-    const { parseReplay } = (window as any).ScrepJS as {
-      parseReplay: (data: Uint8Array) => Promise<any>;
-    };
+    // 2) Use global parseReplay and ready
+    const parseReplay = (window as any).parseReplay as (data: Uint8Array) => Promise<any>;
     
     if (typeof parseReplay !== 'function') {
-      throw new Error('ScrepJS.parseReplay is not available');
+      throw new Error('screp-js parseReplay is not available');
     }
     
     // 3) Read file into Uint8Array
@@ -164,7 +162,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     console.log('File read as Uint8Array, length:', data.length);
     
     // 4) Parse the replay
-    console.log('Parsing replay with ScrepJS...');
+    console.log('Parsing replay with screp-js UMD...');
     let result: any;
     try {
       result = await parseReplay(data);
