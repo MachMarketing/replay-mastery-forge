@@ -8,7 +8,7 @@ import { ParsedReplayResult } from './replayParserService';
 
 interface JssuhModule {
   parseReplay?: (data: Uint8Array) => Promise<any>;
-  default?: Function | {
+  default?: ((data: Uint8Array) => Promise<any>) | {
     parseReplay?: (data: Uint8Array) => Promise<any>;
   };
 }
@@ -23,11 +23,16 @@ async function loadJssuhParser(): Promise<(data: Uint8Array) => Promise<any>> {
 
   // Wenn default eine Funktion ist, nutzen wir sie direkt,
   // sonst mod.parseReplay
-  const parseFn = typeof mod.default === 'function'
-    ? mod.default
-    : typeof mod.parseReplay === 'function'
-      ? mod.parseReplay
-      : undefined;
+  let parseFn: ((data: Uint8Array) => Promise<any>) | undefined;
+  
+  if (typeof mod.default === 'function') {
+    // Wir nehmen an, dass die Funktion die richtige Signatur hat
+    parseFn = mod.default as (data: Uint8Array) => Promise<any>;
+  } else if (typeof mod.parseReplay === 'function') {
+    parseFn = mod.parseReplay;
+  } else if (mod.default && typeof mod.default.parseReplay === 'function') {
+    parseFn = mod.default.parseReplay;
+  }
 
   if (!parseFn) {
     throw new Error(
