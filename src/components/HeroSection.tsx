@@ -31,6 +31,25 @@ const HeroSection = () => {
 
   return (
     <div className="pt-16 relative z-10">
+      {/* Full screen background image */}
+      <div 
+        className="absolute inset-0 z-0" 
+        style={{
+          backgroundImage: "url('/lovable-uploads/d571fd6c-60f8-4930-9fdc-8f29054538e7.png')",
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          width: '100%',
+          height: '100vh',
+          position: 'fixed',
+          top: 0,
+          left: 0
+        }}
+      >
+        {/* Dark overlay for better text readability */}
+        <div className="absolute inset-0 bg-gradient-to-r from-background/95 to-background/80"></div>
+      </div>
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32 relative">
         {/* Tech Grid Background */}
         <div className="absolute inset-0 grid-tech-bg opacity-40"></div>

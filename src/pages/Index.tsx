@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -24,19 +23,6 @@ const Index = () => {
 
   return (
     <div className="flex flex-col min-h-screen relative overflow-hidden">
-      {/* Full cover background image that covers entire page */}
-      <div 
-        className="fixed top-0 left-0 w-full h-full bg-[url('/background.jpg')] bg-cover bg-center z-0"
-        style={{
-          backgroundAttachment: 'fixed',
-          backgroundPosition: 'center center',
-          backgroundRepeat: 'no-repeat'
-        }}
-      >
-        {/* Dark overlay for text readability across entire page */}
-        <div className="absolute inset-0 bg-gradient-to-b from-background/95 via-background/90 to-background/95"></div>
-      </div>
-      
       <Navbar />
       
       {/* Scroll to Top Button */}
@@ -49,7 +35,7 @@ const Index = () => {
         <ArrowUp />
       </button>
 
-      {/* Hero Section */}
+      {/* Hero Section with the new background */}
       <HeroSection />
 
       {/* Race Section with enhanced styling */}
