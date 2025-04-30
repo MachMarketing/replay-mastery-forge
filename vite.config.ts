@@ -18,5 +18,23 @@ export default defineConfig(({ mode }) => ({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
-  },
+    "stream": "stream-browserify",
+  },,
+optimizeDeps: {
+      esbuildOptions: {
+                define: {
+                              global: 'globalThis',
+                },
+                plugins: [
+                              NodeGlobalsPolyfillPlugin({
+                                                  buffer: true,
+                                }),
+                            ],
+        },
+  }
+                                })
+                  ]
+                  }
+        }
+  }
 }));
