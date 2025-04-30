@@ -25,9 +25,9 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error('Only StarCraft replay files (.rep) are allowed');
       }
       
-      console.log('Starting replay parsing with Go parser service');
+      console.log('Starting replay parsing with screp-js parser');
       
-      // Parse the replay file with Go service
+      // Parse the replay file with screp-js
       const parsedData = await parseReplayFile(file);
       
       if (!parsedData) {
