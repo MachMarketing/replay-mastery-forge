@@ -4,9 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, X, FileText, CheckCircle, AlertCircle } from 'lucide-react';
+import { uploadReplayFile, saveReplayMetadata } from '@/services/uploadService';
+import { parseReplayFile, ParsedReplayData } from '@/services/replayParserService';
 
 interface UploadBoxProps {
-  onUploadComplete?: (file: File) => void;
+  onUploadComplete?: (file: File, replayData: ParsedReplayData) => void;
   maxFileSize?: number; // in MB
 }
 
@@ -14,7 +16,8 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [progress, setProgress] = useState(0);
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle');
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'parsing' | 'success' | 'error'>('idle');
+  const [statusMessage, setStatusMessage] = useState('');
   const { toast } = useToast();
   
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -63,37 +66,102 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     return true;
   };
 
-  const processFile = (file: File) => {
+  const processFile = async (file: File) => {
     if (!validateFile(file)) {
       return;
     }
 
     setFile(file);
     setUploadStatus('uploading');
+    setStatusMessage('Uploading replay file...');
     
-    // Simulate upload progress
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += Math.random() * 10;
-      if (progress >= 100) {
-        progress = 100;
-        clearInterval(interval);
-        
-        // Simulate a small delay at 100% for better UX
-        setTimeout(() => {
-          setUploadStatus('success');
-          if (onUploadComplete) {
-            onUploadComplete(file);
-          }
-          
-          toast({
-            title: "Upload Complete",
-            description: `${file.name} has been successfully uploaded.`,
-          });
-        }, 500);
+    try {
+      // First step: Upload the file to storage
+      setProgress(0);
+      let uploadProgress = 0;
+      const interval = setInterval(() => {
+        uploadProgress += Math.random() * 10;
+        if (uploadProgress >= 100) {
+          uploadProgress = 100;
+          clearInterval(interval);
+        }
+        setProgress(uploadProgress);
+      }, 200);
+
+      // Simulate network upload (in production this would be a real upload)
+      const { error, data } = await uploadReplayFile(file);
+      
+      clearInterval(interval);
+      
+      if (error) {
+        throw new Error(`Upload failed: ${error.message}`);
       }
-      setProgress(progress);
-    }, 200);
+      
+      // Second step: Parse the replay file
+      setUploadStatus('parsing');
+      setStatusMessage('Parsing replay data...');
+      setProgress(0);
+      
+      // Start progress animation for parsing phase
+      let parsingProgress = 0;
+      const parsingInterval = setInterval(() => {
+        parsingProgress += Math.random() * 5;
+        if (parsingProgress >= 100) {
+          parsingProgress = 100;
+          clearInterval(parsingInterval);
+        }
+        setProgress(parsingProgress);
+      }, 300);
+      
+      // Actually parse the file
+      const replayData = await parseReplayFile(file);
+      
+      clearInterval(parsingInterval);
+      
+      if (!replayData) {
+        throw new Error('Failed to parse replay file');
+      }
+      
+      // Third step: Save the metadata to the database
+      if (data?.filename && data?.path) {
+        await saveReplayMetadata(data.filename, file.name, {
+          playerName: replayData.playerName,
+          opponentName: replayData.opponentName,
+          playerRace: replayData.playerRace,
+          opponentRace: replayData.opponentRace,
+          map: replayData.map,
+          duration: replayData.duration,
+          date: replayData.date,
+          result: replayData.result,
+          apm: replayData.apm,
+          eapm: replayData.eapm,
+          matchup: replayData.matchup
+        });
+      }
+      
+      // Success state
+      setProgress(100);
+      setUploadStatus('success');
+      
+      toast({
+        title: "Upload Complete",
+        description: `${file.name} has been successfully analyzed.`,
+      });
+      
+      if (onUploadComplete && replayData) {
+        onUploadComplete(file, replayData);
+      }
+    } catch (error) {
+      console.error('Error processing file:', error);
+      setUploadStatus('error');
+      setStatusMessage(error instanceof Error ? error.message : 'An unknown error occurred');
+      
+      toast({
+        title: "Processing Failed",
+        description: error instanceof Error ? error.message : 'Failed to process replay file',
+        variant: "destructive",
+      });
+    }
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -124,6 +192,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     setFile(null);
     setProgress(0);
     setUploadStatus('idle');
+    setStatusMessage('');
   };
 
   return (
@@ -171,7 +240,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
                 </p>
               </div>
             </div>
-            {uploadStatus === 'uploading' && (
+            {(uploadStatus === 'uploading' || uploadStatus === 'parsing') && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -189,12 +258,17 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
             )}
           </div>
           
-          {uploadStatus === 'uploading' && (
+          {(uploadStatus === 'uploading' || uploadStatus === 'parsing') && (
             <>
               <Progress value={progress} className="h-2" />
-              <p className="text-xs text-right mt-1 text-muted-foreground">
-                {Math.round(progress)}%
-              </p>
+              <div className="flex justify-between mt-1">
+                <p className="text-xs text-muted-foreground">
+                  {uploadStatus === 'uploading' ? 'Uploading...' : 'Parsing replay data...'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {Math.round(progress)}%
+                </p>
+              </div>
             </>
           )}
           
@@ -202,10 +276,10 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
             <div className="mt-2">
               <p className="text-sm text-strength flex items-center">
                 <CheckCircle className="h-4 w-4 mr-1" />
-                Upload complete
+                Upload and analysis complete
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Your replay is being analyzed...
+                Your replay has been analyzed and is ready to view.
               </p>
             </div>
           )}
@@ -214,7 +288,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
             <div className="mt-2">
               <p className="text-sm text-weakness flex items-center">
                 <AlertCircle className="h-4 w-4 mr-1" />
-                Upload failed
+                {statusMessage || 'Upload failed'}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 Please try again or contact support if the issue persists.
