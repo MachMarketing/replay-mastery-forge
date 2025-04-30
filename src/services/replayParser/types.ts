@@ -43,3 +43,5 @@ export interface ReplayAnalysis {
     drill: string;
   }[];
 }
+
+export type { ParsedReplayData, ReplayAnalysis, ParsedReplayResult };

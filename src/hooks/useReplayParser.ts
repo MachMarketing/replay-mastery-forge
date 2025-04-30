@@ -1,7 +1,7 @@
 
 import { useState } from 'react';
 import { parseReplayFile, analyzeReplayData, DEFAULT_SCREP_API_URL } from '@/services/replayParser';
-import type { ParsedReplayData, ReplayAnalysis } from '@/services/replayParser';
+import type { ParsedReplayData, ReplayAnalysis } from '@/services/replayParser/types';
 import { useToast } from '@/hooks/use-toast';
 
 interface ReplayParserResult {

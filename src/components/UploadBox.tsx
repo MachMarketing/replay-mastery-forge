@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -6,7 +5,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Upload, X, FileText, CheckCircle, AlertCircle } from 'lucide-react';
 import { uploadReplayFile, saveReplayMetadata } from '@/services/uploadService';
 import { useReplayParser } from '@/hooks/useReplayParser';
-import type { ParsedReplayData } from '@/services/replayParser';
+import { parseReplayFile } from '@/services/replayParser';
+import type { ParsedReplayData } from '@/services/replayParser/types';
 
 interface UploadBoxProps {
   onUploadComplete?: (file: File, replayData: ParsedReplayData) => void;
