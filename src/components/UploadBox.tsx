@@ -3,8 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, X, FileText, CheckCircle, AlertCircle } from 'lucide-react';
-import { uploadReplayFile, saveReplayMetadata } from '@/services/uploadService';
-import { useReplayParser } from '@/hooks/useReplayParser';
+import { parseReplayFile } from '../services/replayParserService';
 import type { ParsedReplayData } from '@/services/replayParser/types';
 
 interface UploadBoxProps {
@@ -227,7 +226,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
             e.dataTransfer.dropEffect = 'copy';
             setIsDragging(true);
           }}
-          onDrop={handleDrop}
+          ={handleDrop}
         >
           <div className="h-16 w-16 rounded-full bg-primary/20 flex items-center justify-center mb-4">
             <Upload className="h-8 w-8 text-primary" />
