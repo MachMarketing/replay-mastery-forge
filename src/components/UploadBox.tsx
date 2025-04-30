@@ -5,13 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, X, FileText, CheckCircle, AlertCircle } from 'lucide-react';
-import { parseReplayFile, processReplayData } from '@/services/replayParserService';
-import type { ParsedReplayData } from '@/services/replayParser/types';
-import { useReplayParser } from '@/hooks/useReplayParser';
+import { parseReplayFile, ParsedReplayResult } from '@/services/replayParserService';
 import { uploadReplayFile, saveReplayMetadata } from '@/services/uploadService';
 
 interface UploadBoxProps {
-  onUploadComplete?: (file: File, replayData: ParsedReplayData) => void;
+  onUploadComplete?: (file: File, replayData: ParsedReplayResult) => void;
   maxFileSize?: number; // in MB
 }
 
@@ -22,7 +20,6 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'parsing' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState('');
   const { toast } = useToast();
-  const { parseReplay } = useReplayParser();
   
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     setIsDragging(false);
@@ -102,9 +99,9 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         throw new Error(`Upload failed: ${error.message}`);
       }
       
-      // Second step: Parse the replay file using jssuh
+      // Second step: Parse the replay file using Go parser
       setUploadStatus('parsing');
-      setStatusMessage('Parsing replay with jssuh...');
+      setStatusMessage('Parsing replay with Go parser...');
       setProgress(0);
       
       // Start progress animation for parsing phase
@@ -118,20 +115,16 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         setProgress(parsingProgress);
       }, 300);
       
-      // Parse the file with jssuh
-      const { parsedData, analysis } = await parseReplay(file);
+      // Parse the file with Go parser
+      console.log('UploadBox: sending to Go parser', file.name);
+      const parsedData = await parseReplayFile(file);
+      console.log('UploadBox: parser response', parsedData);
       
       clearInterval(parsingInterval);
       
       if (!parsedData) {
         throw new Error('Failed to parse replay file');
       }
-
-      // Add analysis data to the parsed data for easier access
-      const enrichedData = {
-        ...parsedData,
-        analysis
-      };
       
       // Third step: Save the metadata to the database
       if (data?.filename && data?.path) {
@@ -160,7 +153,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       });
       
       if (onUploadComplete && parsedData) {
-        onUploadComplete(file, enrichedData);
+        onUploadComplete(file, parsedData);
       }
     } catch (error) {
       console.error('Error processing file:', error);
@@ -244,7 +237,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
               <Progress value={progress} className="h-2" />
               <div className="flex justify-between mt-1">
                 <p className="text-xs text-muted-foreground">
-                  {uploadStatus === 'uploading' ? 'Uploading...' : 'Parsing with jssuh...'}
+                  {uploadStatus === 'uploading' ? 'Uploading...' : 'Parsing with Go parser...'}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {Math.round(progress)}%
