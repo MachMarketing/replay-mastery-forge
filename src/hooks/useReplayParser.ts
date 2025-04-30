@@ -38,13 +38,16 @@ export function useReplayParser(): ReplayParserResult {
       return parsedData;
       
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error processing replay';
+      const errorMessage = err instanceof Error ? err.message : 'Failed to parse replay file';
       setError(errorMessage);
+      
+      // Display a toast notification with the error
       toast({
-        title: 'Error Processing Replay',
+        title: 'Processing Failed',
         description: errorMessage,
         variant: 'destructive',
       });
+      
       console.error('Replay parsing error:', errorMessage);
       return null;
     } finally {

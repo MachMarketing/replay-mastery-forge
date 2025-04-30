@@ -1,4 +1,3 @@
-
 /**
  * Browser-based StarCraft: Brood War replay parser using screp-js
  * This uses the screp parser compiled to WebAssembly to parse replays directly in the browser
@@ -73,6 +72,9 @@ async function loadScrepJs(): Promise<any> {
         window.ScrepJS.ready.then(() => {
           console.log('screp-js WASM initialized');
           resolve(window.ScrepJS);
+        }).catch((err: any) => {
+          console.error('Failed to initialize screp-js WASM:', err);
+          reject(new Error('Failed to initialize screp-js WASM module'));
         });
       };
       
@@ -196,87 +198,93 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     
     // Parse the replay using screp-js
     console.log('Parsing replay with screp-js...');
-    const parseResult: ScrepResult = await screpJs.parseReplay(data);
     
-    if (parseResult.error) {
-      throw new Error(`Screp parser error: ${parseResult.error}`);
+    try {
+      const parseResult: ScrepResult = await screpJs.parseReplay(data);
+      
+      if (parseResult.error) {
+        throw new Error(`Screp parser error: ${parseResult.error}`);
+      }
+      
+      if (!parseResult.replay) {
+        throw new Error('Failed to parse replay: No replay data returned');
+      }
+      
+      console.log('Screp-js parsing result:', parseResult);
+      
+      const { replay } = parseResult;
+      
+      // Extract player information
+      if (!replay.players || replay.players.length < 2) {
+        throw new Error('Invalid replay: Not enough players found');
+      }
+      
+      // We assume player 0 is the main player and player 1 is the opponent
+      const mainPlayer = replay.players[0];
+      const opponentPlayer = replay.players[1];
+      
+      if (!mainPlayer || !opponentPlayer) {
+        throw new Error('Failed to identify players in the replay');
+      }
+      
+      // Convert frame count to duration
+      const durationMs = replay.computed?.duration_ms || 0;
+      const duration = formatDuration(durationMs);
+      
+      // Get player races
+      const playerRace = getRaceFromNumber(mainPlayer.race);
+      const opponentRace = getRaceFromNumber(opponentPlayer.race);
+      
+      // Create matchup string
+      const matchup = `${playerRace.charAt(0)}v${opponentRace.charAt(0)}`;
+      
+      // Determine game result - try to use winner_team if available
+      let gameResult: 'win' | 'loss' = 'win';
+      if (replay.computed?.winner_team !== undefined && mainPlayer.team !== undefined) {
+        gameResult = replay.computed.winner_team === mainPlayer.team ? 'win' : 'loss';
+      }
+      
+      // Get APM if available
+      const apm = replay.computed?.apm?.[mainPlayer.name] || 
+                Math.floor(Math.random() * 100) + 50; // Fallback random APM
+                
+      // Get EAPM if available
+      const eapm = replay.computed?.eapm?.[mainPlayer.name] || 
+                Math.floor(apm * 0.8); // Fallback EAPM
+      
+      // Create a date string
+      const date = replay.header?.date || 
+                  new Date().toISOString().split('T')[0]; // Today as fallback
+      
+      // Generate build order based on race
+      const buildOrder = generateBuildOrder(playerRace, durationMs);
+      
+      // Generate resource graph data
+      const resourcesGraph = generateResourceData(durationMs);
+      
+      // Construct the parsed result
+      const parsedData: ParsedReplayResult = {
+        playerName: mainPlayer.name,
+        opponentName: opponentPlayer.name,
+        playerRace,
+        opponentRace,
+        map: replay.header?.map_name || 'Unknown Map',
+        duration,
+        date,
+        result: gameResult,
+        apm,
+        eapm,
+        matchup,
+        buildOrder,
+        resourcesGraph
+      };
+      
+      console.log('Browser parsed replay data with screp-js:', parsedData);
+      return parsedData;
+    } catch (parseError) {
+      console.error('Error during screp-js parsing:', parseError);
+      throw new Error('Failed to parse replay file: Invalid or unsupported format');
     }
-    
-    if (!parseResult.replay) {
-      throw new Error('Failed to parse replay: No replay data returned');
-    }
-    
-    console.log('Screp-js parsing result:', parseResult);
-    
-    const { replay } = parseResult;
-    
-    // Extract player information
-    if (!replay.players || replay.players.length < 2) {
-      throw new Error('Invalid replay: Not enough players found');
-    }
-    
-    // We assume player 0 is the main player and player 1 is the opponent
-    const mainPlayer = replay.players[0];
-    const opponentPlayer = replay.players[1];
-    
-    if (!mainPlayer || !opponentPlayer) {
-      throw new Error('Failed to identify players in the replay');
-    }
-    
-    // Convert frame count to duration
-    const durationMs = replay.computed?.duration_ms || 0;
-    const duration = formatDuration(durationMs);
-    
-    // Get player races
-    const playerRace = getRaceFromNumber(mainPlayer.race);
-    const opponentRace = getRaceFromNumber(opponentPlayer.race);
-    
-    // Create matchup string
-    const matchup = `${playerRace.charAt(0)}v${opponentRace.charAt(0)}`;
-    
-    // Determine game result - try to use winner_team if available
-    let gameResult: 'win' | 'loss' = 'win';
-    if (replay.computed?.winner_team !== undefined && mainPlayer.team !== undefined) {
-      gameResult = replay.computed.winner_team === mainPlayer.team ? 'win' : 'loss';
-    }
-    
-    // Get APM if available
-    const apm = replay.computed?.apm?.[mainPlayer.name] || 
-              Math.floor(Math.random() * 100) + 50; // Fallback random APM
-              
-    // Get EAPM if available
-    const eapm = replay.computed?.eapm?.[mainPlayer.name] || 
-               Math.floor(apm * 0.8); // Fallback EAPM
-    
-    // Create a date string
-    const date = replay.header?.date || 
-                new Date().toISOString().split('T')[0]; // Today as fallback
-    
-    // Generate build order based on race
-    const buildOrder = generateBuildOrder(playerRace, durationMs);
-    
-    // Generate resource graph data
-    const resourcesGraph = generateResourceData(durationMs);
-    
-    // Construct the parsed result
-    const parsedData: ParsedReplayResult = {
-      playerName: mainPlayer.name,
-      opponentName: opponentPlayer.name,
-      playerRace,
-      opponentRace,
-      map: replay.header?.map_name || 'Unknown Map',
-      duration,
-      date,
-      result: gameResult,
-      apm,
-      eapm,
-      matchup,
-      buildOrder,
-      resourcesGraph
-    };
-    
-    console.log('Browser parsed replay data with screp-js:', parsedData);
-    return parsedData;
     
   } catch (error) {
     console.error('Browser replay parsing error with screp-js:', error);

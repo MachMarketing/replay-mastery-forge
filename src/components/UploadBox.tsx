@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
@@ -136,11 +137,11 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     } catch (error) {
       console.error('Error processing file:', error);
       setUploadStatus('error');
-      setStatusMessage(error instanceof Error ? error.message : 'An unknown error occurred');
+      setStatusMessage('Failed to parse replay file');
       
       toast({
         title: "Processing Failed",
-        description: error instanceof Error ? error.message : 'Failed to process replay file',
+        description: "Failed to parse replay file",
         variant: "destructive",
       });
     }
@@ -151,6 +152,32 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     setProgress(0);
     setUploadStatus('idle');
     setStatusMessage('');
+  };
+
+  // Display the error state that matches the design in the image
+  const renderFileError = () => {
+    if (uploadStatus === 'error' && file) {
+      return (
+        <div className="mt-4 p-4 bg-opacity-10 bg-destructive border border-destructive/40 rounded-md">
+          <div className="flex items-center gap-2 text-destructive mb-1">
+            <AlertCircle className="h-4 w-4" />
+            <p className="font-medium">Failed to parse replay file</p>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Please try again or contact support if the issue persists.
+          </p>
+          <Button 
+            size="sm" 
+            variant="outline" 
+            className="mt-2" 
+            onClick={handleCancel}
+          >
+            Try Again
+          </Button>
+        </div>
+      );
+    }
+    return null;
   };
 
   return (
@@ -211,10 +238,10 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
               </Button>
             )}
             {uploadStatus === 'success' && (
-              <CheckCircle className="h-5 w-5 text-strength" />
+              <CheckCircle className="h-5 w-5 text-green-500" />
             )}
             {uploadStatus === 'error' && (
-              <AlertCircle className="h-5 w-5 text-weakness" />
+              <AlertCircle className="h-5 w-5 text-destructive" />
             )}
           </div>
           
@@ -223,7 +250,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
               <Progress value={progress} className="h-2" />
               <div className="flex justify-between mt-1">
                 <p className="text-xs text-muted-foreground">
-                  {uploadStatus === 'uploading' ? 'Uploading...' : 'Parsing with Go parser...'}
+                  {uploadStatus === 'uploading' ? 'Uploading...' : 'Parsing replay...'}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {Math.round(progress)}%
@@ -234,7 +261,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
           
           {uploadStatus === 'success' && (
             <div className="mt-2">
-              <p className="text-sm text-strength flex items-center">
+              <p className="text-sm text-green-500 flex items-center">
                 <CheckCircle className="h-4 w-4 mr-1" />
                 Analysis complete
               </p>
@@ -244,25 +271,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
             </div>
           )}
           
-          {uploadStatus === 'error' && (
-            <div className="mt-2">
-              <p className="text-sm text-weakness flex items-center">
-                <AlertCircle className="h-4 w-4 mr-1" />
-                {statusMessage || 'Parsing failed'}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Please try again or contact support if the issue persists.
-              </p>
-              <Button 
-                size="sm" 
-                variant="outline" 
-                className="mt-2" 
-                onClick={handleCancel}
-              >
-                Try Again
-              </Button>
-            </div>
-          )}
+          {uploadStatus === 'error' && renderFileError()}
         </div>
       )}
     </div>
