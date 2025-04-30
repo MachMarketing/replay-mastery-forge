@@ -104,11 +104,8 @@ func main() {
 	// Get port from environment or use default
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080"
+		port = "8000" // Changed default port to 8000 to match Vite config
 	}
-
-	// Setup the HTTP server
-	http.Handle("/parse", enableCors(http.HandlerFunc(handleParseReplay)))
 
 	fmt.Printf("SCREP parsing service starting on port %s...\n", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
