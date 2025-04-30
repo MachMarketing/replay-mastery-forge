@@ -56,9 +56,17 @@ export async function saveReplayMetadata(
   }
 ) {
   try {
+    // Get the current user
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      return { data: null, error: new Error('No authenticated user found') };
+    }
+
     const { data, error } = await supabase
       .from('replays')
       .insert({
+        user_id: user.id,  // Add the user_id from the authenticated user
         filename,
         original_filename: originalFilename,
         player_name: metadata.playerName,

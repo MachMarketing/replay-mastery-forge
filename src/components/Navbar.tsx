@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -15,7 +16,7 @@ import {
   Settings,
   User,
 } from 'lucide-react';
-import { Logo } from '@/components/icons/Logo';
+import Logo from '@/components/Logo'; // Fixed import
 import { useAuth } from '@/context/AuthContext';
 
 const Navbar = ({ isLoggedIn = false, username = '' }) => {

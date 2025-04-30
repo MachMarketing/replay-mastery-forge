@@ -20,7 +20,7 @@ const Logo = () => {
       </div>
       
       <div className="flex flex-col">
-        <span className="text-lg font-orbitron font-bold leading-none text-foreground">
+        <span className="text-lg font-bold leading-none text-foreground">
           Replay<span className="text-primary">Coach</span>
         </span>
         <span className="text-[9px] leading-none tracking-widest text-primary/80 uppercase">Performance Analytics</span>
