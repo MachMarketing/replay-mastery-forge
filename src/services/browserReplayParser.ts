@@ -1,3 +1,4 @@
+
 /**
  * Browser-based StarCraft: Brood War replay parser using screp-js (WASM) loaded from CDN
  */
@@ -9,14 +10,15 @@ import { ParsedReplayResult } from './replayParserService';
  */
 async function loadScrepJs(): Promise<void> {
   // If already loaded (ready-Promise exists), just wait on it
-  if ((window as any).parseReplay && (window as any).ready) {
+  if (typeof (window as any).parseReplay === 'function'
+      && (window as any).ready?.then) {
     return (window as any).ready;
   }
 
   return new Promise((resolve, reject) => {
     const script = document.createElement('script');
-    // Correct version is 0.3.0
-    script.src = 'https://cdn.jsdelivr.net/npm/screp-js@0.3.0/dist/index.umd.js';
+    // Correct URL via unpkg
+    script.src = 'https://unpkg.com/screp-js@0.3.0/dist/index.umd.js';
     script.async = true;
     script.onload = () => {
       // The UMD build attaches two globals:
