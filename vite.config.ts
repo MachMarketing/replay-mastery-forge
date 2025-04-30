@@ -35,6 +35,7 @@ export default defineConfig(({ command }: ConfigEnv) => ({
       define: { global: 'globalThis' },
       plugins: [NodeGlobalsPolyfillPlugin({ buffer: true, process: true }) as any],
     },
+    exclude: ['screp-js'], // Explicitly tell Vite not to pre-bundle screp-js
   },
   build: {
     rollupOptions: {

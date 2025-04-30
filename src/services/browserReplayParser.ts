@@ -19,18 +19,26 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
   
   try {
     // 1) Initialize WASM module
+    console.log('Starting WASM initialization...');
     await initParserWasm();
+    console.log('WASM initialization complete');
     
     // 2) Read file into Uint8Array
+    console.log('Reading file data...');
     const data = await readFileAsUint8Array(file);
+    console.log('File data read successfully, length:', data.length);
     
     // 3) Parse the replay
     console.log('Parsing replay with bundled screp-js...', parseReplayWasm ? 'Parser available' : 'PARSER NOT FOUND');
+    
+    if (!parseReplayWasm || typeof parseReplayWasm !== 'function') {
+      console.error('screp-js parseReplay function not available!');
+      throw new Error('screp-js parseReplay function not available');
+    }
+    
+    console.log('Calling parseReplayWasm with data...');
     let result;
     try {
-      if (!parseReplayWasm || typeof parseReplayWasm !== 'function') {
-        throw new Error('screp-js parseReplay function not available');
-      }
       result = await parseReplayWasm(data);
     } catch (e) {
       console.error('screp-js parse error:', e);

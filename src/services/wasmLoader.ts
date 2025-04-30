@@ -17,3 +17,4 @@ export async function initParserWasm(): Promise<void> {
  * Export the parse function directly for convenience
  */
 export const parseReplayWasm = parseReplay;
+
