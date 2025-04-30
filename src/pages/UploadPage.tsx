@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -10,25 +11,40 @@ import { useToast } from '@/hooks/use-toast';
 import { useReplayParser } from '@/hooks/useReplayParser';
 import { ParsedReplayResult } from '@/services/replayParserService';
 
+// Define an interface that extends ParsedReplayResult with the additional fields needed by AnalysisResult
+interface ReplayData extends ParsedReplayResult {
+  id?: string;
+  strengths?: string[];
+  weaknesses?: string[];
+  recommendations?: string[];
+}
+
 const UploadPage = () => {
   const [file, setFile] = useState<File | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const [isPremium] = useState(false);
-  const [replayData, setReplayData] = useState<ParsedReplayResult | null>(null);
+  const [replayData, setReplayData] = useState<ReplayData | null>(null);
   const { replays, fetchReplays } = useReplays();
   const { toast } = useToast();
   const { parseReplay, isProcessing, error: parserError } = useReplayParser();
 
   const handleUploadComplete = async (uploadedFile: File, parsedReplayData: ParsedReplayResult) => {
     setFile(uploadedFile);
-    setReplayData(parsedReplayData);
     setIsAnalyzing(true);
     
     try {
-      // Since the Go parser already gives us the complete data, we can use it directly
-      setReplayData(parsedReplayData);
+      // Extend the parsedReplayData with the additional fields needed by AnalysisResult
+      const extendedData: ReplayData = {
+        ...parsedReplayData,
+        // Add default values for the required fields
+        id: crypto.randomUUID(),
+        strengths: ["Good macro", "Consistent worker production"],
+        weaknesses: ["Delayed expansion", "Insufficient scouting"],
+        recommendations: ["Focus on early game scouting", "Work on build order optimization"]
+      };
       
+      setReplayData(extendedData);
       setIsAnalyzing(false);
       setAnalysisComplete(true);
       

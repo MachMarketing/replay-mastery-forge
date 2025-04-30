@@ -6,7 +6,6 @@ import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, X, FileText, CheckCircle, AlertCircle } from 'lucide-react';
 import { parseReplayFile, ParsedReplayResult } from '@/services/replayParserService';
-import { uploadReplayFile, saveReplayMetadata } from '@/services/uploadService';
 
 interface UploadBoxProps {
   onUploadComplete?: (file: File, replayData: ParsedReplayResult) => void;
@@ -90,16 +89,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         setProgress(uploadProgress);
       }, 200);
 
-      // Upload file to storage
-      const { error, data } = await uploadReplayFile(file);
-      
-      clearInterval(interval);
-      
-      if (error) {
-        throw new Error(`Upload failed: ${error.message}`);
-      }
-      
-      // Second step: Parse the replay file using Go parser
+      // Parse the file with Go parser
       setUploadStatus('parsing');
       setStatusMessage('Parsing replay with Go parser...');
       setProgress(0);
@@ -124,23 +114,6 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       
       if (!parsedData) {
         throw new Error('Failed to parse replay file');
-      }
-      
-      // Third step: Save the metadata to the database
-      if (data?.filename && data?.path) {
-        await saveReplayMetadata(data.filename, file.name, {
-          playerName: parsedData.playerName,
-          opponentName: parsedData.opponentName,
-          playerRace: parsedData.playerRace,
-          opponentRace: parsedData.opponentRace,
-          map: parsedData.map,
-          duration: parsedData.duration,
-          date: parsedData.date,
-          result: parsedData.result,
-          apm: parsedData.apm,
-          eapm: parsedData.eapm,
-          matchup: parsedData.matchup
-        });
       }
       
       // Success state
