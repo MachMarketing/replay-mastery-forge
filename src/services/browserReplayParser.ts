@@ -1,17 +1,39 @@
 
 /**
  * Browser-based StarCraft: Brood War replay parser using jssuh (WASM)
- * Dynamischer Import, damit Vite das WASM-Binary korrekt aufnimmt.
+ * Dynamischer Import mit Debug-Logging, damit wir sehen, welche Exports es wirklich gibt.
  */
 
 import { ParsedReplayResult } from './replayParserService';
 
+interface JssuhModule {
+  parseReplay?: (data: Uint8Array) => Promise<any>;
+  default?: {
+    parseReplay?: (data: Uint8Array) => Promise<any>;
+  };
+}
+
 /**
- * Lädt die jssuh-Bibliothek dynamisch und gibt die parseReplay-Funktion zurück.
+ * Lädt die jssuh-Bibliothek dynamisch und wählt die parseReplay-Funktion aus.
  */
 async function loadJssuhParser(): Promise<(data: Uint8Array) => Promise<any>> {
-  const mod = await import('jssuh');        // Vite nimmt hier das WASM mit ins Bundle
-  return mod.parseReplay;
+  console.log('Dynamisch importiere jssuh…');
+  const mod = (await import('jssuh')) as JssuhModule;
+  console.log('Jssuh-Modul Exports:', mod);
+
+  // Suche nach parseReplay im direkten Export oder im default-Export
+  const parseFn =
+    mod.parseReplay ??
+    mod.default?.parseReplay;
+
+  if (!parseFn) {
+    throw new Error(
+      'parseReplay-Funktion nicht gefunden in jssuh-Modul. ' +
+      'Überprüfe die verfügbaren Exports in der Konsole.'
+    );
+  }
+
+  return parseFn;
 }
 
 /**
