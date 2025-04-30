@@ -3,8 +3,8 @@ export interface ParsedReplayResult {
   // adjust these fields to match your Go service output
   playerName: string;
   opponentName: string;
-  playerRace: string;
-  opponentRace: string;
+  playerRace: 'Terran' | 'Protoss' | 'Zerg';
+  opponentRace: 'Terran' | 'Protoss' | 'Zerg';
   map: string;
   duration: string;
   date: string;

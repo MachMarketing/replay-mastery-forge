@@ -29,14 +29,30 @@ const UploadPage = () => {
   const { toast } = useToast();
   const { parseReplay, isProcessing, error: parserError } = useReplayParser();
 
+  // Helper function to ensure race is one of the valid types
+  const normalizeRace = (race: string): 'Terran' | 'Protoss' | 'Zerg' => {
+    const normalizedRace = race.toLowerCase();
+    if (normalizedRace.includes('terr') || normalizedRace.includes('t')) return 'Terran';
+    if (normalizedRace.includes('prot') || normalizedRace.includes('p')) return 'Protoss';
+    if (normalizedRace.includes('zerg') || normalizedRace.includes('z')) return 'Zerg';
+    return 'Terran'; // Default fallback
+  };
+
   const handleUploadComplete = async (uploadedFile: File, parsedReplayData: ParsedReplayResult) => {
     setFile(uploadedFile);
     setIsAnalyzing(true);
     
     try {
+      // Ensure race values are properly normalized
+      const normalizedData = {
+        ...parsedReplayData,
+        playerRace: normalizeRace(parsedReplayData.playerRace),
+        opponentRace: normalizeRace(parsedReplayData.opponentRace),
+      };
+      
       // Extend the parsedReplayData with the additional fields needed by AnalysisResult
       const extendedData: ReplayData = {
-        ...parsedReplayData,
+        ...normalizedData,
         // Add required values for the fields
         id: crypto.randomUUID(),
         strengths: ["Good macro", "Consistent worker production"],
