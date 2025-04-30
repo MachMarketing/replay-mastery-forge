@@ -44,6 +44,8 @@ export async function parseReplayFile(file: File): Promise<ParsedReplayResult> {
   }
 }
 
-// Re-export the types and functions from the new module for backward compatibility
+// Re-export the types from our types module directly
 export type { ParsedReplayData, ReplayAnalysis } from './replayParser/types';
-export { parseReplayFileWithScrep, analyzeReplayData } from './replayParser';
+
+// Re-export the analyzer function for backward compatibility
+export { analyzeReplayData } from './replayParser';
