@@ -1,15 +1,10 @@
 
 import { useState } from 'react';
-import { parseReplayFile, processReplayData } from '@/services/replayParserService';
-import { analyzeReplayData } from '@/services/replayParser';
-import type { ParsedReplayData, ReplayAnalysis } from '@/services/replayParser/types';
+import { parseReplayFile, ParsedReplayResult } from '@/services/replayParserService';
 import { useToast } from '@/hooks/use-toast';
 
 interface ReplayParserResult {
-  parseReplay: (file: File) => Promise<{
-    parsedData: ParsedReplayData | null;
-    analysis: ReplayAnalysis | null;
-  }>;
+  parseReplay: (file: File) => Promise<ParsedReplayResult | null>;
   isProcessing: boolean;
   error: string | null;
 }
@@ -19,7 +14,7 @@ export function useReplayParser(): ReplayParserResult {
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const parseReplay = async (file: File) => {
+  const parseReplay = async (file: File): Promise<ParsedReplayResult | null> => {
     setIsProcessing(true);
     setError(null);
     
@@ -30,26 +25,18 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error('Only StarCraft replay files (.rep) are allowed');
       }
       
-      console.log('Starting replay parsing with jssuh');
+      console.log('Starting replay parsing with Go parser service');
       
-      // Step 1: Parse the replay file with jssuh
-      const rawParsedData = await parseReplayFile(file);
+      // Parse the replay file with Go service
+      const parsedData = await parseReplayFile(file);
       
-      if (!rawParsedData) {
+      if (!parsedData) {
         throw new Error('Failed to parse replay file');
       }
       
-      console.log('Transforming parsed data');
+      console.log('Successfully parsed replay data', parsedData);
+      return parsedData;
       
-      // Step 2: Process the raw data into our application format
-      const parsedData = processReplayData(rawParsedData);
-      
-      console.log('Starting replay analysis');
-      
-      // Step 3: Analyze the parsed data
-      const analysis = await analyzeReplayData(parsedData);
-      
-      return { parsedData, analysis };
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error processing replay';
       setError(errorMessage);
@@ -58,7 +45,7 @@ export function useReplayParser(): ReplayParserResult {
         description: errorMessage,
         variant: 'destructive',
       });
-      return { parsedData: null, analysis: null };
+      return null;
     } finally {
       setIsProcessing(false);
     }

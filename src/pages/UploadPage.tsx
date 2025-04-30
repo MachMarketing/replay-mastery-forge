@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -9,45 +8,26 @@ import { Loader2 } from 'lucide-react';
 import { useReplays, Replay } from '@/hooks/useReplays';
 import { useToast } from '@/hooks/use-toast';
 import { useReplayParser } from '@/hooks/useReplayParser';
+import { ParsedReplayResult } from '@/services/replayParserService';
 
 const UploadPage = () => {
   const [file, setFile] = useState<File | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const [isPremium] = useState(false);
-  const [replayData, setReplayData] = useState<any>(null);
-  const [analysisData, setAnalysisData] = useState<any>(null);
+  const [replayData, setReplayData] = useState<ParsedReplayResult | null>(null);
   const { replays, fetchReplays } = useReplays();
   const { toast } = useToast();
-  const { parseReplay, error: parserError } = useReplayParser();
+  const { parseReplay, isProcessing, error: parserError } = useReplayParser();
 
-  const handleUploadComplete = async (uploadedFile: File, parsedReplayData: any) => {
+  const handleUploadComplete = async (uploadedFile: File, parsedReplayData: ParsedReplayResult) => {
     setFile(uploadedFile);
     setReplayData(parsedReplayData);
     setIsAnalyzing(true);
     
     try {
-      // Use our parsed data directly since it already includes analysis
-      setAnalysisData({
-        id: `rep-${Date.now()}`,
-        playerName: parsedReplayData.playerName,
-        opponentName: parsedReplayData.opponentName,
-        playerRace: parsedReplayData.playerRace,
-        opponentRace: parsedReplayData.opponentRace,
-        map: parsedReplayData.map,
-        duration: parsedReplayData.duration,
-        date: parsedReplayData.date,
-        result: parsedReplayData.result,
-        apm: parsedReplayData.apm,
-        eapm: parsedReplayData.eapm,
-        matchup: parsedReplayData.matchup,
-        buildOrder: parsedReplayData.buildOrder,
-        resourcesGraph: parsedReplayData.resourcesGraph,
-        strengths: parsedReplayData.analysis?.strengths || [],
-        weaknesses: parsedReplayData.analysis?.weaknesses || [],
-        recommendations: parsedReplayData.analysis?.recommendations || [],
-        trainingPlan: parsedReplayData.analysis?.trainingPlan || []
-      });
+      // Since the Go parser already gives us the complete data, we can use it directly
+      setReplayData(parsedReplayData);
       
       setIsAnalyzing(false);
       setAnalysisComplete(true);
@@ -113,7 +93,7 @@ const UploadPage = () => {
                       <div className={`h-2 w-2 rounded-full ${!parserError ? 'bg-green-500' : 'bg-red-500'}`} />
                     </div>
                     <p className="text-xs text-muted-foreground mt-1 truncate">
-                      {parserError ? `Error: ${parserError}` : 'jssuh parser ready'}
+                      {parserError ? `Error: ${parserError}` : 'Go parser ready'}
                     </p>
                   </div>
 
@@ -148,8 +128,8 @@ const UploadPage = () => {
                   <p className="text-lg">Analyzing your replay...</p>
                   <p className="text-sm text-muted-foreground mt-2">This typically takes 15-30 seconds</p>
                 </div>
-              ) : analysisComplete && analysisData ? (
-                <AnalysisResult data={analysisData} isPremium={isPremium} />
+              ) : analysisComplete && replayData ? (
+                <AnalysisResult data={replayData} isPremium={isPremium} />
               ) : (
                 <div className="h-64 flex flex-col items-center justify-center bg-secondary/20 rounded-lg border border-dashed border-border">
                   <div className="text-center">
