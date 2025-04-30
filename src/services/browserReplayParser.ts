@@ -1,3 +1,4 @@
+
 /**
  * Browser-based StarCraft: Brood War replay parser using screp-js
  * This uses the screp parser compiled to WebAssembly to parse replays directly in the browser

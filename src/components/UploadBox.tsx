@@ -4,7 +4,7 @@ import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
-import { Upload, X, FileText, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, X, FileText, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import { ParsedReplayResult } from '@/services/replayParserService';
 import { useReplayParser } from '@/hooks/useReplayParser';
 
@@ -20,7 +20,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'parsing' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState('');
   const { toast } = useToast();
-  const { parseReplay } = useReplayParser();
+  const { parseReplay, isProcessing, error: parsingError, clearError } = useReplayParser();
   
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     setIsDragging(false);
@@ -119,7 +119,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       clearInterval(parsingInterval);
       
       if (!parsedData) {
-        throw new Error('Failed to parse replay file');
+        throw new Error(parsingError || 'Failed to parse replay file');
       }
       
       // Success state
@@ -137,13 +137,15 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     } catch (error) {
       console.error('Error processing file:', error);
       setUploadStatus('error');
-      setStatusMessage('Failed to parse replay file');
+      setStatusMessage(error instanceof Error ? error.message : 'Failed to parse replay file');
       
-      toast({
-        title: "Processing Failed",
-        description: "Failed to parse replay file",
-        variant: "destructive",
-      });
+      if (!parsingError) {
+        toast({
+          title: "Processing Failed",
+          description: error instanceof Error ? error.message : "Failed to parse replay file",
+          variant: "destructive",
+        });
+      }
     }
   };
 
@@ -152,6 +154,15 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     setProgress(0);
     setUploadStatus('idle');
     setStatusMessage('');
+    clearError();
+  };
+
+  const handleRetry = () => {
+    if (file) {
+      processFile(file);
+    } else {
+      handleCancel();
+    }
   };
 
   // Display the error state that matches the design in the image
@@ -161,19 +172,29 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         <div className="mt-4 p-4 bg-opacity-10 bg-destructive border border-destructive/40 rounded-md">
           <div className="flex items-center gap-2 text-destructive mb-1">
             <AlertCircle className="h-4 w-4" />
-            <p className="font-medium">Failed to parse replay file</p>
+            <p className="font-medium">{statusMessage || 'Failed to parse replay file'}</p>
           </div>
           <p className="text-xs text-muted-foreground">
             Please try again or contact support if the issue persists.
           </p>
-          <Button 
-            size="sm" 
-            variant="outline" 
-            className="mt-2" 
-            onClick={handleCancel}
-          >
-            Try Again
-          </Button>
+          <div className="flex gap-2 mt-2">
+            <Button 
+              size="sm" 
+              variant="outline" 
+              className="flex items-center" 
+              onClick={handleRetry}
+            >
+              <RefreshCw className="h-4 w-4 mr-1" /> Try Again
+            </Button>
+            <Button 
+              size="sm" 
+              variant="ghost" 
+              className="text-muted-foreground" 
+              onClick={handleCancel}
+            >
+              Cancel
+            </Button>
+          </div>
         </div>
       );
     }
