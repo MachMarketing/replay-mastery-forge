@@ -1,6 +1,7 @@
 
+import ScrepJS from 'screp-js';
+
 export interface ParsedReplayResult {
-  // adjust these fields to match your Go service output
   playerName: string;
   opponentName: string;
   playerRace: 'Terran' | 'Protoss' | 'Zerg';
@@ -17,40 +18,34 @@ export interface ParsedReplayResult {
 }
 
 export async function parseReplayFile(file: File): Promise<ParsedReplayResult> {
-  const form = new FormData();
-  form.append('file', file);
-  
-  console.log('Sending replay file to parser service:', file.name);
+  console.log('Parsing replay file with screp-js:', file.name);
   
   try {
-    const res = await fetch('/api/parse', {
-      method: 'POST',
-      body: form,
+    // Convert file to array buffer for screp-js
+    const arrayBuffer = await file.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
+    
+    // Parse with screp-js
+    const result = ScrepJS.parseBuffer(uint8Array, {
+      includeHeader: true,
+      includeCommands: true
     });
     
-    if (!res.ok) {
-      const txt = await res.text();
-      console.error('Parser service error:', res.status, txt);
-      throw new Error(`Parser error ${res.status}: ${txt}`);
-    }
+    console.log('Raw screp-js parser response:', result);
     
-    const rawData = await res.json();
-    console.log('Raw parser response:', rawData);
-    
-    // Transform the raw Go parser data into our application format
-    // This is a simplified transformation - adjust according to the actual response format
+    // Transform the raw parser data into our application format
     const parsedData: ParsedReplayResult = {
-      playerName: rawData.header?.players?.[0]?.name || 'Unknown',
-      opponentName: rawData.header?.players?.[1]?.name || 'Unknown',
-      playerRace: mapRace(rawData.header?.players?.[0]?.race),
-      opponentRace: mapRace(rawData.header?.players?.[1]?.race),
-      map: rawData.header?.mapName || 'Unknown Map',
-      duration: formatDuration(rawData.header?.durationFrames || 0),
+      playerName: result.header?.players?.[0]?.name || 'Unknown',
+      opponentName: result.header?.players?.[1]?.name || 'Unknown',
+      playerRace: mapRace(result.header?.players?.[0]?.race),
+      opponentRace: mapRace(result.header?.players?.[1]?.race),
+      map: result.header?.mapName || 'Unknown Map',
+      duration: formatDuration(result.header?.durationFrames || 0),
       date: new Date().toISOString().split('T')[0], // Use current date as fallback
       result: 'win', // Default to win (you may need logic to determine the actual result)
-      apm: calculateAPM(rawData.commands?.length || 0, rawData.header?.durationFrames || 0),
-      matchup: getMatchup(rawData.header?.players || []),
-      buildOrder: extractBuildOrder(rawData.commands || []),
+      apm: calculateAPM(result.commands?.length || 0, result.header?.durationFrames || 0),
+      matchup: getMatchup(result.header?.players || []),
+      buildOrder: extractBuildOrder(result.commands || []),
       resourcesGraph: [] // This would need additional processing
     };
     

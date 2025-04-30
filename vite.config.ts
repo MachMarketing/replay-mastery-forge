@@ -10,14 +10,6 @@ export default defineConfig(({ command }: ConfigEnv) => ({
   server: {
     host: '::',
     port: 8080,
-    proxy: {
-      // Proxy all /api/parse → Go service /parse
-      '/api/parse': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/api\/parse/, '/parse'),
-      },
-    },
   },
   plugins: [
     react(),
