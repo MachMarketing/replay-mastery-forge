@@ -33,7 +33,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_, session) => {
+      (event, session) => {
+        // If we get a session, the user is confirmed
+        if (session) {
+          setIsEmailNotConfirmed(false);
+          setEmailPendingVerification(null);
+        }
         setSession(session);
         setUser(session?.user ?? null);
       }
@@ -43,6 +48,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
+      // If we have a session, email must be confirmed
+      if (session) {
+        setIsEmailNotConfirmed(false);
+        setEmailPendingVerification(null);
+      }
       setIsLoading(false);
     });
 
@@ -55,6 +65,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // Convert email to lowercase for consistent comparison
       const normalizedEmail = email.toLowerCase();
+      
+      // Reset email confirmation state before attempting login
+      setIsEmailNotConfirmed(false);
       
       const { error } = await supabase.auth.signInWithPassword({
         email: normalizedEmail,
@@ -95,7 +108,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           
           return { error: null };
         } else if (error.message.includes('Email not confirmed')) {
-          // Regular users with unconfirmed emails get the normal flow
+          // Check if the email is actually confirmed in Supabase
+          // Let's try one more time with the same credentials
+          // Sometimes Supabase has a delay in recognizing email confirmations
+          console.log("Retrying login after email confirmation error...");
+          
+          const { error: retryError } = await supabase.auth.signInWithPassword({
+            email: normalizedEmail,
+            password
+          });
+          
+          if (!retryError) {
+            // Success on retry means the email was confirmed
+            toast({
+              title: 'Logged in successfully',
+              description: 'Welcome back!',
+            });
+            return { error: null };
+          }
+          
+          // If we still have an error, proceed with the normal flow
           setIsEmailNotConfirmed(true);
           setEmailPendingVerification(normalizedEmail);
           
@@ -104,6 +136,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             description: 'Email not confirmed. Please check your inbox or resend the verification email.',
             variant: 'destructive'
           });
+          return { error };
         } else {
           toast({
             title: 'Login failed',

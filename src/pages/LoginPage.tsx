@@ -18,6 +18,7 @@ const LoginPage = () => {
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resendingVerification, setResendingVerification] = useState(false);
+  const [loginAttempts, setLoginAttempts] = useState(0);
   const { signIn, user, isEmailNotConfirmed, emailPendingVerification, resendVerificationEmail } = useAuth();
   const navigate = useNavigate();
   
@@ -37,6 +38,9 @@ const LoginPage = () => {
       if (!error) {
         // Successful login will be handled by the AuthContext effect
         // which will detect the user and redirect
+      } else {
+        // Increment login attempts to track retry attempts
+        setLoginAttempts(prev => prev + 1);
       }
     } finally {
       setIsSubmitting(false);
@@ -78,6 +82,12 @@ const LoginPage = () => {
                 <Alert variant="destructive" className="mb-4">
                   <AlertDescription className="flex flex-col gap-2">
                     <p>Email not confirmed. Please check your inbox for the verification email.</p>
+                    {loginAttempts > 1 && (
+                      <p className="text-sm">
+                        If you've already confirmed your email and still see this message, 
+                        try refreshing the page or clearing your browser cache.
+                      </p>
+                    )}
                     <Button 
                       variant="outline" 
                       size="sm" 
