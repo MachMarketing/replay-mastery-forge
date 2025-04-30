@@ -32,19 +32,19 @@ export interface AnalyzedReplayResult extends ParsedReplayResult {
 }
 
 /**
- * Parse a StarCraft: Brood War replay file using browser-based parsing
- * This now analyzes actual binary data from the replay file to extract information
+ * Parse a StarCraft: Brood War replay file using browser-based parsing with screp-js
+ * This analyzes actual binary data from the replay file to extract information
  * 
  * @param file The replay file to parse
  * @returns The parsed replay data with analysis
  */
 export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult> {
-  console.log('Parsing replay file in browser with real data extraction:', file.name);
+  console.log('Parsing replay file in browser with screp-js parser:', file.name);
   
   try {
-    // Use the enhanced browser-based parser that extracts real data from the file
+    // Use the screp-js browser-based parser that extracts real data from the file
     const parsedData = await parseReplayInBrowser(file);
-    console.log('Parsed replay data from real file analysis:', parsedData);
+    console.log('Parsed replay data from screp-js analysis:', parsedData);
     
     // Analyze the replay data to generate insights
     const analysis = await analyzeReplayData(parsedData);

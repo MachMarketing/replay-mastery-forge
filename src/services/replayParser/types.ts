@@ -1,10 +1,12 @@
 
 import { supabase } from '@/integrations/supabase/client';
 
-// Structure for the raw replay parsing result
-export interface ParsedReplayResult {
+// Structure for the raw replay parsing result from screp-js
+export interface ScrepReplayResult {
   header: any;
-  actions: any[];
+  players: any[];
+  computed: any;
+  commands?: any[];
 }
 
 // Structure of the parsed replay data

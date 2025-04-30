@@ -1,10 +1,10 @@
 
 import { useState } from 'react';
-import { parseReplayFile, ParsedReplayResult } from '@/services/replayParserService';
+import { parseReplayFile, ParsedReplayResult, AnalyzedReplayResult } from '@/services/replayParserService';
 import { useToast } from '@/hooks/use-toast';
 
 interface ReplayParserResult {
-  parseReplay: (file: File) => Promise<ParsedReplayResult | null>;
+  parseReplay: (file: File) => Promise<AnalyzedReplayResult | null>;
   isProcessing: boolean;
   error: string | null;
 }
@@ -14,7 +14,7 @@ export function useReplayParser(): ReplayParserResult {
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const parseReplay = async (file: File): Promise<ParsedReplayResult | null> => {
+  const parseReplay = async (file: File): Promise<AnalyzedReplayResult | null> => {
     setIsProcessing(true);
     setError(null);
     
@@ -25,16 +25,16 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error('Only StarCraft replay files (.rep) are allowed');
       }
       
-      console.log('Starting browser-based replay parsing');
+      console.log('Starting browser-based replay parsing with screp-js');
       
-      // Parse the replay file in the browser
+      // Parse the replay file in the browser using screp-js
       const parsedData = await parseReplayFile(file);
       
       if (!parsedData) {
         throw new Error('Failed to parse replay file');
       }
       
-      console.log('Successfully parsed replay data', parsedData);
+      console.log('Successfully parsed replay data with screp-js', parsedData);
       return parsedData;
       
     } catch (err) {
