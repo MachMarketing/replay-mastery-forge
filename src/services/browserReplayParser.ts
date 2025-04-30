@@ -1,10 +1,42 @@
-
 /**
- * Browser-based StarCraft: Brood War replay parser using screp-js (WASM)
+ * Browser-based StarCraft: Brood War replay parser using screp-js (WASM) loaded from CDN
  */
 
 import { ParsedReplayResult } from './replayParserService';
-import * as ScrepJS from 'screp-js'; // Static import of screp-js
+
+/**
+ * Loads screp-js from CDN as <script> and initializes WASM.
+ */
+async function loadScrepJs(): Promise<void> {
+  if ((window as any).parseReplay && (window as any).loadWasm) {
+    // Already loaded
+    return (window as any).ready;
+  }
+
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/screp-js@1.0.0/dist/screp.js';
+    script.async = true;
+    script.onload = () => {
+      // screp will attach parseReplay, loadWasm and ready to window
+      console.log('screp-js script loaded from CDN');
+      (window as any).loadWasm()
+        .then(() => {
+          console.log('screp-js WASM initialized successfully');
+          resolve((window as any).ready);
+        })
+        .catch((e: any) => {
+          console.error('Failed to load screp-js WASM:', e);
+          reject(e);
+        });
+    };
+    script.onerror = () => {
+      console.error('Failed to load screp-js script from CDN');
+      reject(new Error('Failed to load screp-js from CDN'));
+    };
+    document.body.appendChild(script);
+  });
+}
 
 /**
  * Convert race number to race string
@@ -98,43 +130,53 @@ function generateResourceData(durationMs: number): { time: string; minerals: num
 }
 
 /**
- * Parse a StarCraft replay file directly in the browser using screp-js WASM
+ * Parse a StarCraft replay file directly in the browser using screp-js WASM loaded from CDN
  */
 export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResult> {
   console.log('Parsing replay file in browser:', file.name);
   
   try {
-    // Initialize WASM
-    console.log('Initializing screp-js WASM...');
-    await ScrepJS.ready;
+    // 1) Load screp-js from CDN and initialize WASM
+    console.log('Loading screp-js from CDN...');
+    await loadScrepJs();
+    console.log('screp-js loaded and WASM initialized');
     
-    // Read the replay file as an ArrayBuffer
+    // Get the parseReplay function from window
+    // @ts-ignore
+    const parseReplay = (window as any).parseReplay as (data: Uint8Array) => Promise<any>;
+    if (!parseReplay) {
+      throw new Error('parseReplay function not available after loading screp-js');
+    }
+    
+    // 2) Read file into Uint8Array
     const fileBuffer = await file.arrayBuffer();
     const data = new Uint8Array(fileBuffer);
+    console.log('File read as Uint8Array, length:', data.length);
     
-    // Parse with screp-js WASM
-    console.log('Parsing replay with screp-js, data length:', data.length);
-    let parseResult: any;
+    // 3) Parse the replay
+    console.log('Parsing replay with screp-js CDN version...');
+    let result: any;
     try {
-      parseResult = await ScrepJS.parseReplay(data);
+      result = await parseReplay(data);
     } catch (e) {
       console.error('screp-js parse error:', e);
       throw new Error('Failed to parse replay file: ' + (e instanceof Error ? e.message : String(e)));
     }
     
-    console.log('screp-js parsing result:', parseResult);
+    console.log('screp-js parsing result:', result);
 
-    // Check if there was an error in the parsing
-    if (parseResult.error) {
-      console.error('screp-js returned error:', parseResult.error);
-      throw new Error(`Parser error: ${parseResult.error}`);
+    // 4) Validation
+    if (result.error) {
+      console.error('screp-js returned error:', result.error);
+      throw new Error(`Parser error: ${result.error}`);
     }
 
-    if (!parseResult.replay) {
+    if (!result.replay) {
       throw new Error('No replay data returned from parser');
     }
 
-    const { replay } = parseResult;
+    // 5) Map to ParsedReplayResult
+    const { replay } = result;
     console.log('Replay structure:', Object.keys(replay));
     
     // Extract player information
