@@ -196,19 +196,19 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     
     // Parse the replay using screp-js
     console.log('Parsing replay with screp-js...');
-    const result: ScrepResult = await screpJs.parseReplay(data);
+    const parseResult: ScrepResult = await screpJs.parseReplay(data);
     
-    if (result.error) {
-      throw new Error(`Screp parser error: ${result.error}`);
+    if (parseResult.error) {
+      throw new Error(`Screp parser error: ${parseResult.error}`);
     }
     
-    if (!result.replay) {
+    if (!parseResult.replay) {
       throw new Error('Failed to parse replay: No replay data returned');
     }
     
-    console.log('Screp-js parsing result:', result);
+    console.log('Screp-js parsing result:', parseResult);
     
-    const { replay } = result;
+    const { replay } = parseResult;
     
     // Extract player information
     if (!replay.players || replay.players.length < 2) {
@@ -235,9 +235,9 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     const matchup = `${playerRace.charAt(0)}v${opponentRace.charAt(0)}`;
     
     // Determine game result - try to use winner_team if available
-    let result: 'win' | 'loss' = 'win';
+    let gameResult: 'win' | 'loss' = 'win';
     if (replay.computed?.winner_team !== undefined && mainPlayer.team !== undefined) {
-      result = replay.computed.winner_team === mainPlayer.team ? 'win' : 'loss';
+      gameResult = replay.computed.winner_team === mainPlayer.team ? 'win' : 'loss';
     }
     
     // Get APM if available
@@ -267,7 +267,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       map: replay.header?.map_name || 'Unknown Map',
       duration,
       date,
-      result,
+      result: gameResult,
       apm,
       eapm,
       matchup,
