@@ -44,4 +44,4 @@ export interface ReplayAnalysis {
   }[];
 }
 
-export type { ParsedReplayData, ReplayAnalysis, ParsedReplayResult };
+// Remove the duplicate type export at the end to fix the conflicts
