@@ -3,7 +3,6 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface AuthContextType {
   user: User | null;
@@ -17,7 +16,7 @@ interface AuthContextType {
   emailPendingVerification: string | null;
 }
 
-// Define admin email for bypassing email verification
+// Define admin email for bypassing email verification (case insensitive comparison)
 const ADMIN_EMAIL = "cristiantuerk@gmail.com";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,8 +33,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        console.log("Auth state change event:", event);
         // If we get a session, the user is confirmed
         if (session) {
+          console.log("Session received, user is authenticated");
           setIsEmailNotConfirmed(false);
           setEmailPendingVerification(null);
         }
@@ -46,6 +47,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // THEN check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log("Initial session check:", session ? "Session exists" : "No session");
       setSession(session);
       setUser(session?.user ?? null);
       // If we have a session, email must be confirmed
@@ -61,73 +63,76 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
+  const isAdminEmail = (email: string): boolean => {
+    return email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  };
+
   const signIn = async (email: string, password: string) => {
     try {
-      // Convert email to lowercase for consistent comparison
-      const normalizedEmail = email.toLowerCase();
-      
       // Reset email confirmation state before attempting login
       setIsEmailNotConfirmed(false);
+      setEmailPendingVerification(null);
       
-      const { error } = await supabase.auth.signInWithPassword({
+      // Convert email to lowercase for consistent comparison
+      const normalizedEmail = email.toLowerCase();
+      const isAdmin = isAdminEmail(normalizedEmail);
+      
+      console.log(`Attempting to sign in user: ${normalizedEmail}, isAdmin: ${isAdmin}`);
+      
+      // First attempt - try normal login
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: normalizedEmail,
         password
       });
 
+      // If login is successful, return early
+      if (data.session) {
+        console.log("Login successful on first attempt");
+        toast({
+          title: 'Logged in successfully',
+          description: 'Welcome back!',
+        });
+        return { error: null };
+      }
+      
+      // Handle specific errors
       if (error) {
-        // Special handling for admin email - if the error is about email confirmation
-        if (error.message.includes('Email not confirmed') && normalizedEmail === ADMIN_EMAIL.toLowerCase()) {
-          // For admin email, we'll try to sign in again after a forced confirmation
-          // This is a workaround for development purposes only
-          console.log("Admin account detected, bypassing email verification...");
+        console.log("Login error:", error.message);
+        
+        // If this is the admin and the error is about email confirmation
+        if (error.message.includes('Email not confirmed') && isAdmin) {
+          console.log("Admin login detected, bypassing email verification...");
           
-          // For security reasons, we still verify the password is correct first
-          // by attempting a normal sign in, which we already did above
-          
-          // Since this is the admin and the password check passed (but failed on email verification),
-          // we can proceed to try logging in again
-          const { error: secondError } = await supabase.auth.signInWithPassword({
+          // For admin account, forcefully try login again
+          // This is a special case for development/testing
+          const { data: adminData, error: adminError } = await supabase.auth.signInWithPassword({
             email: normalizedEmail,
             password
           });
           
-          if (secondError) {
+          if (adminData.session) {
+            console.log("Admin bypass successful");
             toast({
-              title: 'Login failed',
-              description: secondError.message,
-              variant: 'destructive'
-            });
-            return { error: secondError };
-          }
-          
-          // Admin successfully logged in
-          toast({
-            title: 'Admin logged in successfully',
-            description: 'Welcome back, admin!',
-          });
-          
-          return { error: null };
-        } else if (error.message.includes('Email not confirmed')) {
-          // Check if the email is actually confirmed in Supabase
-          // Let's try one more time with the same credentials
-          // Sometimes Supabase has a delay in recognizing email confirmations
-          console.log("Retrying login after email confirmation error...");
-          
-          const { error: retryError } = await supabase.auth.signInWithPassword({
-            email: normalizedEmail,
-            password
-          });
-          
-          if (!retryError) {
-            // Success on retry means the email was confirmed
-            toast({
-              title: 'Logged in successfully',
-              description: 'Welcome back!',
+              title: 'Admin logged in successfully',
+              description: 'Welcome back, admin!',
             });
             return { error: null };
           }
           
-          // If we still have an error, proceed with the normal flow
+          if (adminError) {
+            // If we still have an error, it might be a password issue
+            console.error("Admin bypass failed:", adminError.message);
+            toast({
+              title: 'Login failed',
+              description: adminError.message,
+              variant: 'destructive'
+            });
+            return { error: adminError };
+          }
+        } 
+        else if (error.message.includes('Email not confirmed')) {
+          // For non-admin users with unconfirmed email
+          console.log("Email not confirmed, setting verification state");
           setIsEmailNotConfirmed(true);
           setEmailPendingVerification(normalizedEmail);
           
@@ -136,25 +141,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             description: 'Email not confirmed. Please check your inbox or resend the verification email.',
             variant: 'destructive'
           });
-          return { error };
-        } else {
+        } 
+        else {
+          // For any other error
           toast({
             title: 'Login failed',
             description: error.message,
             variant: 'destructive'
           });
         }
+        
         return { error };
       }
-
-      // Reset email confirmation error state on successful login
-      setIsEmailNotConfirmed(false);
-      setEmailPendingVerification(null);
-
-      toast({
-        title: 'Logged in successfully',
-        description: 'Welcome back!',
-      });
 
       return { error: null };
     } catch (error: any) {

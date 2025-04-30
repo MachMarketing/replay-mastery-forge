@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Google } from '@/components/icons/Google';
 import { Twitch } from '@/components/icons/Twitch';
 import { useAuth } from '@/context/AuthContext';
-import { Loader2 } from 'lucide-react';
+import { Loader2, RefreshCw } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
 
@@ -24,8 +24,9 @@ const LoginPage = () => {
   const navigate = useNavigate();
   
   useEffect(() => {
-    // If user is already logged in, redirect to replays page
+    // If user is already logged in, redirect to replays page immediately
     if (user) {
+      console.log("User is logged in, redirecting to replays page");
       navigate('/replays');
     }
   }, [user, navigate]);
@@ -35,14 +36,20 @@ const LoginPage = () => {
     setIsSubmitting(true);
     
     try {
+      console.log(`Attempting to sign in with email: ${email}`);
       const { error } = await signIn(email, password);
       if (!error) {
+        console.log("Login successful, user should be redirected automatically");
         // On successful login, show a success toast and redirect will be handled by the useEffect
         toast({
           title: 'Login successful',
           description: 'Redirecting you to your replays...',
         });
+        
+        // Force navigate to ensure redirect happens
+        navigate('/replays');
       } else {
+        console.log("Login error detected, incrementing attempts counter");
         // Increment login attempts to track retry attempts
         setLoginAttempts(prev => prev + 1);
       }
@@ -101,8 +108,9 @@ const LoginPage = () => {
                           variant="outline" 
                           size="sm" 
                           onClick={handleClearCacheAndRetry}
-                          className="self-start"
+                          className="self-start flex items-center gap-1"
                         >
+                          <RefreshCw className="h-4 w-4" />
                           Refresh Page
                         </Button>
                       </div>
