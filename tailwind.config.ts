@@ -19,6 +19,10 @@ export default {
 			}
 		},
 		extend: {
+			fontFamily: {
+				sans: ["Montserrat", "sans-serif"],
+				orbitron: ["Orbitron", "sans-serif"],
+			},
 			colors: {
 				border: 'hsl(var(--border))',
 				input: 'hsl(var(--input))',
@@ -171,6 +175,32 @@ export default {
 				'blur-in': {
 					'0%': { filter: 'blur(5px)', opacity: '0' },
 					'100%': { filter: 'blur(0)', opacity: '1' }
+				},
+				'glow-pulse': {
+					'0%, 100%': { 
+						boxShadow: '0 0 5px rgba(0, 168, 255, 0.5)',
+						opacity: '0.8' 
+					},
+					'50%': { 
+						boxShadow: '0 0 20px rgba(0, 168, 255, 0.8)',
+						opacity: '1' 
+					}
+				},
+				'tech-scan': {
+					'0%': { 
+						transform: 'translateY(-100%) translateX(0%)',
+						opacity: '0.7',
+						backgroundColor: 'rgba(0, 168, 255, 0.3)'
+					},
+					'50%': { 
+						opacity: '0.3',
+						backgroundColor: 'rgba(0, 168, 255, 0.5)'
+					},
+					'100%': { 
+						transform: 'translateY(100%) translateX(0%)',
+						opacity: '0.7',
+						backgroundColor: 'rgba(0, 168, 255, 0.3)'
+					}
 				}
 			},
 			animation: {
@@ -183,6 +213,8 @@ export default {
 				'float': 'float 3s ease-in-out infinite',
 				'blur-in': 'blur-in 0.5s ease-out forwards',
 				'scan': 'scan 4s ease-in-out infinite',
+				'glow-pulse': 'glow-pulse 2s infinite',
+				'tech-scan': 'tech-scan 8s infinite linear',
 			},
 			backgroundImage: {
 				'hero-pattern': "linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), url('/background.jpg')",

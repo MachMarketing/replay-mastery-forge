@@ -1,4 +1,6 @@
 
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Orbitron:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -77,6 +79,11 @@
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+    font-family: 'Montserrat', sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Orbitron', sans-serif;
   }
 
   /* Custom scrollbar for a more polished look */
@@ -149,6 +156,61 @@
     transform: scaleX(1);
     transform-origin: bottom left;
   }
+
+  /* Hero section specific styles */
+  .hero-heading {
+    @apply text-5xl md:text-6xl lg:text-7xl font-bold;
+    background: linear-gradient(to right, #00a8ff, #84D0FF, #00a8ff);
+    background-size: 200% auto;
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    animation: gradient-shift 10s linear infinite;
+  }
+
+  .tech-line {
+    @apply bg-primary/30;
+    position: absolute;
+    animation: techline-pulse 4s infinite;
+  }
+
+  .tech-dot {
+    @apply bg-primary rounded-full;
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    animation: techline-pulse 3s infinite;
+  }
+
+  @keyframes techline-pulse {
+    0%, 100% {
+      opacity: 0.8;
+    }
+    50% {
+      opacity: 0.2;
+    }
+  }
+
+  /* Futuristic button styles */
+  .button-futuristic {
+    @apply relative overflow-hidden border border-primary/50 bg-transparent text-primary font-medium rounded-md;
+    transition: all 0.3s ease;
+  }
+
+  .button-futuristic::before {
+    content: '';
+    @apply absolute top-0 left-0 w-full h-full bg-primary/10 opacity-0;
+    transition: all 0.3s ease;
+    z-index: -1;
+  }
+
+  .button-futuristic:hover {
+    @apply border-primary shadow-[0_0_10px_rgba(0,168,255,0.5)];
+  }
+
+  .button-futuristic:hover::before {
+    @apply opacity-100;
+  }
 }
 
 /* New futuristic animation keyframes */
@@ -204,5 +266,39 @@
   
   .animate-typing-2 {
     animation: typing-2 1.8s cubic-bezier(0.6, 0.2, 0.1, 1) forwards;
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+  
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+  }
+  
+  .animate-scan-line {
+    animation: scan-line 3s linear infinite;
+  }
+  
+  @keyframes scan-line {
+    0% { transform: translateY(-100%); opacity: 0.5; }
+    50% { opacity: 0.8; }
+    100% { transform: translateY(100%); opacity: 0.5; }
+  }
+
+  .text-shadow {
+    text-shadow: 0 0 10px rgba(0, 168, 255, 0.5);
+  }
+  
+  .glow-effect {
+    box-shadow: 0 0 20px rgba(0, 168, 255, 0.3);
+  }
+
+  .grid-tech-bg {
+    background-size: 40px 40px;
+    background-image: 
+      linear-gradient(to right, rgba(0, 168, 255, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(0, 168, 255, 0.05) 1px, transparent 1px);
   }
 }
