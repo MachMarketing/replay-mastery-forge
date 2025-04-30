@@ -1,3 +1,8 @@
+
+import { ReplayParser } from 'jssuh';
+import { transformJSSUHData } from './replayParser';
+import type { ParsedReplayData } from './replayParser/types';
+
 export interface ParsedReplayResult {
     header: any;
     actions: any[];
@@ -18,4 +23,11 @@ export async function parseReplayFile(file: File): Promise<ParsedReplayResult> {
           throw new Error(`Parse error: ${response.status} ${text}`);
     }
     return response.json();
+}
+
+/**
+ * Process raw replay data into our application's format
+ */
+export function processReplayData(rawData: ParsedReplayResult): ParsedReplayData {
+    return transformJSSUHData(rawData);
 }
