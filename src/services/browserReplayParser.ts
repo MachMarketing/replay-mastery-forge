@@ -1,96 +1,12 @@
 
 /**
- * Browser-based StarCraft: Brood War replay parser using screp-js
- * This uses the screp parser compiled to WebAssembly to parse replays directly in the browser
+ * Browser-based StarCraft: Brood War replay parser using jssuh
+ * This uses the jssuh parser to parse replays directly in the browser
  */
 
 import { ParsedReplayResult } from './replayParserService';
-
-// Define the interface for the screp-js library
-interface ScrepResult {
-  error?: string;
-  replay?: {
-    header: {
-      version: string;
-      frames: number;
-      date?: string;
-      map_name?: string;
-      game_type?: number;
-    };
-    players: {
-      name: string;
-      race: number; // 0=Zerg, 1=Terran, 2=Protoss
-      team?: number;
-      is_observer?: boolean;
-      is_computer?: boolean;
-    }[];
-    computed: {
-      duration_frames: number;
-      duration_ms: number;
-      winner_team?: number;
-      apm?: {
-        [playerName: string]: number;
-      };
-      eapm?: {
-        [playerName: string]: number;
-      };
-      actions?: {
-        [playerName: string]: any[];
-      };
-      action_spm?: {
-        [playerName: string]: number;
-      };
-    };
-    commands?: any[];
-  };
-}
-
-// Base URL for loading the screp-js WASM module
-const SCREP_JS_URL = 'https://cdn.jsdelivr.net/npm/screp-js@1.0.0/dist';
-
-/**
- * Dynamically load the screp-js WebAssembly module
- */
-async function loadScrepJs(): Promise<any> {
-  try {
-    // Check if it's already loaded in window
-    if (window.ScrepJS) {
-      console.log('ScrepJS already loaded');
-      return window.ScrepJS;
-    }
-
-    console.log('Loading screp-js from CDN...');
-    
-    // Create a script element to load the screp-js library
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = `${SCREP_JS_URL}/screp.js`;
-      script.async = true;
-      
-      script.onload = () => {
-        console.log('screp-js loaded successfully');
-        // Initialize the WASM module
-        window.ScrepJS.ready.then(() => {
-          console.log('screp-js WASM initialized');
-          resolve(window.ScrepJS);
-        }).catch((err: any) => {
-          console.error('Failed to initialize screp-js WASM:', err);
-          reject(new Error('Failed to initialize screp-js WASM module'));
-        });
-      };
-      
-      script.onerror = () => {
-        console.error('Failed to load screp-js');
-        reject(new Error('Failed to load screp-js library'));
-      };
-      
-      document.body.appendChild(script);
-    });
-  } catch (error) {
-    console.error('Error loading screp-js:', error);
-    throw error;
-  }
-}
+// Import jssuh parser directly from the npm package
+import { parseReplay as parseJssuh } from 'jssuh';
 
 /**
  * Convert race number to race string
@@ -181,55 +97,44 @@ function generateResourceData(durationMs: number): { time: string; minerals: num
 }
 
 /**
- * Parse a StarCraft replay file directly in the browser using screp-js
+ * Parse a StarCraft replay file directly in the browser using jssuh
  */
 export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResult> {
-  console.log('Parsing replay file in browser with screp-js:', file.name);
+  console.log('Parsing replay file in browser with jssuh parser:', file.name);
   
   try {
-    // Load the screp-js library
-    const screpJs = await loadScrepJs();
-    if (!screpJs) {
-      throw new Error('Failed to load the screp-js parser');
-    }
-    
     // Read the replay file as an ArrayBuffer
     const fileBuffer = await file.arrayBuffer();
     const data = new Uint8Array(fileBuffer);
     
-    // Parse the replay using screp-js
-    console.log('Parsing replay with screp-js...');
+    // Parse the replay using jssuh
+    console.log('Parsing replay with jssuh...');
     
     try {
-      const parseResult: ScrepResult = await screpJs.parseReplay(data);
+      const parseResult = await parseJssuh(data);
       
-      if (parseResult.error) {
-        throw new Error(`Screp parser error: ${parseResult.error}`);
-      }
-      
-      if (!parseResult.replay) {
+      if (!parseResult) {
         throw new Error('Failed to parse replay: No replay data returned');
       }
       
-      console.log('Screp-js parsing result:', parseResult);
-      
-      const { replay } = parseResult;
+      console.log('jssuh parsing result:', parseResult);
       
       // Extract player information
-      if (!replay.players || replay.players.length < 2) {
+      if (!parseResult.players || parseResult.players.length < 2) {
         throw new Error('Invalid replay: Not enough players found');
       }
       
       // We assume player 0 is the main player and player 1 is the opponent
-      const mainPlayer = replay.players[0];
-      const opponentPlayer = replay.players[1];
+      const mainPlayer = parseResult.players[0];
+      const opponentPlayer = parseResult.players[1];
       
       if (!mainPlayer || !opponentPlayer) {
         throw new Error('Failed to identify players in the replay');
       }
       
-      // Convert frame count to duration
-      const durationMs = replay.computed?.duration_ms || 0;
+      // Convert frame count to duration (frames to ms - 1 frame is ~42ms in StarCraft)
+      const framesPerSecond = 23.81; // StarCraft's game speed
+      const durationMs = parseResult.header?.frames ? Math.floor(parseResult.header.frames / framesPerSecond * 1000) : 0;
       const duration = formatDuration(durationMs);
       
       // Get player races
@@ -241,20 +146,20 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       
       // Determine game result - try to use winner_team if available
       let gameResult: 'win' | 'loss' = 'win';
-      if (replay.computed?.winner_team !== undefined && mainPlayer.team !== undefined) {
-        gameResult = replay.computed.winner_team === mainPlayer.team ? 'win' : 'loss';
+      if (parseResult.computed?.winner_team !== undefined && mainPlayer.team !== undefined) {
+        gameResult = parseResult.computed.winner_team === mainPlayer.team ? 'win' : 'loss';
       }
       
       // Get APM if available
-      const apm = replay.computed?.apm?.[mainPlayer.name] || 
+      const apm = parseResult.computed?.apm?.[mainPlayer.name] || 
                 Math.floor(Math.random() * 100) + 50; // Fallback random APM
                 
       // Get EAPM if available
-      const eapm = replay.computed?.eapm?.[mainPlayer.name] || 
+      const eapm = parseResult.computed?.eapm?.[mainPlayer.name] || 
                 Math.floor(apm * 0.8); // Fallback EAPM
       
       // Create a date string
-      const date = replay.header?.date || 
+      const date = parseResult.header?.date || 
                   new Date().toISOString().split('T')[0]; // Today as fallback
       
       // Generate build order based on race
@@ -269,7 +174,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
         opponentName: opponentPlayer.name,
         playerRace,
         opponentRace,
-        map: replay.header?.map_name || 'Unknown Map',
+        map: parseResult.header?.map_name || 'Unknown Map',
         duration,
         date,
         result: gameResult,
@@ -280,25 +185,15 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
         resourcesGraph
       };
       
-      console.log('Browser parsed replay data with screp-js:', parsedData);
+      console.log('Browser parsed replay data with jssuh:', parsedData);
       return parsedData;
     } catch (parseError) {
-      console.error('Error during screp-js parsing:', parseError);
+      console.error('Error during jssuh parsing:', parseError);
       throw new Error('Failed to parse replay file: Invalid or unsupported format');
     }
     
   } catch (error) {
-    console.error('Browser replay parsing error with screp-js:', error);
-    throw error;
-  }
-}
-
-// Add this to the window for type definition
-declare global {
-  interface Window {
-    ScrepJS: {
-      ready: Promise<any>;
-      parseReplay: (data: Uint8Array) => Promise<ScrepResult>;
-    };
+    console.error('Browser replay parsing error with jssuh:', error);
+    throw error; // Re-throw to let the calling code handle it
   }
 }
