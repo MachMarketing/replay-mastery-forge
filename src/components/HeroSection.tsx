@@ -2,22 +2,21 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { ChevronRight, Play, Shield, Award } from 'lucide-react';
-
 const HeroSection = () => {
   const [isLoaded, setIsLoaded] = useState(false);
-  
   useEffect(() => {
     // Animation delay for elements to appear
     const timer = setTimeout(() => {
       setIsLoaded(true);
     }, 300);
-    
     return () => clearTimeout(timer);
   }, []);
 
   // Generate random positions for decorative elements
   const generateRandomPositions = (count: number) => {
-    return Array.from({ length: count }, () => ({
+    return Array.from({
+      length: count
+    }, () => ({
       top: Math.random() * 100,
       left: Math.random() * 100,
       size: Math.random() * 3 + 1,
@@ -25,27 +24,21 @@ const HeroSection = () => {
       duration: Math.random() * 4 + 3
     }));
   };
-
   const dotPositions = generateRandomPositions(30);
-
-  return (
-    <div className="pt-16 relative z-10">
+  return <div className="pt-16 relative z-10">
       {/* Full screen background image with no overlay */}
-      <div 
-        className="absolute inset-0 z-0" 
-        style={{
-          backgroundImage: "url('/lovable-uploads/d571fd6c-60f8-4930-9fdc-8f29054538e7.png')",
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          backgroundRepeat: 'no-repeat',
-          width: '100%',
-          height: '100vh',
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          zIndex: -1,
-        }}
-      >
+      <div className="absolute inset-0 z-0" style={{
+      backgroundImage: "url('/lovable-uploads/d571fd6c-60f8-4930-9fdc-8f29054538e7.png')",
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
+      width: '100%',
+      height: '100vh',
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      zIndex: -1
+    }}>
         {/* Overlay completely removed */}
       </div>
 
@@ -69,21 +62,15 @@ const HeroSection = () => {
           
           {/* Animated dots */}
           <div className="absolute inset-0">
-            {dotPositions.map((dot, i) => (
-              <div 
-                key={i}
-                className="absolute w-1 h-1 bg-primary/50 rounded-full transition-opacity duration-1000 animate-pulse"
-                style={{
-                  left: `${dot.left}%`,
-                  top: `${dot.top}%`,
-                  width: `${dot.size}px`,
-                  height: `${dot.size}px`,
-                  animationDelay: `${dot.delay}s`,
-                  animationDuration: `${dot.duration}s`,
-                  opacity: isLoaded ? 0.5 : 0
-                }}
-              ></div>
-            ))}
+            {dotPositions.map((dot, i) => <div key={i} className="absolute w-1 h-1 bg-primary/50 rounded-full transition-opacity duration-1000 animate-pulse" style={{
+            left: `${dot.left}%`,
+            top: `${dot.top}%`,
+            width: `${dot.size}px`,
+            height: `${dot.size}px`,
+            animationDelay: `${dot.delay}s`,
+            animationDuration: `${dot.duration}s`,
+            opacity: isLoaded ? 0.5 : 0
+          }}></div>)}
           </div>
 
           {/* Scan lines effect */}
@@ -172,15 +159,13 @@ const HeroSection = () => {
           <div className="flex-1 relative">
             <div className={`relative w-full aspect-square max-w-md mx-auto transition-all duration-1000 delay-300 ${isLoaded ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-12'}`}>
               {/* Protoss Image */}
-              <img 
-                src="/lovable-uploads/71b989af-68ae-495d-88b3-19f1c4bdea4f.png" 
-                alt="StarCraft Protoss warrior watching replay"
-                className="object-contain w-full h-full z-10 relative"
-              />
+              <img src="/lovable-uploads/71b989af-68ae-495d-88b3-19f1c4bdea4f.png" alt="StarCraft Protoss warrior watching replay" className="object-contain w-full h-full z-10 relative" />
               
               {/* Enhanced decorative glowing elements */}
               <div className="absolute -top-8 -left-8 w-32 h-32 rounded-full bg-protoss/10 filter blur-xl animate-pulse"></div>
-              <div className="absolute -bottom-10 right-6 w-36 h-36 rounded-full bg-protoss/10 filter blur-xl animate-pulse" style={{animationDelay: '1s'}}></div>
+              <div className="absolute -bottom-10 right-6 w-36 h-36 rounded-full bg-protoss/10 filter blur-xl animate-pulse" style={{
+              animationDelay: '1s'
+            }}></div>
               
               {/* Tech scan effect */}
               <div className="absolute top-0 left-0 w-full h-full overflow-hidden">
@@ -243,30 +228,7 @@ const HeroSection = () => {
             </div>
           </div>
           
-          <img 
-            src="/lovable-uploads/a2cdd695-4ab2-4e55-8251-6f53eddbac2d.png" 
-            alt="ReplayCoach Analysis Dashboard"
-            className="w-full relative z-0"
-            onError={(e) => {
-              // Futuristic fallback if image fails to load
-              const target = e.target as HTMLImageElement;
-              target.style.height = '400px';
-              target.style.background = 'linear-gradient(45deg, rgba(0,0,0,0.8) 0%, rgba(0,168,255,0.1) 100%)';
-              target.style.backgroundSize = '200% 200%';
-              target.style.animation = 'gradient-shift 5s ease infinite';
-              target.style.display = 'flex';
-              target.style.alignItems = 'center';
-              target.style.justifyContent = 'center';
-              const text = document.createElement('span');
-              text.innerText = 'ReplayCoach Analysis';
-              text.style.fontSize = '2rem';
-              text.style.fontWeight = 'bold';
-              text.style.color = 'hsl(var(--primary))';
-              text.style.textShadow = '0 0 10px rgba(0,168,255,0.5)';
-              text.style.letterSpacing = '2px';
-              target.appendChild(text);
-            }} 
-          />
+          
           
           {/* Data display */}
           <div className="absolute bottom-0 left-0 w-full h-8 bg-background/80 backdrop-blur-sm border-t border-primary/20 flex items-center justify-between px-4 text-xs text-primary/70">
@@ -277,8 +239,6 @@ const HeroSection = () => {
           </div>
         </div>
       </div>
-    </div>
-  );
+    </div>;
 };
-
 export default HeroSection;
