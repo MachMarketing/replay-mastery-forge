@@ -106,8 +106,8 @@ async function simulateReplayParsing(file: File): Promise<ParsedReplayData> {
       const filename = file.name.toLowerCase();
       
       // Determine races based on filename
-      let playerRace = 'Terran' as const;
-      let opponentRace = 'Zerg' as const;
+      let playerRace: 'Terran' | 'Protoss' | 'Zerg' = 'Terran';
+      let opponentRace: 'Terran' | 'Protoss' | 'Zerg' = 'Zerg';
       
       if (filename.includes('tvp') || filename.includes('pvt')) {
         playerRace = 'Terran';
