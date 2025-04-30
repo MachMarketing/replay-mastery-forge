@@ -5,14 +5,11 @@ import Footer from '@/components/Footer';
 import UploadBox from '@/components/UploadBox';
 import AnalysisResult from '@/components/AnalysisResult';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Settings } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useReplays, Replay } from '@/hooks/useReplays';
 import { useToast } from '@/hooks/use-toast';
 import { ParsedReplayData, analyzeReplayData } from '@/services/replayParserService';
 import { useReplayParser } from '@/hooks/useReplayParser';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
 const UploadPage = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -23,18 +20,7 @@ const UploadPage = () => {
   const [analysisData, setAnalysisData] = useState<any>(null);
   const { replays, fetchReplays } = useReplays();
   const { toast } = useToast();
-  const { parserUrl, setParserUrl } = useReplayParser();
-  const [tempParserUrl, setTempParserUrl] = useState(parserUrl);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-
-  const handleSaveSettings = () => {
-    setParserUrl(tempParserUrl);
-    setIsSettingsOpen(false);
-    toast({
-      title: "Settings Updated",
-      description: `Parser URL set to: ${tempParserUrl}`,
-    });
-  };
+  const { error: parserError } = useReplayParser();
 
   const handleUploadComplete = async (uploadedFile: File, parsedReplayData: ParsedReplayData) => {
     setFile(uploadedFile);
@@ -94,38 +80,6 @@ const UploadPage = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-3xl font-bold">Analyze Your Replay</h1>
-            
-            <Dialog open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="icon">
-                  <Settings className="h-5 w-5" />
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Parser Settings</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <label htmlFor="parserUrl" className="text-sm font-medium">
-                      SCREP Parser URL
-                    </label>
-                    <Input
-                      id="parserUrl"
-                      value={tempParserUrl}
-                      onChange={(e) => setTempParserUrl(e.target.value)}
-                      placeholder="http://localhost:8080/parse"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      The URL to your SCREP parsing service endpoint
-                    </p>
-                  </div>
-                  <Button onClick={handleSaveSettings} className="w-full">
-                    Save Settings
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
           </div>
           
           <p className="text-muted-foreground mb-8">
@@ -156,14 +110,14 @@ const UploadPage = () => {
                     </ul>
                   </div>
 
-                  {/* Connection info */}
+                  {/* Parser status */}
                   <div className="mt-6 pt-6 border-t border-border">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-medium">Parser Connection</h3>
-                      <div className={`h-2 w-2 rounded-full ${parserUrl ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <h3 className="text-sm font-medium">Parser Status</h3>
+                      <div className={`h-2 w-2 rounded-full ${!parserError ? 'bg-green-500' : 'bg-red-500'}`} />
                     </div>
                     <p className="text-xs text-muted-foreground mt-1 truncate">
-                      {parserUrl || 'No parser URL configured'}
+                      {parserError ? `Error: ${parserError}` : 'jssuh parser ready'}
                     </p>
                   </div>
 

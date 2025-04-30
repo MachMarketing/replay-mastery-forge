@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -5,7 +6,6 @@ import { useToast } from '@/hooks/use-toast';
 import { Upload, X, FileText, CheckCircle, AlertCircle } from 'lucide-react';
 import { uploadReplayFile, saveReplayMetadata } from '@/services/uploadService';
 import { useReplayParser } from '@/hooks/useReplayParser';
-import { parseReplayFile } from '@/services/replayParser';
 import type { ParsedReplayData } from '@/services/replayParser/types';
 
 interface UploadBoxProps {
@@ -20,7 +20,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'parsing' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState('');
   const { toast } = useToast();
-  const { parserUrl } = useReplayParser();
+  const { parseReplay } = useReplayParser();
   
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -99,9 +99,9 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         throw new Error(`Upload failed: ${error.message}`);
       }
       
-      // Second step: Parse the replay file using SCREP
+      // Second step: Parse the replay file using jssuh
       setUploadStatus('parsing');
-      setStatusMessage('Parsing replay with SCREP...');
+      setStatusMessage('Parsing replay with jssuh...');
       setProgress(0);
       
       // Start progress animation for parsing phase
@@ -115,29 +115,29 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         setProgress(parsingProgress);
       }, 300);
       
-      // Parse the file with the real SCREP parser - passing both file and parserUrl
-      const replayData = await parseReplayFile(file, parserUrl);
+      // Parse the file with jssuh
+      const { parsedData, analysis } = await parseReplay(file);
       
       clearInterval(parsingInterval);
       
-      if (!replayData) {
+      if (!parsedData) {
         throw new Error('Failed to parse replay file');
       }
       
       // Third step: Save the metadata to the database
       if (data?.filename && data?.path) {
         await saveReplayMetadata(data.filename, file.name, {
-          playerName: replayData.playerName,
-          opponentName: replayData.opponentName,
-          playerRace: replayData.playerRace,
-          opponentRace: replayData.opponentRace,
-          map: replayData.map,
-          duration: replayData.duration,
-          date: replayData.date,
-          result: replayData.result,
-          apm: replayData.apm,
-          eapm: replayData.eapm,
-          matchup: replayData.matchup
+          playerName: parsedData.playerName,
+          opponentName: parsedData.opponentName,
+          playerRace: parsedData.playerRace,
+          opponentRace: parsedData.opponentRace,
+          map: parsedData.map,
+          duration: parsedData.duration,
+          date: parsedData.date,
+          result: parsedData.result,
+          apm: parsedData.apm,
+          eapm: parsedData.eapm,
+          matchup: parsedData.matchup
         });
       }
       
@@ -147,11 +147,11 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       
       toast({
         title: "Upload Complete",
-        description: `${file.name} has been successfully analyzed with SCREP.`,
+        description: `${file.name} has been successfully parsed and analyzed.`,
       });
       
-      if (onUploadComplete && replayData) {
-        onUploadComplete(file, replayData);
+      if (onUploadComplete && parsedData) {
+        onUploadComplete(file, parsedData);
       }
     } catch (error) {
       console.error('Error processing file:', error);
@@ -297,7 +297,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
               <Progress value={progress} className="h-2" />
               <div className="flex justify-between mt-1">
                 <p className="text-xs text-muted-foreground">
-                  {uploadStatus === 'uploading' ? 'Uploading...' : 'Parsing with SCREP...'}
+                  {uploadStatus === 'uploading' ? 'Uploading...' : 'Parsing with jssuh...'}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {Math.round(progress)}%
@@ -310,7 +310,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
             <div className="mt-2">
               <p className="text-sm text-strength flex items-center">
                 <CheckCircle className="h-4 w-4 mr-1" />
-                SCREP analysis complete
+                Analysis complete
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 Your replay has been analyzed and is ready to view.
@@ -322,7 +322,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
             <div className="mt-2">
               <p className="text-sm text-weakness flex items-center">
                 <AlertCircle className="h-4 w-4 mr-1" />
-                {statusMessage || 'SCREP parsing failed'}
+                {statusMessage || 'Parsing failed'}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 Please try again or contact support if the issue persists.
