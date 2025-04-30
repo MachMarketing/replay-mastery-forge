@@ -2,6 +2,9 @@
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
+// Configuration for the SCREP service
+const SCREP_API_URL = 'https://api.replayanalyzer.com/parse'; // Replace with your actual SCREP service URL
+
 // Structure of the parsed replay data
 export interface ParsedReplayData {
   playerName: string;
@@ -41,10 +44,10 @@ export async function parseReplayFile(file: File): Promise<ParsedReplayData | nu
     const formData = new FormData();
     formData.append('file', new Blob([arrayBuffer]), file.name);
     
-    console.log('Sending replay file to parsing service...');
+    console.log('Sending replay file to parsing service:', SCREP_API_URL);
     
     // Send the file to our backend SCREP service
-    const response = await fetch('https://api.replayanalyzer.com/parse', {
+    const response = await fetch(SCREP_API_URL, {
       method: 'POST',
       body: formData,
     });
