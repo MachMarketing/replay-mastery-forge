@@ -1,4 +1,3 @@
-
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&family=Orbitron:wght@400;500;600;700&display=swap');
 
 @tailwind base;
@@ -210,6 +209,23 @@
 
   .button-futuristic:hover::before {
     @apply opacity-100;
+  }
+
+  /* Shield logo glow effect */
+  .shield-glow {
+    filter: drop-shadow(0 0 8px theme('colors.primary.DEFAULT'));
+    animation: shield-pulse 3s ease-in-out infinite;
+  }
+
+  @keyframes shield-pulse {
+    0%, 100% {
+      filter: drop-shadow(0 0 5px theme('colors.primary.DEFAULT'));
+      opacity: 0.9;
+    }
+    50% {
+      filter: drop-shadow(0 0 12px theme('colors.primary.DEFAULT'));
+      opacity: 1;
+    }
   }
 }
 
