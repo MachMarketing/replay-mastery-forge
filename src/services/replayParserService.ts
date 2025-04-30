@@ -1,71 +1,21 @@
-
-import { Buffer } from 'buffer';
-import { parse } from 'jssuh';
-import { transformJSSUHData } from './replayParser/transformer';
-import type { ParsedReplayResult, ParsedReplayData } from './replayParser/types';
+export interface ParsedReplayResult {
+    header: any;
+    actions: any[];
+}
 
 /**
- * Parse a StarCraft: Brood War .rep file using jssuh
- * 
- * @param file The uploaded .rep File object
- * @returns Promise resolving to the parsed replay data
+ * Uploads a .rep file to our Next.js API and returns the parsed result
  */
 export async function parseReplayFile(file: File): Promise<ParsedReplayResult> {
-  try {
-    // Read file into an ArrayBuffer
     const arrayBuffer = await file.arrayBuffer();
-    // Convert to Buffer for compatibility with jssuh
-    const buffer = Buffer.from(arrayBuffer);
-    
-    // Use jssuh to parse the replay file
-    console.log('Starting jssuh parsing of replay file:', file.name);
-    const parsedReplay = parse(buffer);
-    console.log('jssuh parsing complete:', parsedReplay);
-    
-    // Extract basic header information
-    return { 
-      header: {
-        filename: file.name,
-        fileSize: file.size,
-        type: 'replay-file',
-        players: parsedReplay.players.map(player => ({
-          name: player.name,
-          race: player.race,
-          id: player.id
-        })),
-        mapName: parsedReplay.mapName,
-        gameStartDate: new Date(parsedReplay.timestamp * 1000).toISOString(),
-        durationMS: parsedReplay.durationFrames * (1000 / 24) // Convert frames to MS
-      }, 
-      actions: parsedReplay.commands || []
-    };
-  } catch (error) {
-    console.error('Error parsing replay file with jssuh:', error);
-    throw new Error('Failed to parse replay file. Is this a valid StarCraft replay?');
-  }
-}
-
-/**
- * Process the raw parsed data into application format
- */
-export function processReplayData(rawData: ParsedReplayResult): ParsedReplayData {
-  try {
-    // Transform the raw data using our transformer
-    return transformJSSUHData({
-      players: rawData.header.players,
-      mapName: rawData.header.mapName,
-      durationMS: rawData.header.durationMS,
-      gameStartDate: rawData.header.gameStartDate,
-      actions: rawData.actions
+    const response = await fetch('/api/parseReplay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: arrayBuffer,
     });
-  } catch (error) {
-    console.error('Error processing replay data:', error);
-    throw new Error('Failed to process replay data');
-  }
+    if (!response.ok) {
+          const text = await response.text();
+          throw new Error(`Parse error: ${response.status} ${text}`);
+    }
+    return response.json();
 }
-
-// Re-export the types from our types module directly
-export type { ParsedReplayData, ReplayAnalysis } from './replayParser/types';
-
-// Re-export the analyzer function for backward compatibility
-export { analyzeReplayData } from './replayParser';
