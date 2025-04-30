@@ -15,7 +15,11 @@ export default defineConfig(({ command }: ConfigEnv) => ({
   plugins: [
     react(),
     process.env.NODE_ENV !== 'production' && componentTagger(),
-    wasm(), // Add WASM plugin to support jssuh
+    wasm({
+      // Explicitly specify that we want to load WASM files as URL
+      targetEnv: 'auto',
+      maxFileSize: 10000000, // Allow for large WASM files (10MB)
+    }),
   ].filter(Boolean),
   resolve: {
     alias: {

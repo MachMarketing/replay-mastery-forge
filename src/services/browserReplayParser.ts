@@ -1,11 +1,11 @@
 
 /**
  * Browser-based StarCraft: Brood War replay parser using jssuh (WASM)
- * Dynamischer Import mit Debug-Logging, damit wir sehen, welche Exports es wirklich gibt.
  */
 
 import { ParsedReplayResult } from './replayParserService';
 
+// Define the shape of the jssuh module based on what we've observed
 interface JssuhModule {
   parseReplay?: (data: Uint8Array) => Promise<any>;
   default?: ((data: Uint8Array) => Promise<any>) | {
@@ -14,44 +14,67 @@ interface JssuhModule {
 }
 
 /**
- * Lädt die jssuh-Bibliothek dynamisch und wählt die parseReplay-Funktion aus.
+ * Load the jssuh parser dynamically and select the appropriate parsing function
  */
 async function loadJssuhParser(): Promise<(data: Uint8Array) => Promise<any>> {
-  console.log('Dynamisch importiere jssuh…');
+  console.log('Dynamically importing jssuh...');
   const mod = (await import('jssuh')) as JssuhModule;
-  console.log('Jssuh-Modul Exports:', mod);
+  console.log('Available jssuh exports:', mod);
 
   let parseFn: ((data: Uint8Array) => Promise<any>) | undefined;
 
-  // 1) Default-Export ist eine Klasse (siehe Fehler "Class constructor ..."):
+  // Try different ways to get the parser function
+  // 1. If default export is a class constructor, instantiate and use its methods
   if (typeof mod.default === 'function' && (mod.default as any).prototype) {
     const ParserClass = mod.default as any;
     parseFn = async (data: Uint8Array) => {
-      const parserInstance: any = new ParserClass(data);
-      // Prüfe mögliche Methoden
-      if (typeof parserInstance.parse === 'function') {
-        return parserInstance.parse();
+      try {
+        console.log('Instantiating jssuh parser class...');
+        const parserInstance: any = new ParserClass(data);
+        console.log('Parser instance created:', parserInstance);
+        
+        // Try available methods
+        if (typeof parserInstance.parse === 'function') {
+          console.log('Calling parse() method on instance');
+          return parserInstance.parse();
+        }
+        if (typeof parserInstance.parseReplay === 'function') {
+          console.log('Calling parseReplay() method on instance');
+          return parserInstance.parseReplay();
+        }
+        
+        // If no suitable method is found, explore what's available
+        console.error('No suitable parse method found on instance. Available methods:', 
+          Object.getOwnPropertyNames(ParserClass.prototype));
+        
+        throw new Error('No parse()/parseReplay() method found on jssuh instance');
+      } catch (error) {
+        console.error('Error using jssuh parser class:', error);
+        throw error;
       }
-      if (typeof parserInstance.parseReplay === 'function') {
-        return parserInstance.parseReplay();
-      }
-      throw new Error('Keine parse()/parseReplay()-Methode auf jssuh-Instanz gefunden');
     };
   }
-  // 2) Fallback: Named-Export parseReplay
+  // 2. Try named export parseReplay
   else if (typeof mod.parseReplay === 'function') {
+    console.log('Using named export parseReplay');
     parseFn = mod.parseReplay;
   }
-  // 3) Fallback: Default-Export als Objekt mit parseReplay
+  // 3. Try default export as object with parseReplay
   else if (mod.default && typeof mod.default === 'object' && typeof (mod.default as any).parseReplay === 'function') {
+    console.log('Using default export object with parseReplay method');
     parseFn = (mod.default as any).parseReplay;
   }
 
   if (!parseFn) {
-    throw new Error(
-      'Konnte keine Parse-Funktion in jssuh finden. ' +
-      'Siehe Console-Log der Exports.'
-    );
+    // Log all available properties to help debug
+    console.error('Available properties on jssuh module:', 
+      Object.getOwnPropertyNames(mod));
+    if (mod.default) {
+      console.error('Properties on default export:', 
+        typeof mod.default === 'object' ? Object.getOwnPropertyNames(mod.default) : typeof mod.default);
+    }
+    
+    throw new Error('Could not find a suitable parse function in jssuh');
   }
 
   return parseFn;
@@ -152,7 +175,7 @@ function generateResourceData(durationMs: number): { time: string; minerals: num
  * Parse a StarCraft replay file directly in the browser using jssuh
  */
 export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResult> {
-  console.log('Parsing replay file in browser with jssuh parser:', file.name);
+  console.log('Parsing replay file in browser:', file.name);
   
   try {
     // Read the replay file as an ArrayBuffer
@@ -160,11 +183,11 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     const data = new Uint8Array(fileBuffer);
     
     // Dynamically load and use the jssuh parser
-    console.log('Dynamically loading jssuh parser...');
+    console.log('Loading jssuh parser...');
     const parseJssuh = await loadJssuhParser();
     
     try {
-      console.log('Parsing replay with dynamically loaded jssuh...');
+      console.log('Parsing replay with jssuh, data length:', data.length);
       const result = await parseJssuh(data);
       
       if (!result) {
@@ -180,6 +203,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       }
 
       const replay = result.replay || result;
+      console.log('Replay structure:', Object.keys(replay));
       
       // Extract player information
       if (!replay.players || replay.players.length < 2) {
@@ -193,6 +217,9 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       if (!mainPlayer || !opponentPlayer) {
         throw new Error('Failed to identify players in the replay');
       }
+      
+      console.log('Main player:', mainPlayer);
+      console.log('Opponent player:', opponentPlayer);
       
       // Convert frame count to duration (frames to ms - 1 frame is ~42ms in StarCraft)
       const framesPerSecond = 23.81; // StarCraft's game speed
@@ -248,7 +275,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
         resourcesGraph
       };
       
-      console.log('Browser parsed replay data with jssuh:', parsedData);
+      console.log('Successfully parsed replay data:', parsedData);
       return parsedData;
     } catch (parseError) {
       console.error('Error during jssuh parsing:', parseError);
@@ -256,7 +283,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     }
     
   } catch (error) {
-    console.error('Browser replay parsing error with jssuh:', error);
+    console.error('Browser replay parsing error:', error);
     throw error; // Re-throw to let the calling code handle it
   }
 }
