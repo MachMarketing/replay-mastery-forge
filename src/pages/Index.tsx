@@ -22,8 +22,18 @@ const Index = () => {
 
   return (
     <div className="flex flex-col min-h-screen relative overflow-hidden">
-      {/* Background with subtle starfield effect - adjusted opacity and positioning */}
-      <div className="fixed top-0 left-0 right-0 h-[50vh] bg-[url('/background.jpg')] bg-cover bg-top opacity-30 z-0"></div>
+      {/* Full cover hero background */}
+      <div 
+        className="absolute top-0 left-0 w-full h-screen bg-[url('/background.jpg')] bg-cover bg-center z-0"
+        style={{
+          backgroundAttachment: 'fixed',
+          backgroundPosition: 'center 30%',
+          backgroundRepeat: 'no-repeat'
+        }}
+      >
+        {/* Dark overlay for text readability */}
+        <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/60 to-background"></div>
+      </div>
       
       <Navbar />
       
@@ -39,7 +49,6 @@ const Index = () => {
 
       {/* Hero Section with StarCraft Protoss theme */}
       <div className="pt-16 relative z-10">
-        <div className="absolute inset-0 z-0 bg-gradient-radial from-primary/20 to-transparent opacity-50"></div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32 relative z-10">
           <div className="flex flex-col lg:flex-row items-center gap-8">
             {/* Left content */}
