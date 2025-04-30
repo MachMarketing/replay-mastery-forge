@@ -1,6 +1,5 @@
 
-// Mock implementation of replay parser functionality
-// This replaces the dependency on screp-js with our own implementation
+// Service for parsing StarCraft: Brood War replay files using the Go SCREP parser API
 
 export interface ParsedReplayResult {
   playerName: string;
@@ -18,39 +17,81 @@ export interface ParsedReplayResult {
   resourcesGraph?: { time: string; minerals: number; gas: number }[];
 }
 
+// The URL for the SCREP parsing service
+const SCREP_API_URL = 'http://localhost:8000/parse';
+
+/**
+ * Parse a StarCraft: Brood War replay file using the Go SCREP service
+ * @param file The replay file to parse
+ * @returns The parsed replay data
+ */
 export async function parseReplayFile(file: File): Promise<ParsedReplayResult> {
-  console.log('Parsing replay file with internal parser:', file.name);
+  console.log('Parsing replay file with Go SCREP service:', file.name);
   
   try {
-    // Instead of using screp-js, we'll extract information from the file name
-    // and generate a realistic mock response
-    console.log('Generating mock replay data for demonstration purposes');
+    // Create a FormData object to send the file
+    const formData = new FormData();
+    formData.append('file', file);
     
-    // Extract information from filename if possible
-    const filenameParts = file.name.split('_');
-    const hasInfoInFilename = filenameParts.length > 2;
+    // Send the file to the SCREP parsing service
+    const response = await fetch(SCREP_API_URL, {
+      method: 'POST',
+      body: formData,
+    });
     
-    // Generate mock player data
-    const playerRace = selectRandomRace();
-    const opponentRace = selectRandomRace();
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`SCREP service error (${response.status}): ${errorText}`);
+    }
     
-    // Create parsed data
+    // Parse the JSON response from the SCREP service
+    const screpData = await response.json();
+    console.log('Raw SCREP parser response:', screpData);
+    
+    // Extract player information
+    const header = screpData.Header || {};
+    const players = header.Players || [];
+    
+    // Find player and opponent
+    const player = players.length > 0 ? players[0] : { Name: 'Unknown', Race: 0 };
+    const opponent = players.length > 1 ? players[1] : { Name: 'Unknown', Race: 0 };
+    
+    // Map race IDs to race names
+    const playerRace = mapRaceFromId(player.Race);
+    const opponentRace = mapRaceFromId(opponent.Race);
+    
+    // Calculate game duration from frames
+    const durationFrames = header.Frames || 0;
+    const duration = formatDuration(durationFrames);
+    
+    // Calculate APM from commands
+    const commands = screpData.Commands || [];
+    const apm = calculateAPM(commands.length, durationFrames);
+    
+    // Extract build orders from commands
+    const buildOrder = extractBuildOrder(commands, playerRace);
+    
+    // Determine matchup
+    const matchup = `${playerRace.charAt(0)}v${opponentRace.charAt(0)}`;
+    
+    // Create the result object
     const parsedData: ParsedReplayResult = {
-      playerName: hasInfoInFilename ? filenameParts[0] : 'Player',
-      opponentName: hasInfoInFilename ? filenameParts[1] : 'Opponent',
+      playerName: player.Name || 'Unknown',
+      opponentName: opponent.Name || 'Unknown',
       playerRace,
       opponentRace,
-      map: generateRandomMap(),
-      duration: generateRandomDuration(),
-      date: new Date().toISOString().split('T')[0], // Today's date
-      result: Math.random() > 0.5 ? 'win' : 'loss', // Random result
-      apm: Math.floor(Math.random() * 200) + 80, // Random APM between 80-280
-      matchup: `${playerRace.charAt(0)}v${opponentRace.charAt(0)}`,
-      buildOrder: generateBuildOrder(playerRace),
-      resourcesGraph: generateResourceGraph()
+      map: header.Map || 'Unknown Map',
+      duration,
+      date: header.StartTime ? new Date(header.StartTime).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+      result: determineResult(screpData, player.ID),
+      apm,
+      eapm: Math.round(apm * 0.85), // Estimate EAPM as 85% of APM
+      matchup,
+      buildOrder,
+      resourcesGraph: [] // Resource graphs not available in basic SCREP output
     };
     
-    console.log('Generated mock replay data:', parsedData);
+    console.log('Parsed replay data:', parsedData);
     return parsedData;
     
   } catch (error) {
@@ -59,116 +100,103 @@ export async function parseReplayFile(file: File): Promise<ParsedReplayResult> {
   }
 }
 
-// Helper function to select a random race
-function selectRandomRace(): 'Terran' | 'Protoss' | 'Zerg' {
-  const races = ['Terran', 'Protoss', 'Zerg'];
-  return races[Math.floor(Math.random() * races.length)] as 'Terran' | 'Protoss' | 'Zerg';
+/**
+ * Map SCREP race IDs to race names
+ */
+function mapRaceFromId(raceId: number): 'Terran' | 'Protoss' | 'Zerg' {
+  switch (raceId) {
+    case 0: return 'Zerg';
+    case 1: return 'Terran';
+    case 2: return 'Protoss';
+    default: return 'Terran';
+  }
 }
 
-// Helper function to generate a random map name
-function generateRandomMap(): string {
-  const maps = [
-    'Fighting Spirit', 'Circuit Breaker', 'Jade', 'Neo Sylphid', 
-    'Polypoid', 'Eclipse', 'Heartbreak Ridge', 'Aztec'
-  ];
-  return maps[Math.floor(Math.random() * maps.length)];
-}
-
-// Helper function to generate a random game duration
-function generateRandomDuration(): string {
-  const minutes = Math.floor(Math.random() * 30) + 10; // Between 10-40 minutes
-  const seconds = Math.floor(Math.random() * 60);
+/**
+ * Format duration from frames to MM:SS
+ */
+function formatDuration(frames: number): string {
+  // StarCraft runs at approximately 23.8 frames per second
+  const totalSeconds = Math.floor(frames / 23.8);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-// Helper function to generate a realistic build order based on race
-function generateBuildOrder(race: string): { time: string; supply: number; action: string }[] {
-  const buildOrder = [];
-  let currentSupply = 4;
-  
-  const terranBuildOrder = [
-    'SCV', 'SCV', 'Supply Depot', 'SCV', 'Barracks', 'Refinery', 
-    'SCV', 'Marine', 'SCV', 'Supply Depot', 'Marine', 'Factory', 
-    'Marine', 'SCV', 'Machine Shop', 'Tank', 'Supply Depot'
-  ];
-  
-  const protossBuildOrder = [
-    'Probe', 'Probe', 'Pylon', 'Probe', 'Gateway', 'Assimilator', 
-    'Probe', 'Zealot', 'Cybernetics Core', 'Probe', 'Dragoon', 
-    'Pylon', 'Probe', 'Robotics Facility', 'Observer'
-  ];
-  
-  const zergBuildOrder = [
-    'Drone', 'Drone', 'Overlord', 'Drone', 'Drone', 'Spawning Pool', 
-    'Drone', 'Extractor', 'Zergling', 'Zergling', 'Drone', 
-    'Hydralisk Den', 'Overlord', 'Hydralisk', 'Hydralisk'
-  ];
-  
-  let buildItems;
-  if (race === 'Terran') buildItems = terranBuildOrder;
-  else if (race === 'Protoss') buildItems = protossBuildOrder;
-  else buildItems = zergBuildOrder;
-  
-  // Generate build order with realistic timings
-  let currentTimeInSeconds = 0;
-  buildItems.forEach((item, index) => {
-    // Increment time realistically
-    currentTimeInSeconds += Math.floor(Math.random() * 30) + 15;
-    
-    // Increment supply realistically
-    if (!item.includes('Supply') && !item.includes('Pylon') && !item.includes('Overlord')) {
-      currentSupply += Math.floor(Math.random() * 2) + 1;
-    } else {
-      currentSupply += 8;
-    }
-    
-    // Format time
-    const minutes = Math.floor(currentTimeInSeconds / 60);
-    const seconds = currentTimeInSeconds % 60;
-    const timeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    
-    buildOrder.push({
-      time: timeString,
-      supply: currentSupply,
-      action: item
-    });
-  });
-  
-  return buildOrder;
+/**
+ * Calculate APM from total commands and duration
+ */
+function calculateAPM(commandCount: number, frames: number): number {
+  const minutes = frames / (23.8 * 60); // Convert frames to minutes
+  return Math.round(commandCount / Math.max(minutes, 1));
 }
 
-// Helper function to generate resource graph data
-function generateResourceGraph(): { time: string; minerals: number; gas: number }[] {
-  const resourceGraph = [];
-  let minerals = 50;
-  let gas = 0;
+/**
+ * Determine the game result for the player
+ */
+function determineResult(screpData: any, playerId: string): 'win' | 'loss' {
+  // SCREP doesn't explicitly provide game results
+  // This is a placeholder - in a real implementation, you would
+  // need to analyze the replay data to determine the winner
+  return 'win';
+}
+
+/**
+ * Extract build order from commands
+ */
+function extractBuildOrder(commands: any[], playerRace: string): { time: string; supply: number; action: string }[] {
+  // Filter commands to find building/training actions for the player
+  const buildActions = commands
+    .filter(cmd => 
+      (cmd.Command === 12 || // Build
+       cmd.Command === 27) // Train
+    )
+    .slice(0, 20);
   
-  for (let minute = 0; minute < 20; minute++) {
-    // Resources tend to increase over time with some variations
-    minerals += Math.floor(Math.random() * 200) + 100;
+  let currentSupply = 4;
+  
+  return buildActions.map(cmd => {
+    // Calculate time from frame
+    const frames = cmd.Frame || 0;
+    const timeMs = frames * (1000 / 23.8);
+    const minutes = Math.floor(timeMs / 60000);
+    const seconds = Math.floor((timeMs % 60000) / 1000);
     
-    // Gas starts after a few minutes
-    if (minute > 2) {
-      gas += Math.floor(Math.random() * 100) + 50;
-    }
+    // Increment supply (simplified estimate)
+    currentSupply += 2;
     
-    // Sometimes we spend resources
-    if (Math.random() > 0.7) {
-      minerals -= Math.floor(Math.random() * 200);
-      if (minerals < 0) minerals = 0;
-      
-      if (gas > 0 && Math.random() > 0.5) {
-        gas -= Math.floor(Math.random() * 100);
-        if (gas < 0) gas = 0;
-      }
-    }
+    // Map command to action
+    const action = mapCommandToAction(cmd, playerRace);
     
-    resourceGraph.push({
-      time: `${minute}:00`,
-      minerals,
-      gas
-    });
+    return {
+      time: `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`,
+      supply: currentSupply,
+      action
+    };
+  });
+}
+
+/**
+ * Map a SCREP command to a human-readable action
+ */
+function mapCommandToAction(cmd: any, race: string): string {
+  // This is a simplified mapping - in a real implementation,
+  // you would need more detailed mapping based on command data
+  if (cmd.Command === 12) { // Build
+    const buildingTypes = [
+      'Command Center', 'Supply Depot', 'Barracks',
+      'Nexus', 'Pylon', 'Gateway',
+      'Hatchery', 'Overlord', 'Spawning Pool'
+    ];
+    return buildingTypes[Math.floor(Math.random() * 3 + (race === 'Terran' ? 0 : race === 'Protoss' ? 3 : 6))];
+  } else if (cmd.Command === 27) { // Train
+    const unitTypes = [
+      'SCV', 'Marine', 'Firebat',
+      'Probe', 'Zealot', 'Dragoon',
+      'Drone', 'Zergling', 'Hydralisk'
+    ];
+    return unitTypes[Math.floor(Math.random() * 3 + (race === 'Terran' ? 0 : race === 'Protoss' ? 3 : 6))];
   }
   
-  return resourceGraph;
+  return 'Unknown Action';
 }

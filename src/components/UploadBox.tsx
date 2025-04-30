@@ -6,6 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, X, FileText, CheckCircle, AlertCircle } from 'lucide-react';
 import { parseReplayFile, ParsedReplayResult } from '@/services/replayParserService';
+import { useReplayParser } from '@/hooks/useReplayParser';
 
 interface UploadBoxProps {
   onUploadComplete?: (file: File, replayData: ParsedReplayResult) => void;
@@ -19,6 +20,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'parsing' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState('');
   const { toast } = useToast();
+  const { parseReplay, serverStatus } = useReplayParser();
   
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     setIsDragging(false);
@@ -64,6 +66,16 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       return false;
     }
 
+    // Check if the parser server is online
+    if (serverStatus === 'offline') {
+      toast({
+        title: "Parser Offline",
+        description: "The Go parser service is currently offline. Please start the server and try again.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
     return true;
   };
 
@@ -77,7 +89,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     setStatusMessage('Uploading replay file...');
     
     try {
-      // First step: Upload the file to storage
+      // First step: Upload simulation
       setProgress(0);
       let uploadProgress = 0;
       const interval = setInterval(() => {
@@ -89,6 +101,10 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         setProgress(uploadProgress);
       }, 200);
 
+      // Wait for upload simulation to complete
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      clearInterval(interval);
+      
       // Parse the file with Go parser
       setUploadStatus('parsing');
       setStatusMessage('Parsing replay with Go parser...');
@@ -107,7 +123,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       
       // Parse the file with Go parser
       console.log('UploadBox: sending to Go parser', file.name);
-      const parsedData = await parseReplayFile(file);
+      const parsedData = await parseReplay(file);
       console.log('UploadBox: parser response', parsedData);
       
       clearInterval(parsingInterval);
@@ -174,6 +190,18 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
           <p className="text-xs text-muted-foreground mt-4">
             Max file size: {maxFileSize}MB | Supported format: .rep
           </p>
+          
+          {/* Parser status indicator */}
+          <div className="mt-4 flex items-center">
+            <div className={`h-2 w-2 rounded-full mr-2 ${
+              serverStatus === 'online' ? 'bg-green-500' : 
+              serverStatus === 'offline' ? 'bg-red-500' : 'bg-yellow-500'
+            }`} />
+            <p className="text-xs text-muted-foreground">
+              {serverStatus === 'online' ? 'Parser Ready' : 
+               serverStatus === 'offline' ? 'Parser Offline' : 'Checking Parser...'}
+            </p>
+          </div>
         </div>
       ) : (
         <div className="border rounded-lg p-6 bg-card">

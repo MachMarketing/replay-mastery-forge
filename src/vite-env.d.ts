@@ -9,3 +9,14 @@ declare module "@/components/ui/badge" {
     children?: React.ReactNode;
   }
 }
+
+// Define AbortSignal.timeout for TypeScript
+interface AbortSignalConstructor {
+  timeout(milliseconds: number): AbortSignal;
+}
+
+declare global {
+  interface AbortSignal {
+    static: AbortSignalConstructor;
+  }
+}
