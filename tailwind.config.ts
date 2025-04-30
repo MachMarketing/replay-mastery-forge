@@ -152,6 +152,26 @@ export default {
 					'0%, 100%': { opacity: '1' },
 					'50%': { opacity: '0.5' }
 				},
+				'scan': {
+					'0%, 100%': { top: '0', opacity: '0.6' },
+					'50%': { top: '100%', opacity: '0.2' }
+				},
+				'float': {
+					'0%, 100%': { transform: 'translateY(0)' },
+					'50%': { transform: 'translateY(-10px)' }
+				},
+				'spin': {
+					'0%': { transform: 'rotate(0deg)' },
+					'100%': { transform: 'rotate(360deg)' }
+				},
+				'spin-reverse': {
+					'0%': { transform: 'rotate(0deg)' },
+					'100%': { transform: 'rotate(-360deg)' }
+				},
+				'blur-in': {
+					'0%': { filter: 'blur(5px)', opacity: '0' },
+					'100%': { filter: 'blur(0)', opacity: '1' }
+				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
@@ -160,11 +180,18 @@ export default {
 				'fade-out': 'fade-out 0.3s ease-out',
 				'scale-in': 'scale-in 0.2s ease-out',
 				'pulse': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+				'float': 'float 3s ease-in-out infinite',
+				'blur-in': 'blur-in 0.5s ease-out forwards',
+				'scan': 'scan 4s ease-in-out infinite',
 			},
 			backgroundImage: {
 				'hero-pattern': "linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), url('/background.jpg')",
 				'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-			}
+				'tech-grid': 'linear-gradient(to right, theme("colors.primary.DEFAULT / 10%") 1px, transparent 1px), linear-gradient(to bottom, theme("colors.primary.DEFAULT / 10%") 1px, transparent 1px)',
+			},
+			gridTemplateRows: {
+				'12': 'repeat(12, minmax(0, 1fr))',
+			},
 		}
 	},
 	plugins: [require("tailwindcss-animate")],
