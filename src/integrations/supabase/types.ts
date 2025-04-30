@@ -9,7 +9,146 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      analysis_results: {
+        Row: {
+          build_order: Json | null
+          created_at: string
+          id: string
+          recommendations: Json | null
+          replay_id: string
+          resources_graph: Json | null
+          strengths: Json | null
+          training_plan: Json | null
+          user_id: string
+          weaknesses: Json | null
+        }
+        Insert: {
+          build_order?: Json | null
+          created_at?: string
+          id?: string
+          recommendations?: Json | null
+          replay_id: string
+          resources_graph?: Json | null
+          strengths?: Json | null
+          training_plan?: Json | null
+          user_id: string
+          weaknesses?: Json | null
+        }
+        Update: {
+          build_order?: Json | null
+          created_at?: string
+          id?: string
+          recommendations?: Json | null
+          replay_id?: string
+          resources_graph?: Json | null
+          strengths?: Json | null
+          training_plan?: Json | null
+          user_id?: string
+          weaknesses?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analysis_results_replay_id_fkey"
+            columns: ["replay_id"]
+            isOneToOne: false
+            referencedRelation: "replays"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "analysis_results_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          id: string
+          username: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          id: string
+          username?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          id?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
+      replays: {
+        Row: {
+          apm: number | null
+          created_at: string
+          date: string | null
+          duration: string | null
+          eapm: number | null
+          filename: string
+          id: string
+          map: string | null
+          matchup: string | null
+          opponent_name: string | null
+          opponent_race: string | null
+          original_filename: string
+          player_name: string | null
+          player_race: string | null
+          result: string | null
+          user_id: string
+        }
+        Insert: {
+          apm?: number | null
+          created_at?: string
+          date?: string | null
+          duration?: string | null
+          eapm?: number | null
+          filename: string
+          id?: string
+          map?: string | null
+          matchup?: string | null
+          opponent_name?: string | null
+          opponent_race?: string | null
+          original_filename: string
+          player_name?: string | null
+          player_race?: string | null
+          result?: string | null
+          user_id: string
+        }
+        Update: {
+          apm?: number | null
+          created_at?: string
+          date?: string | null
+          duration?: string | null
+          eapm?: number | null
+          filename?: string
+          id?: string
+          map?: string | null
+          matchup?: string | null
+          opponent_name?: string | null
+          opponent_race?: string | null
+          original_filename?: string
+          player_name?: string | null
+          player_race?: string | null
+          result?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "replays_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

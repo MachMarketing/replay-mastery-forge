@@ -1,6 +1,6 @@
 
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
@@ -9,15 +9,41 @@ import { Separator } from '@/components/ui/separator';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Google } from '@/components/icons/Google';
 import { Twitch } from '@/components/icons/Twitch';
+import { useAuth } from '@/context/AuthContext';
+import { Loader2 } from 'lucide-react';
 
 const LoginPage = () => {
-  const [email, setEmail] = React.useState('');
-  const [password, setPassword] = React.useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { signIn, user } = useAuth();
+  const navigate = useNavigate();
   
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    // If user is already logged in, redirect to replays page
+    if (user) {
+      navigate('/replays');
+    }
+  }, [user, navigate]);
+  
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Implement login logic
-    console.log('Login attempt with:', { email });
+    setIsSubmitting(true);
+    
+    try {
+      const { error } = await signIn(email, password);
+      if (!error) {
+        // Successful login will be handled by the AuthContext effect
+        // which will detect the user and redirect
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleOAuthLogin = (provider: 'google' | 'twitch') => {
+    // This is a placeholder for future OAuth implementation
+    console.log(`Login with ${provider}`);
   };
   
   return (
@@ -37,11 +63,23 @@ const LoginPage = () => {
             <CardContent className="space-y-4">
               {/* OAuth Providers */}
               <div className="grid grid-cols-2 gap-4">
-                <Button variant="outline" className="w-full" type="button">
+                <Button 
+                  variant="outline" 
+                  className="w-full" 
+                  type="button"
+                  onClick={() => handleOAuthLogin('google')}
+                  disabled
+                >
                   <Google className="mr-2 h-4 w-4" />
                   Google
                 </Button>
-                <Button variant="outline" className="w-full" type="button">
+                <Button 
+                  variant="outline" 
+                  className="w-full" 
+                  type="button"
+                  onClick={() => handleOAuthLogin('twitch')}
+                  disabled
+                >
                   <Twitch className="mr-2 h-4 w-4" />
                   Twitch
                 </Button>
@@ -66,6 +104,7 @@ const LoginPage = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    disabled={isSubmitting}
                   />
                 </div>
                 
@@ -83,10 +122,20 @@ const LoginPage = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    disabled={isSubmitting}
                   />
                 </div>
                 
-                <Button type="submit" className="w-full">Log In</Button>
+                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Logging in...
+                    </>
+                  ) : (
+                    'Log In'
+                  )}
+                </Button>
               </form>
             </CardContent>
             

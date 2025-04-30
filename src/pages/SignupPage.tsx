@@ -1,6 +1,6 @@
 
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { Button } from '@/components/ui/button';
@@ -10,17 +10,50 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Google } from '@/components/icons/Google';
 import { Twitch } from '@/components/icons/Twitch';
+import { useAuth } from '@/context/AuthContext';
+import { Loader2 } from 'lucide-react';
 
 const SignupPage = () => {
-  const [email, setEmail] = React.useState('');
-  const [username, setUsername] = React.useState('');
-  const [password, setPassword] = React.useState('');
-  const [agreedToTerms, setAgreedToTerms] = React.useState(false);
+  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { signUp, user } = useAuth();
+  const navigate = useNavigate();
   
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    // If user is already logged in, redirect to replays page
+    if (user) {
+      navigate('/replays');
+    }
+  }, [user, navigate]);
+  
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Implement signup logic
-    console.log('Signup attempt with:', { email, username });
+    
+    if (!agreedToTerms) {
+      return;
+    }
+    
+    setIsSubmitting(true);
+    
+    try {
+      const { error } = await signUp(email, password, username);
+      if (!error) {
+        // Wait a bit for the session to be established, then redirect
+        setTimeout(() => {
+          navigate('/replays');
+        }, 1000);
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleOAuthSignup = (provider: 'google' | 'twitch') => {
+    // This is a placeholder for future OAuth implementation
+    console.log(`Signup with ${provider}`);
   };
   
   return (
@@ -40,11 +73,23 @@ const SignupPage = () => {
             <CardContent className="space-y-4">
               {/* OAuth Providers */}
               <div className="grid grid-cols-2 gap-4">
-                <Button variant="outline" className="w-full" type="button">
+                <Button 
+                  variant="outline" 
+                  className="w-full" 
+                  type="button"
+                  onClick={() => handleOAuthSignup('google')}
+                  disabled
+                >
                   <Google className="mr-2 h-4 w-4" />
                   Google
                 </Button>
-                <Button variant="outline" className="w-full" type="button">
+                <Button 
+                  variant="outline" 
+                  className="w-full" 
+                  type="button"
+                  onClick={() => handleOAuthSignup('twitch')}
+                  disabled
+                >
                   <Twitch className="mr-2 h-4 w-4" />
                   Twitch
                 </Button>
@@ -69,6 +114,7 @@ const SignupPage = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
+                    disabled={isSubmitting}
                   />
                 </div>
                 
@@ -81,6 +127,7 @@ const SignupPage = () => {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     required
+                    disabled={isSubmitting}
                   />
                 </div>
                 
@@ -93,6 +140,8 @@ const SignupPage = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    disabled={isSubmitting}
+                    minLength={8}
                   />
                   <p className="text-xs text-muted-foreground">
                     Password must be at least 8 characters long
@@ -104,6 +153,7 @@ const SignupPage = () => {
                     id="terms" 
                     checked={agreedToTerms}
                     onCheckedChange={(checked) => setAgreedToTerms(checked as boolean)}
+                    disabled={isSubmitting}
                   />
                   <label
                     htmlFor="terms"
@@ -120,8 +170,19 @@ const SignupPage = () => {
                   </label>
                 </div>
                 
-                <Button type="submit" className="w-full" disabled={!agreedToTerms}>
-                  Create Account
+                <Button 
+                  type="submit" 
+                  className="w-full" 
+                  disabled={!agreedToTerms || isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Creating account...
+                    </>
+                  ) : (
+                    'Create Account'
+                  )}
                 </Button>
               </form>
             </CardContent>

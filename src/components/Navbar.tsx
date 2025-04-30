@@ -1,118 +1,175 @@
-
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useRef, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import Logo from '@/components/Logo';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { User, LogOut, Settings, Trophy, BookOpen } from 'lucide-react';
+} from "@/components/ui/dropdown-menu"
+import {
+  Menu,
+  X,
+  LogOut,
+  Settings,
+  User,
+} from 'lucide-react';
+import { Logo } from '@/components/icons/Logo';
+import { useAuth } from '@/context/AuthContext';
 
-interface NavbarProps {
-  isLoggedIn?: boolean;
-  username?: string;
-  avatarUrl?: string;
-}
+const Navbar = ({ isLoggedIn = false, username = '' }) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
 
-const Navbar: React.FC<NavbarProps> = ({ 
-  isLoggedIn = false, 
-  username = '', 
-  avatarUrl = '' 
-}) => {
-  // Get initial for avatar fallback
-  const getInitial = (name: string) => {
-    return name ? name.charAt(0).toUpperCase() : 'G';
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/');
   };
 
+  // Automatically close menu when clicking elsewhere
+  const menuRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
   return (
-    <nav className="border-b border-border/60 backdrop-blur-md bg-background/95 fixed top-0 w-full z-50">
+    <div className="fixed top-0 left-0 right-0 bg-background z-50 border-b border-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
+        <div className="flex justify-between items-center h-16">
           <div className="flex items-center">
-            <Logo />
-            <div className="ml-10 hidden md:flex items-center space-x-1">
-              <Link to="/" className="relative px-3 py-2 text-sm font-medium group">
-                <span className="text-foreground hover:text-primary transition-colors duration-300">Home</span>
-                <span className="absolute -bottom-[1px] left-1/2 w-0 h-[2px] bg-primary group-hover:w-3/4 group-hover:left-[12.5%] transition-all duration-300"></span>
-              </Link>
-              <Link to="/features" className="relative px-3 py-2 text-sm font-medium group">
-                <span className="text-foreground hover:text-primary transition-colors duration-300">Features</span>
-                <span className="absolute -bottom-[1px] left-1/2 w-0 h-[2px] bg-primary group-hover:w-3/4 group-hover:left-[12.5%] transition-all duration-300"></span>
-              </Link>
-              <Link to="/pricing" className="relative px-3 py-2 text-sm font-medium group">
-                <span className="text-foreground hover:text-primary transition-colors duration-300">Pricing</span>
-                <span className="absolute -bottom-[1px] left-1/2 w-0 h-[2px] bg-primary group-hover:w-3/4 group-hover:left-[12.5%] transition-all duration-300"></span>
-              </Link>
-              <Link to="/replays" className="relative px-3 py-2 text-sm font-medium group">
-                <span className="text-foreground hover:text-primary transition-colors duration-300">My Replays</span>
-                <span className="absolute -bottom-[1px] left-1/2 w-0 h-[2px] bg-primary group-hover:w-3/4 group-hover:left-[12.5%] transition-all duration-300"></span>
-              </Link>
+            <Link to="/" className="flex items-center">
+              <Logo className="h-8 w-auto" />
+              <span className="ml-2 text-xl font-bold">ReplayCoach.gg</span>
+            </Link>
+            
+            <div className="hidden md:flex ml-10 space-x-6">
+              <Link to="/features" className="text-muted-foreground hover:text-foreground transition-colors duration-200">Features</Link>
+              <Link to="/pricing" className="text-muted-foreground hover:text-foreground transition-colors duration-200">Pricing</Link>
             </div>
           </div>
-          <div className="flex items-center">
-            {isLoggedIn ? (
-              <div className="flex items-center gap-4">
-                <Button variant="outline" className="hidden md:flex items-center gap-2 border-primary/50 hover:bg-primary/10 hover:text-primary">
-                  <Trophy size={16} className="text-primary" />
-                  <span>Upgrade to Pro</span>
-                </Button>
+          
+          <div className="hidden md:flex items-center space-x-4">
+            {user ? (
+              <>
+                <Link to="/replays" className="text-muted-foreground hover:text-foreground transition-colors duration-200">
+                  My Replays
+                </Link>
+                <Link to="/upload" className="text-muted-foreground hover:text-foreground transition-colors duration-200">
+                  Upload
+                </Link>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Avatar className="cursor-pointer bg-secondary hover:opacity-80 transition border border-primary/30">
-                      <AvatarImage src={avatarUrl} alt={username} />
-                      <AvatarFallback className="bg-primary/20 text-primary">{getInitial(username)}</AvatarFallback>
-                    </Avatar>
+                    <Button variant="outline" size="sm" className="ml-2">
+                      {user.user_metadata.username || 'Account'}
+                    </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56 border-primary/30 bg-card/95 backdrop-blur-sm">
-                    <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                    <DropdownMenuSeparator className="bg-primary/20" />
-                    <DropdownMenuItem className="hover:bg-primary/10 cursor-pointer group">
-                      <User className="mr-2 h-4 w-4 text-primary group-hover:text-primary" />
-                      <span>Profile</span>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => navigate('/profile')}>
+                      <User className="mr-2 h-4 w-4" />
+                      Profile
                     </DropdownMenuItem>
-                    <DropdownMenuItem className="hover:bg-primary/10 cursor-pointer group">
-                      <Trophy className="mr-2 h-4 w-4 text-primary group-hover:text-primary" />
-                      <span>Upgrade to Pro</span>
+                    <DropdownMenuItem onClick={() => navigate('/settings')}>
+                      <Settings className="mr-2 h-4 w-4" />
+                      Settings
                     </DropdownMenuItem>
-                    <DropdownMenuItem className="hover:bg-primary/10 cursor-pointer group">
-                      <BookOpen className="mr-2 h-4 w-4 text-primary group-hover:text-primary" />
-                      <span>My Replays</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem className="hover:bg-primary/10 cursor-pointer group">
-                      <Settings className="mr-2 h-4 w-4 text-primary group-hover:text-primary" />
-                      <span>Settings</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator className="bg-primary/20" />
-                    <DropdownMenuItem className="hover:bg-destructive/20 cursor-pointer group">
-                      <LogOut className="mr-2 h-4 w-4 text-destructive group-hover:text-destructive" />
-                      <span className="text-destructive">Logout</span>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleLogout}>
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Log out
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-              </div>
+              </>
             ) : (
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" className="hover:bg-primary/10 hover:text-primary" asChild>
-                  <Link to="/login">Log in</Link>
-                </Button>
-                <Button className="bg-primary text-primary-foreground hover:bg-primary/90 relative overflow-hidden group" asChild>
-                  <Link to="/signup">
-                    <span className="relative z-10">Sign up</span>
-                    <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-primary via-primary/80 to-primary opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
-                  </Link>
-                </Button>
-              </div>
+              <>
+                <Link to="/login">
+                  <Button variant="ghost">Log in</Button>
+                </Link>
+                <Link to="/signup">
+                  <Button>Sign up</Button>
+                </Link>
+              </>
             )}
+          </div>
+          
+          {/* Mobile menu button */}
+          <div className="md:hidden flex items-center">
+            <button
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="p-2 rounded-md"
+              aria-expanded={isMenuOpen}
+            >
+              {isMenuOpen ? (
+                <X className="h-6 w-6" />
+              ) : (
+                <Menu className="h-6 w-6" />
+              )}
+            </button>
           </div>
         </div>
       </div>
-    </nav>
+      
+      {/* Mobile menu */}
+      <div
+        ref={menuRef}
+        className={`md:hidden ${isMenuOpen ? 'block' : 'hidden'}`}
+      >
+        <div className="px-2 pt-2 pb-3 space-y-1 border-t border-border">
+          <Link to="/features" className="block px-3 py-2 rounded-md text-base font-medium text-muted-foreground">
+            Features
+          </Link>
+          <Link to="/pricing" className="block px-3 py-2 rounded-md text-base font-medium text-muted-foreground">
+            Pricing
+          </Link>
+          
+          {user ? (
+            <>
+              <Link to="/replays" className="block px-3 py-2 rounded-md text-base font-medium text-muted-foreground">
+                My Replays
+              </Link>
+              <Link to="/upload" className="block px-3 py-2 rounded-md text-base font-medium text-muted-foreground">
+                Upload
+              </Link>
+              <Link to="/profile" className="block px-3 py-2 rounded-md text-base font-medium text-muted-foreground">
+                Profile
+              </Link>
+              <Link to="/settings" className="block px-3 py-2 rounded-md text-base font-medium text-muted-foreground">
+                Settings
+              </Link>
+              <button 
+                onClick={handleLogout}
+                className="w-full text-left block px-3 py-2 rounded-md text-base font-medium text-destructive"
+              >
+                Log out
+              </button>
+            </>
+          ) : (
+            <div className="pt-4 pb-3 border-t border-border">
+              <div className="px-3 space-y-2">
+                <Link to="/login">
+                  <Button variant="outline" size="sm" className="w-full">Log in</Button>
+                </Link>
+                <Link to="/signup">
+                  <Button size="sm" className="w-full">Sign up</Button>
+                </Link>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 };
 
