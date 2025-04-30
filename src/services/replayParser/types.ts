@@ -44,5 +44,4 @@ export interface ReplayAnalysis {
   }[];
 }
 
-// Export all types
-export type { ParsedReplayData, ReplayAnalysis, ParsedReplayResult };
+// No duplicate exports - these are already exported above via the interface declarations
