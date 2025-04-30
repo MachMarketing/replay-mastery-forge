@@ -37,17 +37,24 @@ const UploadPage = () => {
     if (normalizedRace.includes('zerg') || normalizedRace.includes('z')) return 'Zerg';
     return 'Terran'; // Default fallback
   };
+  
+  // Helper function to normalize result to win/loss
+  const normalizeResult = (result: string): 'win' | 'loss' => {
+    const normalizedResult = result.toLowerCase();
+    return normalizedResult.includes('win') ? 'win' : 'loss';
+  };
 
   const handleUploadComplete = async (uploadedFile: File, parsedReplayData: ParsedReplayResult) => {
     setFile(uploadedFile);
     setIsAnalyzing(true);
     
     try {
-      // Ensure race values are properly normalized
+      // Ensure race values and result are properly normalized
       const normalizedData = {
         ...parsedReplayData,
         playerRace: normalizeRace(parsedReplayData.playerRace),
         opponentRace: normalizeRace(parsedReplayData.opponentRace),
+        result: normalizeResult(parsedReplayData.result)
       };
       
       // Extend the parsedReplayData with the additional fields needed by AnalysisResult

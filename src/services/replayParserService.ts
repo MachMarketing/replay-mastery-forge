@@ -8,7 +8,7 @@ export interface ParsedReplayResult {
   map: string;
   duration: string;
   date: string;
-  result: string;
+  result: 'win' | 'loss';
   apm: number;
   eapm?: number;
   matchup: string;
