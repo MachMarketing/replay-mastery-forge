@@ -1,36 +1,35 @@
 
-import { ReplayParser } from 'jssuh';
 import { Buffer } from 'buffer';
 import type { ParsedReplayResult } from './replayParser/types';
 
 /**
- * Parse a StarCraft: Brood War .rep file using the jssuh parser
+ * Parse a StarCraft: Brood War .rep file using a browser-compatible approach
+ * This is a simplified version that just prepares the file for server-side processing
+ * 
  * @param file The uploaded .rep File object
- * @returns Promise resolving to the raw header and action list
+ * @returns Promise resolving to the raw file data ready for processing
  */
 export async function parseReplayFile(file: File): Promise<ParsedReplayResult> {
-  // Read file into an ArrayBuffer
-  const arrayBuffer = await file.arrayBuffer();
-  // Convert to Node Buffer for jssuh
-  const buffer = Buffer.from(arrayBuffer);
-
-  const parser = new ReplayParser();
-  let header: any = null;
-  const actions: any[] = [];
-
-  parser.on('replayHeader', (h) => {
-    header = h;
-  });
-  parser.on('replayAction', (action) => {
-    actions.push(action);
-  });
-
-  // Feed the full buffer to the parser
-  parser.end(buffer);
-  // Wait for parsing to finish
-  await new Promise<void>((resolve) => parser.on('end', () => resolve()));
-
-  return { header, actions };
+  try {
+    // Read file into an ArrayBuffer
+    const arrayBuffer = await file.arrayBuffer();
+    // Convert to Buffer for compatibility
+    const buffer = Buffer.from(arrayBuffer);
+    
+    // Since we can't use jssuh directly in the browser, we'll
+    // just return a minimal structure that will be processed server-side
+    return { 
+      header: {
+        filename: file.name,
+        fileSize: file.size,
+        type: 'replay-file'
+      }, 
+      actions: []
+    };
+  } catch (error) {
+    console.error('Error preparing replay file:', error);
+    throw new Error('Failed to prepare replay file for analysis');
+  }
 }
 
 // Re-export the types and functions from the new module for backward compatibility

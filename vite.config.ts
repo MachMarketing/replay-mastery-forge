@@ -1,9 +1,10 @@
 
-import { defineConfig } from "vite";
+import { defineConfig, ConfigEnv } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill';
+import rollupNodePolyFill from 'rollup-plugin-node-polyfills';
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -19,7 +20,10 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      "stream": "stream-browserify"
+      "stream": "stream-browserify",
+      "events": "rollup-plugin-node-polyfills/polyfills/events",
+      "util": "rollup-plugin-node-polyfills/polyfills/util",
+      "buffer": "rollup-plugin-node-polyfills/polyfills/buffer-es6"
     },
   },
   optimizeDeps: {
@@ -30,8 +34,14 @@ export default defineConfig(({ mode }) => ({
       plugins: [
         NodeGlobalsPolyfillPlugin({
           buffer: true,
+          process: true,
         }),
       ],
     },
+  },
+  build: {
+    rollupOptions: {
+      plugins: [rollupNodePolyFill()]
+    }
   }
 }));
