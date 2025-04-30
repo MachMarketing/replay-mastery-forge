@@ -5,6 +5,7 @@ import path from 'path';
 import { componentTagger } from 'lovable-tagger';
 import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill';
 import rollupNodePolyFill from 'rollup-plugin-node-polyfills';
+import wasm from '@rollup/plugin-wasm';
 
 export default defineConfig(({ command }: ConfigEnv) => ({
   server: {
@@ -14,6 +15,7 @@ export default defineConfig(({ command }: ConfigEnv) => ({
   plugins: [
     react(),
     process.env.NODE_ENV !== 'production' && componentTagger(),
+    wasm(), // Add WASM plugin to support jssuh
   ].filter(Boolean),
   resolve: {
     alias: {

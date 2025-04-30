@@ -1,12 +1,18 @@
 
 /**
- * Browser-based StarCraft: Brood War replay parser using jssuh
- * This uses the jssuh parser to parse replays directly in the browser
+ * Browser-based StarCraft: Brood War replay parser using jssuh (WASM)
+ * Dynamischer Import, damit Vite das WASM-Binary korrekt aufnimmt.
  */
 
 import { ParsedReplayResult } from './replayParserService';
-// Import jssuh parser directly from the npm package
-import { parseReplay as parseJssuh } from 'jssuh';
+
+/**
+ * Lädt die jssuh-Bibliothek dynamisch und gibt die parseReplay-Funktion zurück.
+ */
+async function loadJssuhParser(): Promise<(data: Uint8Array) => Promise<any>> {
+  const mod = await import('jssuh');        // Vite nimmt hier das WASM mit ins Bundle
+  return mod.parseReplay;
+}
 
 /**
  * Convert race number to race string
@@ -33,7 +39,10 @@ function formatDuration(ms: number): string {
 /**
  * Generate a basic build order based on race
  */
-function generateBuildOrder(race: 'Terran' | 'Protoss' | 'Zerg', durationMs: number): { time: string; supply: number; action: string }[] {
+function generateBuildOrder(
+  race: 'Terran' | 'Protoss' | 'Zerg', 
+  durationMs: number
+): { time: string; supply: number; action: string }[] {
   // Similar to the original function but simplified for now
   const buildOrder = [];
   const gameMinutes = Math.min(10, Math.floor(durationMs / 60000));
@@ -107,26 +116,36 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     const fileBuffer = await file.arrayBuffer();
     const data = new Uint8Array(fileBuffer);
     
-    // Parse the replay using jssuh
-    console.log('Parsing replay with jssuh...');
+    // Dynamically load and use the jssuh parser
+    console.log('Dynamically loading jssuh parser...');
+    const parseJssuh = await loadJssuhParser();
     
     try {
-      const parseResult = await parseJssuh(data);
+      console.log('Parsing replay with dynamically loaded jssuh...');
+      const result = await parseJssuh(data);
       
-      if (!parseResult) {
+      if (!result) {
         throw new Error('Failed to parse replay: No replay data returned');
       }
       
-      console.log('jssuh parsing result:', parseResult);
+      console.log('jssuh parsing result:', result);
+
+      // Check if there was an error in the parsing
+      if (result.error) {
+        console.error('jssuh returned error:', result.error);
+        throw new Error(`Parser error: ${result.error}`);
+      }
+
+      const replay = result.replay || result;
       
       // Extract player information
-      if (!parseResult.players || parseResult.players.length < 2) {
+      if (!replay.players || replay.players.length < 2) {
         throw new Error('Invalid replay: Not enough players found');
       }
       
       // We assume player 0 is the main player and player 1 is the opponent
-      const mainPlayer = parseResult.players[0];
-      const opponentPlayer = parseResult.players[1];
+      const mainPlayer = replay.players[0];
+      const opponentPlayer = replay.players[1];
       
       if (!mainPlayer || !opponentPlayer) {
         throw new Error('Failed to identify players in the replay');
@@ -134,7 +153,8 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       
       // Convert frame count to duration (frames to ms - 1 frame is ~42ms in StarCraft)
       const framesPerSecond = 23.81; // StarCraft's game speed
-      const durationMs = parseResult.header?.frames ? Math.floor(parseResult.header.frames / framesPerSecond * 1000) : 0;
+      const durationMs = replay.computed?.duration_ms || 
+                       (replay.header?.frames ? Math.floor(replay.header.frames / framesPerSecond * 1000) : 0);
       const duration = formatDuration(durationMs);
       
       // Get player races
@@ -146,20 +166,20 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       
       // Determine game result - try to use winner_team if available
       let gameResult: 'win' | 'loss' = 'win';
-      if (parseResult.computed?.winner_team !== undefined && mainPlayer.team !== undefined) {
-        gameResult = parseResult.computed.winner_team === mainPlayer.team ? 'win' : 'loss';
+      if (replay.computed?.winner_team !== undefined && mainPlayer.team !== undefined) {
+        gameResult = replay.computed.winner_team === mainPlayer.team ? 'win' : 'loss';
       }
       
       // Get APM if available
-      const apm = parseResult.computed?.apm?.[mainPlayer.name] || 
+      const apm = replay.computed?.apm?.[mainPlayer.name] || 
                 Math.floor(Math.random() * 100) + 50; // Fallback random APM
                 
       // Get EAPM if available
-      const eapm = parseResult.computed?.eapm?.[mainPlayer.name] || 
+      const eapm = replay.computed?.eapm?.[mainPlayer.name] || 
                 Math.floor(apm * 0.8); // Fallback EAPM
       
       // Create a date string
-      const date = parseResult.header?.date || 
+      const date = replay.header?.date || 
                   new Date().toISOString().split('T')[0]; // Today as fallback
       
       // Generate build order based on race
@@ -174,7 +194,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
         opponentName: opponentPlayer.name,
         playerRace,
         opponentRace,
-        map: parseResult.header?.map_name || 'Unknown Map',
+        map: replay.header?.map_name || 'Unknown Map',
         duration,
         date,
         result: gameResult,
