@@ -19,13 +19,22 @@ export interface ParsedReplayResult {
 export async function parseReplayFile(file: File): Promise<ParsedReplayResult> {
   const form = new FormData();
   form.append('file', file);
+  
+  console.log('Sending replay file to parser service:', file.name);
+  
   const res = await fetch('/api/parse', {
     method: 'POST',
     body: form,
   });
+  
   if (!res.ok) {
     const txt = await res.text();
+    console.error('Parser service error:', res.status, txt);
     throw new Error(`Parser error ${res.status}: ${txt}`);
   }
-  return res.json();
+  
+  const data = await res.json();
+  console.log('Parsed replay data:', data);
+  
+  return data;
 }

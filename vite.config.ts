@@ -13,7 +13,7 @@ export default defineConfig(({ command }: ConfigEnv) => ({
     proxy: {
       // Proxy all /api/parse → Go service /parse
       '/api/parse': {
-        target: 'http://localhost:8080',
+        target: 'http://localhost:8000',
         changeOrigin: true,
         rewrite: (p) => p.replace(/^\/api\/parse/, '/parse'),
       },

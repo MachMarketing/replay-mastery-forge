@@ -45,6 +45,7 @@ export function useReplayParser(): ReplayParserResult {
         description: errorMessage,
         variant: 'destructive',
       });
+      console.error('Replay parsing error:', errorMessage);
       return null;
     } finally {
       setIsProcessing(false);
