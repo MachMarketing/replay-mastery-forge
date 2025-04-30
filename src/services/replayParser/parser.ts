@@ -1,5 +1,5 @@
 
-import { ParsedReplayData } from './types';
+import type { ParsedReplayData } from './types';
 import { transformScrepData } from './transformer';
 
 // Configuration for the SCREP service

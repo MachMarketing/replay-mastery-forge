@@ -1,12 +1,13 @@
 
 import { useState } from 'react';
-import { parseReplayFile, analyzeReplayData, ParsedReplayData, DEFAULT_SCREP_API_URL } from '@/services/replayParser';
+import { parseReplayFile, analyzeReplayData, DEFAULT_SCREP_API_URL } from '@/services/replayParser';
+import type { ParsedReplayData, ReplayAnalysis } from '@/services/replayParser';
 import { useToast } from '@/hooks/use-toast';
 
 interface ReplayParserResult {
   parseReplay: (file: File) => Promise<{
     parsedData: ParsedReplayData | null;
-    analysis: any | null;
+    analysis: ReplayAnalysis | null;
   }>;
   isProcessing: boolean;
   error: string | null;

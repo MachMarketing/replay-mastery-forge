@@ -1,6 +1,12 @@
 
 import { supabase } from '@/integrations/supabase/client';
 
+// Structure for the raw replay parsing result
+export interface ParsedReplayResult {
+  header: any;
+  actions: any[];
+}
+
 // Structure of the parsed replay data
 export interface ParsedReplayData {
   playerName: string;
