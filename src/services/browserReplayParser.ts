@@ -8,6 +8,9 @@ import { initParserWasm, parseReplayWasm } from './wasmLoader';
 import { readFileAsUint8Array } from './fileReader';
 import { mapRawToParsed } from './replayMapper';
 
+// Debug-Logging
+console.log('💡 running browserReplayParser.ts, screpParse=', parseReplayWasm);
+
 /**
  * Parse a StarCraft replay file directly in the browser using bundled screp-js WASM
  */
