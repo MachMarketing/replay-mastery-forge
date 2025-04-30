@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -37,77 +36,100 @@ const Index = () => {
         <ArrowUp />
       </button>
 
-      {/* Hero Section with more sci-fi styling */}
+      {/* Hero Section with StarCraft Protoss theme */}
       <div className="pt-16 relative z-10">
         <div className="absolute inset-0 z-0 bg-gradient-radial from-primary/20 to-transparent opacity-50"></div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32 relative z-10">
-          <div className="text-center">
-            <div className="inline-block mb-4 relative">
-              <Shield className="h-16 w-16 mx-auto text-primary animate-pulse" />
-              <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl"></div>
-            </div>
-            
-            <h1 className="text-5xl md:text-6xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-primary via-protoss to-primary animate-pulse">
-              Elevate Your StarCraft Skills
-            </h1>
-            
-            <p className="text-xl md:text-2xl mb-8 text-foreground/80 max-w-3xl mx-auto">
-              Upload your replays, get pro-level analysis, and receive personalized coaching to reach your full potential
-            </p>
-            
-            <div className="flex flex-col sm:flex-row justify-center gap-4 mb-12">
-              <Button size="lg" className="text-lg px-8 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 border border-primary/50 shadow-lg shadow-primary/20 transition-all duration-300">
-                <Link to="/upload" className="flex items-center gap-2">
-                  Upload Replay
-                  <ChevronRight size={18} />
-                </Link>
-              </Button>
+          <div className="flex flex-col lg:flex-row items-center gap-8">
+            {/* Left content */}
+            <div className="flex-1 text-center lg:text-left">
+              <div className="inline-block mb-4 relative">
+                <Shield className="h-16 w-16 mx-auto lg:mx-0 text-primary animate-pulse" />
+                <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl"></div>
+              </div>
               
-              <Button size="lg" variant="outline" className="text-lg px-8 border border-primary/50 shadow-lg hover:bg-primary/10 transition-all duration-300">
-                <Link to="/features" className="flex items-center gap-2">
-                  <Play size={18} />
-                  How It Works
-                </Link>
-              </Button>
+              <h1 className="text-5xl md:text-6xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-primary via-protoss to-primary animate-pulse">
+                Elevate Your StarCraft Skills
+              </h1>
+              
+              <p className="text-xl md:text-2xl mb-8 text-foreground/80 max-w-3xl mx-auto lg:mx-0">
+                Upload your replays, get pro-level analysis, and receive personalized coaching to reach your full potential
+              </p>
+              
+              <div className="flex flex-col sm:flex-row justify-center lg:justify-start gap-4 mb-8">
+                <Button size="lg" className="text-lg px-8 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 border border-primary/50 shadow-lg shadow-primary/20 transition-all duration-300">
+                  <Link to="/upload" className="flex items-center gap-2">
+                    Upload Replay
+                    <ChevronRight size={18} />
+                  </Link>
+                </Button>
+                
+                <Button size="lg" variant="outline" className="text-lg px-8 border border-primary/50 shadow-lg hover:bg-primary/10 transition-all duration-300">
+                  <Link to="/features" className="flex items-center gap-2">
+                    <Play size={18} />
+                    How It Works
+                  </Link>
+                </Button>
+              </div>
+              
+              <div className="text-sm text-muted-foreground mb-8 flex items-center justify-center lg:justify-start gap-2">
+                <Award size={16} className="text-primary" />
+                Trusted by over 10,000 players, from beginners to ASL professionals
+              </div>
             </div>
             
-            <div className="text-sm text-muted-foreground mb-8 flex items-center justify-center gap-2">
-              <Award size={16} className="text-primary" />
-              Trusted by over 10,000 players, from beginners to ASL professionals
+            {/* Right side - Featured Protoss image */}
+            <div className="flex-1 relative">
+              <div className="relative w-full aspect-square max-w-md mx-auto">
+                {/* Protoss Image */}
+                <img 
+                  src="/lovable-uploads/71b989af-68ae-495d-88b3-19f1c4bdea4f.png" 
+                  alt="StarCraft Protoss warrior watching replay"
+                  className="object-contain w-full h-full z-10 relative"
+                />
+                
+                {/* Decorative elements */}
+                <div className="absolute -top-4 -left-4 w-24 h-24 rounded-full bg-protoss/10 filter blur-xl"></div>
+                <div className="absolute -bottom-6 right-10 w-28 h-28 rounded-full bg-protoss/10 filter blur-xl"></div>
+                
+                {/* Glowing borders */}
+                <div className="absolute top-1/4 left-0 h-1/2 w-1 bg-gradient-to-b from-transparent via-protoss to-transparent"></div>
+                <div className="absolute bottom-0 left-1/4 h-1 w-1/2 bg-gradient-to-r from-transparent via-protoss to-transparent"></div>
+              </div>
             </div>
-            
-            {/* Preview Image with futuristic border and glow effects */}
-            <div className="rounded-lg overflow-hidden border border-primary/30 shadow-2xl shadow-primary/20 bg-background/80 backdrop-blur-sm transition-transform hover:scale-[1.02] max-w-5xl mx-auto relative before:absolute before:inset-0 before:border before:border-primary/10 before:rounded-lg before:z-10 before:pointer-events-none after:absolute after:inset-0 after:border-2 after:rounded-lg after:z-20 after:pointer-events-none after:border-primary/5">
-              <img 
-                src="/replay-analysis-preview.jpg" 
-                alt="ReplayCoach Analysis Dashboard"
-                className="w-full relative z-0"
-                onError={(e) => {
-                  // Futuristic fallback if image fails to load
-                  const target = e.target as HTMLImageElement;
-                  target.style.height = '400px';
-                  target.style.background = 'linear-gradient(45deg, rgba(0,0,0,0.8) 0%, rgba(0,168,255,0.1) 100%)';
-                  target.style.backgroundSize = '200% 200%';
-                  target.style.animation = 'gradient-shift 5s ease infinite';
-                  target.style.display = 'flex';
-                  target.style.alignItems = 'center';
-                  target.style.justifyContent = 'center';
-                  const text = document.createElement('span');
-                  text.innerText = 'ReplayCoach Analysis';
-                  text.style.fontSize = '2rem';
-                  text.style.fontWeight = 'bold';
-                  text.style.color = 'hsl(var(--primary))';
-                  text.style.textShadow = '0 0 10px rgba(0,168,255,0.5)';
-                  text.style.letterSpacing = '2px';
-                  target.appendChild(text);
-                }} 
-              />
-              {/* Corner accents for futuristic UI feel */}
-              <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-primary"></div>
-              <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-primary"></div>
-              <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-primary"></div>
-              <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-primary"></div>
-            </div>
+          </div>
+          
+          {/* Preview area below hero section */}
+          <div className="mt-16 rounded-lg overflow-hidden border border-primary/30 shadow-2xl shadow-primary/20 bg-background/80 backdrop-blur-sm transition-transform hover:scale-[1.02] max-w-5xl mx-auto relative before:absolute before:inset-0 before:border before:border-primary/10 before:rounded-lg before:z-10 before:pointer-events-none after:absolute after:inset-0 after:border-2 after:rounded-lg after:z-20 after:pointer-events-none after:border-primary/5">
+            <img 
+              src="/replay-analysis-preview.jpg" 
+              alt="ReplayCoach Analysis Dashboard"
+              className="w-full relative z-0"
+              onError={(e) => {
+                // Futuristic fallback if image fails to load
+                const target = e.target as HTMLImageElement;
+                target.style.height = '400px';
+                target.style.background = 'linear-gradient(45deg, rgba(0,0,0,0.8) 0%, rgba(0,168,255,0.1) 100%)';
+                target.style.backgroundSize = '200% 200%';
+                target.style.animation = 'gradient-shift 5s ease infinite';
+                target.style.display = 'flex';
+                target.style.alignItems = 'center';
+                target.style.justifyContent = 'center';
+                const text = document.createElement('span');
+                text.innerText = 'ReplayCoach Analysis';
+                text.style.fontSize = '2rem';
+                text.style.fontWeight = 'bold';
+                text.style.color = 'hsl(var(--primary))';
+                text.style.textShadow = '0 0 10px rgba(0,168,255,0.5)';
+                text.style.letterSpacing = '2px';
+                target.appendChild(text);
+              }} 
+            />
+            {/* Corner accents for futuristic UI feel */}
+            <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-primary"></div>
+            <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-primary"></div>
+            <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-primary"></div>
+            <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-primary"></div>
           </div>
         </div>
       </div>
