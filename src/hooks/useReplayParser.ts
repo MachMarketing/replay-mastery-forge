@@ -11,6 +11,7 @@ interface ReplayParserResult {
   isProcessing: boolean;
   error: string | null;
   parserUrl: string;
+  setParserUrl: (url: string) => void;
 }
 
 export function useReplayParser(): ReplayParserResult {
@@ -19,7 +20,8 @@ export function useReplayParser(): ReplayParserResult {
   const { toast } = useToast();
   
   // Get the URL of the SCREP parser service from the environment or use a default
-  const parserUrl = import.meta.env.VITE_SCREP_API_URL || 'https://api.replayanalyzer.com/parse';
+  const defaultUrl = import.meta.env.VITE_SCREP_API_URL || 'http://localhost:8080/parse';
+  const [parserUrl, setParserUrl] = useState<string>(defaultUrl);
 
   const parseReplay = async (file: File) => {
     setIsProcessing(true);
@@ -33,7 +35,7 @@ export function useReplayParser(): ReplayParserResult {
       }
       
       // Parse the replay file using SCREP
-      const parsedData = await parseReplayFile(file);
+      const parsedData = await parseReplayFile(file, parserUrl);
       
       if (!parsedData) {
         throw new Error('Failed to parse replay file');
@@ -61,6 +63,7 @@ export function useReplayParser(): ReplayParserResult {
     parseReplay,
     isProcessing,
     error,
-    parserUrl
+    parserUrl,
+    setParserUrl
   };
 }
