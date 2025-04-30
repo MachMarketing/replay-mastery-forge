@@ -1,33 +1,38 @@
-
 import { ReplayParser } from 'jssuh';
-import { transformJSSUHData } from './replayParser';
-import type { ParsedReplayData } from './replayParser/types';
+import { Buffer } from 'buffer';
 
 export interface ParsedReplayResult {
-    header: any;
-    actions: any[];
+      header: any;
+      actions: any[];
 }
 
 /**
- * Uploads a .rep file to our Next.js API and returns the parsed result
+ * Parse a StarCraft: Brood War .rep file in-browser using jssuh
  */
 export async function parseReplayFile(file: File): Promise<ParsedReplayResult> {
-    const arrayBuffer = await file.arrayBuffer();
-    const response = await fetch('/api/parseReplay', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/octet-stream' },
-          body: arrayBuffer,
-    });
-    if (!response.ok) {
-          const text = await response.text();
-          throw new Error(`Parse error: ${response.status} ${text}`);
-    }
-    return response.json();
-}
+      console.log('parseReplayFile: starting client-side parse');
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
 
-/**
- * Process raw replay data into our application's format
- */
-export function processReplayData(rawData: ParsedReplayResult): ParsedReplayData {
-    return transformJSSUHData(rawData);
+  const parser = new ReplayParser();
+      let header: any = null;
+      const actions: any[] = [];
+
+  parser.on('replayHeader', (h) => {
+          console.log('received header', h);
+          header = h;
+  });
+      parser.on('replayAction', (action) => {
+              actions.push(action);
+      });
+      parser.on('error', (err) => {
+              console.error('jssuh parser error', err);
+              throw err;
+      });
+
+  parser.end(buffer);
+      await new Promise<void>((resolve) => parser.on('end', () => resolve()));
+
+  console.log(`parseReplayFile: parsed ${actions.length} actions`);
+      return { header, actions };
 }
