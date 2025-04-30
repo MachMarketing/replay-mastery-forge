@@ -11,12 +11,14 @@ import { Google } from '@/components/icons/Google';
 import { Twitch } from '@/components/icons/Twitch';
 import { useAuth } from '@/context/AuthContext';
 import { Loader2 } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { signIn, user } = useAuth();
+  const [resendingVerification, setResendingVerification] = useState(false);
+  const { signIn, user, isEmailNotConfirmed, emailPendingVerification, resendVerificationEmail } = useAuth();
   const navigate = useNavigate();
   
   useEffect(() => {
@@ -41,6 +43,17 @@ const LoginPage = () => {
     }
   };
 
+  const handleResendVerification = async () => {
+    if (!emailPendingVerification) return;
+    
+    setResendingVerification(true);
+    try {
+      await resendVerificationEmail(emailPendingVerification);
+    } finally {
+      setResendingVerification(false);
+    }
+  };
+
   const handleOAuthLogin = (provider: 'google' | 'twitch') => {
     // This is a placeholder for future OAuth implementation
     console.log(`Login with ${provider}`);
@@ -61,6 +74,30 @@ const LoginPage = () => {
             </CardHeader>
             
             <CardContent className="space-y-4">
+              {isEmailNotConfirmed && emailPendingVerification && (
+                <Alert variant="destructive" className="mb-4">
+                  <AlertDescription className="flex flex-col gap-2">
+                    <p>Email not confirmed. Please check your inbox for the verification email.</p>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={handleResendVerification}
+                      disabled={resendingVerification}
+                      className="self-start"
+                    >
+                      {resendingVerification ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Resending...
+                        </>
+                      ) : (
+                        'Resend verification email'
+                      )}
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              )}
+              
               {/* OAuth Providers */}
               <div className="grid grid-cols-2 gap-4">
                 <Button 
