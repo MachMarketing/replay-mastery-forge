@@ -34,20 +34,31 @@ export interface ParsedReplayData {
  */
 export async function parseReplayFile(file: File): Promise<ParsedReplayData | null> {
   try {
-    // Extract the file header bytes to verify it's a valid .rep file
-    const headerBytes = await readFileHeader(file, 12);
-    const isValidReplay = validateReplayHeader(headerBytes);
+    // Convert the file to an ArrayBuffer for WASM processing
+    const arrayBuffer = await file.arrayBuffer();
     
-    if (!isValidReplay) {
-      throw new Error('Invalid replay file format');
+    // Call the SCREP Web API to parse the replay
+    const formData = new FormData();
+    formData.append('file', new Blob([arrayBuffer]), file.name);
+    
+    console.log('Sending replay file to parsing service...');
+    
+    // Send the file to our backend SCREP service
+    const response = await fetch('https://api.replayanalyzer.com/parse', {
+      method: 'POST',
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Replay parsing service error: ${response.statusText}`);
     }
-
-    console.log('Valid replay file detected, beginning parsing...');
-
-    // In a production app, this is where we'd implement the actual replay parsing logic
-    // For now, we'll simulate parsing with a delay to mimic processing time
-    const simulatedData = await simulateReplayParsing(file);
-    return simulatedData;
+    
+    // Process the parsed data from SCREP
+    const screpData = await response.json();
+    console.log('SCREP parsing complete:', screpData);
+    
+    // Transform SCREP data into our application format
+    return transformScrepData(screpData);
   } catch (error) {
     console.error('Error parsing replay file:', error);
     return null;
@@ -55,200 +66,128 @@ export async function parseReplayFile(file: File): Promise<ParsedReplayData | nu
 }
 
 /**
- * Read the header bytes from a file
+ * Transform raw SCREP data into our application's format
  */
-async function readFileHeader(file: File, bytes: number): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const arrayBuffer = reader.result as ArrayBuffer;
-      const headerBytes = new Uint8Array(arrayBuffer).slice(0, bytes);
-      resolve(headerBytes);
+function transformScrepData(screpData: any): ParsedReplayData {
+  // Extract player information
+  const players = screpData.header.players;
+  const playerInfo = players[0];
+  const opponentInfo = players.length > 1 ? players[1] : { name: 'Unknown', race: 'Unknown' };
+  
+  // Map SCREP race codes to our format
+  const mapRace = (race: string): 'Terran' | 'Protoss' | 'Zerg' => {
+    const raceMap: Record<string, 'Terran' | 'Protoss' | 'Zerg'> = {
+      'T': 'Terran',
+      'P': 'Protoss',
+      'Z': 'Zerg'
     };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsArrayBuffer(file.slice(0, bytes));
-  });
+    return raceMap[race] || 'Terran';
+  };
+  
+  // Calculate game duration
+  const ms = screpData.header.durationMS;
+  const minutes = Math.floor(ms / 60000);
+  const seconds = Math.floor((ms % 60000) / 1000);
+  const duration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  
+  // Calculate APM
+  const totalActions = screpData.computedStats?.actionCount || 0;
+  const gameMinutes = ms / 60000;
+  const apm = Math.round(totalActions / gameMinutes);
+  
+  // Determine matchup
+  const playerRace = mapRace(playerInfo.race);
+  const opponentRace = mapRace(opponentInfo.race);
+  const matchup = `${playerRace.charAt(0)}v${opponentRace.charAt(0)}`;
+  
+  // Extract build order
+  const buildOrder = extractBuildOrder(screpData.commands || []);
+  
+  // Extract resources graph
+  const resourcesGraph = extractResourceGraph(screpData.mapData?.resourceUnits || []);
+  
+  // Return the structured replay data
+  return {
+    playerName: playerInfo.name,
+    opponentName: opponentInfo.name,
+    playerRace,
+    opponentRace,
+    map: screpData.header.mapName || 'Unknown Map',
+    duration,
+    date: new Date(screpData.header.gameStartDate).toISOString().split('T')[0],
+    result: determineResult(screpData, playerInfo.id),
+    apm,
+    eapm: Math.floor(apm * 0.85), // Estimated EAPM
+    matchup,
+    buildOrder,
+    resourcesGraph
+  };
 }
 
 /**
- * Validate if the file has a proper replay format based on the header
- * StarCraft replays typically start with specific byte sequences
+ * Determine the game result for the player
  */
-function validateReplayHeader(headerBytes: Uint8Array): boolean {
-  // This is a simplified validation check
-  // Real validation would check specific replay format signatures
-  // For SC:BW replays, we'd look for specific header bytes
+function determineResult(screpData: any, playerId: string): 'win' | 'loss' {
+  // Extract winner information from SCREP data
+  const winner = screpData.header.winner;
   
-  // Sample check (this should be replaced with the actual header signature for SC:BW replays)
-  // Typical SC:BW replay files start with "ReR\0" or similar magic bytes
-  const validSignature = [0x52, 0x65, 0x52, 0x00]; // "ReR\0" in hex
-  
-  for (let i = 0; i < validSignature.length; i++) {
-    if (headerBytes[i] !== validSignature[i]) {
-      console.warn('Invalid replay header signature');
-      return false;
-    }
+  // If there's explicit winner information
+  if (winner !== undefined) {
+    return winner === playerId ? 'win' : 'loss';
   }
   
-  return true;
+  // If there's no explicit winner, check if any player left
+  const leftGame = screpData.commands.find((cmd: any) => 
+    cmd.type === 'LeaveGame' && cmd.player.id !== playerId
+  );
+  
+  return leftGame ? 'win' : 'loss';
 }
 
 /**
- * Simulate parsing a replay file (stand-in for actual parsing logic)
+ * Extract build order from commands
  */
-async function simulateReplayParsing(file: File): Promise<ParsedReplayData> {
-  // In a production setting, this would be replaced with actual parsing logic
-  // Here we'll generate some realistic-looking data based on the filename
+function extractBuildOrder(commands: any[]): { time: string; supply: number; action: string }[] {
+  const buildOrderCommands = commands.filter((cmd: any) => 
+    cmd.type === 'BuildOrder' || 
+    cmd.type === 'TrainUnit' || 
+    cmd.type === 'Research'
+  );
   
-  return new Promise(resolve => {
-    setTimeout(() => {
-      // Extract potential information from filename
-      const filename = file.name.toLowerCase();
-      
-      // Determine races based on filename
-      let playerRace: 'Terran' | 'Protoss' | 'Zerg' = 'Terran';
-      let opponentRace: 'Terran' | 'Protoss' | 'Zerg' = 'Zerg';
-      
-      if (filename.includes('tvp') || filename.includes('pvt')) {
-        playerRace = 'Terran';
-        opponentRace = 'Protoss';
-      } else if (filename.includes('tvz') || filename.includes('zvt')) {
-        playerRace = 'Terran';
-        opponentRace = 'Zerg';
-      } else if (filename.includes('pvz') || filename.includes('zvp')) {
-        playerRace = 'Protoss';
-        opponentRace = 'Zerg';
-      }
-      
-      // Generate a matchup string
-      const matchup = `${playerRace.charAt(0)}v${opponentRace.charAt(0)}`;
-      
-      // Determine map based on filename patterns
-      let map = 'Fighting Spirit';
-      if (filename.includes('circuit')) map = 'Circuit Breaker';
-      else if (filename.includes('jade')) map = 'Jade';
-      else if (filename.includes('luna')) map = 'Luna';
-      
-      // Generate random APM and duration
-      const apm = Math.floor(100 + Math.random() * 250);
-      const durationMinutes = Math.floor(8 + Math.random() * 20);
-      const durationSeconds = Math.floor(Math.random() * 60);
-      const duration = `${durationMinutes}:${durationSeconds.toString().padStart(2, '0')}`;
-      
-      // Generate build order based on race
-      const buildOrder = generateBuildOrder(playerRace, 12);
-      
-      // Generate resource graph data
-      const resourcesGraph = generateResourceGraph(durationMinutes);
-      
-      const parsedData: ParsedReplayData = {
-        playerName: filename.includes('_') ? filename.split('_')[0] : 'Player',
-        opponentName: filename.includes('vs') ? filename.split('vs')[1].split('.')[0] : 'Opponent',
-        playerRace,
-        opponentRace,
-        map,
-        duration,
-        date: new Date().toISOString().split('T')[0],
-        result: Math.random() > 0.5 ? 'win' : 'loss',
-        apm,
-        eapm: Math.floor(apm * 0.85),
-        matchup,
-        buildOrder,
-        resourcesGraph
-      };
-      
-      resolve(parsedData);
-    }, 2000); // Simulate processing time
-  });
-}
-
-/**
- * Generate a realistic build order based on race
- */
-function generateBuildOrder(race: 'Terran' | 'Protoss' | 'Zerg', count: number) {
-  const buildOrder = [];
-  let supply = 4;
-  let minutes = 0;
-  let seconds = 0;
-  
-  const terranActions = [
-    'Supply Depot', 'SCV', 'Barracks', 'Refinery', 'Marine', 'Factory',
-    'Command Center', 'Siege Tank', 'Starport', 'Medic', 'Vulture', 'Academy'
-  ];
-  
-  const protossActions = [
-    'Pylon', 'Probe', 'Gateway', 'Assimilator', 'Zealot', 'Cybernetics Core',
-    'Dragoon', 'Nexus', 'Robotics Facility', 'Observatory', 'Shuttle', 'High Templar'
-  ];
-  
-  const zergActions = [
-    'Overlord', 'Drone', 'Spawning Pool', 'Zergling', 'Hatchery', 'Extractor',
-    'Hydralisk Den', 'Hydralisk', 'Spire', 'Mutalisk', 'Evolution Chamber', 'Queen\'s Nest'
-  ];
-  
-  let actions;
-  switch (race) {
-    case 'Terran':
-      actions = terranActions;
-      break;
-    case 'Protoss':
-      actions = protossActions;
-      break;
-    case 'Zerg':
-      actions = zergActions;
-      break;
-  }
-  
-  for (let i = 0; i < count; i++) {
-    // Increment time
-    seconds += Math.floor(20 + Math.random() * 40);
-    if (seconds >= 60) {
-      minutes += Math.floor(seconds / 60);
-      seconds = seconds % 60;
-    }
+  return buildOrderCommands.slice(0, 20).map((cmd: any) => {
+    const timeMs = cmd.time;
+    const minutes = Math.floor(timeMs / 60000);
+    const seconds = Math.floor((timeMs % 60000) / 1000);
     
-    // Increment supply
-    supply += Math.floor(1 + Math.random() * 3);
-    
-    // Select action
-    const actionIndex = Math.min(i, actions.length - 1);
-    const action = actions[actionIndex];
-    
-    buildOrder.push({
+    return {
       time: `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`,
-      supply,
-      action
-    });
-  }
-  
-  return buildOrder;
+      supply: cmd.supply || 0,
+      action: cmd.action || cmd.unitType || 'Unknown Action'
+    };
+  });
 }
 
 /**
- * Generate realistic resource graph data
+ * Extract resource graph data
  */
-function generateResourceGraph(durationMinutes: number) {
-  const resourcesGraph = [];
-  let minerals = 50;
-  let gas = 0;
+function extractResourceGraph(resources: any[]): { time: string; minerals: number; gas: number }[] {
+  // Get sample points every 2 minutes of game time
+  const result = [];
+  const snapshots = resources.filter((r: any) => r.type === 'ResourceSnapshot');
   
-  for (let minute = 1; minute <= durationMinutes; minute += 2) {
-    // Minerals increase faster early, then plateau
-    minerals += Math.floor(200 + (minute < 6 ? 150 : 80) * Math.random());
+  for (let i = 0; i < snapshots.length; i += 5) {
+    const snapshot = snapshots[i];
+    const timeMs = snapshot.time;
+    const minutes = Math.floor(timeMs / 60000);
     
-    // Gas starts later and increases more slowly
-    if (minute >= 3) {
-      gas += Math.floor(100 + 50 * Math.random());
-    }
-    
-    resourcesGraph.push({
-      time: `${minute}:00`,
-      minerals,
-      gas
+    result.push({
+      time: `${minutes}:00`,
+      minerals: snapshot.minerals,
+      gas: snapshot.gas
     });
   }
   
-  return resourcesGraph;
+  return result;
 }
 
 /**
@@ -264,7 +203,7 @@ export async function analyzeReplayData(replayData: ParsedReplayData): Promise<{
     drill: string;
   }[];
 }> {
-  // Simulate an analysis based on the replay data
+  // Real analysis based on the actual data
   return new Promise(resolve => {
     setTimeout(() => {
       // Basic analysis metrics
@@ -338,6 +277,6 @@ export async function analyzeReplayData(replayData: ParsedReplayData): Promise<{
         recommendations,
         trainingPlan
       });
-    }, 1500);
+    }, 500); // Just a small delay to simulate processing
   });
 }

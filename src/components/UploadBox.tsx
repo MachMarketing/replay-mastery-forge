@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -88,7 +87,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         setProgress(uploadProgress);
       }, 200);
 
-      // Simulate network upload (in production this would be a real upload)
+      // Upload file to storage
       const { error, data } = await uploadReplayFile(file);
       
       clearInterval(interval);
@@ -97,9 +96,9 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         throw new Error(`Upload failed: ${error.message}`);
       }
       
-      // Second step: Parse the replay file
+      // Second step: Parse the replay file using SCREP
       setUploadStatus('parsing');
-      setStatusMessage('Parsing replay data...');
+      setStatusMessage('Parsing replay with SCREP...');
       setProgress(0);
       
       // Start progress animation for parsing phase
@@ -113,7 +112,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         setProgress(parsingProgress);
       }, 300);
       
-      // Actually parse the file
+      // Parse the file with the real SCREP parser
       const replayData = await parseReplayFile(file);
       
       clearInterval(parsingInterval);
@@ -145,7 +144,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       
       toast({
         title: "Upload Complete",
-        description: `${file.name} has been successfully analyzed.`,
+        description: `${file.name} has been successfully analyzed with SCREP.`,
       });
       
       if (onUploadComplete && replayData) {
@@ -204,10 +203,32 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
               ? 'border-primary bg-primary/10 upload-pulse' 
               : 'border-border hover:border-primary/50 hover:bg-secondary/50'
           }`}
-          onDragEnter={handleDragEnter}
-          onDragLeave={handleDragLeave}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
+          onDragEnter={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragging(true);
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragging(false);
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'copy';
+            setIsDragging(true);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragging(false);
+            
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+              const droppedFile = e.dataTransfer.files[0];
+              processFile(droppedFile);
+            }
+          }}
         >
           <div className="h-16 w-16 rounded-full bg-primary/20 flex items-center justify-center mb-4">
             <Upload className="h-8 w-8 text-primary" />
@@ -216,13 +237,18 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
           <p className="text-sm text-muted-foreground mb-4 text-center">
             Drag and drop your .rep file here, or click to browse
           </p>
-          <Button onClick={handleButtonClick} variant="outline">Select File</Button>
+          <Button onClick={() => fileInputRef.current?.click()} variant="outline">Select File</Button>
           <input
             type="file"
             ref={fileInputRef}
             className="hidden"
             accept=".rep"
-            onChange={handleFileChange}
+            onChange={(e) => {
+              if (e.target.files && e.target.files.length > 0) {
+                const selectedFile = e.target.files[0];
+                processFile(selectedFile);
+              }
+            }}
           />
           <p className="text-xs text-muted-foreground mt-4">
             Max file size: {maxFileSize}MB | Supported format: .rep
@@ -244,7 +270,12 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={handleCancel}
+                onClick={() => {
+                  setFile(null);
+                  setProgress(0);
+                  setUploadStatus('idle');
+                  setStatusMessage('');
+                }}
                 className="text-muted-foreground hover:text-destructive"
               >
                 <X className="h-4 w-4" />
@@ -263,7 +294,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
               <Progress value={progress} className="h-2" />
               <div className="flex justify-between mt-1">
                 <p className="text-xs text-muted-foreground">
-                  {uploadStatus === 'uploading' ? 'Uploading...' : 'Parsing replay data...'}
+                  {uploadStatus === 'uploading' ? 'Uploading...' : 'Parsing with SCREP...'}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {Math.round(progress)}%
@@ -276,7 +307,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
             <div className="mt-2">
               <p className="text-sm text-strength flex items-center">
                 <CheckCircle className="h-4 w-4 mr-1" />
-                Upload and analysis complete
+                SCREP analysis complete
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 Your replay has been analyzed and is ready to view.
@@ -288,12 +319,22 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
             <div className="mt-2">
               <p className="text-sm text-weakness flex items-center">
                 <AlertCircle className="h-4 w-4 mr-1" />
-                {statusMessage || 'Upload failed'}
+                {statusMessage || 'SCREP parsing failed'}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
                 Please try again or contact support if the issue persists.
               </p>
-              <Button size="sm" variant="outline" className="mt-2" onClick={handleCancel}>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="mt-2" 
+                onClick={() => {
+                  setFile(null);
+                  setProgress(0);
+                  setUploadStatus('idle');
+                  setStatusMessage('');
+                }}
+              >
                 Try Again
               </Button>
             </div>
