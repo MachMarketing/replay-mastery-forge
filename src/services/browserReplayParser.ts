@@ -21,23 +21,36 @@ async function loadJssuhParser(): Promise<(data: Uint8Array) => Promise<any>> {
   const mod = (await import('jssuh')) as JssuhModule;
   console.log('Jssuh-Modul Exports:', mod);
 
-  // Wenn default eine Funktion ist, nutzen wir sie direkt,
-  // sonst mod.parseReplay
   let parseFn: ((data: Uint8Array) => Promise<any>) | undefined;
-  
-  if (typeof mod.default === 'function') {
-    // Wir nehmen an, dass die Funktion die richtige Signatur hat
-    parseFn = mod.default as (data: Uint8Array) => Promise<any>;
-  } else if (typeof mod.parseReplay === 'function') {
+
+  // 1) Default-Export ist eine Klasse (siehe Fehler "Class constructor ..."):
+  if (typeof mod.default === 'function' && (mod.default as any).prototype) {
+    const ParserClass = mod.default as any;
+    parseFn = async (data: Uint8Array) => {
+      const parserInstance: any = new ParserClass(data);
+      // Prüfe mögliche Methoden
+      if (typeof parserInstance.parse === 'function') {
+        return parserInstance.parse();
+      }
+      if (typeof parserInstance.parseReplay === 'function') {
+        return parserInstance.parseReplay();
+      }
+      throw new Error('Keine parse()/parseReplay()-Methode auf jssuh-Instanz gefunden');
+    };
+  }
+  // 2) Fallback: Named-Export parseReplay
+  else if (typeof mod.parseReplay === 'function') {
     parseFn = mod.parseReplay;
-  } else if (mod.default && typeof mod.default.parseReplay === 'function') {
-    parseFn = mod.default.parseReplay;
+  }
+  // 3) Fallback: Default-Export als Objekt mit parseReplay
+  else if (mod.default && typeof mod.default === 'object' && typeof (mod.default as any).parseReplay === 'function') {
+    parseFn = (mod.default as any).parseReplay;
   }
 
   if (!parseFn) {
     throw new Error(
-      'parse-Funktion nicht gefunden in jssuh-Modul. ' +
-      'Überprüfe die verfügbaren Exports in der Konsole.'
+      'Konnte keine Parse-Funktion in jssuh finden. ' +
+      'Siehe Console-Log der Exports.'
     );
   }
 
