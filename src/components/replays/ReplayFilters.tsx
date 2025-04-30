@@ -63,7 +63,7 @@ const ReplayFilters: React.FC<ReplayFiltersProps> = ({
               <SelectValue placeholder="Filter by race" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All matchups</SelectItem>
+              <SelectItem value="all">All matchups</SelectItem>
               <SelectItem value="T">Terran</SelectItem>
               <SelectItem value="P">Protoss</SelectItem>
               <SelectItem value="Z">Zerg</SelectItem>
@@ -75,7 +75,7 @@ const ReplayFilters: React.FC<ReplayFiltersProps> = ({
               <SelectValue placeholder="Filter by result" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All results</SelectItem>
+              <SelectItem value="all">All results</SelectItem>
               <SelectItem value="win">Wins</SelectItem>
               <SelectItem value="loss">Losses</SelectItem>
             </SelectContent>

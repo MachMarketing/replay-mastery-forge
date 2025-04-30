@@ -18,8 +18,8 @@ const ITEMS_PER_PAGE = 10;
 
 const ReplaysPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [raceFilter, setRaceFilter] = useState('');
-  const [resultFilter, setResultFilter] = useState('');
+  const [raceFilter, setRaceFilter] = useState('all');
+  const [resultFilter, setResultFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
   
@@ -40,7 +40,7 @@ const ReplaysPage = () => {
   };
   
   // Apply filters
-  const filteredReplays = filterReplays(searchQuery, raceFilter, resultFilter);
+  const filteredReplays = filterReplays(searchQuery, raceFilter === 'all' ? '' : raceFilter, resultFilter === 'all' ? '' : resultFilter);
   
   // Calculate pagination
   const totalPages = Math.ceil(filteredReplays.length / ITEMS_PER_PAGE);
@@ -48,7 +48,7 @@ const ReplaysPage = () => {
   const paginatedReplays = filteredReplays.slice(startIndex, startIndex + ITEMS_PER_PAGE);
 
   // Check if filters are active
-  const isFiltered = searchQuery !== '' || raceFilter !== '' || resultFilter !== '';
+  const isFiltered = searchQuery !== '' || raceFilter !== 'all' || resultFilter !== 'all';
   
   // Calculate stats
   const totalReplays = replays.length;
