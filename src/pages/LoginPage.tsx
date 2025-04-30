@@ -12,6 +12,7 @@ import { Twitch } from '@/components/icons/Twitch';
 import { useAuth } from '@/context/AuthContext';
 import { Loader2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { toast } from '@/hooks/use-toast';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -36,8 +37,11 @@ const LoginPage = () => {
     try {
       const { error } = await signIn(email, password);
       if (!error) {
-        // Successful login will be handled by the AuthContext effect
-        // which will detect the user and redirect
+        // On successful login, show a success toast and redirect will be handled by the useEffect
+        toast({
+          title: 'Login successful',
+          description: 'Redirecting you to your replays...',
+        });
       } else {
         // Increment login attempts to track retry attempts
         setLoginAttempts(prev => prev + 1);
@@ -62,6 +66,11 @@ const LoginPage = () => {
     // This is a placeholder for future OAuth implementation
     console.log(`Login with ${provider}`);
   };
+
+  const handleClearCacheAndRetry = () => {
+    // Force refresh the page to clear any potential cache issues
+    window.location.reload();
+  };
   
   return (
     <div className="flex flex-col min-h-screen">
@@ -83,10 +92,20 @@ const LoginPage = () => {
                   <AlertDescription className="flex flex-col gap-2">
                     <p>Email not confirmed. Please check your inbox for the verification email.</p>
                     {loginAttempts > 1 && (
-                      <p className="text-sm">
-                        If you've already confirmed your email and still see this message, 
-                        try refreshing the page or clearing your browser cache.
-                      </p>
+                      <div className="text-sm space-y-2">
+                        <p>
+                          If you've already confirmed your email and still see this message, 
+                          try refreshing the page or clearing your browser cache.
+                        </p>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={handleClearCacheAndRetry}
+                          className="self-start"
+                        >
+                          Refresh Page
+                        </Button>
+                      </div>
                     )}
                     <Button 
                       variant="outline" 
