@@ -8,7 +8,7 @@ import { ParsedReplayResult } from './replayParserService';
 
 interface JssuhModule {
   parseReplay?: (data: Uint8Array) => Promise<any>;
-  default?: {
+  default?: Function | {
     parseReplay?: (data: Uint8Array) => Promise<any>;
   };
 }
@@ -21,14 +21,17 @@ async function loadJssuhParser(): Promise<(data: Uint8Array) => Promise<any>> {
   const mod = (await import('jssuh')) as JssuhModule;
   console.log('Jssuh-Modul Exports:', mod);
 
-  // Suche nach parseReplay im direkten Export oder im default-Export
-  const parseFn =
-    mod.parseReplay ??
-    mod.default?.parseReplay;
+  // Wenn default eine Funktion ist, nutzen wir sie direkt,
+  // sonst mod.parseReplay
+  const parseFn = typeof mod.default === 'function'
+    ? mod.default
+    : typeof mod.parseReplay === 'function'
+      ? mod.parseReplay
+      : undefined;
 
   if (!parseFn) {
     throw new Error(
-      'parseReplay-Funktion nicht gefunden in jssuh-Modul. ' +
+      'parse-Funktion nicht gefunden in jssuh-Modul. ' +
       'Überprüfe die verfügbaren Exports in der Konsole.'
     );
   }
