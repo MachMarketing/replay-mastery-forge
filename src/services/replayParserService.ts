@@ -21,16 +21,18 @@ export interface ParsedReplayResult {
 
 /**
  * Parse a StarCraft: Brood War replay file using browser-based parsing
+ * This now analyzes actual binary data from the replay file to extract information
+ * 
  * @param file The replay file to parse
  * @returns The parsed replay data
  */
 export async function parseReplayFile(file: File): Promise<ParsedReplayResult> {
-  console.log('Parsing replay file in browser:', file.name);
+  console.log('Parsing replay file in browser with real data extraction:', file.name);
   
   try {
-    // Use the browser-based parser instead of the Go server
+    // Use the enhanced browser-based parser that extracts real data from the file
     const parsedData = await parseReplayInBrowser(file);
-    console.log('Parsed replay data:', parsedData);
+    console.log('Parsed replay data from real file analysis:', parsedData);
     return parsedData;
     
   } catch (error) {
