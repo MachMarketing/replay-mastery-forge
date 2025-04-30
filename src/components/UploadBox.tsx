@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -226,7 +227,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
             e.dataTransfer.dropEffect = 'copy';
             setIsDragging(true);
           }}
-          ={handleDrop}
+          onDrop={handleDrop}
         >
           <div className="h-16 w-16 rounded-full bg-primary/20 flex items-center justify-center mb-4">
             <Upload className="h-8 w-8 text-primary" />
