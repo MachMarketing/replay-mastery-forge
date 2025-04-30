@@ -1,89 +1,12 @@
 
 /**
- * Browser-based StarCraft: Brood War replay parser using screp-js (WASM) loaded from CDN
+ * Browser-based StarCraft: Brood War replay parser using screp-js (WASM)
  */
 
 import { ParsedReplayResult } from './replayParserService';
 
-/**
- * Loads screp-js from CDN as <script> and initializes WASM.
- * Attempts multiple CDNs in case of failure.
- */
-async function loadScrepJs(): Promise<void> {
-  // If already loaded (ready-Promise exists), just wait on it
-  if (typeof (window as any).parseReplay === 'function'
-      && (window as any).ready?.then) {
-    console.log('screp-js already loaded, waiting on ready promise');
-    return (window as any).ready;
-  }
-
-  // List of CDNs to try in order of preference
-  const cdnUrls = [
-    'https://unpkg.com/screp-js@0.3.0/dist/index.umd.js',
-    'https://cdn.jsdelivr.net/npm/screp-js@0.3.0/dist/index.umd.js',
-    'https://esm.run/screp-js@0.3.0/dist/index.umd.js'
-  ];
-  
-  let lastError: Error | null = null;
-  
-  // Try each CDN URL in sequence
-  for (const url of cdnUrls) {
-    console.log(`Attempting to load screp-js from ${url}`);
-    try {
-      await loadScriptFromUrl(url);
-      console.log(`Successfully loaded screp-js from ${url}`);
-      return; // If we get here, loading was successful
-    } catch (error) {
-      console.error(`Failed to load screp-js from ${url}:`, error);
-      lastError = error instanceof Error ? error : new Error(String(error));
-      // Continue to next URL
-    }
-  }
-  
-  // If we get here, all CDNs failed
-  throw lastError || new Error('Failed to load screp-js from any CDN');
-}
-
-/**
- * Load a script from a URL and wait for it to initialize
- */
-function loadScriptFromUrl(url: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = url;
-    script.async = true;
-    script.crossOrigin = 'anonymous'; // Try with CORS support
-    
-    script.onload = () => {
-      console.log(`Script from ${url} loaded, checking for screp-js API`);
-      // The UMD build attaches two globals:
-      //   window.parseReplay(data: Uint8Array) => Promise<ReplayResult>
-      //   window.ready: Promise<void>
-      if (typeof (window as any).parseReplay !== 'function'
-          || !(window as any).ready?.then) {
-        console.error('screp-js UMD global API not found');
-        return reject(new Error('screp-js UMD global API not found'));
-      }
-      
-      (window as any).ready
-        .then(() => {
-          console.log('screp-js WASM initialized successfully');
-          resolve();
-        })
-        .catch((e: any) => {
-          console.error('Failed to load screp-js WASM:', e);
-          reject(e);
-        });
-    };
-    
-    script.onerror = () => {
-      console.error(`Failed to load screp-js script from ${url}`);
-      reject(new Error(`Failed to load screp-js from ${url}`));
-    };
-    
-    document.body.appendChild(script);
-  });
-}
+// Import the screp-js module directly (we already have it installed)
+import * as screpJs from 'screp-js';
 
 /**
  * Convert race number to race string
@@ -177,34 +100,27 @@ function generateResourceData(durationMs: number): { time: string; minerals: num
 }
 
 /**
- * Parse a StarCraft replay file directly in the browser using screp-js WASM loaded from CDN
+ * Parse a StarCraft replay file directly in the browser using bundled screp-js WASM
  */
 export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResult> {
   console.log('Parsing replay file in browser:', file.name);
   
   try {
-    // 1) Load screp-js UMD from CDN and initialize WASM
-    console.log('Loading screp-js from CDN...');
-    await loadScrepJs();
-    console.log('screp-js loaded and WASM initialized');
+    // 1) Wait for screp-js WASM to be initialized
+    console.log('Waiting for screp-js WASM to initialize...');
+    await screpJs.ready;
+    console.log('screp-js WASM initialized successfully');
     
-    // 2) Use global parseReplay and ready
-    const parseReplay = (window as any).parseReplay as (data: Uint8Array) => Promise<any>;
-    
-    if (typeof parseReplay !== 'function') {
-      throw new Error('screp-js parseReplay is not available');
-    }
-    
-    // 3) Read file into Uint8Array
+    // 2) Read file into Uint8Array
     const fileBuffer = await file.arrayBuffer();
     const data = new Uint8Array(fileBuffer);
     console.log('File read as Uint8Array, length:', data.length);
     
-    // 4) Parse the replay
-    console.log('Parsing replay with screp-js UMD...');
+    // 3) Parse the replay using the imported function
+    console.log('Parsing replay with bundled screp-js...');
     let result: any;
     try {
-      result = await parseReplay(data);
+      result = await screpJs.parseReplay(data);
     } catch (e) {
       console.error('screp-js parse error:', e);
       throw new Error('Failed to parse replay file: ' + (e instanceof Error ? e.message : String(e)));
@@ -212,7 +128,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     
     console.log('screp-js parsing result:', result);
 
-    // 5) Validation
+    // 4) Validation
     if (result.error) {
       console.error('screp-js returned error:', result.error);
       throw new Error(`Parser error: ${result.error}`);
@@ -222,7 +138,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       throw new Error('No replay data returned from parser');
     }
 
-    // 6) Map to ParsedReplayResult
+    // 5) Map to ParsedReplayResult
     const { replay } = result;
     console.log('Replay structure:', Object.keys(replay));
     
