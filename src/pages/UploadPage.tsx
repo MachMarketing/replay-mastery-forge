@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -27,7 +26,7 @@ const UploadPage = () => {
   const [replayData, setReplayData] = useState<ReplayData | null>(null);
   const { replays, fetchReplays } = useReplays();
   const { toast } = useToast();
-  const { parseReplay, isProcessing, error: parserError, serverStatus } = useReplayParser();
+  const { parseReplay, isProcessing, error: parserError } = useReplayParser();
 
   // Helper function to ensure race is one of the valid types
   const normalizeRace = (race: string): 'Terran' | 'Protoss' | 'Zerg' => {
@@ -125,20 +124,14 @@ const UploadPage = () => {
                     </ul>
                   </div>
 
-                  {/* Parser status */}
+                  {/* Parser status - now always browser-based */}
                   <div className="mt-6 pt-6 border-t border-border">
                     <div className="flex items-center justify-between">
                       <h3 className="text-sm font-medium">Parser Status</h3>
-                      <div className={`h-2 w-2 rounded-full ${
-                        serverStatus === 'online' ? 'bg-green-500' : 
-                        serverStatus === 'offline' ? 'bg-red-500' : 'bg-yellow-500'
-                      }`} />
+                      <div className="h-2 w-2 rounded-full bg-green-500" />
                     </div>
                     <p className="text-xs text-muted-foreground mt-1 truncate">
-                      {parserError ? `Error: ${parserError}` : 
-                       serverStatus === 'online' ? 'Go parser running' :
-                       serverStatus === 'offline' ? 'Go parser offline - check server' :
-                       'Checking parser status...'}
+                      {parserError ? `Error: ${parserError}` : 'Browser parser ready'}
                     </p>
                   </div>
 
