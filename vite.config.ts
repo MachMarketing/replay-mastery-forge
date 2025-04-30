@@ -32,14 +32,38 @@ export default defineConfig(({ command }: ConfigEnv) => ({
   },
   optimizeDeps: {
     esbuildOptions: {
-      define: { global: 'globalThis' },
-      plugins: [NodeGlobalsPolyfillPlugin({ buffer: true, process: true }) as any],
+      define: { 
+        global: 'globalThis',
+        // Add Node.js compatibility for CommonJS modules
+        'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development')
+      },
+      plugins: [
+        NodeGlobalsPolyfillPlugin({ 
+          buffer: true, 
+          process: true 
+        }) as any
+      ],
     },
-    exclude: ['screp-js'], // Explicitly tell Vite not to pre-bundle screp-js
+    // Force prebundling of these dependencies
+    include: ['buffer'],
+    // Tell Vite not to pre-bundle problematic packages
+    exclude: ['screp-js'],
   },
   build: {
     rollupOptions: {
       plugins: [rollupNodePolyFill() as any],
+      // Handle CommonJS modules during build
+      output: {
+        format: 'es',
+        manualChunks: {
+          vendor: ['buffer'],
+        }
+      },
+    },
+    // Add CommonJS compatibility
+    commonjsOptions: {
+      transformMixedEsModules: true,
+      include: [/node_modules/],
     },
   },
 }));
