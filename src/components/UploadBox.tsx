@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -6,6 +5,8 @@ import { useToast } from '@/hooks/use-toast';
 import { Upload, X, FileText, CheckCircle, AlertCircle } from 'lucide-react';
 import { parseReplayFile } from '../services/replayParserService';
 import type { ParsedReplayData } from '@/services/replayParser/types';
+import { useReplayParser } from '@/hooks/useReplayParser';
+import { uploadReplayFile, saveReplayMetadata } from '@/services/uploadService';
 
 interface UploadBoxProps {
   onUploadComplete?: (file: File, replayData: ParsedReplayData) => void;
@@ -211,22 +212,9 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
               ? 'border-primary bg-primary/10 upload-pulse' 
               : 'border-border hover:border-primary/50 hover:bg-secondary/50'
           }`}
-          onDragEnter={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setIsDragging(true);
-          }}
-          onDragLeave={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            setIsDragging(false);
-          }}
-          onDragOver={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            e.dataTransfer.dropEffect = 'copy';
-            setIsDragging(true);
-          }}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
           onDrop={handleDrop}
         >
           <div className="h-16 w-16 rounded-full bg-primary/20 flex items-center justify-center mb-4">
