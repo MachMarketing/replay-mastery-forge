@@ -3,15 +3,14 @@
  * WASM initialization for StarCraft replay parser
  */
 import { Buffer } from 'buffer';
-import * as screpJs from 'screp-js';
 
 // Make Buffer available globally for potential use by screp-js
 window.Buffer = Buffer;
 
 // Debug logging to track the loading process
 console.log('📊 [wasmLoader] Initializing WASM module loader');
-console.log('📊 [wasmLoader] screp-js available:', typeof screpJs !== 'undefined');
-console.log('📊 [wasmLoader] screp-js exports:', Object.keys(screpJs));
+
+let screpModule: any = null;
 
 /**
  * Initializes the WebAssembly module for replay parsing
@@ -20,15 +19,24 @@ export async function initParserWasm(): Promise<void> {
   console.log('📊 [wasmLoader] Initializing screp-js WASM module...');
   
   try {
+    if (screpModule) {
+      console.log('📊 [wasmLoader] Module already initialized');
+      return;
+    }
+
+    console.log('📊 [wasmLoader] Dynamically importing screp-js...');
+    
+    // Dynamically import the module to avoid require() issues
+    const importedModule = await import('screp-js');
+    screpModule = importedModule.default || importedModule;
+    
+    console.log('📊 [wasmLoader] screp-js module imported:', Object.keys(screpModule));
+    
     // Wait for WASM initialization if supported
-    if (screpJs.ready && typeof screpJs.ready.then === 'function') {
+    if (screpModule.ready && typeof screpModule.ready.then === 'function') {
       console.log('📊 [wasmLoader] Waiting for module.ready Promise to resolve...');
-      await screpJs.ready;
+      await screpModule.ready;
       console.log('📊 [wasmLoader] module.ready Promise resolved successfully');
-    } else if (typeof screpJs.default?.ready?.then === 'function') {
-      console.log('📊 [wasmLoader] Waiting for module.default.ready Promise to resolve...');
-      await screpJs.default.ready;
-      console.log('📊 [wasmLoader] module.default.ready Promise resolved successfully');
     } else {
       console.warn('⚠️ [wasmLoader] No ready Promise found, continuing without explicit initialization');
     }
@@ -47,12 +55,25 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
   console.log('📊 [wasmLoader] Calling parseReplayWasm with data length:', data.length);
   
   try {
+    // Ensure module is initialized
+    if (!screpModule) {
+      console.log('📊 [wasmLoader] Module not initialized yet, initializing now...');
+      await initParserWasm();
+      
+      if (!screpModule) {
+        throw new Error('Failed to initialize WASM module');
+      }
+    }
+    
     // Try different possible export names
-    let parser = screpJs.parse || screpJs.parseReplay || 
-                screpJs.default?.parse || screpJs.default?.parseReplay;
+    const parser = screpModule.parse || 
+                  screpModule.parseReplay || 
+                  screpModule.default?.parse || 
+                  screpModule.default?.parseReplay;
     
     if (typeof parser !== 'function') {
       console.error('❌ [wasmLoader] No valid parse function found in screp-js module');
+      console.log('Available exports:', Object.keys(screpModule));
       throw new Error('Could not find a valid parse function in screp-js module');
     }
     

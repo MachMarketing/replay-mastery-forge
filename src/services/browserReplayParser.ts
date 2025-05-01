@@ -9,7 +9,7 @@ import { readFileAsUint8Array } from './fileReader';
 import { mapRawToParsed } from './replayMapper';
 
 // Debug-Logging
-console.log('📊 [browserReplayParser] Module loaded, parsing available:', typeof parseReplayWasm === 'function');
+console.log('📊 [browserReplayParser] Module loaded');
 
 /**
  * Parse a StarCraft replay file directly in the browser using bundled screp-js WASM
@@ -63,12 +63,6 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     // 3) Parse the replay
     console.log('📊 [browserReplayParser] Attempting to parse replay with WASM parser...');
     
-    if (typeof parseReplayWasm !== 'function') {
-      console.error('❌ [browserReplayParser] parseReplayWasm is not available as a function!');
-      throw new Error('WASM parser function not available - module may not be properly loaded');
-    }
-    
-    console.log('📊 [browserReplayParser] Parsing replay with bundled screp-js…');
     let result;
     try {
       // Force await to ensure any promise is resolved
