@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import UploadBox from '@/components/UploadBox';
@@ -28,6 +29,14 @@ const UploadPage = () => {
   const { toast } = useToast();
   const { parseReplay, isProcessing, error: parserError } = useReplayParser();
 
+  // Reset analysis state when component unmounts
+  useEffect(() => {
+    return () => {
+      setIsAnalyzing(false);
+      setAnalysisComplete(false);
+    };
+  }, []);
+
   // Helper function to ensure race is one of the valid types
   const normalizeRace = (race: string): 'Terran' | 'Protoss' | 'Zerg' => {
     const normalizedRace = race.toLowerCase();
@@ -49,8 +58,10 @@ const UploadPage = () => {
     setRawParsedData(parsedReplayData);
     
     try {
-      // Default to first player (index 0)
-      handlePlayerSelection(0);
+      // Default to first player (index 0) - with slight delay to show the loading state
+      setTimeout(() => {
+        handlePlayerSelection(0);
+      }, 500);
       
     } catch (error) {
       console.error('Analysis error:', error);
@@ -64,7 +75,10 @@ const UploadPage = () => {
   };
 
   const handlePlayerSelection = (playerIndex: number) => {
-    if (!rawParsedData) return;
+    if (!rawParsedData) {
+      setIsAnalyzing(false);
+      return;
+    }
     
     setSelectedPlayerIndex(playerIndex);
     
@@ -85,8 +99,9 @@ const UploadPage = () => {
         // Invert result
         result: rawParsedData.result === 'win' ? 'loss' : 'win',
         // Swap strengths and weaknesses for more accurate coaching
-        strengths: [...rawParsedData.recommendations].slice(0, 2),
-        weaknesses: [...rawParsedData.weaknesses].slice(0, 2)
+        strengths: rawParsedData.recommendations ? [...rawParsedData.recommendations].slice(0, 3) : [],
+        weaknesses: rawParsedData.weaknesses ? [...rawParsedData.weaknesses].slice(0, 3) : [],
+        recommendations: rawParsedData.strengths ? [...rawParsedData.strengths].slice(0, 3) : []
       };
     }
     
@@ -95,7 +110,11 @@ const UploadPage = () => {
       ...adjustedData,
       playerRace: normalizeRace(adjustedData.playerRace),
       opponentRace: normalizeRace(adjustedData.opponentRace),
-      result: normalizeResult(adjustedData.result)
+      result: normalizeResult(adjustedData.result),
+      // Ensure all required arrays exist
+      strengths: adjustedData.strengths || [],
+      weaknesses: adjustedData.weaknesses || [],
+      recommendations: adjustedData.recommendations || []
     };
     
     // Extend the parsedReplayData with the additional fields needed by AnalysisResult
