@@ -36,6 +36,7 @@ export function useReplayParser(): ReplayParserResult {
           variant: 'destructive',
         });
         
+        setIsProcessing(false);
         return null;
       }
       
@@ -49,6 +50,7 @@ export function useReplayParser(): ReplayParserResult {
           throw new Error('Failed to parse replay file');
         }
         
+        setIsProcessing(false);
         return parsedData;
       } catch (parserError) {
         console.error('[useReplayParser] Parser error:', parserError);
@@ -178,6 +180,7 @@ export function useReplayParser(): ReplayParserResult {
           variant: 'default',
         });
         
+        setIsProcessing(false);
         return fallbackData;
       }
     } catch (err) {
@@ -192,9 +195,8 @@ export function useReplayParser(): ReplayParserResult {
         variant: 'destructive',
       });
       
-      return null;
-    } finally {
       setIsProcessing(false);
+      return null;
     }
   };
 

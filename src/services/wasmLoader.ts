@@ -12,6 +12,7 @@ console.log('📊 [wasmLoader] Initializing WASM module loader');
 
 let screpModule: any = null;
 let wasmInitialized = false;
+let initializationAttempted = false;
 
 /**
  * Initializes the WebAssembly module for replay parsing
@@ -23,6 +24,14 @@ export async function initParserWasm(): Promise<void> {
     console.log('📊 [wasmLoader] Module already initialized');
     return;
   }
+  
+  // If initialization was already attempted but failed, don't try again
+  // to avoid getting stuck in an error loop
+  if (initializationAttempted && !wasmInitialized) {
+    throw new Error('WASM initialization was already attempted and failed');
+  }
+  
+  initializationAttempted = true;
   
   try {
     console.log('📊 [wasmLoader] Dynamically importing screp-js...');
@@ -39,7 +48,13 @@ export async function initParserWasm(): Promise<void> {
     
     // Dynamically import the module to avoid require() issues
     try {
-      const importedModule = await import('screp-js');
+      // Set a timeout to catch hanging imports
+      const importPromise = import('screp-js');
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Import timed out after 5000ms')), 5000);
+      });
+      
+      const importedModule = await Promise.race([importPromise, timeoutPromise]);
       screpModule = importedModule.default || importedModule;
       
       console.log('📊 [wasmLoader] screp-js module imported:', Object.keys(screpModule));
@@ -51,8 +66,15 @@ export async function initParserWasm(): Promise<void> {
     // Wait for WASM initialization if supported
     if (screpModule && screpModule.ready && typeof screpModule.ready.then === 'function') {
       console.log('📊 [wasmLoader] Waiting for module.ready Promise to resolve...');
+      
+      // Set a timeout for the ready promise
+      const readyPromise = screpModule.ready;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Module ready timed out after 5000ms')), 5000);
+      });
+      
       try {
-        await screpModule.ready;
+        await Promise.race([readyPromise, timeoutPromise]);
         console.log('📊 [wasmLoader] module.ready Promise resolved successfully');
       } catch (readyError) {
         console.error('❌ [wasmLoader] Error during module.ready:', readyError);
@@ -66,6 +88,7 @@ export async function initParserWasm(): Promise<void> {
     console.log('📊 [wasmLoader] WASM initialization complete');
   } catch (error) {
     wasmInitialized = false;
+    initializationAttempted = true; // Mark as attempted even if failed
     screpModule = null;
     console.error('❌ [wasmLoader] Error during WASM initialization:', error);
     throw new Error(`WASM initialization failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -74,6 +97,8 @@ export async function initParserWasm(): Promise<void> {
 
 /**
  * Parse function that handles different module export formats
+ * @param data The replay file data as a Uint8Array
+ * @returns Parsed replay data or throws an error
  */
 export async function parseReplayWasm(data: Uint8Array): Promise<any> {
   console.log('📊 [wasmLoader] Calling parseReplayWasm with data length:', data.length);
@@ -81,6 +106,11 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
   try {
     // Ensure module is initialized
     if (!screpModule || !wasmInitialized) {
+      // Skip initialization if it was already attempted but failed
+      if (initializationAttempted) {
+        throw new Error('Cannot parse: WASM initialization previously failed');
+      }
+      
       console.log('📊 [wasmLoader] Module not initialized yet, initializing now...');
       try {
         await initParserWasm();
@@ -109,14 +139,29 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
     
     console.log('📊 [wasmLoader] Using parse function:', parser.name || 'anonymous');
     
-    // Call the parser with the data
-    let result = parser(data);
+    // Set a timeout for parsing
+    const parsePromise = new Promise((resolve, reject) => {
+      try {
+        // Call the parser with the data
+        let result = parser(data);
+        
+        // Handle promises
+        if (result && typeof result.then === 'function') {
+          result.then(resolve).catch(reject);
+        } else {
+          resolve(result);
+        }
+      } catch (err) {
+        reject(err);
+      }
+    });
     
-    // Handle promises
-    if (result && typeof result.then === 'function') {
-      console.log('📊 [wasmLoader] Parser returned a Promise, awaiting result...');
-      result = await result;
-    }
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Parsing timed out after 10000ms')), 10000);
+    });
+    
+    // Race the parse operation against a timeout
+    const result = await Promise.race([parsePromise, timeoutPromise]);
     
     if (!result) {
       throw new Error('Parser returned empty result');

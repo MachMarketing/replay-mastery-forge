@@ -5,7 +5,7 @@ import Footer from '@/components/Footer';
 import UploadBox from '@/components/UploadBox';
 import AnalysisResult from '@/components/AnalysisResult';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Upload } from 'lucide-react';
+import { Loader2, Upload as UploadIcon } from 'lucide-react';
 import { useReplays, Replay } from '@/hooks/useReplays';
 import { useToast } from '@/hooks/use-toast';
 import { useReplayParser } from '@/hooks/useReplayParser';
@@ -27,7 +27,7 @@ const UploadPage = () => {
   const [selectedPlayerIndex, setSelectedPlayerIndex] = useState<number>(0);
   const { replays, fetchReplays } = useReplays();
   const { toast } = useToast();
-  const { parseReplay, isProcessing, error: parserError } = useReplayParser();
+  const { parseReplay, isProcessing } = useReplayParser();
 
   // Reset analysis state when component unmounts
   useEffect(() => {
@@ -57,6 +57,8 @@ const UploadPage = () => {
     setIsAnalyzing(true);
     setRawParsedData(parsedReplayData);
     
+    console.log("Upload complete with data:", parsedReplayData);
+    
     try {
       // Default to first player (index 0) - with slight delay to show the loading state
       setTimeout(() => {
@@ -71,14 +73,18 @@ const UploadPage = () => {
         variant: 'destructive'
       });
       setIsAnalyzing(false);
+      setAnalysisComplete(false);
     }
   };
 
   const handlePlayerSelection = (playerIndex: number) => {
     if (!rawParsedData) {
+      console.error('Cannot process player selection: No raw data available');
       setIsAnalyzing(false);
       return;
     }
+    
+    console.log("Processing player selection:", playerIndex, "with data:", rawParsedData);
     
     setSelectedPlayerIndex(playerIndex);
     
@@ -116,6 +122,8 @@ const UploadPage = () => {
       weaknesses: adjustedData.weaknesses || [],
       recommendations: adjustedData.recommendations || []
     };
+    
+    console.log("Final normalized data:", normalizedData);
     
     // Extend the parsedReplayData with the additional fields needed by AnalysisResult
     const extendedData: ReplayData = {
@@ -180,7 +188,7 @@ const UploadPage = () => {
                       <div className="h-2 w-2 rounded-full bg-green-500" />
                     </div>
                     <p className="text-xs text-muted-foreground mt-1 truncate">
-                      {parserError ? `Error: ${parserError}` : 'Browser parser ready'}
+                      {isProcessing ? 'Processing replay...' : 'Browser parser ready'}
                     </p>
                   </div>
 
@@ -269,7 +277,7 @@ const UploadPage = () => {
                 <div className="h-96 flex flex-col items-center justify-center bg-secondary/20 rounded-lg border border-dashed border-border shadow-inner">
                   <div className="text-center max-w-md p-6">
                     <div className="w-16 h-16 bg-secondary/40 rounded-full mx-auto mb-4 flex items-center justify-center">
-                      <Upload className="h-8 w-8 text-muted-foreground" />
+                      <UploadIcon className="h-8 w-8 text-muted-foreground" />
                     </div>
                     <h3 className="text-xl font-medium mb-2">No Replay Selected</h3>
                     <p className="text-muted-foreground">

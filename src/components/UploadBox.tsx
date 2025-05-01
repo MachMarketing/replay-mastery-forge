@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -19,18 +19,18 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   const [progress, setProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'parsing' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState('');
-  const [progressTimeout, setProgressTimeout] = useState<NodeJS.Timeout | null>(null);
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
   const { parseReplay, isProcessing, error: parsingError, clearError } = useReplayParser();
   
-  // Clean up progress interval on unmount
-  React.useEffect(() => {
+  // Clean up progress interval on unmount or when component updates
+  useEffect(() => {
     return () => {
-      if (progressTimeout) {
-        clearTimeout(progressTimeout);
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
       }
     };
-  }, [progressTimeout]);
+  }, []);
   
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     setIsDragging(false);
@@ -83,18 +83,34 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     setProgress(0);
     let currentProgress = 0;
     
-    const updateProgress = () => {
-      currentProgress += Math.random() * 15;
-      if (currentProgress > 95) currentProgress = 95;
+    // Clear any existing interval
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+    }
+    
+    const interval = setInterval(() => {
+      currentProgress += Math.random() * 10;
+      
+      // Cap progress at different stages based on status
+      let maxProgress = 95;
+      if (uploadStatus === 'uploading') maxProgress = 40;
+      if (uploadStatus === 'parsing') maxProgress = 95;
+      
+      if (currentProgress > maxProgress) currentProgress = maxProgress;
+      
       setProgress(currentProgress);
       
-      if (currentProgress < 95) {
-        const timeout = setTimeout(updateProgress, 500);
-        setProgressTimeout(timeout);
+      // When we reach uploading completion, move to parsing automatically
+      if (uploadStatus === 'uploading' && currentProgress >= 40) {
+        setUploadStatus('parsing');
+        setStatusMessage('Parsing replay data...');
+        currentProgress = 45; // Reset progress for parsing phase
       }
-    };
+      
+    }, 400);
     
-    updateProgress();
+    progressIntervalRef.current = interval;
+    return interval;
   };
 
   const processFile = async (file: File) => {
@@ -102,17 +118,21 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       return;
     }
 
+    // Clear any errors from previous attempts
+    clearError();
     setFile(file);
     setUploadStatus('uploading');
     setStatusMessage('Preparing replay file...');
     
     // Start progress simulation
-    simulateProgress();
+    const progressInterval = simulateProgress();
     
     try {
       // Start parsing phase
-      setUploadStatus('parsing');
-      setStatusMessage('Parsing replay in browser...');
+      setTimeout(() => {
+        setUploadStatus('parsing');
+        setStatusMessage('Parsing replay in browser...');
+      }, 1000);
       
       // Parse the file with browser-based parser
       console.log('[UploadBox] Starting parsing with browser parser:', file.name);
@@ -123,13 +143,10 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       }
       
       // Complete the progress
+      clearInterval(progressInterval);
+      progressIntervalRef.current = null;
       setProgress(100);
       setUploadStatus('success');
-      
-      if (progressTimeout) {
-        clearTimeout(progressTimeout);
-        setProgressTimeout(null);
-      }
       
       toast({
         title: "Analysis Complete",
@@ -143,8 +160,14 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       }
     } catch (error) {
       console.error('[UploadBox] Error processing file:', error);
+      
+      // Clear the progress interval
+      clearInterval(progressInterval);
+      progressIntervalRef.current = null;
+      
       setUploadStatus('error');
       setStatusMessage(error instanceof Error ? error.message : 'Failed to parse replay file');
+      setProgress(0);
       
       if (!parsingError) {
         toast({
@@ -153,19 +176,13 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
           variant: "destructive",
         });
       }
-      
-      if (progressTimeout) {
-        clearTimeout(progressTimeout);
-        setProgressTimeout(null);
-      }
-      setProgress(0);
     }
   };
 
   const handleCancel = () => {
-    if (progressTimeout) {
-      clearTimeout(progressTimeout);
-      setProgressTimeout(null);
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
     }
     setFile(null);
     setProgress(0);

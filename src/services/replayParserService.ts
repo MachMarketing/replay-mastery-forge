@@ -51,15 +51,13 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     console.log('Generated analysis based on parsed data:', analysis);
     
     // Return combined result with parsing and analysis
-    const result = {
+    const result: AnalyzedReplayResult = {
       ...parsedData,
-      ...analysis
+      strengths: analysis.strengths || [],
+      weaknesses: analysis.weaknesses || [],
+      recommendations: analysis.recommendations || [],
+      trainingPlan: analysis.trainingPlan || []
     };
-    
-    // Ensure all required properties exist
-    if (!result.strengths) result.strengths = [];
-    if (!result.weaknesses) result.weaknesses = [];
-    if (!result.recommendations) result.recommendations = [];
     
     return result;
     
