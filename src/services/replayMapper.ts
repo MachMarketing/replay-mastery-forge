@@ -24,9 +24,14 @@ export function validateRawReplay(rawResult: any): void {
     throw new Error(`Parser error: ${rawResult.error}`);
   }
 
-  if (!rawResult.replay && !rawResult.header) {
+  // Log the structure to help with debugging
+  console.log('🗺️ [replayMapper] Raw result structure:', Object.keys(rawResult));
+  
+  // More flexible validation that works with different parser output formats
+  const hasData = rawResult.replay || rawResult.header || rawResult.players || rawResult.metadata;
+  if (!hasData) {
     console.error('Invalid replay structure:', rawResult);
-    throw new Error('No replay data returned from parser');
+    throw new Error('No valid replay data returned from parser');
   }
 }
 
@@ -41,27 +46,53 @@ export function mapRawToParsed(rawResult: any): ParsedReplayResult {
     validateRawReplay(rawResult);
     
     // Handle different parser output formats
+    // Log the entire result in detail for debugging
+    console.log('🗺️ [replayMapper] Full raw result:', JSON.stringify(rawResult, null, 2));
+    
     const replay = rawResult.replay || rawResult;
     const header = replay.header || rawResult.header || {};
-    const players = replay.players || rawResult.players || [];
+    const metadata = replay.metadata || rawResult.metadata || {};
+    const players = replay.players || rawResult.players || metadata.players || [];
     const computed = replay.computed || rawResult.computed || {};
     
     console.log('🗺️ [replayMapper] Detected players:', players.length);
+    console.log('🗺️ [replayMapper] Player data:', JSON.stringify(players, null, 2));
     
-    // Ensure we have at least two players
-    if (players.length < 1) {
+    // Ensure we have at least one player
+    if (!players || players.length < 1) {
       // Fallback to default data if parser couldn't extract players
       console.warn('🗺️ [replayMapper] No players detected in replay, using fallback data');
       return createFallbackReplayData(rawResult);
     }
     
     // Extract player information - first player is main player, second is opponent
-    const mainPlayer = players[0] || { name: 'Unknown', race: 1 };
-    const opponentPlayer = players.length > 1 ? players[1] : { name: 'Unknown', race: 2 };
+    // Handle both array and object formats for players
+    let mainPlayer, opponentPlayer;
+    
+    if (Array.isArray(players)) {
+      mainPlayer = players[0] || { name: 'Unknown', race: 1 };
+      opponentPlayer = players.length > 1 ? players[1] : { name: 'Unknown', race: 2 };
+    } else {
+      // Handle object format where players might be keyed by ID
+      const playerIds = Object.keys(players);
+      mainPlayer = playerIds.length > 0 ? players[playerIds[0]] : { name: 'Unknown', race: 1 };
+      opponentPlayer = playerIds.length > 1 ? players[playerIds[1]] : { name: 'Unknown', race: 2 };
+    }
+    
+    // Extract player names - handle different property names
+    const playerName = mainPlayer.name || mainPlayer.playerName || 'Unknown Player';
+    const opponentName = opponentPlayer.name || opponentPlayer.playerName || 'Unknown Opponent';
+    
+    console.log('🗺️ [replayMapper] Extracted player names:', playerName, opponentName);
     
     // Convert frame count to duration
-    const durationMs = computed?.duration_ms || header?.duration_ms || 0;
+    const durationMs = computed?.duration_ms || header?.duration_ms || 
+                      metadata?.game_length_ms || metadata?.duration || 0;
     const duration = formatDuration(durationMs);
+    
+    // Get map name with fallbacks
+    const mapName = header?.map_name || replay.map || metadata?.map || metadata?.mapName || 'Unknown Map';
+    console.log('🗺️ [replayMapper] Extracted map name:', mapName);
     
     // Get player races
     // Race can be provided as number (0=Zerg, 1=Terran, 2=Protoss) or as string
@@ -83,7 +114,7 @@ export function mapRawToParsed(rawResult: any): ParsedReplayResult {
     }
     
     // Create a date string
-    const date = header?.date || new Date().toISOString().split('T')[0];
+    const date = header?.date || metadata?.date || new Date().toISOString().split('T')[0];
     
     // Generate build order based on race
     const buildOrder = generateBuildOrder(playerRace, durationMs);
@@ -91,20 +122,20 @@ export function mapRawToParsed(rawResult: any): ParsedReplayResult {
     // Generate resource graph data
     const resourcesGraph = generateResourceData(durationMs);
     
-    console.log('🗺️ [replayMapper] Successfully mapped replay data for:', mainPlayer.name);
+    console.log('🗺️ [replayMapper] Successfully mapped replay data for:', playerName);
     
     // Construct the parsed result
     return {
-      playerName: mainPlayer.name || 'Unknown',
-      opponentName: opponentPlayer.name || 'Unknown',
+      playerName,
+      opponentName,
       playerRace,
       opponentRace,
-      map: header?.map_name || replay.map || 'Unknown Map',
+      map: mapName,
       duration,
       date,
       result: gameResult,
-      apm: computed?.apm?.[mainPlayer.name] || Math.round(Math.random() * 150 + 50),
-      eapm: computed?.eapm?.[mainPlayer.name] || Math.round(Math.random() * 120 + 40),
+      apm: computed?.apm?.[playerName] || Math.round(Math.random() * 150 + 50),
+      eapm: computed?.eapm?.[playerName] || Math.round(Math.random() * 120 + 40),
       matchup,
       buildOrder,
       resourcesGraph

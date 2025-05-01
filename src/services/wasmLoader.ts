@@ -65,17 +65,20 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
       }
     }
     
-    // Try different possible export names
-    const parser = screpModule.parse || 
+    // The logs show the available function is "parseBuffer" not "parse" or "parseReplay"
+    const parser = screpModule.parseBuffer || 
+                  screpModule.parse || 
                   screpModule.parseReplay || 
-                  screpModule.default?.parse || 
-                  screpModule.default?.parseReplay;
+                  screpModule.default?.parseBuffer || 
+                  screpModule.default?.parse;
     
     if (typeof parser !== 'function') {
       console.error('❌ [wasmLoader] No valid parse function found in screp-js module');
       console.log('Available exports:', Object.keys(screpModule));
       throw new Error('Could not find a valid parse function in screp-js module');
     }
+    
+    console.log('📊 [wasmLoader] Using parse function:', parser.name || 'anonymous');
     
     // Call the parser with the data
     let result = parser(data);
@@ -90,7 +93,9 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
       throw new Error('Parser returned empty result');
     }
     
-    console.log('📊 [wasmLoader] Parsing completed, result type:', typeof result);
+    console.log('📊 [wasmLoader] Parsing completed successfully, result type:', typeof result);
+    console.log('📊 [wasmLoader] Result structure:', Object.keys(result));
+    
     return result;
     
   } catch (error) {
