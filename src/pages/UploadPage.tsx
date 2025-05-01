@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -9,7 +8,7 @@ import { Loader2 } from 'lucide-react';
 import { useReplays, Replay } from '@/hooks/useReplays';
 import { useToast } from '@/hooks/use-toast';
 import { useReplayParser } from '@/hooks/useReplayParser';
-import { ParsedReplayResult } from '@/services/replayParserService';
+import { ParsedReplayResult, AnalyzedReplayResult } from '@/services/replayParserService';
 import PlayerSelector from '@/components/PlayerSelector';
 
 // Define an interface that extends ParsedReplayResult with the additional fields needed by AnalysisResult
@@ -26,7 +25,7 @@ const UploadPage = () => {
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const [isPremium] = useState(false);
   const [replayData, setReplayData] = useState<ReplayData | null>(null);
-  const [rawParsedData, setRawParsedData] = useState<ParsedReplayResult | null>(null);
+  const [rawParsedData, setRawParsedData] = useState<AnalyzedReplayResult | null>(null);
   const [selectedPlayerIndex, setSelectedPlayerIndex] = useState<number>(0);
   const { replays, fetchReplays } = useReplays();
   const { toast } = useToast();
@@ -47,7 +46,7 @@ const UploadPage = () => {
     return normalizedResult.includes('win') ? 'win' : 'loss';
   };
 
-  const handleUploadComplete = async (uploadedFile: File, parsedReplayData: ParsedReplayResult) => {
+  const handleUploadComplete = async (uploadedFile: File, parsedReplayData: AnalyzedReplayResult) => {
     setFile(uploadedFile);
     setIsAnalyzing(true);
     setRawParsedData(parsedReplayData);
@@ -73,7 +72,7 @@ const UploadPage = () => {
     setSelectedPlayerIndex(playerIndex);
     
     // Create adjusted data based on player selection
-    let adjustedData: ParsedReplayResult;
+    let adjustedData: AnalyzedReplayResult;
     
     if (playerIndex === 0) {
       // First player is already correctly set up in rawParsedData
@@ -104,9 +103,6 @@ const UploadPage = () => {
       ...normalizedData,
       // Add required values for the fields
       id: crypto.randomUUID(),
-      strengths: normalizedData.strengths || ["Good macro", "Consistent worker production"],
-      weaknesses: normalizedData.weaknesses || ["Delayed expansion", "Insufficient scouting"],
-      recommendations: normalizedData.recommendations || ["Focus on early game scouting", "Work on build order optimization"]
     };
     
     setReplayData(extendedData);

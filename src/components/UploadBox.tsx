@@ -5,11 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, X, FileText, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
-import { ParsedReplayResult } from '@/services/replayParserService';
+import { ParsedReplayResult, AnalyzedReplayResult } from '@/services/replayParserService';
 import { useReplayParser } from '@/hooks/useReplayParser';
 
 interface UploadBoxProps {
-  onUploadComplete?: (file: File, replayData: ParsedReplayResult) => void;
+  onUploadComplete?: (file: File, replayData: AnalyzedReplayResult) => void;
   maxFileSize?: number; // in MB
 }
 
