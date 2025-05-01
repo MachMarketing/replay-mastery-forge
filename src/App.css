@@ -40,3 +40,77 @@
 .read-the-docs {
   color: #888;
 }
+
+/* Race-specific colors for a better user experience */
+.text-terran {
+  color: #2563eb; /* Blue */
+}
+
+.text-protoss {
+  color: #eab308; /* Yellow */
+}
+
+.text-zerg {
+  color: #9333ea; /* Purple */
+}
+
+.bg-terran {
+  background-color: #2563eb;
+}
+
+.bg-protoss {
+  background-color: #eab308;
+}
+
+.bg-zerg {
+  background-color: #9333ea;
+}
+
+/* Animation for upload box */
+@keyframes upload-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.upload-pulse {
+  animation: upload-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Card hover effects */
+.hover-lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+/* Loading animation for analyzer */
+.loading-animation {
+  position: relative;
+}
+
+.loading-animation::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 2px;
+  bottom: -4px;
+  left: 0;
+  background: linear-gradient(to right, transparent, hsl(var(--primary)), transparent);
+  animation: loading-scan 2s ease-in-out infinite;
+}
+
+@keyframes loading-scan {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}

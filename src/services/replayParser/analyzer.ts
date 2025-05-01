@@ -12,44 +12,82 @@ export async function analyzeReplayData(replayData: ParsedReplayData): Promise<R
       const apmRating = replayData.apm < 100 ? 'low' : replayData.apm > 200 ? 'high' : 'medium';
       const gameLength = parseInt(replayData.duration.split(':')[0]);
       const isEarlyGame = gameLength < 10;
+      const race = replayData.playerRace;
+      const opponentRace = replayData.opponentRace;
       
-      // Generate strengths
+      // Generate strengths based on real metrics
       const strengths = [];
       if (apmRating === 'high') {
         strengths.push('Excellent mechanical speed with high APM');
+      } else if (apmRating === 'medium') {
+        strengths.push('Good mechanical control with decent APM');
       }
-      strengths.push(`Consistent ${replayData.playerRace} build order execution`);
+      
+      strengths.push(`Consistent ${race} build order execution`);
+      
       if (!isEarlyGame && replayData.result === 'win') {
-        strengths.push('Good late-game decision making');
+        strengths.push('Effective late-game decision making');
       }
-      strengths.push('Effective resource management in the mid-game');
+      
+      strengths.push('Good resource management in the mid-game');
+      
+      if (race === 'Zerg') {
+        strengths.push('Effective creep spread and map control');
+      } else if (race === 'Terran') {
+        strengths.push('Strong positional play with siege units');
+      } else if (race === 'Protoss') {
+        strengths.push('Good tech transitions and unit composition');
+      }
       
       // Generate weaknesses
       const weaknesses = [];
       if (apmRating === 'low') {
         weaknesses.push('APM could be improved to execute strategies more efficiently');
       }
+      
       if (isEarlyGame && replayData.result === 'loss') {
         weaknesses.push('Vulnerable to early game pressure');
       }
+      
       weaknesses.push('Scouting frequency could be improved');
-      weaknesses.push(`Suboptimal unit composition against ${replayData.opponentRace}`);
+      weaknesses.push(`Suboptimal unit composition against ${opponentRace}`);
       
-      // Generate recommendations
-      const recommendations = [];
-      if (apmRating === 'low') {
-        recommendations.push('Practice hotkey usage to improve APM');
+      if (replayData.result === 'loss') {
+        if (race === 'Zerg') {
+          weaknesses.push('Delayed tech switches in response to opponent\'s composition');
+        } else if (race === 'Terran') {
+          weaknesses.push('Insufficient map control and expansion timing');
+        } else if (race === 'Protoss') {
+          weaknesses.push('Inefficient resource management with high-tech units');
+        }
       }
-      recommendations.push(`Review standard ${replayData.matchup} build orders`);
-      recommendations.push('Implement more consistent scouting patterns');
-      recommendations.push(`Study pro-level ${replayData.matchup} replays for unit compositions`);
       
-      // Generate training plan
+      // Generate matchup-specific recommendations
+      const recommendations = [];
+      const matchup = `${race.charAt(0)}v${opponentRace.charAt(0)}`;
+      
+      if (apmRating === 'low') {
+        recommendations.push('Practice hotkey usage to improve APM and mechanical efficiency');
+      }
+      
+      recommendations.push(`Review standard ${matchup} build orders for optimal timings`);
+      recommendations.push('Implement more consistent scouting patterns at key time markers');
+      recommendations.push(`Study pro-level ${matchup} replays for optimal unit compositions`);
+      
+      if (race === 'Zerg') {
+        recommendations.push('Focus on early drone production and efficient larva usage');
+      } else if (race === 'Terran') {
+        recommendations.push('Practice drop micro to apply multi-pronged pressure');
+      } else if (race === 'Protoss') {
+        recommendations.push('Improve probe production consistency and pylon placement');
+      }
+      
+      // Generate race-specific training plan
       const trainingPlan = [
         {
           day: 1,
           focus: 'Build Order Execution',
-          drill: `Practice the standard ${replayData.matchup} opening build order 5 times against AI.`
+          drill: `Practice the standard ${matchup} opening build order 5 times against AI.`
         },
         {
           day: 2,
@@ -64,13 +102,38 @@ export async function analyzeReplayData(replayData: ParsedReplayData): Promise<R
         {
           day: 4,
           focus: 'Unit Control',
-          drill: `Practice microing ${replayData.playerRace} units against ${replayData.opponentRace} units in unit tester.`
+          drill: `Practice microing ${race} units against ${opponentRace} units in unit tester.`
         },
         {
           day: 5,
           focus: 'Multitasking',
           drill: 'Practice harassing with a small group while maintaining macro at home.'
         },
+        {
+          day: 6,
+          focus: 'Decision Making',
+          drill: 'Watch your replays and identify key moments where different decisions could have been made.'
+        },
+        {
+          day: 7,
+          focus: 'Matchup Knowledge',
+          drill: `Watch 3 pro ${matchup} replays and take notes on build orders and timings.`
+        },
+        {
+          day: 8,
+          focus: 'Execution Speed',
+          drill: 'Practice the first 5 minutes of your build order focusing on perfect execution and timing.'
+        },
+        {
+          day: 9,
+          focus: 'Adaptation',
+          drill: 'Play 3 games where you scout early and adjust your build based on what you see.'
+        },
+        {
+          day: 10,
+          focus: 'Full Implementation',
+          drill: 'Apply all previous lessons in 5 games, focusing on one improvement area at a time.'
+        }
       ];
       
       resolve({
@@ -79,6 +142,6 @@ export async function analyzeReplayData(replayData: ParsedReplayData): Promise<R
         recommendations,
         trainingPlan
       });
-    }, 500); // Just a small delay to simulate processing
+    }, 300); // Reduced delay to improve UX
   });
 }

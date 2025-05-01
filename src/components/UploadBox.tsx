@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, X, FileText, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
-import { ParsedReplayResult, AnalyzedReplayResult } from '@/services/replayParserService';
+import { AnalyzedReplayResult } from '@/services/replayParserService';
 import { useReplayParser } from '@/hooks/useReplayParser';
 
 interface UploadBoxProps {
@@ -78,6 +78,17 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     setUploadStatus('uploading');
     setStatusMessage('Preparing replay file...');
     
+    // Setup progress animation
+    const progressInterval = setInterval(() => {
+      setProgress(prevProgress => {
+        // Slowly increase progress up to 90% during processing
+        if (prevProgress < 90) {
+          return prevProgress + (90 - prevProgress) * 0.1;
+        }
+        return prevProgress;
+      });
+    }, 800);
+    
     try {
       // Show initial progress
       setProgress(10);
@@ -85,7 +96,6 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       // Start parsing phase immediately
       setUploadStatus('parsing');
       setStatusMessage('Parsing replay in browser...');
-      setProgress(30);
       
       // Parse the file with browser-based parser
       console.log('[UploadBox] Starting parsing with browser parser:', file.name);
@@ -96,8 +106,8 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         throw new Error(parsingError || 'Failed to parse replay file');
       }
       
-      // Advance progress to show near completion
-      setProgress(90);
+      // Clear the progress interval
+      clearInterval(progressInterval);
       
       // Complete the upload
       setProgress(100);
@@ -108,7 +118,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         description: `${file.name} has been successfully parsed and analyzed.`,
       });
       
-      // Use the actual parsed data instead of fallback/dummy data
+      // Use the actual parsed data
       if (onUploadComplete && parsedData) {
         console.log('[UploadBox] Sending parsed data to parent component:', parsedData);
         onUploadComplete(file, parsedData);
@@ -125,6 +135,10 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
           variant: "destructive",
         });
       }
+      
+      // Clear the progress interval
+      clearInterval(progressInterval);
+      setProgress(0);
     }
   };
 

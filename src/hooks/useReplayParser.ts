@@ -1,6 +1,6 @@
 
 import { useState } from 'react';
-import { parseReplayFile, ParsedReplayResult, AnalyzedReplayResult } from '@/services/replayParserService';
+import { parseReplayFile, AnalyzedReplayResult } from '@/services/replayParserService';
 import { useToast } from '@/hooks/use-toast';
 
 interface ReplayParserResult {
@@ -49,6 +49,11 @@ export function useReplayParser(): ReplayParserResult {
         if (!parsedData) {
           throw new Error('Failed to parse replay file');
         }
+        
+        // Ensure all required properties exist
+        if (!parsedData.strengths) parsedData.strengths = [];
+        if (!parsedData.weaknesses) parsedData.weaknesses = [];
+        if (!parsedData.recommendations) parsedData.recommendations = [];
         
         console.log('[useReplayParser] Successfully parsed replay data:', parsedData);
         return parsedData;
@@ -141,6 +146,23 @@ export function useReplayParser(): ReplayParserResult {
             'Focus on earlier expansions',
             'Develop a better scouting routine',
             'Study optimal unit compositions for this matchup'
+          ],
+          trainingPlan: [
+            {
+              day: 1,
+              focus: 'Build Order Execution',
+              drill: `Practice the standard ${playerRace.charAt(0)}v${opponentRace.charAt(0)} opening build order 5 times against AI.`
+            },
+            {
+              day: 2,
+              focus: 'Scouting Timing',
+              drill: 'Set specific times to scout and stick to them for 3 games.'
+            },
+            {
+              day: 3,
+              focus: 'Resource Management',
+              drill: 'Play 3 games focusing only on minimizing idle production buildings and maintaining worker production.'
+            }
           ]
         };
         
