@@ -200,8 +200,9 @@ function mapScrepJsFormat(rawResult: any): ParsedReplayResult {
     // Create matchup string
     const matchup = `${playerRace.charAt(0)}v${opponentRace.charAt(0)}`;
     
-    // Extract map name
-    const mapName = header.Map || 'Unknown Map';
+    // Extract and clean map name - removing control characters
+    const rawMapName = header.Map || 'Unknown Map';
+    const mapName = cleanMapName(rawMapName);
     
     // Calculate duration from frames (StarCraft BW runs at 23.81 frames per second)
     const frames = header.Frames || 0;
@@ -254,6 +255,42 @@ function mapScrepJsFormat(rawResult: any): ParsedReplayResult {
     console.error('🗺️ [replayMapper] Error mapping screp-js data:', error);
     throw new Error(`Failed to map screp-js data: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+/**
+ * Clean map name by removing control characters and formatting codes
+ */
+function cleanMapName(rawMapName: string): string {
+  if (!rawMapName) return 'Unknown Map';
+  
+  // Replace common control characters and formatting codes
+  let cleanName = rawMapName
+    .replace(/[\u0000-\u001F]/g, '') // Remove control characters
+    .replace(/[\u0007][A-Za-z][\u0006]/g, '') // Remove color codes like \u0007E\u0006
+    .replace(/[\u0005][0-9\.]+/g, '') // Remove version numbers like \u00051.3
+    .trim();
+  
+  // If the map name became empty after cleaning, use a fallback
+  if (!cleanName || cleanName.length < 2) {
+    // Try to extract meaningful parts
+    const parts = rawMapName.split(/[\u0000-\u001F]/);
+    const meaningfulParts = parts.filter(part => part.length > 2);
+    
+    if (meaningfulParts.length > 0) {
+      return meaningfulParts.join(' ');
+    }
+    
+    // If still can't extract, try to get alphanumeric characters
+    const alphaNumeric = rawMapName.replace(/[^a-zA-Z0-9\s]/g, '').trim();
+    if (alphaNumeric && alphaNumeric.length > 2) {
+      return alphaNumeric;
+    }
+    
+    // Last resort
+    return 'Unknown Map';
+  }
+  
+  return cleanName;
 }
 
 /**

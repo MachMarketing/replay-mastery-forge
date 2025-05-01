@@ -96,7 +96,10 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         throw new Error(parsingError || 'Failed to parse replay file');
       }
       
-      // Success state
+      // Advance progress to show near completion
+      setProgress(90);
+      
+      // Complete the upload
       setProgress(100);
       setUploadStatus('success');
       
@@ -105,7 +108,9 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         description: `${file.name} has been successfully parsed and analyzed.`,
       });
       
+      // Use the actual parsed data instead of fallback/dummy data
       if (onUploadComplete && parsedData) {
+        console.log('[UploadBox] Sending parsed data to parent component:', parsedData);
         onUploadComplete(file, parsedData);
       }
     } catch (error) {
