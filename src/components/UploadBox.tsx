@@ -76,47 +76,21 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
 
     setFile(file);
     setUploadStatus('uploading');
-    setStatusMessage('Uploading replay file...');
+    setStatusMessage('Preparing replay file...');
     
     try {
-      // First step: Upload simulation
-      setProgress(0);
-      let uploadProgress = 0;
-      const interval = setInterval(() => {
-        uploadProgress += Math.random() * 10;
-        if (uploadProgress >= 100) {
-          uploadProgress = 100;
-          clearInterval(interval);
-        }
-        setProgress(uploadProgress);
-      }, 200);
-
-      // Wait for upload simulation to complete
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      clearInterval(interval);
+      // Show initial progress
+      setProgress(10);
       
-      // Parse the file with browser-based parser
+      // Start parsing phase immediately
       setUploadStatus('parsing');
       setStatusMessage('Parsing replay in browser...');
-      setProgress(0);
-      
-      // Start progress animation for parsing phase
-      let parsingProgress = 0;
-      const parsingInterval = setInterval(() => {
-        parsingProgress += Math.random() * 5;
-        if (parsingProgress >= 100) {
-          parsingProgress = 100;
-          clearInterval(parsingInterval);
-        }
-        setProgress(parsingProgress);
-      }, 300);
+      setProgress(30);
       
       // Parse the file with browser-based parser
-      console.log('UploadBox: parsing with browser parser', file.name);
+      console.log('[UploadBox] Starting parsing with browser parser:', file.name);
       const parsedData = await parseReplay(file);
-      console.log('UploadBox: parser response', parsedData);
-      
-      clearInterval(parsingInterval);
+      console.log('[UploadBox] Parser response:', parsedData);
       
       if (!parsedData) {
         throw new Error(parsingError || 'Failed to parse replay file');
@@ -127,7 +101,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       setUploadStatus('success');
       
       toast({
-        title: "Upload Complete",
+        title: "Analysis Complete",
         description: `${file.name} has been successfully parsed and analyzed.`,
       });
       
@@ -135,7 +109,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         onUploadComplete(file, parsedData);
       }
     } catch (error) {
-      console.error('Error processing file:', error);
+      console.error('[UploadBox] Error processing file:', error);
       setUploadStatus('error');
       setStatusMessage(error instanceof Error ? error.message : 'Failed to parse replay file');
       
@@ -228,7 +202,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
             Max file size: {maxFileSize}MB | Supported format: .rep
           </p>
           
-          {/* Parser status indicator - Browser-based parser is always available */}
+          {/* Parser status indicator */}
           <div className="mt-4 flex items-center">
             <div className="h-2 w-2 rounded-full mr-2 bg-green-500" />
             <p className="text-xs text-muted-foreground">
@@ -271,7 +245,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
               <Progress value={progress} className="h-2" />
               <div className="flex justify-between mt-1">
                 <p className="text-xs text-muted-foreground">
-                  {uploadStatus === 'uploading' ? 'Uploading...' : 'Parsing replay...'}
+                  {uploadStatus === 'uploading' ? 'Preparing...' : 'Parsing replay...'}
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {Math.round(progress)}%

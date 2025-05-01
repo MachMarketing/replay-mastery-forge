@@ -11,6 +11,7 @@ import ReplaysPage from '@/pages/ReplaysPage';
 import UploadPage from '@/pages/UploadPage';
 import NotFound from '@/pages/NotFound';
 import ParserTestPage from '@/pages/ParserTestPage';
+import ParserTest from '@/pages/ParserTest';
 import { AuthProvider } from './context/AuthContext';
 import './App.css';
 
@@ -25,6 +26,7 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/parser-test" element={<ParserTestPage />} />
+          <Route path="/parser-debug" element={<ParserTest />} />
           
           {/* Protected Routes */}
           <Route path="/replays" element={<ProtectedRoute element={<ReplaysPage />} />} />

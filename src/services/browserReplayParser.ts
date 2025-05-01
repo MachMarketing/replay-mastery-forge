@@ -18,7 +18,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
   console.log('📊 [browserReplayParser] Parsing replay file in browser:', file.name, 'size:', file.size, 'bytes');
   
   try {
-    // Validieren der Datei
+    // Validate the file
     if (file.size === 0) {
       throw new Error('Replay file is empty (0 bytes)');
     }
@@ -45,10 +45,16 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       data = await readFileAsUint8Array(file);
       console.log('📊 [browserReplayParser] File data read successfully, length:', data.length, 'bytes');
       
-      // Grundlegende Validierung der Daten
       if (data.length < 100) {
         throw new Error('Replay file is too small and likely invalid (less than 100 bytes)');
       }
+      
+      // Debug: Output the first bytes to console for verification
+      const headerBytes = Array.from(data.slice(0, 16))
+        .map(byte => byte.toString(16).padStart(2, '0'))
+        .join(' ');
+      console.log('📊 [browserReplayParser] File header bytes:', headerBytes);
+      
     } catch (readError) {
       console.error('❌ [browserReplayParser] File reading error:', readError);
       throw new Error(`Failed to read replay file: ${readError instanceof Error ? readError.message : String(readError)}`);
@@ -65,11 +71,17 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     console.log('📊 [browserReplayParser] Parsing replay with bundled screp-js…');
     let result;
     try {
+      // Force await to ensure any promise is resolved
       result = await parseReplayWasm(data);
-      console.log('📊 [browserReplayParser] screp-js parsing result received:', !!result);
+      console.log('📊 [browserReplayParser] screp-js parsing result received:', result ? 'Success' : 'Empty result');
       
       if (!result) {
         throw new Error('Parser returned empty result');
+      }
+      
+      console.log('📊 [browserReplayParser] Parsed data structure:', Object.keys(result));
+      if (result.error) {
+        throw new Error(`Parser error: ${result.error}`);
       }
     } catch (parseError) {
       console.error('❌ [browserReplayParser] WASM parsing error:', parseError);
@@ -81,25 +93,13 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     try {
       const parsedData = mapRawToParsed(result);
       
-      // Validieren der geparsten Daten
-      if (!parsedData.playerName) {
-        console.warn('⚠️ [browserReplayParser] Player name is missing in parsed data');
-      }
-      if (!parsedData.opponentName) {
-        console.warn('⚠️ [browserReplayParser] Opponent name is missing in parsed data');
-      }
-      if (!parsedData.map) {
-        console.warn('⚠️ [browserReplayParser] Map name is missing in parsed data');
-      }
-      
       console.log('📊 [browserReplayParser] Successfully parsed replay data:', {
         playerName: parsedData.playerName,
         opponentName: parsedData.opponentName,
         map: parsedData.map,
         playerRace: parsedData.playerRace,
         opponentRace: parsedData.opponentRace,
-        result: parsedData.result,
-        buildOrderCount: parsedData.buildOrder?.length
+        result: parsedData.result
       });
       
       return parsedData;
@@ -107,7 +107,6 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       console.error('❌ [browserReplayParser] Data mapping error:', mappingError);
       throw new Error(`Failed to process replay data: ${mappingError instanceof Error ? mappingError.message : String(mappingError)}`);
     }
-    
   } catch (error) {
     console.error('❌ [browserReplayParser] Browser replay parsing error:', error);
     throw error; // Re-throw to let the calling code handle it

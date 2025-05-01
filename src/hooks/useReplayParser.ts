@@ -39,7 +39,8 @@ export function useReplayParser(): ReplayParserResult {
         return null;
       }
       
-      console.log('Starting browser-based replay parsing with screp-js');
+      console.log('[useReplayParser] Starting browser-based replay parsing with screp-js');
+      console.log('[useReplayParser] File details:', file.name, file.size, 'bytes');
       
       // Parse the replay file in the browser using screp-js
       const parsedData = await parseReplayFile(file);
@@ -48,12 +49,14 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error('Failed to parse replay file');
       }
       
-      console.log('Successfully parsed replay data with screp-js', parsedData);
+      console.log('[useReplayParser] Successfully parsed replay data:', parsedData);
       return parsedData;
       
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to parse replay file';
       setError(errorMessage);
+      
+      console.error('[useReplayParser] Replay parsing error:', err);
       
       // Display a toast notification with the error
       toast({
@@ -62,7 +65,6 @@ export function useReplayParser(): ReplayParserResult {
         variant: 'destructive',
       });
       
-      console.error('Replay parsing error:', errorMessage);
       return null;
     } finally {
       setIsProcessing(false);
