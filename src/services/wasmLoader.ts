@@ -41,6 +41,11 @@ export async function initParserWasm(): Promise<void> {
       await screpModule.ready;
     }
     
+    // Initialize the module if it has an init function
+    if (screpModule && typeof screpModule.init === 'function') {
+      await screpModule.init();
+    }
+    
     wasmInitialized = true;
     console.log('📊 [wasmLoader] WASM initialization successful');
   } catch (error) {
@@ -58,6 +63,7 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
   
   // Ensure module is initialized
   if (!screpModule || !wasmInitialized) {
+    console.log('📊 [wasmLoader] Module not initialized yet, initializing now...');
     await initParserWasm();
     
     if (!screpModule) {
@@ -81,13 +87,24 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
     throw new Error('No valid parse function found in the WASM module');
   }
   
-  // Parse the replay data
-  console.log('📊 [wasmLoader] Parsing replay with function:', parser.name || 'anonymous');
-  const result = await parser(data);
-  
-  if (!result) {
-    throw new Error('Parser returned empty result');
+  // Parse the replay data with better error handling
+  try {
+    console.log('📊 [wasmLoader] Parsing replay with function:', parser.name || 'anonymous');
+    const result = await parser(data);
+    
+    if (!result) {
+      throw new Error('Parser returned empty result');
+    }
+    
+    console.log('📊 [wasmLoader] Parsing successful, result structure:', Object.keys(result));
+    return result;
+  } catch (error) {
+    console.error('❌ [wasmLoader] Error during parsing:', error);
+    throw error;
   }
-  
-  return result;
 }
+
+// Pre-initialize the WASM module when this file is imported
+initParserWasm().catch(err => {
+  console.error('❌ [wasmLoader] Failed to pre-initialize WASM module:', err);
+});

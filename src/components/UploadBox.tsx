@@ -87,39 +87,31 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       clearInterval(progressIntervalRef.current);
     }
     
-    // For small files, progress should go faster
+    // For replay files, progress should move faster
     const interval = setInterval(() => {
       setProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          return 100;
-        }
-        
-        // Calculate progress increase
-        const increment = uploadStatus === 'parsing' ? 8 : 15;
-        const maxProgress = uploadStatus === 'parsing' ? 100 : 40;
+        // Small files should complete faster
+        const increment = uploadStatus === 'parsing' ? 15 : 30;
+        const maxProgress = uploadStatus === 'parsing' ? 100 : 50;
         
         const newProgress = Math.min(prev + increment, maxProgress);
         
         // When we reach uploading completion, move to parsing automatically
-        if (uploadStatus === 'uploading' && newProgress >= 40) {
+        if (uploadStatus === 'uploading' && newProgress >= 50) {
           setUploadStatus('parsing');
           setStatusMessage('Parsing replay data...');
         }
         
         return newProgress;
       });
-    }, 100); // Faster updates for small files
+    }, 50); // Faster updates for small files
     
     progressIntervalRef.current = interval;
     return interval;
   };
 
   const processFile = async (file: File) => {
-    if (!validateFile(file)) {
-      return;
-    }
-
+    console.log('[UploadBox] Starting file processing:', file.name);
     clearError();
     setFile(file);
     setUploadStatus('uploading');
@@ -131,9 +123,11 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     try {
       // Start parsing phase
       setTimeout(() => {
-        setUploadStatus('parsing');
-        setStatusMessage('Parsing replay in browser...');
-      }, 500);
+        if (uploadStatus !== 'error') {
+          setUploadStatus('parsing');
+          setStatusMessage('Parsing replay in browser...');
+        }
+      }, 300);
       
       // Parse the file with browser-based parser
       console.log('[UploadBox] Starting parsing:', file.name);
@@ -154,11 +148,15 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         description: `${file.name} has been successfully parsed and analyzed.`,
       });
       
-      // Send the parsed data to parent component
-      if (onUploadComplete && parsedData) {
-        console.log('[UploadBox] Sending parsed data to parent component:', parsedData);
-        onUploadComplete(file, parsedData);
-      }
+      // Ensure we wait a moment before transitioning to the analysis view
+      // This gives users visual feedback that the process completed
+      setTimeout(() => {
+        // Send the parsed data to parent component
+        if (onUploadComplete && parsedData) {
+          console.log('[UploadBox] Sending parsed data to parent component:', parsedData);
+          onUploadComplete(file, parsedData);
+        }
+      }, 500);
     } catch (error) {
       console.error('[UploadBox] Error processing file:', error);
       

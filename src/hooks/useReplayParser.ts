@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { parseReplayFile, AnalyzedReplayResult } from '@/services/replayParserService';
 import { useToast } from '@/hooks/use-toast';
+import { initParserWasm } from '@/services/wasmLoader';
 
 interface ReplayParserResult {
   parseReplay: (file: File) => Promise<AnalyzedReplayResult | null>;
@@ -14,6 +15,13 @@ export function useReplayParser(): ReplayParserResult {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+
+  // Pre-initialize WASM on hook mount
+  useState(() => {
+    initParserWasm().catch(err => {
+      console.error('[useReplayParser] Failed to pre-initialize WASM:', err);
+    });
+  });
 
   const clearError = () => {
     setError(null);
@@ -42,7 +50,7 @@ export function useReplayParser(): ReplayParserResult {
       
       console.log('[useReplayParser] Starting replay parsing for file:', file.name);
       
-      // Use the real parser - no fallbacks
+      // Use the real parser
       const parsedData = await parseReplayFile(file);
       
       console.log('[useReplayParser] Parsing completed successfully:', parsedData);

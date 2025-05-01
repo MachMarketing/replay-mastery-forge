@@ -62,6 +62,12 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     return result;
   } catch (error) {
     console.error('Error during replay parsing:', error);
-    throw error; // We won't use fallbacks - real analysis or nothing
+    
+    // We won't use fallbacks - real analysis or nothing
+    const errorMessage = error instanceof Error ? 
+      error.message : 
+      'Failed to parse replay file';
+      
+    throw new Error(`Parsing error: ${errorMessage}`);
   }
 }

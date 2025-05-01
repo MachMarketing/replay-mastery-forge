@@ -28,7 +28,7 @@ function App() {
           <Route path="/parser-test" element={<ParserTestPage />} />
           <Route path="/parser-debug" element={<ParserTest />} />
           
-          {/* Make upload route public so users can test it without login */}
+          {/* Upload route is public to allow users to test without login */}
           <Route path="/upload" element={<UploadPage />} />
           
           {/* Protected Routes */}

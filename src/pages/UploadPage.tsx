@@ -38,6 +38,11 @@ const UploadPage = () => {
     };
   }, []);
 
+  // Pre-fetch replays when the component loads
+  useEffect(() => {
+    fetchReplays();
+  }, [fetchReplays]);
+
   // Helper function for race normalization
   const normalizeRace = (race: string): 'Terran' | 'Protoss' | 'Zerg' => {
     const normalizedRace = race.toLowerCase();
@@ -61,7 +66,7 @@ const UploadPage = () => {
     setRawParsedData(parsedReplayData);
     
     try {
-      // Short delay to show loading state before processing player selection
+      // Short delay to show loading state for better UX
       setTimeout(() => {
         handlePlayerSelection(0);
       }, 300);
@@ -79,6 +84,7 @@ const UploadPage = () => {
 
   // Handle player perspective selection
   const handlePlayerSelection = (playerIndex: number) => {
+    console.log("Processing player selection:", playerIndex);
     if (!rawParsedData) {
       console.error('Cannot process player selection: No raw data available');
       setIsAnalyzing(false);

@@ -7,6 +7,12 @@ import { mapRawToParsed } from './replayMapper';
 import { ParsedReplayResult } from './replayParserService';
 import { readFileAsUint8Array } from './fileReader';
 
+// Initialize WASM module early
+const wasmReady = initParserWasm().catch(error => {
+  console.error('❌ [browserReplayParser] Failed to pre-initialize WASM:', error);
+  return false;
+});
+
 /**
  * Parse a StarCraft: Brood War replay file in the browser using the WASM-based parser
  * 
@@ -17,6 +23,9 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
   console.log('📊 [browserReplayParser] Starting parsing for file:', file.name, file.size, 'bytes');
   
   try {
+    // Ensure WASM is initialized
+    await wasmReady;
+    
     // Read the file as array buffer
     const fileData = await readFileAsUint8Array(file);
     console.log('📊 [browserReplayParser] File read successfully, size:', fileData.byteLength);
@@ -26,6 +35,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     const parsedReplay = await parseReplayWasm(fileData);
     
     if (!parsedReplay) {
+      console.error('❌ [browserReplayParser] Parser returned null or empty result');
       throw new Error('Parser returned null or empty result');
     }
     
@@ -39,6 +49,6 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     return mappedData;
   } catch (error) {
     console.error('❌ [browserReplayParser] Parsing error:', error);
-    throw error; // Propagate error to caller - we won't use fallbacks
+    throw error;
   }
 }
