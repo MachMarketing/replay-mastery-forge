@@ -39,6 +39,12 @@ if [ $DEBUG_MODE -eq 1 ]; then
   export DEBUG_SCREP=1
 fi
 
+# Check if running in browser environment
+if [ -n "$BROWSER_ENV" ]; then
+  echo -e "${YELLOW}Detected browser environment. Please use the web interface at /parser-test instead.${NC}"
+  exit 0
+fi
+
 # Run the test with ts-node
 # Pass any command line arguments to the test script
 echo -e "${BLUE}Starting test...${NC}"

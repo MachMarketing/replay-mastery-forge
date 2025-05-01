@@ -152,8 +152,17 @@ export async function runBrowserParserTest(replayFile: File): Promise<ParsedRepl
   }
 }
 
-// If this file is run directly (not imported), execute the test
-if (require.main === module) {
+// Modified Node.js entry point check that works in browser environments
+// Instead of using require.main === module which is Node.js specific
+// Use a check that will safely execute in both environments
+const isDirectlyExecuted = typeof process !== 'undefined' && 
+                          typeof process.versions !== 'undefined' && 
+                          typeof process.versions.node !== 'undefined' &&
+                          typeof module !== 'undefined' &&
+                          typeof require !== 'undefined' &&
+                          require.main === module;
+
+if (isDirectlyExecuted) {
   const filePath = process.argv[2]; // Optional file path argument
   runParserTest(filePath)
     .then(() => process.exit(0))
