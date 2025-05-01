@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -9,13 +10,14 @@ import { useReplays, Replay } from '@/hooks/useReplays';
 import { useToast } from '@/hooks/use-toast';
 import { useReplayParser } from '@/hooks/useReplayParser';
 import { ParsedReplayResult } from '@/services/replayParserService';
+import PlayerSelector from '@/components/PlayerSelector';
 
 // Define an interface that extends ParsedReplayResult with the additional fields needed by AnalysisResult
 interface ReplayData extends ParsedReplayResult {
-  id: string; // Make id required, not optional
-  strengths: string[]; // Make strengths required, not optional
-  weaknesses: string[]; // Make weaknesses required, not optional
-  recommendations: string[]; // Make recommendations required, not optional
+  id: string; 
+  strengths: string[]; 
+  weaknesses: string[]; 
+  recommendations: string[]; 
 }
 
 const UploadPage = () => {
@@ -24,6 +26,8 @@ const UploadPage = () => {
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const [isPremium] = useState(false);
   const [replayData, setReplayData] = useState<ReplayData | null>(null);
+  const [rawParsedData, setRawParsedData] = useState<ParsedReplayResult | null>(null);
+  const [selectedPlayerIndex, setSelectedPlayerIndex] = useState<number>(0);
   const { replays, fetchReplays } = useReplays();
   const { toast } = useToast();
   const { parseReplay, isProcessing, error: parserError } = useReplayParser();
@@ -46,32 +50,12 @@ const UploadPage = () => {
   const handleUploadComplete = async (uploadedFile: File, parsedReplayData: ParsedReplayResult) => {
     setFile(uploadedFile);
     setIsAnalyzing(true);
+    setRawParsedData(parsedReplayData);
     
     try {
-      // Ensure race values and result are properly normalized
-      const normalizedData = {
-        ...parsedReplayData,
-        playerRace: normalizeRace(parsedReplayData.playerRace),
-        opponentRace: normalizeRace(parsedReplayData.opponentRace),
-        result: normalizeResult(parsedReplayData.result)
-      };
+      // Default to first player (index 0)
+      handlePlayerSelection(0);
       
-      // Extend the parsedReplayData with the additional fields needed by AnalysisResult
-      const extendedData: ReplayData = {
-        ...normalizedData,
-        // Add required values for the fields
-        id: crypto.randomUUID(),
-        strengths: ["Good macro", "Consistent worker production"],
-        weaknesses: ["Delayed expansion", "Insufficient scouting"],
-        recommendations: ["Focus on early game scouting", "Work on build order optimization"]
-      };
-      
-      setReplayData(extendedData);
-      setIsAnalyzing(false);
-      setAnalysisComplete(true);
-      
-      // Refresh the replays list after successful upload
-      fetchReplays();
     } catch (error) {
       console.error('Analysis error:', error);
       toast({
@@ -81,6 +65,56 @@ const UploadPage = () => {
       });
       setIsAnalyzing(false);
     }
+  };
+
+  const handlePlayerSelection = (playerIndex: number) => {
+    if (!rawParsedData) return;
+    
+    setSelectedPlayerIndex(playerIndex);
+    
+    // Create adjusted data based on player selection
+    let adjustedData: ParsedReplayResult;
+    
+    if (playerIndex === 0) {
+      // First player is already correctly set up in rawParsedData
+      adjustedData = { ...rawParsedData };
+    } else {
+      // Swap player and opponent for second player perspective
+      adjustedData = {
+        ...rawParsedData,
+        playerName: rawParsedData.opponentName,
+        opponentName: rawParsedData.playerName,
+        playerRace: rawParsedData.opponentRace,
+        opponentRace: rawParsedData.playerRace,
+        // Invert result
+        result: rawParsedData.result === 'win' ? 'loss' : 'win'
+      };
+    }
+    
+    // Ensure race values and result are properly normalized
+    const normalizedData = {
+      ...adjustedData,
+      playerRace: normalizeRace(adjustedData.playerRace),
+      opponentRace: normalizeRace(adjustedData.opponentRace),
+      result: normalizeResult(adjustedData.result)
+    };
+    
+    // Extend the parsedReplayData with the additional fields needed by AnalysisResult
+    const extendedData: ReplayData = {
+      ...normalizedData,
+      // Add required values for the fields
+      id: crypto.randomUUID(),
+      strengths: normalizedData.strengths || ["Good macro", "Consistent worker production"],
+      weaknesses: normalizedData.weaknesses || ["Delayed expansion", "Insufficient scouting"],
+      recommendations: normalizedData.recommendations || ["Focus on early game scouting", "Work on build order optimization"]
+    };
+    
+    setReplayData(extendedData);
+    setIsAnalyzing(false);
+    setAnalysisComplete(true);
+    
+    // Refresh the replays list after successful upload
+    fetchReplays();
   };
 
   // Get recent uploads from replays list
@@ -166,8 +200,22 @@ const UploadPage = () => {
                   <p className="text-lg">Analyzing your replay...</p>
                   <p className="text-sm text-muted-foreground mt-2">This typically takes 15-30 seconds</p>
                 </div>
-              ) : analysisComplete && replayData ? (
-                <AnalysisResult data={replayData} isPremium={isPremium} />
+              ) : analysisComplete && replayData && rawParsedData ? (
+                <>
+                  {/* Player Selector */}
+                  <PlayerSelector 
+                    player1={rawParsedData.playerName} 
+                    player2={rawParsedData.opponentName}
+                    race1={rawParsedData.playerRace}
+                    race2={rawParsedData.opponentRace}
+                    selectedPlayerIndex={selectedPlayerIndex}
+                    onSelectPlayer={handlePlayerSelection}
+                  />
+                  
+                  <div className="mt-4">
+                    <AnalysisResult data={replayData} isPremium={isPremium} />
+                  </div>
+                </>
               ) : (
                 <div className="h-64 flex flex-col items-center justify-center bg-secondary/20 rounded-lg border border-dashed border-border">
                   <div className="text-center">

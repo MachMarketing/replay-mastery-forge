@@ -13,7 +13,11 @@ import {
   Clock, 
   Activity, 
   BarChart2, 
-  ChevronDown 
+  ChevronDown,
+  Award,
+  BookOpen,
+  Calendar,
+  Flag
 } from 'lucide-react';
 
 interface BuildOrder {
@@ -97,7 +101,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
   return (
     <div className="bg-card rounded-lg border border-border overflow-hidden">
       {/* Header */}
-      <div className="p-6 bg-secondary/50">
+      <div className="p-6 bg-gradient-to-r from-secondary/30 to-secondary/10">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h2 className="text-2xl font-bold flex items-center gap-2">
@@ -106,12 +110,12 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
               <span className={getRaceColor(data.opponentRace)}>{data.opponentName}</span>
             </h2>
             <p className="text-muted-foreground">
-              {data.matchup} on {data.map} • {data.date}
+              <span className="font-medium">{data.matchup}</span> on {data.map} • {data.date}
             </p>
           </div>
           
           <div className="flex items-center gap-3">
-            <Badge variant={data.result === 'win' ? 'default' : 'destructive'} className="text-sm">
+            <Badge variant={data.result === 'win' ? "default" : "destructive"} className="text-sm">
               {data.result.toUpperCase()}
             </Badge>
             <Badge variant="outline" className="flex items-center gap-1">
@@ -128,21 +132,32 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
 
       <Tabs defaultValue="overview">
         <TabsList className="w-full grid grid-cols-3 md:grid-cols-5 bg-background border-y border-border">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="build">Build Order</TabsTrigger>
-          <TabsTrigger value="analysis">Detailed Analysis</TabsTrigger>
-          <TabsTrigger value="training" disabled={!isPremium}>
-            Training Plan {!isPremium && <span className="ml-1">🔒</span>}
+          <TabsTrigger value="overview" className="gap-1">
+            <Award className="w-4 h-4 mr-1" />
+            Overview
           </TabsTrigger>
-          <TabsTrigger value="stats" disabled={!isPremium}>
-            Advanced Stats {!isPremium && <span className="ml-1">🔒</span>}
+          <TabsTrigger value="build" className="gap-1">
+            <BookOpen className="w-4 h-4 mr-1" />
+            Build Order
+          </TabsTrigger>
+          <TabsTrigger value="analysis" className="gap-1">
+            <BarChart2 className="w-4 h-4 mr-1" />
+            Analysis
+          </TabsTrigger>
+          <TabsTrigger value="training" disabled={!isPremium} className="gap-1">
+            <Flag className="w-4 h-4 mr-1" />
+            Training {!isPremium && <span className="ml-1">🔒</span>}
+          </TabsTrigger>
+          <TabsTrigger value="stats" disabled={!isPremium} className="gap-1">
+            <Activity className="w-4 h-4 mr-1" />
+            Stats {!isPremium && <span className="ml-1">🔒</span>}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Strengths */}
-            <div className="bg-secondary/20 rounded-lg p-4 border border-border">
+            <div className="bg-secondary/10 rounded-lg p-4 border border-border hover:border-strength/40 transition-colors">
               <h3 className="text-lg font-medium mb-3 flex items-center text-strength">
                 <Trophy size={18} className="mr-2" />
                 Strengths
@@ -158,7 +173,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
             </div>
 
             {/* Weaknesses */}
-            <div className="bg-secondary/20 rounded-lg p-4 border border-border">
+            <div className="bg-secondary/10 rounded-lg p-4 border border-border hover:border-weakness/40 transition-colors">
               <h3 className="text-lg font-medium mb-3 flex items-center text-weakness">
                 <AlertTriangle size={18} className="mr-2" />
                 Weaknesses
@@ -174,7 +189,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
             </div>
 
             {/* Recommendations */}
-            <div className="bg-secondary/20 rounded-lg p-4 border border-border">
+            <div className="bg-secondary/10 rounded-lg p-4 border border-border hover:border-improvement/40 transition-colors">
               <h3 className="text-lg font-medium mb-3 flex items-center text-improvement">
                 <BarChart2 size={18} className="mr-2" />
                 Key Recommendations
@@ -192,7 +207,10 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
 
           {/* Skill Assessment */}
           <div className="mt-8">
-            <h3 className="text-lg font-medium mb-4">Skill Assessment</h3>
+            <h3 className="text-lg font-medium mb-4 flex items-center">
+              <Award className="mr-2 h-5 w-5" />
+              Skill Assessment
+            </h3>
             
             <div className="space-y-6">
               <div>
@@ -222,7 +240,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
               )}
               
               {!isPremium && (
-                <div className="bg-secondary/20 rounded-lg p-4 border border-border">
+                <div className="bg-secondary/10 rounded-lg p-4 border border-border">
                   <h3 className="text-lg font-medium mb-2">Unlock Premium Analysis</h3>
                   <p className="text-muted-foreground mb-4">
                     Get access to EAPM measurements, resource efficiency analysis, 
@@ -236,7 +254,10 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
         </TabsContent>
 
         <TabsContent value="build" className="p-6">
-          <h3 className="text-xl font-medium mb-4">Build Order Analysis</h3>
+          <h3 className="text-xl font-medium mb-4 flex items-center">
+            <BookOpen className="mr-2 h-5 w-5" />
+            Build Order Analysis
+          </h3>
           
           <div className="relative overflow-x-auto rounded-md border border-border">
             <table className="w-full text-sm">
@@ -260,7 +281,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
           </div>
           
           {!isPremium && (
-            <div className="mt-6 bg-secondary/20 rounded-lg p-4 border border-border">
+            <div className="mt-6 bg-secondary/10 rounded-lg p-4 border border-border">
               <h3 className="text-lg font-medium mb-2">Premium Build Order Analysis</h3>
               <p className="text-muted-foreground mb-4">
                 Upgrade to see detailed build order efficiency analysis, comparisons with pro builds, 
@@ -272,17 +293,23 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
         </TabsContent>
 
         <TabsContent value="analysis" className="p-6">
-          <h3 className="text-xl font-medium mb-6">Detailed Game Analysis</h3>
+          <h3 className="text-xl font-medium mb-6 flex items-center">
+            <BarChart2 className="mr-2 h-5 w-5" />
+            Detailed Game Analysis
+          </h3>
           
           <div className="space-y-4">
-            <div className="border border-border rounded-lg overflow-hidden">
+            <div className="border border-border rounded-lg overflow-hidden transition-colors hover:border-primary/50">
               <button 
                 className={`w-full flex justify-between items-center p-4 text-left ${
                   expandedSection === 'early' ? 'bg-secondary/50' : 'bg-card'
                 }`}
                 onClick={() => toggleSection('early')}
               >
-                <span className="text-lg font-medium">Early Game (0:00 - 5:00)</span>
+                <span className="text-lg font-medium flex items-center">
+                  <Calendar className="h-5 w-5 mr-2" />
+                  Early Game (0:00 - 5:00)
+                </span>
                 <ChevronDown 
                   className={`transform transition-transform ${
                     expandedSection === 'early' ? 'rotate-180' : ''
@@ -303,7 +330,10 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
                     than optimal. This delayed your reaction to your opponent's tech choice.
                   </p>
                   
-                  <h4 className="font-medium mt-4 mb-2">Recommendations:</h4>
+                  <h4 className="font-medium mt-4 mb-2 flex items-center">
+                    <ChevronRight className="h-4 w-4 mr-1 text-improvement" />
+                    Recommendations:
+                  </h4>
                   <ul className="list-disc pl-5 space-y-1">
                     <li>Practice your supply timing to avoid early blocks</li>
                     <li>Send your first scout around 1:30 - 2:00</li>
@@ -313,14 +343,17 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
               )}
             </div>
             
-            <div className="border border-border rounded-lg overflow-hidden">
+            <div className="border border-border rounded-lg overflow-hidden transition-colors hover:border-primary/50">
               <button 
                 className={`w-full flex justify-between items-center p-4 text-left ${
                   expandedSection === 'mid' ? 'bg-secondary/50' : 'bg-card'
                 }`}
                 onClick={() => toggleSection('mid')}
               >
-                <span className="text-lg font-medium">Mid Game (5:00 - 12:00)</span>
+                <span className="text-lg font-medium flex items-center">
+                  <Calendar className="h-5 w-5 mr-2" />
+                  Mid Game (5:00 - 12:00)
+                </span>
                 <ChevronDown 
                   className={`transform transition-transform ${
                     expandedSection === 'mid' ? 'rotate-180' : ''
@@ -341,7 +374,10 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
                     by about 2 minutes compared to optimal timing. This put you behind in economy.
                   </p>
                   
-                  <h4 className="font-medium mt-4 mb-2">Recommendations:</h4>
+                  <h4 className="font-medium mt-4 mb-2 flex items-center">
+                    <ChevronRight className="h-4 w-4 mr-1 text-improvement" />
+                    Recommendations:
+                  </h4>
                   <ul className="list-disc pl-5 space-y-1">
                     <li>Work on sieging tanks on high ground or protected positions</li>
                     <li>Take your third base around 7:00 against this opponent's build</li>
@@ -351,14 +387,17 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
               )}
             </div>
             
-            <div className="border border-border rounded-lg overflow-hidden">
+            <div className="border border-border rounded-lg overflow-hidden transition-colors hover:border-primary/50">
               <button 
                 className={`w-full flex justify-between items-center p-4 text-left ${
                   expandedSection === 'late' ? 'bg-secondary/50' : 'bg-card'
                 }`}
                 onClick={() => toggleSection('late')}
               >
-                <span className="text-lg font-medium">Late Game (12:00+)</span>
+                <span className="text-lg font-medium flex items-center">
+                  <Calendar className="h-5 w-5 mr-2" />
+                  Late Game (12:00+)
+                </span>
                 <ChevronDown 
                   className={`transform transition-transform ${
                     expandedSection === 'late' ? 'rotate-180' : ''
@@ -380,7 +419,10 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
                     micro control.
                   </p>
                   
-                  <h4 className="font-medium mt-4 mb-2">Recommendations:</h4>
+                  <h4 className="font-medium mt-4 mb-2 flex items-center">
+                    <ChevronRight className="h-4 w-4 mr-1 text-improvement" />
+                    Recommendations:
+                  </h4>
                   <ul className="list-disc pl-5 space-y-1">
                     <li>Build detection units earlier against this race/build</li>
                     <li>Consider adding air units to your late-game composition</li>
@@ -392,7 +434,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
           </div>
           
           {!isPremium && (
-            <div className="mt-6 bg-secondary/20 rounded-lg p-4 border border-border">
+            <div className="mt-6 bg-secondary/10 rounded-lg p-4 border border-border">
               <h3 className="text-lg font-medium mb-2">Get More Detailed Analysis</h3>
               <p className="text-muted-foreground mb-4">
                 Premium members receive minute-by-minute analysis, key decision point reviews,
@@ -406,12 +448,18 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
         <TabsContent value="training" className="p-6">
           {isPremium && data.trainingPlan ? (
             <>
-              <h3 className="text-xl font-medium mb-6">10-Day Training Plan</h3>
+              <h3 className="text-xl font-medium mb-6 flex items-center">
+                <Flag className="mr-2 h-5 w-5" />
+                10-Day Training Plan
+              </h3>
               
               <div className="space-y-4">
                 {data.trainingPlan.map((day, index) => (
-                  <div key={index} className="bg-secondary/20 rounded-lg p-4 border border-border">
-                    <h4 className="font-medium text-lg mb-2">Day {day.day}: {day.focus}</h4>
+                  <div key={index} className="bg-secondary/10 rounded-lg p-4 border border-border hover:border-primary/50 transition-colors">
+                    <h4 className="font-medium text-lg mb-2 flex items-center">
+                      <Calendar className="h-4 w-4 mr-2" />
+                      Day {day.day}: {day.focus}
+                    </h4>
                     <p className="text-muted-foreground mb-3">
                       {day.drill}
                     </p>
@@ -439,31 +487,34 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
         <TabsContent value="stats" className="p-6">
           {isPremium && data.resourcesGraph ? (
             <>
-              <h3 className="text-xl font-medium mb-6">Advanced Statistics</h3>
+              <h3 className="text-xl font-medium mb-6 flex items-center">
+                <Activity className="mr-2 h-5 w-5" />
+                Advanced Statistics
+              </h3>
               
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-secondary/20 rounded-lg p-4 border border-border">
+                <div className="bg-secondary/10 rounded-lg p-4 border border-border hover:border-primary/50 transition-colors">
                   <h4 className="font-medium mb-3">Resource Collection Rate</h4>
                   <div className="h-64 bg-card rounded border border-border flex items-center justify-center">
                     <p className="text-muted-foreground">Resource chart would be displayed here</p>
                   </div>
                 </div>
                 
-                <div className="bg-secondary/20 rounded-lg p-4 border border-border">
+                <div className="bg-secondary/10 rounded-lg p-4 border border-border hover:border-primary/50 transition-colors">
                   <h4 className="font-medium mb-3">APM Over Time</h4>
                   <div className="h-64 bg-card rounded border border-border flex items-center justify-center">
                     <p className="text-muted-foreground">APM chart would be displayed here</p>
                   </div>
                 </div>
                 
-                <div className="bg-secondary/20 rounded-lg p-4 border border-border">
+                <div className="bg-secondary/10 rounded-lg p-4 border border-border hover:border-primary/50 transition-colors">
                   <h4 className="font-medium mb-3">Unit Production</h4>
                   <div className="h-64 bg-card rounded border border-border flex items-center justify-center">
                     <p className="text-muted-foreground">Unit production chart would be displayed here</p>
                   </div>
                 </div>
                 
-                <div className="bg-secondary/20 rounded-lg p-4 border border-border">
+                <div className="bg-secondary/10 rounded-lg p-4 border border-border hover:border-primary/50 transition-colors">
                   <h4 className="font-medium mb-3">Army Value Comparison</h4>
                   <div className="h-64 bg-card rounded border border-border flex items-center justify-center">
                     <p className="text-muted-foreground">Army value chart would be displayed here</p>
