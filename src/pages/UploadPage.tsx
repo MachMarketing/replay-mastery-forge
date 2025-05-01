@@ -12,7 +12,6 @@ import { useReplayParser } from '@/hooks/useReplayParser';
 import { AnalyzedReplayResult } from '@/services/replayParserService';
 import PlayerSelector from '@/components/PlayerSelector';
 
-// Define an interface that extends AnalyzedReplayResult with the additional fields needed by AnalysisResult
 interface ReplayData extends AnalyzedReplayResult {
   id: string;
 }
@@ -29,29 +28,32 @@ const UploadPage = () => {
   const { toast } = useToast();
   const { parseReplay, isProcessing } = useReplayParser();
 
-  // Reset analysis state when component unmounts
+  // Reset states when component unmounts
   useEffect(() => {
     return () => {
       setIsAnalyzing(false);
       setAnalysisComplete(false);
+      setRawParsedData(null);
+      setReplayData(null);
     };
   }, []);
 
-  // Helper function to ensure race is one of the valid types
+  // Helper function for race normalization
   const normalizeRace = (race: string): 'Terran' | 'Protoss' | 'Zerg' => {
     const normalizedRace = race.toLowerCase();
     if (normalizedRace.includes('terr') || normalizedRace.includes('t')) return 'Terran';
     if (normalizedRace.includes('prot') || normalizedRace.includes('p')) return 'Protoss';
     if (normalizedRace.includes('zerg') || normalizedRace.includes('z')) return 'Zerg';
-    return 'Terran'; // Default fallback
+    return 'Terran'; 
   };
   
-  // Helper function to normalize result to win/loss
+  // Helper for result normalization
   const normalizeResult = (result: string): 'win' | 'loss' => {
     const normalizedResult = result.toLowerCase();
     return normalizedResult.includes('win') ? 'win' : 'loss';
   };
 
+  // Handler for when upload is complete
   const handleUploadComplete = async (uploadedFile: File, parsedReplayData: AnalyzedReplayResult) => {
     console.log("Upload complete with data:", parsedReplayData);
     setFile(uploadedFile);
@@ -59,11 +61,10 @@ const UploadPage = () => {
     setRawParsedData(parsedReplayData);
     
     try {
-      // Default to first player (index 0) - with slight delay to show the loading state
+      // Short delay to show loading state before processing player selection
       setTimeout(() => {
         handlePlayerSelection(0);
-      }, 500);
-      
+      }, 300);
     } catch (error) {
       console.error('Analysis error:', error);
       toast({
@@ -76,6 +77,7 @@ const UploadPage = () => {
     }
   };
 
+  // Handle player perspective selection
   const handlePlayerSelection = (playerIndex: number) => {
     if (!rawParsedData) {
       console.error('Cannot process player selection: No raw data available');
@@ -127,7 +129,6 @@ const UploadPage = () => {
     // Extend the parsedReplayData with the additional fields needed by AnalysisResult
     const extendedData: ReplayData = {
       ...normalizedData,
-      // Add required values for the fields
       id: crypto.randomUUID(),
     };
     

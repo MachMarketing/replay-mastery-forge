@@ -23,7 +23,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   const { toast } = useToast();
   const { parseReplay, isProcessing, error: parsingError, clearError } = useReplayParser();
   
-  // Clean up progress interval on unmount or when component updates
+  // Clean up progress interval on unmount
   useEffect(() => {
     return () => {
       if (progressIntervalRef.current) {
@@ -81,33 +81,35 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
 
   const simulateProgress = () => {
     setProgress(0);
-    let currentProgress = 0;
     
     // Clear any existing interval
     if (progressIntervalRef.current) {
       clearInterval(progressIntervalRef.current);
     }
     
+    // For small files, progress should go faster
     const interval = setInterval(() => {
-      currentProgress += Math.random() * 10;
-      
-      // Cap progress at different stages based on status
-      let maxProgress = 95;
-      if (uploadStatus === 'uploading') maxProgress = 40;
-      if (uploadStatus === 'parsing') maxProgress = 95;
-      
-      if (currentProgress > maxProgress) currentProgress = maxProgress;
-      
-      setProgress(currentProgress);
-      
-      // When we reach uploading completion, move to parsing automatically
-      if (uploadStatus === 'uploading' && currentProgress >= 40) {
-        setUploadStatus('parsing');
-        setStatusMessage('Parsing replay data...');
-        currentProgress = 45; // Reset progress for parsing phase
-      }
-      
-    }, 400);
+      setProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          return 100;
+        }
+        
+        // Calculate progress increase
+        const increment = uploadStatus === 'parsing' ? 8 : 15;
+        const maxProgress = uploadStatus === 'parsing' ? 100 : 40;
+        
+        const newProgress = Math.min(prev + increment, maxProgress);
+        
+        // When we reach uploading completion, move to parsing automatically
+        if (uploadStatus === 'uploading' && newProgress >= 40) {
+          setUploadStatus('parsing');
+          setStatusMessage('Parsing replay data...');
+        }
+        
+        return newProgress;
+      });
+    }, 100); // Faster updates for small files
     
     progressIntervalRef.current = interval;
     return interval;
@@ -118,13 +120,12 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       return;
     }
 
-    // Clear any errors from previous attempts
     clearError();
     setFile(file);
     setUploadStatus('uploading');
     setStatusMessage('Preparing replay file...');
     
-    // Start progress simulation
+    // Start progress simulation for fast progress indication
     const progressInterval = simulateProgress();
     
     try {
@@ -132,10 +133,10 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       setTimeout(() => {
         setUploadStatus('parsing');
         setStatusMessage('Parsing replay in browser...');
-      }, 1000);
+      }, 500);
       
       // Parse the file with browser-based parser
-      console.log('[UploadBox] Starting parsing with browser parser:', file.name);
+      console.log('[UploadBox] Starting parsing:', file.name);
       const parsedData = await parseReplay(file);
       
       if (!parsedData) {
@@ -153,7 +154,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         description: `${file.name} has been successfully parsed and analyzed.`,
       });
       
-      // Use the actual parsed data
+      // Send the parsed data to parent component
       if (onUploadComplete && parsedData) {
         console.log('[UploadBox] Sending parsed data to parent component:', parsedData);
         onUploadComplete(file, parsedData);
@@ -161,7 +162,6 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     } catch (error) {
       console.error('[UploadBox] Error processing file:', error);
       
-      // Clear the progress interval
       clearInterval(progressInterval);
       progressIntervalRef.current = null;
       
@@ -169,13 +169,11 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       setStatusMessage(error instanceof Error ? error.message : 'Failed to parse replay file');
       setProgress(0);
       
-      if (!parsingError) {
-        toast({
-          title: "Processing Failed",
-          description: error instanceof Error ? error.message : "Failed to parse replay file",
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Processing Failed",
+        description: error instanceof Error ? error.message : "Failed to parse replay file",
+        variant: "destructive",
+      });
     }
   };
 
@@ -199,7 +197,6 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     }
   };
 
-  // Display the error state that matches the design in the image
   const renderFileError = () => {
     if (uploadStatus === 'error' && file) {
       return (
