@@ -28,9 +28,11 @@ function App() {
           <Route path="/parser-test" element={<ParserTestPage />} />
           <Route path="/parser-debug" element={<ParserTest />} />
           
+          {/* Make upload route public so users can test it without login */}
+          <Route path="/upload" element={<UploadPage />} />
+          
           {/* Protected Routes */}
           <Route path="/replays" element={<ProtectedRoute element={<ReplaysPage />} />} />
-          <Route path="/upload" element={<ProtectedRoute element={<UploadPage />} />} />
           
           {/* 404 Page */}
           <Route path="*" element={<NotFound />} />

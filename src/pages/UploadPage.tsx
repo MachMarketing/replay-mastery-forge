@@ -5,7 +5,7 @@ import Footer from '@/components/Footer';
 import UploadBox from '@/components/UploadBox';
 import AnalysisResult from '@/components/AnalysisResult';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Upload as UploadIcon } from 'lucide-react';
+import { Loader2, UploadIcon } from 'lucide-react';
 import { useReplays, Replay } from '@/hooks/useReplays';
 import { useToast } from '@/hooks/use-toast';
 import { useReplayParser } from '@/hooks/useReplayParser';
@@ -53,11 +53,10 @@ const UploadPage = () => {
   };
 
   const handleUploadComplete = async (uploadedFile: File, parsedReplayData: AnalyzedReplayResult) => {
+    console.log("Upload complete with data:", parsedReplayData);
     setFile(uploadedFile);
     setIsAnalyzing(true);
     setRawParsedData(parsedReplayData);
-    
-    console.log("Upload complete with data:", parsedReplayData);
     
     try {
       // Default to first player (index 0) - with slight delay to show the loading state
@@ -257,14 +256,14 @@ const UploadPage = () => {
                     </div>
                   </div>
                 </div>
-              ) : analysisComplete && replayData && rawParsedData ? (
+              ) : analysisComplete && replayData ? (
                 <>
                   {/* Player Selector */}
                   <PlayerSelector 
-                    player1={rawParsedData.playerName} 
-                    player2={rawParsedData.opponentName}
-                    race1={rawParsedData.playerRace}
-                    race2={rawParsedData.opponentRace}
+                    player1={rawParsedData?.playerName || 'Player'} 
+                    player2={rawParsedData?.opponentName || 'Opponent'}
+                    race1={normalizeRace(rawParsedData?.playerRace || 'Terran')}
+                    race2={normalizeRace(rawParsedData?.opponentRace || 'Terran')}
                     selectedPlayerIndex={selectedPlayerIndex}
                     onSelectPlayer={handlePlayerSelection}
                   />

@@ -24,6 +24,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     try {
       console.log('📊 [browserReplayParser] Initializing WASM parser...');
       await initParserWasm();
+      console.log('📊 [browserReplayParser] WASM parser initialized successfully');
     } catch (wasmInitError) {
       console.error('❌ [browserReplayParser] WASM initialization error:', wasmInitError);
       throw new Error(`WASM initialization failed: ${wasmInitError instanceof Error ? wasmInitError.message : String(wasmInitError)}`);
@@ -35,6 +36,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     
     try {
       parsedReplay = await parseReplayWasm(new Uint8Array(fileBuffer));
+      console.log('📊 [browserReplayParser] WASM parsing returned result:', parsedReplay ? 'success' : 'null');
     } catch (parseError) {
       console.error('❌ [browserReplayParser] Error in WASM parser:', parseError);
       throw new Error(`WASM parser error: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
