@@ -11,27 +11,30 @@ import ReplaysPage from '@/pages/ReplaysPage';
 import UploadPage from '@/pages/UploadPage';
 import NotFound from '@/pages/NotFound';
 import ParserTestPage from '@/pages/ParserTestPage';
+import { AuthProvider } from './context/AuthContext';
 import './App.css';
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Index />} />
-        <Route path="/features" element={<FeaturesPage />} />
-        <Route path="/pricing" element={<PricingPage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/signup" element={<SignupPage />} />
-        <Route path="/parser-test" element={<ParserTestPage />} />
-        
-        {/* Protected Routes */}
-        <Route path="/replays" element={<ProtectedRoute element={<ReplaysPage />} />} />
-        <Route path="/upload" element={<ProtectedRoute element={<UploadPage />} />} />
-        
-        {/* 404 Page */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </BrowserRouter>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Index />} />
+          <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/parser-test" element={<ParserTestPage />} />
+          
+          {/* Protected Routes */}
+          <Route path="/replays" element={<ProtectedRoute element={<ReplaysPage />} />} />
+          <Route path="/upload" element={<ProtectedRoute element={<UploadPage />} />} />
+          
+          {/* 404 Page */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 
