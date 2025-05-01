@@ -1,35 +1,55 @@
 
 # StarCraft Replay Parser Test Utility
 
-This directory contains utilities for testing the StarCraft replay parser.
+Dieses Verzeichnis enthält Werkzeuge zum Testen des StarCraft-Replay-Parsers.
 
-## Running the Test
+## Voraussetzungen
 
-You can run the test in one of the following ways:
+- Node.js (v14+)
+- Eine StarCraft Brood War Replay-Datei (.rep)
 
-### Using the Shell Script
+## Ausführen des Tests
+
+### Mit dem Shell-Skript
 
 ```bash
-# Make the script executable
+# Machen Sie das Skript ausführbar
 chmod +x ./test-parser.sh
 
-# Run with default test file
+# Ausführen mit Standard-Testdatei (wird automatisch gesucht)
 ./test-parser.sh
 
-# Or specify a file path
-./test-parser.sh path/to/your/replay.rep
+# Oder eine spezifische Datei angeben
+./test-parser.sh pfad/zu/ihrem/replay.rep
+
+# Debug-Modus aktivieren (für ausführlichere Logs)
+./test-parser.sh --debug
 ```
 
-### Using npx Directly
+### Mit npx direkt
 
 ```bash
-# Run with default test file
+# Ausführen mit Standard-Testdatei
 npx ts-node ./src/test/parserTest.ts
 
-# Or specify a file path
-npx ts-node ./src/test/parserTest.ts path/to/your/replay.rep
+# Oder eine spezifische Datei angeben
+npx ts-node ./src/test/parserTest.ts pfad/zu/ihrem/replay.rep
 ```
 
-## Test Fixtures
+## Test-Fixtures
 
-Place your test replay files (.rep) in the `fixtures` directory to have them automatically discovered by the test script.
+Legen Sie Ihre Test-Replay-Dateien (.rep) im Verzeichnis `fixtures` ab, damit sie automatisch vom Testskript erkannt werden.
+
+## Erwartete Ergebnisse
+
+Ein erfolgreicher Test sollte Folgendes anzeigen:
+- Spielerinformationen (Namen, Rassen)
+- Karte
+- Spielergebnis (Sieg/Niederlage)
+- Spielzeit
+- APM (Actions per Minute)
+- Build Order
+
+## Browser-Tests
+
+Für Browser-Tests wurde eine zusätzliche Funktion `runBrowserParserTest` implementiert, die direkt mit einem File-Objekt arbeitet. Dies kann in Cypress oder Playwright-Tests verwendet werden.

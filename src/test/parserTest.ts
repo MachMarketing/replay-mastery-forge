@@ -11,7 +11,8 @@ const logger = {
   success: (message: string, ...args: any[]) => console.log(`\x1b[32m[SUCCESS]\x1b[0m ${message}`, ...args),
   error: (message: string, ...args: any[]) => console.log(`\x1b[31m[ERROR]\x1b[0m ${message}`, ...args),
   warn: (message: string, ...args: any[]) => console.log(`\x1b[33m[WARNING]\x1b[0m ${message}`, ...args),
-  section: (message: string) => console.log(`\n\x1b[35m======== ${message} ========\x1b[0m\n`)
+  section: (message: string) => console.log(`\n\x1b[35m======== ${message} ========\x1b[0m\n`),
+  debug: (message: string, ...args: any[]) => console.log(`\x1b[90m[DEBUG]\x1b[0m ${message}`, ...args)
 };
 
 /**
@@ -21,6 +22,12 @@ function createFileFromPath(filePath: string, fileName: string = path.basename(f
   try {
     const fileBuffer = fs.readFileSync(filePath);
     const arrayBuffer = new Uint8Array(fileBuffer).buffer;
+    
+    // Log file stats
+    logger.debug(`File ${fileName} stats:`, {
+      size: fileBuffer.length,
+      firstBytes: Array.from(fileBuffer.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' '),
+    });
     
     // Create a File object using the Blob API
     // Note: In Node.js environments, we need to manually create a File-like object
@@ -52,6 +59,13 @@ export async function runParserTest(replayFilePath?: string): Promise<ParsedRepl
     
     // Run the parser
     logger.section('RUNNING PARSER');
+    logger.debug('Parser environment check:', {
+      isNode: typeof process !== 'undefined' && process.versions && process.versions.node,
+      isBrowser: typeof window !== 'undefined',
+      hasFileAPI: typeof File !== 'undefined',
+      hasBuffer: typeof Buffer !== 'undefined',
+    });
+    
     const result = await parseReplayInBrowser(file);
     
     // Display results
@@ -98,6 +112,44 @@ function findDefaultReplayFile(): string | null {
   }
   
   return null;
+}
+
+/**
+ * Browser-compatible test runner
+ * This can be used in browser environments where File API is available but fs is not
+ */
+export async function runBrowserParserTest(replayFile: File): Promise<ParsedReplayResult> {
+  logger.section('BROWSER PARSER TEST');
+  
+  try {
+    logger.info(`Testing parser with file: ${replayFile.name} (${replayFile.size} bytes)`);
+    
+    // Run the parser
+    logger.section('RUNNING BROWSER PARSER');
+    const result = await parseReplayInBrowser(replayFile);
+    
+    // Display results
+    logger.section('TEST RESULTS');
+    logger.success('Parser completed successfully!');
+    logger.info('Parsed data summary:');
+    console.log({
+      playerName: result.playerName,
+      opponentName: result.opponentName,
+      map: result.map,
+      playerRace: result.playerRace,
+      opponentRace: result.opponentRace,
+      result: result.result,
+      duration: result.duration,
+      apm: result.apm,
+      buildOrderCount: result.buildOrder?.length
+    });
+    
+    return result;
+  } catch (error) {
+    logger.section('TEST ERROR');
+    logger.error('Browser parser test failed:', error);
+    throw error;
+  }
 }
 
 // If this file is run directly (not imported), execute the test
