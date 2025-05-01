@@ -147,11 +147,11 @@ export function useReplayParser(): ReplayParserResult {
         // Log the fallback data
         console.warn('[useReplayParser] Using fallback data:', fallbackData);
         
-        // Show a warning toast
+        // Show a warning toast - replacing 'warning' with 'default' variant
         toast({
           title: 'Parser Warning',
           description: 'WASM parser failed, using extracted data from filename instead.',
-          variant: 'warning',
+          variant: 'default',
         });
         
         return fallbackData;
