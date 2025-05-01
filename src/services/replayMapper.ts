@@ -27,8 +27,11 @@ export function validateRawReplay(rawResult: any): void {
   // Log the structure to help with debugging
   console.log('🗺️ [replayMapper] Raw result structure:', Object.keys(rawResult));
   
-  // More flexible validation that works with different parser output formats
-  const hasData = rawResult.replay || rawResult.header || rawResult.players || rawResult.metadata;
+  // More flexible validation that accommodates different parser output formats
+  // The screp-js parser uses Header, Commands, MapData, Computed keys
+  const hasData = rawResult.replay || rawResult.header || rawResult.Header || 
+                 rawResult.players || rawResult.metadata || rawResult.Computed;
+                 
   if (!hasData) {
     console.error('Invalid replay structure:', rawResult);
     throw new Error('No valid replay data returned from parser');
@@ -44,6 +47,12 @@ export function mapRawToParsed(rawResult: any): ParsedReplayResult {
   try {
     // First validate the raw data
     validateRawReplay(rawResult);
+    
+    // Now we need to handle specific formats from different parsers
+    // Check if this is a screp-js result (with Header, Computed format)
+    if (rawResult.Header && rawResult.Computed) {
+      return mapScrepJsFormat(rawResult);
+    }
     
     // Handle different parser output formats
     // Log the entire result in detail for debugging
@@ -144,6 +153,123 @@ export function mapRawToParsed(rawResult: any): ParsedReplayResult {
     console.error('🗺️ [replayMapper] Error mapping replay data:', error);
     throw new Error(`Failed to map replay data: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+/**
+ * Map screp-js format replay data (used by the WASM parser)
+ */
+function mapScrepJsFormat(rawResult: any): ParsedReplayResult {
+  try {
+    console.log('🗺️ [replayMapper] Mapping screp-js format data');
+    
+    const header = rawResult.Header;
+    const computed = rawResult.Computed;
+    
+    if (!header || !header.Players || !computed) {
+      throw new Error('Invalid screp-js data structure');
+    }
+    
+    // Get players from the Header section
+    const players = header.Players;
+    console.log('🗺️ [replayMapper] screp-js players:', players);
+    
+    if (players.length < 1) {
+      throw new Error('No players found in replay');
+    }
+    
+    // Handle winner determination
+    const winnerTeam = computed.WinnerTeam;
+    
+    // First player is assumed to be the main player
+    const mainPlayer = players[0];
+    const opponentPlayer = players.length > 1 ? players[1] : null;
+    
+    if (!mainPlayer) {
+      throw new Error('Main player data missing');
+    }
+    
+    // Extract player info
+    const playerName = mainPlayer.Name || 'Unknown Player';
+    const opponentName = opponentPlayer ? opponentPlayer.Name || 'Unknown Opponent' : 'Unknown Opponent';
+    
+    // Get race info from the player data
+    // In screp-js, Race is an object with Name property
+    const playerRace = mapScrepJsRace(mainPlayer.Race?.Name);
+    const opponentRace = opponentPlayer ? mapScrepJsRace(opponentPlayer.Race?.Name) : 'Protoss';
+    
+    // Create matchup string
+    const matchup = `${playerRace.charAt(0)}v${opponentRace.charAt(0)}`;
+    
+    // Extract map name
+    const mapName = header.Map || 'Unknown Map';
+    
+    // Calculate duration from frames (StarCraft BW runs at 23.81 frames per second)
+    const frames = header.Frames || 0;
+    const durationMs = Math.floor(frames * (1000 / 23.81));
+    const duration = formatDuration(durationMs);
+    
+    // Extract date
+    const date = header.StartTime ? new Date(header.StartTime).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+    
+    // Determine game result based on winner team
+    const result: 'win' | 'loss' = winnerTeam === mainPlayer.Team ? 'win' : 'loss';
+    
+    // Extract APM from Computed.PlayerDescs
+    let apm = 0;
+    let eapm = 0;
+    
+    if (computed.PlayerDescs && computed.PlayerDescs.length > 0) {
+      // Find the player desc that matches our main player
+      const playerDesc = computed.PlayerDescs.find((desc: any) => desc.PlayerID === mainPlayer.ID);
+      if (playerDesc) {
+        apm = playerDesc.APM || 0;
+        eapm = playerDesc.EAPM || 0;
+      }
+    }
+    
+    // Generate build order based on race
+    const buildOrder = generateBuildOrder(playerRace, durationMs);
+    
+    // Generate resource graph data
+    const resourcesGraph = generateResourceData(durationMs);
+    
+    console.log('🗺️ [replayMapper] Successfully mapped screp-js data for:', playerName);
+    
+    return {
+      playerName,
+      opponentName,
+      playerRace,
+      opponentRace,
+      map: mapName,
+      duration,
+      date,
+      result,
+      apm,
+      eapm,
+      matchup,
+      buildOrder,
+      resourcesGraph
+    };
+  } catch (error) {
+    console.error('🗺️ [replayMapper] Error mapping screp-js data:', error);
+    throw new Error(`Failed to map screp-js data: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Map screp-js race format to our race type
+ */
+function mapScrepJsRace(raceStr?: string): 'Terran' | 'Protoss' | 'Zerg' {
+  if (!raceStr) return 'Terran';
+  
+  const raceLower = raceStr.toLowerCase();
+  
+  if (raceLower.includes('terr')) return 'Terran';
+  if (raceLower.includes('toss') || raceLower.includes('prot')) return 'Protoss';
+  if (raceLower.includes('zerg')) return 'Zerg';
+  
+  // Default fallback
+  return 'Terran';
 }
 
 /**
