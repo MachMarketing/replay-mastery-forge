@@ -75,3 +75,31 @@ export function readFileAsUint8Array(file: File): Promise<Uint8Array> {
     }
   });
 }
+
+/**
+ * Creates a File object from a Uint8Array for testing purposes
+ * @param data The Uint8Array data to be converted to a File
+ * @param fileName Optional name for the file (default: 'test.rep')
+ * @param fileType Optional MIME type (default: 'application/octet-stream')
+ * @returns A File object containing the provided data
+ */
+export function createMockFileFromUint8Array(
+  data: Uint8Array,
+  fileName: string = 'test.rep',
+  fileType: string = 'application/octet-stream'
+): File {
+  try {
+    // Create a Blob from the Uint8Array
+    const blob = new Blob([data], { type: fileType });
+    
+    // Create a File from the Blob
+    const file = new File([blob], fileName, { type: fileType });
+    
+    console.log(`📊 [fileReader] Created mock file: ${fileName}, size: ${file.size} bytes`);
+    return file;
+  } catch (error) {
+    console.error(`❌ [fileReader] Error creating mock file: ${error}`);
+    // Create an empty file as fallback
+    return new File([], fileName, { type: fileType });
+  }
+}
