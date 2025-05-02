@@ -1,6 +1,6 @@
 
 import React, { useEffect } from 'react';
-import { Loader2, UploadIcon } from 'lucide-react';
+import { Loader2, Upload } from 'lucide-react';
 import { AnalyzedReplayResult } from '@/services/replayParserService';
 import AnalysisResult from '@/components/AnalysisResult';
 import PlayerSelector from '@/components/PlayerSelector';
@@ -36,7 +36,7 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
 
   // Log data for debugging purposes
   useEffect(() => {
-    console.log('AnalysisDisplay - Zustand:', { 
+    console.log('AnalysisDisplay - State:', { 
       isAnalyzing, 
       analysisComplete, 
       hasReplayData: !!replayData, 
@@ -130,7 +130,7 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     <div className="h-96 flex flex-col items-center justify-center bg-card/30 backdrop-blur-sm rounded-lg border border-dashed border-border shadow-inner">
       <div className="text-center max-w-md p-6">
         <div className="w-20 h-20 bg-secondary/40 rounded-full mx-auto mb-6 flex items-center justify-center">
-          <UploadIcon className="h-10 w-10 text-muted-foreground" />
+          <Upload className="h-10 w-10 text-muted-foreground" />
         </div>
         <h3 className="text-xl font-semibold mb-3">Kein Replay ausgewählt</h3>
         <p className="text-muted-foreground">

@@ -24,7 +24,6 @@ const UploadPage = () => {
   const [selectedPlayerIndex, setSelectedPlayerIndex] = useState<number>(0);
   const { replays, fetchReplays } = useReplays();
   const { toast } = useToast();
-  const { isProcessing } = useReplayParser();
 
   // Reset states when component unmounts
   useEffect(() => {
@@ -41,31 +40,14 @@ const UploadPage = () => {
     fetchReplays();
   }, [fetchReplays]);
   
-  // Helper function for race normalization
-  const normalizeRace = (race: string): 'Terran' | 'Protoss' | 'Zerg' => {
-    if (!race) return 'Terran';
-    const normalizedRace = race.toLowerCase();
-    if (normalizedRace.includes('terr') || normalizedRace.includes('t')) return 'Terran';
-    if (normalizedRace.includes('prot') || normalizedRace.includes('p')) return 'Protoss';
-    if (normalizedRace.includes('zerg') || normalizedRace.includes('z')) return 'Zerg';
-    return 'Terran'; 
-  };
-  
-  // Helper for result normalization
-  const normalizeResult = (result: string): 'win' | 'loss' => {
-    if (!result) return 'win';
-    const normalizedResult = result.toLowerCase();
-    return normalizedResult.includes('win') ? 'win' : 'loss';
-  };
-
   // Handler for when upload is complete
   const handleUploadComplete = async (uploadedFile: File, parsedReplayData: AnalyzedReplayResult) => {
     console.log("Upload complete with data:", parsedReplayData);
     
     if (!parsedReplayData) {
       toast({
-        title: 'Error',
-        description: 'No data was returned from the parser',
+        title: 'Fehler',
+        description: 'Es wurden keine Daten vom Parser zurückgegeben',
         variant: 'destructive'
       });
       return;
@@ -81,8 +63,8 @@ const UploadPage = () => {
     } catch (error) {
       console.error('Analysis error:', error);
       toast({
-        title: 'Analysis Failed',
-        description: 'There was an error analyzing your replay.',
+        title: 'Analyse fehlgeschlagen',
+        description: 'Es gab einen Fehler bei der Analyse deines Replays.',
         variant: 'destructive'
       });
       setIsAnalyzing(false);
@@ -93,6 +75,7 @@ const UploadPage = () => {
   // Handle player perspective selection
   const handlePlayerSelection = (playerIndex: number) => {
     console.log("Processing player selection:", playerIndex);
+    
     if (!rawParsedData) {
       console.error('Cannot process player selection: No raw data available');
       setIsAnalyzing(false);
@@ -120,19 +103,18 @@ const UploadPage = () => {
         // Invert result
         result: rawParsedData.result === 'win' ? 'loss' : 'win',
         // Swap strengths and weaknesses for more accurate coaching
-        strengths: rawParsedData.recommendations ? [...rawParsedData.recommendations].slice(0, 3) : [],
-        weaknesses: rawParsedData.weaknesses ? [...rawParsedData.weaknesses].slice(0, 3) : [],
-        recommendations: rawParsedData.strengths ? [...rawParsedData.strengths].slice(0, 3) : []
+        strengths: rawParsedData.recommendations || [],
+        weaknesses: rawParsedData.weaknesses || [],
+        recommendations: rawParsedData.strengths || []
       };
     }
     
-    // Ensure race values and result are properly normalized
-    const normalizedData = {
+    // Normalize data
+    const normalizedData: AnalyzedReplayResult = {
       ...adjustedData,
       playerRace: normalizeRace(adjustedData.playerRace || 'Terran'),
       opponentRace: normalizeRace(adjustedData.opponentRace || 'Terran'),
       result: normalizeResult(adjustedData.result || 'win'),
-      // Ensure all required arrays exist
       strengths: adjustedData.strengths || [],
       weaknesses: adjustedData.weaknesses || [],
       recommendations: adjustedData.recommendations || []
@@ -140,7 +122,7 @@ const UploadPage = () => {
     
     console.log("Final normalized data:", normalizedData);
     
-    // Extend the parsedReplayData with the additional fields needed by AnalysisResult
+    // Extend the parsedReplayData with ID for AnalysisResult
     const extendedData: ReplayData = {
       ...normalizedData,
       id: crypto.randomUUID(),
@@ -160,22 +142,30 @@ const UploadPage = () => {
     
     // Add a success toast to give user feedback
     toast({
-      title: "Analysis Complete",
-      description: `Analysis complete for ${file?.name || 'your replay'}`,
+      title: "Analyse abgeschlossen",
+      description: `Analyse abgeschlossen für ${file?.name || 'dein Replay'}`,
     });
+  };
+
+  // Helper function for race normalization
+  const normalizeRace = (race: string): 'Terran' | 'Protoss' | 'Zerg' => {
+    if (!race) return 'Terran';
+    const normalizedRace = race.toLowerCase();
+    if (normalizedRace.includes('terr') || normalizedRace.includes('t')) return 'Terran';
+    if (normalizedRace.includes('prot') || normalizedRace.includes('p')) return 'Protoss';
+    if (normalizedRace.includes('zerg') || normalizedRace.includes('z')) return 'Zerg';
+    return 'Terran'; 
+  };
+  
+  // Helper for result normalization
+  const normalizeResult = (result: string): 'win' | 'loss' => {
+    if (!result) return 'win';
+    const normalizedResult = result.toLowerCase();
+    return normalizedResult.includes('win') ? 'win' : 'loss';
   };
 
   // Get recent uploads from replays list
   const recentReplays = replays.slice(0, 3);
-
-  // Debug output for the whole component state
-  console.log('UploadPage - State:', { 
-    isAnalyzing, 
-    analysisComplete, 
-    hasReplayData: !!replayData, 
-    hasRawData: !!rawParsedData,
-    selectedPlayerIndex 
-  });
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -184,21 +174,21 @@ const UploadPage = () => {
       <main className="flex-1 py-16 mt-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center mb-6">
-            <h1 className="text-3xl font-bold text-foreground">Analyze Your Replay</h1>
+            <h1 className="text-3xl font-bold text-foreground">Analyse deines Replays</h1>
           </div>
           
           <p className="text-muted-foreground mb-8">
-            Upload your StarCraft: Brood War replay file to receive professional-level analysis 
-            and personalized coaching.
+            Lade deine StarCraft: Brood War Replay-Datei hoch, um eine professionelle Analyse
+            und persönliches Coaching zu erhalten.
           </p>
           
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-1">
               <Card className="shadow-md">
                 <CardHeader className="bg-card border-b">
-                  <CardTitle className="text-lg">Upload Replay</CardTitle>
+                  <CardTitle className="text-lg">Replay hochladen</CardTitle>
                   <CardDescription>
-                    Upload a .rep file to analyze your gameplay
+                    Lade eine .rep Datei hoch, um dein Gameplay zu analysieren
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="pt-6">
@@ -206,29 +196,18 @@ const UploadPage = () => {
                   
                   {/* Tips section */}
                   <div className="mt-6">
-                    <h3 className="text-sm font-medium mb-2">Tips:</h3>
+                    <h3 className="text-sm font-medium mb-2">Tipps:</h3>
                     <ul className="text-xs text-muted-foreground space-y-1">
-                      <li>• Make sure you're uploading a StarCraft: Brood War replay (.rep) file</li>
-                      <li>• Recent games provide the most relevant analysis</li>
-                      <li>• Games longer than 5 minutes provide better insights</li>
-                      <li>• Ladder games are ideal for analysis</li>
+                      <li>• Stelle sicher, dass du eine StarCraft: Brood War Replay-Datei (.rep) hochlädst</li>
+                      <li>• Aktuelle Spiele bieten die relevanteste Analyse</li>
+                      <li>• Spiele länger als 5 Minuten bieten bessere Einblicke</li>
+                      <li>• Ladder-Spiele sind ideal für die Analyse</li>
                     </ul>
-                  </div>
-
-                  {/* Parser status - now always browser-based */}
-                  <div className="mt-6 pt-6 border-t border-border">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-medium">Parser Status</h3>
-                      <div className={`h-2 w-2 rounded-full ${isProcessing ? 'bg-amber-500 animate-pulse' : 'bg-green-500'}`} />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1 truncate">
-                      {isProcessing ? 'Processing replay...' : 'Browser parser ready'}
-                    </p>
                   </div>
 
                   {/* Recent uploads section */}
                   <div className="mt-6 pt-6 border-t border-border">
-                    <h3 className="text-sm font-medium mb-3">Recent Uploads</h3>
+                    <h3 className="text-sm font-medium mb-3">Neueste Uploads</h3>
                     <div className="space-y-2">
                       {recentReplays.length > 0 ? (
                         recentReplays.map((replay: Replay) => (
@@ -242,7 +221,7 @@ const UploadPage = () => {
                           </div>
                         ))
                       ) : (
-                        <p className="text-xs text-muted-foreground">No recent uploads</p>
+                        <p className="text-xs text-muted-foreground">Keine kürzlichen Uploads</p>
                       )}
                     </div>
                   </div>

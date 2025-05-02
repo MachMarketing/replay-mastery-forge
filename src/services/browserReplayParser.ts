@@ -7,39 +7,35 @@ import { mapRawToParsed } from './replayMapper';
 import { ParsedReplayResult } from './replayParserService';
 import { readFileAsUint8Array } from './fileReader';
 
-// Initialize WASM module early but don't block
-const wasmReady = initParserWasm().catch(error => {
-  console.error('❌ [browserReplayParser] Failed to pre-initialize WASM:', error);
-  return false;
-});
-
 /**
- * Parse a StarCraft: Brood War replay file in the browser using the WASM-based parser
+ * Parse a StarCraft: Brood War replay file in the browser using WASM
  * 
  * @param file The replay file to parse
- * @returns The parsed replay data or throws an error
+ * @returns The parsed replay data
+ * @throws Error if parsing fails
  */
 export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResult> {
   console.log('📊 [browserReplayParser] Starting parsing for file:', file.name, file.size, 'bytes');
   
   try {
-    // Ensure WASM is initialized - retry if needed
-    try {
-      await wasmReady;
-    } catch (wasmError) {
-      console.warn('⚠️ [browserReplayParser] WASM pre-init failed, trying again:', wasmError);
-      await initParserWasm();
-    }
-    
-    // Read the file as array buffer with validation
+    // Validate file
     if (!file || file.size === 0) {
-      throw new Error('File is empty (0 bytes) or invalid');
+      throw new Error('Datei ist leer oder ungültig');
     }
     
+    // Ensure WASM is initialized
+    try {
+      await initParserWasm();
+    } catch (wasmError) {
+      console.error('❌ [browserReplayParser] WASM initialization failed:', wasmError);
+      throw new Error('Parser-Initialisierung fehlgeschlagen. Bitte versuchen Sie es erneut oder laden Sie die Seite neu.');
+    }
+    
+    // Read file data
     const fileData = await readFileAsUint8Array(file);
     
     if (!fileData || fileData.byteLength === 0) {
-      throw new Error('Failed to read file data or file is empty');
+      throw new Error('Konnte Datei nicht einlesen oder Datei ist leer');
     }
     
     console.log('📊 [browserReplayParser] File read successfully, size:', fileData.byteLength);
@@ -50,18 +46,18 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     
     if (!parsedReplay) {
       console.error('❌ [browserReplayParser] Parser returned null or empty result');
-      throw new Error('Parser returned null or empty result');
+      throw new Error('Parser gab kein Ergebnis zurück');
     }
     
-    console.log('📊 [browserReplayParser] Raw parser output structure:', Object.keys(parsedReplay));
+    console.log('📊 [browserReplayParser] Raw parser output keys:', Object.keys(parsedReplay));
     
     // Map the raw parser output to our application's format
     const mappedData = mapRawToParsed(parsedReplay);
     console.log('📊 [browserReplayParser] Mapping successful:', mappedData);
     
     // Validate essential fields
-    if (!mappedData.playerName || !mappedData.opponentName || !mappedData.map) {
-      throw new Error('Critical replay data is missing after parsing');
+    if (!mappedData.playerName || !mappedData.map) {
+      throw new Error('Wichtige Replay-Daten fehlen nach dem Parsing');
     }
     
     return mappedData;

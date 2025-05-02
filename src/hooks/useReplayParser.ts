@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { parseReplayFile, AnalyzedReplayResult } from '@/services/replayParserService';
 import { useToast } from '@/hooks/use-toast';
 import { initParserWasm } from '@/services/wasmLoader';
@@ -15,8 +15,6 @@ export function useReplayParser(): ReplayParserResult {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  const [wasmInitialized, setWasmInitialized] = useState(false);
-  const [initializationAttempts, setInitializationAttempts] = useState(0);
 
   // Pre-initialize WASM on hook mount
   useEffect(() => {
@@ -29,7 +27,6 @@ export function useReplayParser(): ReplayParserResult {
         await initParserWasm();
         if (isMounted) {
           console.log('[useReplayParser] WASM pre-initialized successfully');
-          setWasmInitialized(true);
         }
       } catch (err) {
         if (isMounted) {
@@ -46,11 +43,11 @@ export function useReplayParser(): ReplayParserResult {
     };
   }, []); 
 
-  const clearError = () => {
+  const clearError = useCallback(() => {
     setError(null);
-  };
+  }, []);
 
-  const parseReplay = async (file: File): Promise<AnalyzedReplayResult | null> => {
+  const parseReplay = useCallback(async (file: File): Promise<AnalyzedReplayResult | null> => {
     if (isProcessing) {
       console.log('[useReplayParser] Already processing a file, aborting');
       toast({
@@ -83,33 +80,12 @@ export function useReplayParser(): ReplayParserResult {
       
       console.log('[useReplayParser] Starting replay parsing for file:', file.name, 'size:', file.size);
       
-      // Always try to initialize WASM again if it failed earlier
-      if (!wasmInitialized) {
-        try {
-          console.log('[useReplayParser] Trying to initialize WASM before parsing');
-          await initParserWasm();
-          setWasmInitialized(true);
-          setInitializationAttempts(0);
-          console.log('[useReplayParser] WASM initialization successful');
-        } catch (err) {
-          setInitializationAttempts(prev => prev + 1);
-          console.error('[useReplayParser] WASM initialization failed:', err);
-          
-          // If we've tried multiple times and still failing, show a specific error message
-          if (initializationAttempts > 2) {
-            throw new Error('Die Initialisierung des Parsers ist fehlgeschlagen. Bitte aktualisiere die Seite und versuche es erneut.');
-          } else {
-            throw new Error('WASM-Parser-Initialisierung fehlgeschlagen. Neuer Versuch wird gestartet...');
-          }
-        }
-      }
-      
       // Verify file is readable
       if (!file.size) {
         throw new Error('Die Datei scheint leer oder beschädigt zu sein');
       }
       
-      // Use the real parser
+      // Parse the file
       console.log('[useReplayParser] Calling parseReplayFile with file:', file.name);
       const parsedData = await parseReplayFile(file);
       
@@ -135,7 +111,7 @@ export function useReplayParser(): ReplayParserResult {
       setIsProcessing(false);
       return null;
     }
-  };
+  }, [isProcessing, toast]);
 
   return {
     parseReplay,

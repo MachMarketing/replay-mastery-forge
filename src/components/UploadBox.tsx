@@ -19,7 +19,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   const [progress, setProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'parsing' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState('');
-  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const progressIntervalRef = useRef<number | null>(null);
   const { toast } = useToast();
   const { parseReplay, isProcessing, error: parsingError, clearError } = useReplayParser();
   
@@ -27,7 +27,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   useEffect(() => {
     return () => {
       if (progressIntervalRef.current) {
-        clearInterval(progressIntervalRef.current);
+        window.clearInterval(progressIntervalRef.current);
       }
     };
   }, []);
@@ -81,7 +81,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
 
   const resetProgress = () => {
     if (progressIntervalRef.current) {
-      clearInterval(progressIntervalRef.current);
+      window.clearInterval(progressIntervalRef.current);
       progressIntervalRef.current = null;
     }
     setProgress(0);
@@ -91,7 +91,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     resetProgress();
     
     // Realistic progress simulation
-    const interval = setInterval(() => {
+    const interval = window.setInterval(() => {
       setProgress(prev => {
         // Slow down progress as we get closer to completion
         const remainingPercent = 100 - prev;
@@ -144,7 +144,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       }
       
       // Complete the progress
-      clearInterval(progressInterval);
+      window.clearInterval(progressInterval);
       progressIntervalRef.current = null;
       setProgress(100);
       setUploadStatus('success');
@@ -161,11 +161,11 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
           console.log('[UploadBox] Sende geparste Daten an übergeordnete Komponente:', parsedData);
           onUploadComplete(file, parsedData);
         }
-      }, 800);
+      }, 500);
     } catch (error) {
       console.error('[UploadBox] Fehler bei der Dateiverarbeitung:', error);
       
-      clearInterval(progressInterval);
+      window.clearInterval(progressInterval);
       progressIntervalRef.current = null;
       
       setUploadStatus('error');
@@ -182,7 +182,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
 
   const handleCancel = () => {
     if (progressIntervalRef.current) {
-      clearInterval(progressIntervalRef.current);
+      window.clearInterval(progressIntervalRef.current);
       progressIntervalRef.current = null;
     }
     setFile(null);
@@ -277,7 +277,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center">
               <FileText className="h-6 w-6 mr-3 text-primary" />
-              <div className="max-w-[220px]">
+              <div className="max-w-[200px]">
                 <p className="font-medium truncate" title={file?.name || ""}>
                   {file?.name}
                 </p>

@@ -44,17 +44,17 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
   try {
     // Validate input file
     if (!file || file.size === 0) {
-      throw new Error('Invalid or empty replay file');
+      throw new Error('Ungültige oder leere Replay-Datei');
     }
     
-    // Use the screp-js browser-based parser to extract data from the file
+    // Use the browser-based parser to extract data from the file
     console.log('🔍 [replayParserService] Starting browser parsing...');
     const parsedData = await parseReplayInBrowser(file);
     console.log('🔍 [replayParserService] Successfully parsed replay data:', parsedData);
     
     // Validate parsed data before analyzing
     if (!parsedData || !parsedData.playerName) {
-      throw new Error('Parser returned incomplete or invalid data');
+      throw new Error('Parser hat unvollständige oder ungültige Daten zurückgegeben');
     }
     
     // Analyze the replay data to generate insights
@@ -64,16 +64,16 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     
     // Validate analysis data
     if (!analysis || !analysis.strengths) {
-      throw new Error('Analysis returned incomplete data');
+      throw new Error('Analyse hat unvollständige Daten zurückgegeben');
     }
     
     // Return combined result with parsing and analysis
     const result: AnalyzedReplayResult = {
       ...parsedData,
-      strengths: analysis.strengths || [],
-      weaknesses: analysis.weaknesses || [],
-      recommendations: analysis.recommendations || [],
-      trainingPlan: analysis.trainingPlan || []
+      strengths: analysis.strengths,
+      weaknesses: analysis.weaknesses,
+      recommendations: analysis.recommendations,
+      trainingPlan: analysis.trainingPlan
     };
     
     return result;
@@ -82,8 +82,8 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     
     const errorMessage = error instanceof Error ? 
       error.message : 
-      'Failed to parse replay file';
+      'Fehler beim Parsen der Replay-Datei';
       
-    throw new Error(`Parsing error: ${errorMessage}`);
+    throw new Error(`Parsing-Fehler: ${errorMessage}`);
   }
 }
