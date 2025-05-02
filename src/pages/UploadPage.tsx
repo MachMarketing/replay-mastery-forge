@@ -58,8 +58,8 @@ const UploadPage = () => {
     setIsAnalyzing(true);
     
     try {
-      // Process immediately rather than with a delay
-      handlePlayerSelection(0);
+      // Pass the data directly to handlePlayerSelection instead of relying on state
+      handlePlayerSelection(0, parsedReplayData);
     } catch (error) {
       console.error('Analysis error:', error);
       toast({
@@ -73,16 +73,16 @@ const UploadPage = () => {
   };
 
   // Handle player perspective selection
-  const handlePlayerSelection = (playerIndex: number) => {
+  const handlePlayerSelection = (playerIndex: number, data: AnalyzedReplayResult = rawParsedData!) => {
     console.log("Processing player selection:", playerIndex);
     
-    if (!rawParsedData) {
+    if (!data) {
       console.error('Cannot process player selection: No raw data available');
       setIsAnalyzing(false);
       return;
     }
     
-    console.log("Processing player selection:", playerIndex, "with data:", rawParsedData);
+    console.log("Processing player selection:", playerIndex, "with data:", data);
     
     setSelectedPlayerIndex(playerIndex);
     
@@ -91,21 +91,21 @@ const UploadPage = () => {
     
     if (playerIndex === 0) {
       // First player is already correctly set up in rawParsedData
-      adjustedData = { ...rawParsedData };
+      adjustedData = { ...data };
     } else {
       // Swap player and opponent for second player perspective
       adjustedData = {
-        ...rawParsedData,
-        playerName: rawParsedData.opponentName || 'Opponent',
-        opponentName: rawParsedData.playerName || 'Player',
-        playerRace: rawParsedData.opponentRace || 'Terran',
-        opponentRace: rawParsedData.playerRace || 'Terran',
+        ...data,
+        playerName: data.opponentName || 'Opponent',
+        opponentName: data.playerName || 'Player',
+        playerRace: data.opponentRace || 'Terran',
+        opponentRace: data.playerRace || 'Terran',
         // Invert result
-        result: rawParsedData.result === 'win' ? 'loss' : 'win',
+        result: data.result === 'win' ? 'loss' : 'win',
         // Swap strengths and weaknesses for more accurate coaching
-        strengths: rawParsedData.recommendations || [],
-        weaknesses: rawParsedData.weaknesses || [],
-        recommendations: rawParsedData.strengths || []
+        strengths: data.recommendations || [],
+        weaknesses: data.weaknesses || [],
+        recommendations: data.strengths || []
       };
     }
     
