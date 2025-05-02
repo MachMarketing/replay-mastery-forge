@@ -33,6 +33,15 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     return 'Terran'; 
   };
 
+  // Debug output to verify what's happening with our data and state
+  console.log('AnalysisDisplay - State:', { 
+    isAnalyzing, 
+    analysisComplete, 
+    hasReplayData: !!replayData, 
+    hasRawData: !!rawParsedData,
+    selectedPlayerIndex 
+  });
+
   if (isAnalyzing) {
     return (
       <div className="h-96 flex flex-col items-center justify-center bg-card rounded-lg border shadow-md">
@@ -77,7 +86,9 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     );
   }
   
+  // Fixed condition: Both analysisComplete AND replayData must exist to show analysis
   if (analysisComplete && replayData) {
+    console.log('Rendering analysis result with data:', replayData);
     return (
       <>
         {/* Player Selector */}
@@ -97,6 +108,8 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     );
   }
   
+  // Default fallback state - only show this when we truly have no data
+  console.log('Showing upload placeholder state');
   return (
     <div className="h-96 flex flex-col items-center justify-center bg-secondary/20 rounded-lg border border-dashed border-border shadow-inner">
       <div className="text-center max-w-md p-6">

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -136,8 +135,11 @@ const UploadPage = () => {
       id: crypto.randomUUID(),
     };
     
+    // Make sure we set the replay data and analysis complete state in the correct order
     setReplayData(extendedData);
+    // Set analyzing to false AFTER setting the data to prevent flicker
     setIsAnalyzing(false);
+    // Only set analysis complete AFTER data is ready
     setAnalysisComplete(true);
     
     // Refresh the replays list after successful upload
@@ -146,6 +148,14 @@ const UploadPage = () => {
 
   // Get recent uploads from replays list
   const recentReplays = replays.slice(0, 3);
+
+  // Debug output for the whole component state
+  console.log('UploadPage - State:', { 
+    isAnalyzing, 
+    analysisComplete, 
+    hasReplayData: !!replayData, 
+    hasRawData: !!rawParsedData
+  });
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
