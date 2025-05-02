@@ -86,8 +86,9 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     );
   }
   
-  // Fixed condition: Both analysisComplete AND replayData must exist to show analysis
-  if (analysisComplete && replayData) {
+  // Check if we have both analysis completion flag AND actual data
+  // The primary condition to show analysis is having replay data
+  if (replayData) {
     console.log('Rendering analysis result with data:', replayData);
     return (
       <>

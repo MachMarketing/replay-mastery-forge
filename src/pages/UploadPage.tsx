@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -63,10 +64,8 @@ const UploadPage = () => {
     setRawParsedData(parsedReplayData);
     
     try {
-      // Short delay to show loading state for better UX
-      setTimeout(() => {
-        handlePlayerSelection(0);
-      }, 300);
+      // Process immediately rather than with a delay
+      handlePlayerSelection(0);
     } catch (error) {
       console.error('Analysis error:', error);
       toast({
@@ -135,15 +134,27 @@ const UploadPage = () => {
       id: crypto.randomUUID(),
     };
     
-    // Make sure we set the replay data and analysis complete state in the correct order
+    // Critical order of operations to ensure UI updates correctly:
+    // 1. Set the replay data first so it's available when analysis complete is triggered
     setReplayData(extendedData);
-    // Set analyzing to false AFTER setting the data to prevent flicker
-    setIsAnalyzing(false);
-    // Only set analysis complete AFTER data is ready
-    setAnalysisComplete(true);
     
-    // Refresh the replays list after successful upload
-    fetchReplays();
+    // 2. Wait for state update to propagate (important for React rendering)
+    setTimeout(() => {
+      // 3. Set analyzing to false to stop loading indicator
+      setIsAnalyzing(false);
+      
+      // 4. Set analysis complete flag last
+      setAnalysisComplete(true);
+      
+      // Refresh the replays list after successful upload
+      fetchReplays();
+      
+      // Add a success toast to give user feedback
+      toast({
+        title: "Analysis Complete",
+        description: "Your replay has been successfully analyzed.",
+      });
+    }, 50); // Short timeout to ensure state updates in correct order
   };
 
   // Get recent uploads from replays list

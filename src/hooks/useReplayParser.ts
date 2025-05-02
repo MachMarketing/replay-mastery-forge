@@ -18,9 +18,11 @@ export function useReplayParser(): ReplayParserResult {
 
   // Pre-initialize WASM on hook mount
   useState(() => {
-    initParserWasm().catch(err => {
-      console.error('[useReplayParser] Failed to pre-initialize WASM:', err);
-    });
+    initParserWasm()
+      .then(() => console.log('[useReplayParser] WASM pre-initialized successfully'))
+      .catch(err => {
+        console.error('[useReplayParser] Failed to pre-initialize WASM:', err);
+      });
   });
 
   const clearError = () => {
@@ -50,8 +52,19 @@ export function useReplayParser(): ReplayParserResult {
       
       console.log('[useReplayParser] Starting replay parsing for file:', file.name);
       
+      try {
+        // Initialize WASM just before parsing
+        await initParserWasm();
+      } catch (err) {
+        console.warn('[useReplayParser] WASM re-initialization failed, continuing with parsing:', err);
+      }
+      
       // Use the real parser
       const parsedData = await parseReplayFile(file);
+      
+      if (!parsedData) {
+        throw new Error('Parser returned empty data');
+      }
       
       console.log('[useReplayParser] Parsing completed successfully:', parsedData);
       setIsProcessing(false);
