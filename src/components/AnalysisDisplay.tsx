@@ -26,7 +26,7 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
 }) => {
   // Helper function for race normalization
   const normalizeRace = (race: string): 'Terran' | 'Protoss' | 'Zerg' => {
-    const normalizedRace = race.toLowerCase();
+    const normalizedRace = race?.toLowerCase() || '';
     if (normalizedRace.includes('terr') || normalizedRace.includes('t')) return 'Terran';
     if (normalizedRace.includes('prot') || normalizedRace.includes('p')) return 'Protoss';
     if (normalizedRace.includes('zerg') || normalizedRace.includes('z')) return 'Zerg';
@@ -86,8 +86,7 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     );
   }
   
-  // Check if we have both analysis completion flag AND actual data
-  // The primary condition to show analysis is having replay data
+  // The primary condition to show analysis results is having replay data
   if (replayData) {
     console.log('Rendering analysis result with data:', replayData);
     return (
@@ -109,7 +108,7 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     );
   }
   
-  // Default fallback state - only show this when we truly have no data
+  // Default fallback state when no data is available
   console.log('Showing upload placeholder state');
   return (
     <div className="h-96 flex flex-col items-center justify-center bg-secondary/20 rounded-lg border border-dashed border-border shadow-inner">

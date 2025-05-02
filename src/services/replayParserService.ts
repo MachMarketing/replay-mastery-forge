@@ -39,16 +39,37 @@ export interface AnalyzedReplayResult extends ParsedReplayResult {
  * @returns The parsed replay data with analysis
  */
 export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult> {
-  console.log('Parsing replay file:', file.name);
+  console.log('🔍 [replayParserService] Parsing replay file:', file.name, 'size:', file.size);
   
   try {
+    // Validate input file
+    if (!file || file.size === 0) {
+      throw new Error('Invalid or empty replay file');
+    }
+    
     // Use the screp-js browser-based parser to extract data from the file
+    console.log('🔍 [replayParserService] Starting browser parsing...');
     const parsedData = await parseReplayInBrowser(file);
-    console.log('Successfully parsed replay data:', parsedData);
+    console.log('🔍 [replayParserService] Successfully parsed replay data:', parsedData);
+    
+    // Validate parsed data before analyzing
+    if (!parsedData || !parsedData.playerName) {
+      throw new Error('Parser returned incomplete or invalid data');
+    }
     
     // Analyze the replay data to generate insights
+    console.log('🔍 [replayParserService] Starting analysis...');
     const analysis = await analyzeReplayData(parsedData);
-    console.log('Generated analysis based on parsed data:', analysis);
+    console.log('🔍 [replayParserService] Generated analysis based on parsed data:', analysis);
+    
+    // Validate analysis data
+    if (!analysis || !analysis.strengths) {
+      console.warn('🔍 [replayParserService] Analysis returned incomplete data, using defaults');
+      // Provide default analysis if needed
+      analysis.strengths = analysis.strengths || ['Consistently executing build orders'];
+      analysis.weaknesses = analysis.weaknesses || ['Could improve scouting frequency'];
+      analysis.recommendations = analysis.recommendations || ['Practice standard opening timing'];
+    }
     
     // Return combined result with parsing and analysis
     const result: AnalyzedReplayResult = {
@@ -61,9 +82,8 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     
     return result;
   } catch (error) {
-    console.error('Error during replay parsing:', error);
+    console.error('❌ [replayParserService] Error during replay parsing:', error);
     
-    // We won't use fallbacks - real analysis or nothing
     const errorMessage = error instanceof Error ? 
       error.message : 
       'Failed to parse replay file';

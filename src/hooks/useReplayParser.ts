@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { parseReplayFile, AnalyzedReplayResult } from '@/services/replayParserService';
 import { useToast } from '@/hooks/use-toast';
 import { initParserWasm } from '@/services/wasmLoader';
@@ -16,14 +16,15 @@ export function useReplayParser(): ReplayParserResult {
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  // Pre-initialize WASM on hook mount
-  useState(() => {
+  // Pre-initialize WASM on hook mount with proper useEffect
+  useEffect(() => {
+    console.log('[useReplayParser] Pre-initializing WASM module');
     initParserWasm()
       .then(() => console.log('[useReplayParser] WASM pre-initialized successfully'))
       .catch(err => {
         console.error('[useReplayParser] Failed to pre-initialize WASM:', err);
       });
-  });
+  }, []); // Empty dependency array to run only once
 
   const clearError = () => {
     setError(null);
@@ -50,16 +51,24 @@ export function useReplayParser(): ReplayParserResult {
         return null;
       }
       
-      console.log('[useReplayParser] Starting replay parsing for file:', file.name);
+      console.log('[useReplayParser] Starting replay parsing for file:', file.name, 'size:', file.size);
       
       try {
-        // Initialize WASM just before parsing
+        // Re-initialize WASM just before parsing to ensure it's ready
+        console.log('[useReplayParser] Re-initializing WASM before parsing');
         await initParserWasm();
+        console.log('[useReplayParser] WASM re-initialization successful');
       } catch (err) {
         console.warn('[useReplayParser] WASM re-initialization failed, continuing with parsing:', err);
       }
       
+      // Verify file is readable
+      if (!file.size) {
+        throw new Error('File appears to be empty or corrupted');
+      }
+      
       // Use the real parser
+      console.log('[useReplayParser] Calling parseReplayFile with file:', file.name);
       const parsedData = await parseReplayFile(file);
       
       if (!parsedData) {
