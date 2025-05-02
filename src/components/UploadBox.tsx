@@ -58,8 +58,8 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     // Check file size
     if (file.size > maxFileSize * 1024 * 1024) {
       toast({
-        title: "File too large",
-        description: `Maximum file size is ${maxFileSize}MB`,
+        title: "Datei zu groß",
+        description: `Maximale Dateigröße ist ${maxFileSize}MB`,
         variant: "destructive",
       });
       return false;
@@ -69,8 +69,8 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     const fileExtension = file.name.split('.').pop()?.toLowerCase();
     if (fileExtension !== 'rep') {
       toast({
-        title: "Invalid file type",
-        description: "Only StarCraft replay files (.rep) are allowed",
+        title: "Ungültiger Dateityp",
+        description: "Nur StarCraft Replay Dateien (.rep) sind erlaubt",
         variant: "destructive",
       });
       return false;
@@ -80,7 +80,6 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   };
 
   const resetProgress = () => {
-    // Clear any existing interval
     if (progressIntervalRef.current) {
       clearInterval(progressIntervalRef.current);
       progressIntervalRef.current = null;
@@ -91,18 +90,21 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   const simulateProgress = () => {
     resetProgress();
     
-    // For replay files, progress should move at a realistic pace
+    // Realistic progress simulation
     const interval = setInterval(() => {
       setProgress(prev => {
-        const increment = uploadStatus === 'parsing' ? 3 : 5;
-        const maxProgress = uploadStatus === 'parsing' ? 95 : 50;
+        // Slow down progress as we get closer to completion
+        const remainingPercent = 100 - prev;
+        const increment = Math.max(0.5, remainingPercent * 0.05);
         
+        // Different max progress for different stages
+        const maxProgress = uploadStatus === 'parsing' ? 95 : 50;
         const newProgress = Math.min(prev + increment, maxProgress);
         
-        // When we reach uploading completion, move to parsing automatically
+        // When uploading completes, move to parsing stage
         if (uploadStatus === 'uploading' && newProgress >= 50) {
           setUploadStatus('parsing');
-          setStatusMessage('Analyzing replay data...');
+          setStatusMessage('Analysiere Replay-Daten...');
         }
         
         return newProgress;
@@ -114,31 +116,31 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   };
 
   const processFile = async (file: File) => {
-    console.log('[UploadBox] Starting file processing:', file.name);
+    console.log('[UploadBox] Starte Dateiverarbeitung:', file.name);
     clearError();
     setFile(file);
     setUploadStatus('uploading');
-    setStatusMessage('Preparing replay file...');
+    setStatusMessage('Bereite Replay-Datei vor...');
     resetProgress();
     
-    // Start progress simulation for realistic progress indication
+    // Start progress simulation
     const progressInterval = simulateProgress();
     
     try {
-      // Start parsing phase
+      // Start parsing after short delay for better UX
       setTimeout(() => {
         if (uploadStatus !== 'error') {
           setUploadStatus('parsing');
-          setStatusMessage('Parsing replay data...');
+          setStatusMessage('Verarbeite Replay-Daten...');
         }
-      }, 500);
+      }, 800);
       
       // Parse the file with browser-based parser
-      console.log('[UploadBox] Starting parsing:', file.name);
+      console.log('[UploadBox] Starte Parsing:', file.name);
       const parsedData = await parseReplay(file);
       
       if (!parsedData) {
-        throw new Error(parsingError || 'Failed to parse replay file');
+        throw new Error(parsingError || 'Fehler beim Parsen der Replay-Datei');
       }
       
       // Complete the progress
@@ -146,35 +148,33 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       progressIntervalRef.current = null;
       setProgress(100);
       setUploadStatus('success');
-      setStatusMessage('Analysis completed successfully!');
+      setStatusMessage('Analyse erfolgreich abgeschlossen!');
       
       toast({
-        title: "Analysis Complete",
-        description: `${file.name} has been successfully parsed and analyzed.`,
+        title: "Analyse vollständig",
+        description: `${file.name} wurde erfolgreich analysiert.`,
       });
       
       // Ensure we wait a moment before transitioning to the analysis view
-      // This gives users visual feedback that the process completed
       setTimeout(() => {
-        // Send the parsed data to parent component
         if (onUploadComplete && parsedData) {
-          console.log('[UploadBox] Sending parsed data to parent component:', parsedData);
+          console.log('[UploadBox] Sende geparste Daten an übergeordnete Komponente:', parsedData);
           onUploadComplete(file, parsedData);
         }
-      }, 500);
+      }, 800);
     } catch (error) {
-      console.error('[UploadBox] Error processing file:', error);
+      console.error('[UploadBox] Fehler bei der Dateiverarbeitung:', error);
       
       clearInterval(progressInterval);
       progressIntervalRef.current = null;
       
       setUploadStatus('error');
-      setStatusMessage(error instanceof Error ? error.message : 'Failed to parse replay file');
+      setStatusMessage(error instanceof Error ? error.message : 'Fehler beim Parsen der Replay-Datei');
       setProgress(0);
       
       toast({
-        title: "Processing Failed",
-        description: error instanceof Error ? error.message : "Failed to parse replay file",
+        title: "Verarbeitung fehlgeschlagen",
+        description: error instanceof Error ? error.message : "Fehler beim Parsen der Replay-Datei",
         variant: "destructive",
       });
     }
@@ -206,10 +206,10 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         <div className="mt-4 p-4 bg-opacity-10 bg-destructive border border-destructive/40 rounded-md">
           <div className="flex items-center gap-2 text-destructive mb-1">
             <AlertCircle className="h-4 w-4" />
-            <p className="font-medium">{statusMessage || 'Failed to parse replay file'}</p>
+            <p className="font-medium">{statusMessage || 'Fehler beim Parsen der Replay-Datei'}</p>
           </div>
           <p className="text-xs text-muted-foreground">
-            Please try again or contact support if the issue persists.
+            Bitte versuche es erneut oder kontaktiere den Support, wenn das Problem weiterhin besteht.
           </p>
           <div className="flex gap-2 mt-2">
             <Button 
@@ -218,7 +218,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
               className="flex items-center" 
               onClick={handleRetry}
             >
-              <RefreshCw className="h-4 w-4 mr-1" /> Try Again
+              <RefreshCw className="h-4 w-4 mr-1" /> Erneut versuchen
             </Button>
             <Button 
               size="sm" 
@@ -226,7 +226,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
               className="text-muted-foreground" 
               onClick={handleCancel}
             >
-              Cancel
+              Abbrechen
             </Button>
           </div>
         </div>
@@ -240,38 +240,40 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       {uploadStatus === 'idle' ? (
         <div
           {...getRootProps()}
-          className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center transition-all ${
+          className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center transition-all ${
             isDragging 
-              ? 'border-primary bg-primary/10 upload-pulse' 
+              ? 'border-primary bg-primary/10 animate-pulse' 
               : 'border-border hover:border-primary/50 hover:bg-secondary/50'
           }`}
         >
-          <div className="h-16 w-16 rounded-full bg-primary/20 flex items-center justify-center mb-4">
-            <Upload className="h-8 w-8 text-primary" />
+          <div className="h-14 w-14 rounded-full bg-primary/20 flex items-center justify-center mb-4">
+            <Upload className="h-7 w-7 text-primary" />
           </div>
-          <h3 className="text-lg font-medium mb-2">Upload your replay file</h3>
+          <h3 className="text-lg font-semibold mb-2">Replay-Datei hochladen</h3>
           <p className="text-sm text-muted-foreground mb-4 text-center">
-            Drag and drop your .rep file here, or click to browse
+            Ziehe deine .rep Datei hierher oder klicke zum Auswählen
           </p>
-          <Button onClick={open} variant="outline">Select File</Button>
+          <Button onClick={open} variant="default" className="transition-all hover:shadow-md">
+            Datei auswählen
+          </Button>
           <input
             {...getInputProps()}
             accept=".rep"
           />
           <p className="text-xs text-muted-foreground mt-4">
-            Max file size: {maxFileSize}MB | Supported format: .rep
+            Max. Dateigröße: {maxFileSize}MB | Unterstütztes Format: .rep
           </p>
           
           {/* Parser status indicator */}
           <div className="mt-4 flex items-center">
-            <div className="h-2 w-2 rounded-full mr-2 bg-green-500" />
+            <div className="h-2 w-2 rounded-full mr-2 bg-green-500 animate-pulse" />
             <p className="text-xs text-muted-foreground">
-              Browser Parser Ready
+              Browser-Parser bereit
             </p>
           </div>
         </div>
       ) : (
-        <div className="border rounded-lg p-6 bg-card">
+        <div className="border rounded-lg p-6 bg-card shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center">
               <FileText className="h-6 w-6 mr-3 text-primary" />
@@ -320,10 +322,10 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
             <div className="mt-2">
               <p className="text-sm text-green-500 flex items-center">
                 <CheckCircle className="h-4 w-4 mr-1" />
-                Analysis complete
+                Analyse abgeschlossen
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                Your replay has been analyzed and is ready to view.
+                Dein Replay wurde analysiert und ist bereit zum Anzeigen.
               </p>
             </div>
           )}

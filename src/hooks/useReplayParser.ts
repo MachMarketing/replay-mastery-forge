@@ -16,36 +16,35 @@ export function useReplayParser(): ReplayParserResult {
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const [wasmInitialized, setWasmInitialized] = useState(false);
+  const [initializationAttempts, setInitializationAttempts] = useState(0);
 
-  // Pre-initialize WASM on hook mount with proper useEffect
+  // Pre-initialize WASM on hook mount
   useEffect(() => {
     console.log('[useReplayParser] Pre-initializing WASM module');
     
     let isMounted = true;
     
-    initParserWasm()
-      .then(() => {
+    const initWasm = async () => {
+      try {
+        await initParserWasm();
         if (isMounted) {
           console.log('[useReplayParser] WASM pre-initialized successfully');
           setWasmInitialized(true);
         }
-      })
-      .catch(err => {
+      } catch (err) {
         if (isMounted) {
-          console.error('[useReplayParser] Failed to pre-initialize WASM:', err);
-          // Don't set error state here, we'll retry before parsing
-          toast({
-            title: "WASM initialization warning",
-            description: "Parser initialization encountered an issue. Will retry when needed.",
-            variant: "default",
-          });
+          console.warn('[useReplayParser] Failed to pre-initialize WASM:', err);
+          // We'll retry later when needed
         }
-      });
+      }
+    };
+    
+    initWasm();
       
     return () => {
       isMounted = false;
     };
-  }, []); // Empty dependency array to run only once
+  }, []); 
 
   const clearError = () => {
     setError(null);
@@ -55,8 +54,8 @@ export function useReplayParser(): ReplayParserResult {
     if (isProcessing) {
       console.log('[useReplayParser] Already processing a file, aborting');
       toast({
-        title: "Processing in progress",
-        description: "Please wait for the current file to finish processing",
+        title: "Verarbeitung läuft bereits",
+        description: "Bitte warte bis die aktuelle Datei vollständig verarbeitet ist",
         variant: "default",
       });
       return null;
@@ -69,11 +68,11 @@ export function useReplayParser(): ReplayParserResult {
       // Check file extension
       const fileExtension = file.name.split('.').pop()?.toLowerCase();
       if (fileExtension !== 'rep') {
-        const extensionError = 'Only StarCraft replay files (.rep) are allowed';
+        const extensionError = 'Nur StarCraft Replay Dateien (.rep) sind erlaubt';
         setError(extensionError);
         
         toast({
-          title: 'Invalid File',
+          title: 'Ungültige Datei',
           description: extensionError,
           variant: 'destructive',
         });
@@ -90,16 +89,24 @@ export function useReplayParser(): ReplayParserResult {
           console.log('[useReplayParser] Trying to initialize WASM before parsing');
           await initParserWasm();
           setWasmInitialized(true);
+          setInitializationAttempts(0);
           console.log('[useReplayParser] WASM initialization successful');
         } catch (err) {
+          setInitializationAttempts(prev => prev + 1);
           console.error('[useReplayParser] WASM initialization failed:', err);
-          throw new Error('Failed to initialize WASM parser. Please try again.');
+          
+          // If we've tried multiple times and still failing, show a specific error message
+          if (initializationAttempts > 2) {
+            throw new Error('Die Initialisierung des Parsers ist fehlgeschlagen. Bitte aktualisiere die Seite und versuche es erneut.');
+          } else {
+            throw new Error('WASM-Parser-Initialisierung fehlgeschlagen. Neuer Versuch wird gestartet...');
+          }
         }
       }
       
       // Verify file is readable
       if (!file.size) {
-        throw new Error('File appears to be empty or corrupted');
+        throw new Error('Die Datei scheint leer oder beschädigt zu sein');
       }
       
       // Use the real parser
@@ -107,20 +114,20 @@ export function useReplayParser(): ReplayParserResult {
       const parsedData = await parseReplayFile(file);
       
       if (!parsedData) {
-        throw new Error('Parser returned empty data');
+        throw new Error('Parser hat keine Daten zurückgegeben');
       }
       
       console.log('[useReplayParser] Parsing completed successfully:', parsedData);
       setIsProcessing(false);
       return parsedData;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to parse replay file';
+      const errorMessage = err instanceof Error ? err.message : 'Fehler beim Parsen der Replay-Datei';
       setError(errorMessage);
       
       console.error('[useReplayParser] Replay parsing error:', err);
       
       toast({
-        title: 'Processing Failed',
+        title: 'Verarbeitung fehlgeschlagen',
         description: errorMessage,
         variant: 'destructive',
       });

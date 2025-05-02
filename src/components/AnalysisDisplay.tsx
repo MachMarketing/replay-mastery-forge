@@ -36,7 +36,7 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
 
   // Log data for debugging purposes
   useEffect(() => {
-    console.log('AnalysisDisplay - State:', { 
+    console.log('AnalysisDisplay - Zustand:', { 
       isAnalyzing, 
       analysisComplete, 
       hasReplayData: !!replayData, 
@@ -48,41 +48,41 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
 
   if (isAnalyzing) {
     return (
-      <div className="h-96 flex flex-col items-center justify-center bg-card rounded-lg border shadow-md">
+      <div className="h-96 flex flex-col items-center justify-center bg-black/5 backdrop-blur-sm rounded-lg border border-border/50 shadow-lg">
         <div className="text-center max-w-md p-6">
-          <div className="relative mb-6">
-            <div className="w-20 h-20 mx-auto">
-              <Loader2 className="w-20 h-20 animate-spin text-primary" />
+          <div className="relative mb-8">
+            <div className="w-24 h-24 mx-auto">
+              <Loader2 className="w-24 h-24 animate-spin text-primary" />
             </div>
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-xs font-semibold text-primary">
+              <div className="text-sm font-bold text-primary">
                 {Math.round(Math.random() * 100)}%
               </div>
             </div>
           </div>
           
-          <h3 className="text-xl font-bold mb-2">Analyzing your replay...</h3>
-          <p className="text-muted-foreground mb-4">
-            Our AI is deeply analyzing your gameplay patterns, build order, and strategic decisions.
+          <h3 className="text-xl font-bold mb-4">Analysiere dein Replay...</h3>
+          <p className="text-muted-foreground mb-6">
+            Unsere KI analysiert detailliert deine Spielmuster, Build-Order und strategischen Entscheidungen.
           </p>
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="text-xs text-muted-foreground flex items-center">
-              <div className="w-4 h-4 mr-2 flex-shrink-0">
+              <div className="w-5 h-5 mr-2 flex-shrink-0 bg-primary/10 rounded-full flex items-center justify-center">
                 <span className="animate-pulse">⌛</span>
               </div>
-              <span>Extracting replay data...</span>
+              <span>Extrahiere Replay-Daten...</span>
             </div>
             <div className="text-xs text-muted-foreground flex items-center">
-              <div className="w-4 h-4 mr-2 flex-shrink-0">
+              <div className="w-5 h-5 mr-2 flex-shrink-0 bg-primary/10 rounded-full flex items-center justify-center">
                 <span className="animate-pulse">⚙️</span>
               </div>
-              <span>Analyzing build order...</span>
+              <span>Analysiere Build-Order...</span>
             </div>
             <div className="text-xs text-muted-foreground flex items-center">
-              <div className="w-4 h-4 mr-2 flex-shrink-0">
+              <div className="w-5 h-5 mr-2 flex-shrink-0 bg-primary/10 rounded-full flex items-center justify-center">
                 <span className="animate-pulse">🧠</span>
               </div>
-              <span>Generating coaching insights...</span>
+              <span>Generiere Coaching-Erkenntnisse...</span>
             </div>
           </div>
         </div>
@@ -92,16 +92,16 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
   
   // Show analysis results if data is available and analysis is complete
   if ((replayData || rawParsedData) && analysisComplete) {
-    console.log('Rendering analysis result with data:', replayData || rawParsedData);
+    console.log('Zeige Analyseergebnis mit Daten:', replayData || rawParsedData);
     
     // Use either replayData or create a compatible object from rawParsedData
     const displayData = replayData || {
       ...rawParsedData,
       id: crypto.randomUUID(), // Add required id field if using rawParsedData
       // Ensure all required fields have values
-      strengths: rawParsedData?.strengths || ['Good mechanical skills'],
-      weaknesses: rawParsedData?.weaknesses || ['Could improve scouting'],
-      recommendations: rawParsedData?.recommendations || ['Practice build order timings'],
+      strengths: rawParsedData?.strengths || ['Gute mechanische Fähigkeiten'],
+      weaknesses: rawParsedData?.weaknesses || ['Könnte Scouting verbessern'],
+      recommendations: rawParsedData?.recommendations || ['Übe Build-Order Timings'],
       trainingPlan: rawParsedData?.trainingPlan || []
     };
     
@@ -109,8 +109,8 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       <>
         {/* Player Selector */}
         <PlayerSelector 
-          player1={rawParsedData?.playerName || displayData?.playerName || 'Player'} 
-          player2={rawParsedData?.opponentName || displayData?.opponentName || 'Opponent'}
+          player1={rawParsedData?.playerName || displayData?.playerName || 'Spieler'} 
+          player2={rawParsedData?.opponentName || displayData?.opponentName || 'Gegner'}
           race1={normalizeRace(rawParsedData?.playerRace || displayData?.playerRace || 'Terran')}
           race2={normalizeRace(rawParsedData?.opponentRace || displayData?.opponentRace || 'Terran')}
           selectedPlayerIndex={selectedPlayerIndex}
@@ -125,16 +125,16 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
   }
   
   // Default fallback state when no data is available
-  console.log('Showing upload placeholder state');
+  console.log('Zeige Upload-Platzhalter');
   return (
-    <div className="h-96 flex flex-col items-center justify-center bg-secondary/20 rounded-lg border border-dashed border-border shadow-inner">
+    <div className="h-96 flex flex-col items-center justify-center bg-card/30 backdrop-blur-sm rounded-lg border border-dashed border-border shadow-inner">
       <div className="text-center max-w-md p-6">
-        <div className="w-16 h-16 bg-secondary/40 rounded-full mx-auto mb-4 flex items-center justify-center">
-          <UploadIcon className="h-8 w-8 text-muted-foreground" />
+        <div className="w-20 h-20 bg-secondary/40 rounded-full mx-auto mb-6 flex items-center justify-center">
+          <UploadIcon className="h-10 w-10 text-muted-foreground" />
         </div>
-        <h3 className="text-xl font-medium mb-2">No Replay Selected</h3>
+        <h3 className="text-xl font-semibold mb-3">Kein Replay ausgewählt</h3>
         <p className="text-muted-foreground">
-          Upload a replay file to see your personalized analysis here
+          Lade ein Replay hoch, um deine personalisierte Analyse hier zu sehen
         </p>
       </div>
     </div>

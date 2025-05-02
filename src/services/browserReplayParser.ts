@@ -23,8 +23,13 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
   console.log('📊 [browserReplayParser] Starting parsing for file:', file.name, file.size, 'bytes');
   
   try {
-    // Ensure WASM is initialized
-    await wasmReady;
+    // Ensure WASM is initialized - retry if needed
+    try {
+      await wasmReady;
+    } catch (wasmError) {
+      console.warn('⚠️ [browserReplayParser] WASM pre-init failed, trying again:', wasmError);
+      await initParserWasm();
+    }
     
     // Read the file as array buffer with validation
     if (!file || file.size === 0) {

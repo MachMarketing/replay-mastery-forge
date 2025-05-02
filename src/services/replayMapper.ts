@@ -55,7 +55,6 @@ export function mapRawToParsed(rawResult: any): ParsedReplayResult {
     }
     
     // Handle different parser output formats
-    // Log the entire result in detail for debugging
     console.log('🗺️ [replayMapper] Full raw result:', JSON.stringify(rawResult, null, 2));
     
     const replay = rawResult.replay || rawResult;
