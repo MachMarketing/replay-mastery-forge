@@ -26,6 +26,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     // Ensure WASM is initialized
     try {
       await initParserWasm();
+      console.log('📊 [browserReplayParser] WASM initialized successfully');
     } catch (wasmError) {
       console.error('❌ [browserReplayParser] WASM initialization failed:', wasmError);
       throw new Error('Parser-Initialisierung fehlgeschlagen. Bitte versuchen Sie es erneut oder laden Sie die Seite neu.');

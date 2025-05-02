@@ -63,7 +63,7 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     console.log('🔍 [replayParserService] Generated analysis based on parsed data:', analysis);
     
     // Validate analysis data
-    if (!analysis || !analysis.strengths) {
+    if (!analysis || !analysis.strengths || analysis.strengths.length === 0) {
       throw new Error('Analyse hat unvollständige Daten zurückgegeben');
     }
     
