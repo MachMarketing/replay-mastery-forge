@@ -34,9 +34,9 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     return 'Terran'; 
   };
 
-  // Log data for debugging purposes
+  // Log data for debugging purposes with better visibility
   useEffect(() => {
-    console.log('AnalysisDisplay - State update:', { 
+    console.log('💡 AnalysisDisplay - Props received:', { 
       isAnalyzing, 
       analysisComplete, 
       hasReplayData: !!replayData, 
@@ -45,24 +45,36 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     });
     
     if (replayData) {
-      console.log('AnalysisDisplay - ReplayData:', replayData);
-      console.log('AnalysisDisplay - ReplayData keys:', Object.keys(replayData));
+      console.log('💡 AnalysisDisplay - ReplayData:', replayData);
+      console.log('💡 AnalysisDisplay - ReplayData keys:', Object.keys(replayData));
       
       // Check for essential data
       if (!replayData.strengths || replayData.strengths.length === 0) {
-        console.warn('AnalysisDisplay - Missing strengths in replayData');
+        console.warn('⚠️ AnalysisDisplay - Missing strengths in replayData');
       }
       if (!replayData.playerName) {
-        console.warn('AnalysisDisplay - Missing playerName in replayData');
+        console.warn('⚠️ AnalysisDisplay - Missing playerName in replayData');
       }
+    } else {
+      console.log('💡 AnalysisDisplay - No replayData available');
     }
     
     if (rawParsedData) {
-      console.log('AnalysisDisplay - RawParsedData keys:', Object.keys(rawParsedData));
+      console.log('💡 AnalysisDisplay - RawParsedData available with keys:', Object.keys(rawParsedData));
+    } else {
+      console.log('💡 AnalysisDisplay - No rawParsedData available');
     }
+
+    // Log render decision criteria
+    console.log('💡 AnalysisDisplay - Render decision:', {
+      shouldShowAnalysis: analysisComplete && (!!replayData || !!rawParsedData),
+      shouldShowLoading: isAnalyzing,
+      shouldShowPlaceholder: !isAnalyzing && (!analysisComplete || (!replayData && !rawParsedData))
+    });
   }, [isAnalyzing, analysisComplete, replayData, rawParsedData, selectedPlayerIndex]);
 
   if (isAnalyzing) {
+    console.log('💡 AnalysisDisplay - Rendering loading state');
     return (
       <div className="h-96 flex flex-col items-center justify-center bg-black/5 backdrop-blur-sm rounded-lg border border-border/50 shadow-lg">
         <div className="text-center max-w-md p-6">
@@ -106,23 +118,24 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     );
   }
   
-  // Show analysis results if data is available and analysis is complete
+  // Show analysis results if analysis is complete AND we have data
+  // Critical fix: This condition must be evaluated correctly to show results
   if (analysisComplete && (replayData || rawParsedData)) {
-    console.log('AnalysisDisplay - Showing analysis result with data');
+    console.log('💡 AnalysisDisplay - Rendering analysis results');
     
     // Use either replayData or create a compatible object from rawParsedData
     let displayData = replayData;
     
     // If we don't have processed replayData but we have rawParsedData
     if (!displayData && rawParsedData) {
-      console.log('AnalysisDisplay - Using rawParsedData as fallback');
+      console.log('💡 AnalysisDisplay - Using rawParsedData as fallback');
       
       // Ensure minimum required data is present
       const hasMinimumData = rawParsedData.playerName && 
-                             rawParsedData.map && 
-                             rawParsedData.strengths &&
-                             rawParsedData.weaknesses &&
-                             rawParsedData.recommendations;
+                            rawParsedData.map && 
+                            rawParsedData.strengths &&
+                            rawParsedData.weaknesses &&
+                            rawParsedData.recommendations;
                              
       if (hasMinimumData) {
         displayData = {
@@ -132,10 +145,12 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
           strengths: rawParsedData.strengths || ['Gute mechanische Fähigkeiten'],
           weaknesses: rawParsedData.weaknesses || ['Könnte Scouting verbessern'],
           recommendations: rawParsedData.recommendations || ['Übe Build-Order Timings'],
-          trainingPlan: rawParsedData.trainingPlan || []
+          trainingPlan: rawParsedData.trainingPlan || [],
+          buildOrder: rawParsedData.buildOrder || []
         };
+        console.log('💡 AnalysisDisplay - Created displayData from rawParsedData:', displayData);
       } else {
-        console.error('AnalysisDisplay - Raw data missing essential fields:', rawParsedData);
+        console.error('⛔ AnalysisDisplay - Raw data missing essential fields:', rawParsedData);
         // Fall back to placeholder display
         return (
           <div className="h-96 flex flex-col items-center justify-center bg-destructive/10 backdrop-blur-sm rounded-lg border border-destructive/30 shadow-lg">
@@ -174,7 +189,7 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
   }
   
   // Default fallback state when no data is available
-  console.log('AnalysisDisplay - Showing upload placeholder');
+  console.log('💡 AnalysisDisplay - Rendering upload placeholder');
   return (
     <div className="h-96 flex flex-col items-center justify-center bg-card/30 backdrop-blur-sm rounded-lg border border-dashed border-border shadow-inner">
       <div className="text-center max-w-md p-6">

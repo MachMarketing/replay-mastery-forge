@@ -40,9 +40,19 @@ const UploadPage = () => {
     fetchReplays();
   }, [fetchReplays]);
   
+  // For debugging - log state changes
+  useEffect(() => {
+    console.log('🔄 UploadPage - State update:', {
+      isAnalyzing,
+      analysisComplete,
+      hasRawData: !!rawParsedData,
+      hasReplayData: !!replayData,
+    });
+  }, [isAnalyzing, analysisComplete, rawParsedData, replayData]);
+  
   // Handler for when upload is complete
   const handleUploadComplete = async (uploadedFile: File, parsedReplayData: AnalyzedReplayResult) => {
-    console.log("Upload complete with data:", parsedReplayData);
+    console.log("🚀 Upload complete with data:", parsedReplayData);
     
     if (!parsedReplayData) {
       toast({
@@ -53,15 +63,17 @@ const UploadPage = () => {
       return;
     }
     
+    // First set state variables
     setFile(uploadedFile);
     setRawParsedData(parsedReplayData);
     setIsAnalyzing(true);
     
     try {
       // Pass the data directly to handlePlayerSelection instead of relying on state
+      // Critical fix: Pass parsedReplayData explicitly to avoid timing issues with state updates
       handlePlayerSelection(0, parsedReplayData);
     } catch (error) {
-      console.error('Analysis error:', error);
+      console.error('⛔ Analysis error:', error);
       toast({
         title: 'Analyse fehlgeschlagen',
         description: 'Es gab einen Fehler bei der Analyse deines Replays.',
@@ -74,16 +86,16 @@ const UploadPage = () => {
 
   // Handle player perspective selection
   const handlePlayerSelection = (playerIndex: number, data: AnalyzedReplayResult = rawParsedData!) => {
-    console.log("Processing player selection:", playerIndex);
+    console.log("🎮 Processing player selection:", playerIndex);
     
     if (!data) {
-      console.error('Cannot process player selection: No raw data available');
+      console.error('⛔ Cannot process player selection: No raw data available');
       setIsAnalyzing(false);
       return;
     }
     
-    console.log("Processing player selection with playerIndex:", playerIndex);
-    console.log("Processing with data:", data);
+    console.log("🎮 Processing player selection with playerIndex:", playerIndex);
+    console.log("🎮 Processing with data:", data);
     
     setSelectedPlayerIndex(playerIndex);
     
@@ -91,7 +103,7 @@ const UploadPage = () => {
     let adjustedData: AnalyzedReplayResult;
     
     if (playerIndex === 0) {
-      // First player is already correctly set up in rawParsedData
+      // First player is already correctly set up in data
       adjustedData = { ...data };
     } else {
       // Swap player and opponent for second player perspective
@@ -118,10 +130,12 @@ const UploadPage = () => {
       result: normalizeResult(adjustedData.result || 'win'),
       strengths: adjustedData.strengths || [],
       weaknesses: adjustedData.weaknesses || [],
-      recommendations: adjustedData.recommendations || []
+      recommendations: adjustedData.recommendations || [],
+      // Ensure buildOrder exists
+      buildOrder: adjustedData.buildOrder || []
     };
     
-    console.log("Final normalized data:", normalizedData);
+    console.log("🎮 Final normalized data:", normalizedData);
     
     // Extend the parsedReplayData with ID for AnalysisResult
     const extendedData: ReplayData = {
