@@ -82,7 +82,8 @@ const UploadPage = () => {
       return;
     }
     
-    console.log("Processing player selection:", playerIndex, "with data:", data);
+    console.log("Processing player selection with playerIndex:", playerIndex);
+    console.log("Processing with data:", data);
     
     setSelectedPlayerIndex(playerIndex);
     

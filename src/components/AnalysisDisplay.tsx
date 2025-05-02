@@ -45,6 +45,7 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     });
     
     if (replayData) {
+      console.log('AnalysisDisplay - ReplayData:', replayData);
       console.log('AnalysisDisplay - ReplayData keys:', Object.keys(replayData));
       
       // Check for essential data
@@ -106,15 +107,16 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
   }
   
   // Show analysis results if data is available and analysis is complete
-  if ((replayData || rawParsedData) && analysisComplete) {
-    console.log('AnalysisDisplay - Showing analysis result with data keys:', 
-      replayData ? Object.keys(replayData) : (rawParsedData ? Object.keys(rawParsedData) : 'none'));
+  if (analysisComplete && (replayData || rawParsedData)) {
+    console.log('AnalysisDisplay - Showing analysis result with data');
     
     // Use either replayData or create a compatible object from rawParsedData
     let displayData = replayData;
     
     // If we don't have processed replayData but we have rawParsedData
     if (!displayData && rawParsedData) {
+      console.log('AnalysisDisplay - Using rawParsedData as fallback');
+      
       // Ensure minimum required data is present
       const hasMinimumData = rawParsedData.playerName && 
                              rawParsedData.map && 
