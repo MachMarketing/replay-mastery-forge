@@ -15,15 +15,29 @@ export function useReplayParser(): ReplayParserResult {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const [wasmInitialized, setWasmInitialized] = useState(false);
 
   // Pre-initialize WASM on hook mount with proper useEffect
   useEffect(() => {
     console.log('[useReplayParser] Pre-initializing WASM module');
+    
+    let isMounted = true;
+    
     initParserWasm()
-      .then(() => console.log('[useReplayParser] WASM pre-initialized successfully'))
+      .then(() => {
+        if (isMounted) {
+          console.log('[useReplayParser] WASM pre-initialized successfully');
+          setWasmInitialized(true);
+        }
+      })
       .catch(err => {
         console.error('[useReplayParser] Failed to pre-initialize WASM:', err);
+        // Don't set error state here, we'll retry before parsing
       });
+      
+    return () => {
+      isMounted = false;
+    };
   }, []); // Empty dependency array to run only once
 
   const clearError = () => {
@@ -53,13 +67,16 @@ export function useReplayParser(): ReplayParserResult {
       
       console.log('[useReplayParser] Starting replay parsing for file:', file.name, 'size:', file.size);
       
-      try {
-        // Re-initialize WASM just before parsing to ensure it's ready
-        console.log('[useReplayParser] Re-initializing WASM before parsing');
-        await initParserWasm();
-        console.log('[useReplayParser] WASM re-initialization successful');
-      } catch (err) {
-        console.warn('[useReplayParser] WASM re-initialization failed, continuing with parsing:', err);
+      // Always try to initialize WASM again if it failed earlier
+      if (!wasmInitialized) {
+        try {
+          console.log('[useReplayParser] Trying to initialize WASM before parsing');
+          await initParserWasm();
+          setWasmInitialized(true);
+          console.log('[useReplayParser] WASM initialization successful');
+        } catch (err) {
+          console.warn('[useReplayParser] WASM initialization failed, but continuing with parsing:', err);
+        }
       }
       
       // Verify file is readable

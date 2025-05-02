@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -134,27 +133,24 @@ const UploadPage = () => {
       id: crypto.randomUUID(),
     };
     
-    // Critical order of operations to ensure UI updates correctly:
-    // 1. Set the replay data first so it's available when analysis complete is triggered
+    // Update sequence to ensure state consistency:
+    // 1. Set the replay data first
     setReplayData(extendedData);
     
-    // 2. Wait for state update to propagate (important for React rendering)
-    setTimeout(() => {
-      // 3. Set analyzing to false to stop loading indicator
-      setIsAnalyzing(false);
-      
-      // 4. Set analysis complete flag last
-      setAnalysisComplete(true);
-      
-      // Refresh the replays list after successful upload
-      fetchReplays();
-      
-      // Add a success toast to give user feedback
-      toast({
-        title: "Analysis Complete",
-        description: "Your replay has been successfully analyzed.",
-      });
-    }, 50); // Short timeout to ensure state updates in correct order
+    // 2. Set analyzed to false immediately (to avoid analysis spinner during state update)
+    setIsAnalyzing(false);
+    
+    // 3. Ensure analysis complete flag is set
+    setAnalysisComplete(true);
+    
+    // Refresh the replays list after successful upload
+    fetchReplays();
+    
+    // Add a success toast to give user feedback
+    toast({
+      title: "Analysis Complete",
+      description: `Analysis complete for ${uploadedFile?.name || 'your replay'}`,
+    });
   };
 
   // Get recent uploads from replays list
@@ -165,7 +161,8 @@ const UploadPage = () => {
     isAnalyzing, 
     analysisComplete, 
     hasReplayData: !!replayData, 
-    hasRawData: !!rawParsedData
+    hasRawData: !!rawParsedData,
+    selectedPlayerIndex 
   });
 
   return (

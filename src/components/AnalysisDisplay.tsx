@@ -86,9 +86,16 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     );
   }
   
-  // The primary condition to show analysis results is having replay data
-  if (replayData) {
-    console.log('Rendering analysis result with data:', replayData);
+  // Modified condition: Check for either replayData OR analysisComplete with rawParsedData
+  if (replayData || (analysisComplete && rawParsedData)) {
+    console.log('Rendering analysis result with data:', replayData || rawParsedData);
+    
+    // Use either replayData or create a compatible object from rawParsedData
+    const displayData = replayData || {
+      ...rawParsedData,
+      id: crypto.randomUUID(), // Add required id field if using rawParsedData
+    };
+    
     return (
       <>
         {/* Player Selector */}
@@ -102,7 +109,7 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
         />
         
         <div className="mt-4">
-          <AnalysisResult data={replayData} isPremium={isPremium} />
+          <AnalysisResult data={displayData} isPremium={isPremium} />
         </div>
       </>
     );
