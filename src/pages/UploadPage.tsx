@@ -24,7 +24,7 @@ const UploadPage = () => {
   const [selectedPlayerIndex, setSelectedPlayerIndex] = useState<number>(0);
   const { replays, fetchReplays } = useReplays();
   const { toast } = useToast();
-  const { parseReplay, isProcessing } = useReplayParser();
+  const { isProcessing } = useReplayParser();
 
   // Reset states when component unmounts
   useEffect(() => {
@@ -61,9 +61,19 @@ const UploadPage = () => {
   // Handler for when upload is complete
   const handleUploadComplete = async (uploadedFile: File, parsedReplayData: AnalyzedReplayResult) => {
     console.log("Upload complete with data:", parsedReplayData);
+    
+    if (!parsedReplayData) {
+      toast({
+        title: 'Error',
+        description: 'No data was returned from the parser',
+        variant: 'destructive'
+      });
+      return;
+    }
+    
     setFile(uploadedFile);
-    setIsAnalyzing(true);
     setRawParsedData(parsedReplayData);
+    setIsAnalyzing(true);
     
     try {
       // Process immediately rather than with a delay
@@ -209,7 +219,7 @@ const UploadPage = () => {
                   <div className="mt-6 pt-6 border-t border-border">
                     <div className="flex items-center justify-between">
                       <h3 className="text-sm font-medium">Parser Status</h3>
-                      <div className="h-2 w-2 rounded-full bg-green-500" />
+                      <div className={`h-2 w-2 rounded-full ${isProcessing ? 'bg-amber-500 animate-pulse' : 'bg-green-500'}`} />
                     </div>
                     <p className="text-xs text-muted-foreground mt-1 truncate">
                       {isProcessing ? 'Processing replay...' : 'Browser parser ready'}
@@ -223,7 +233,7 @@ const UploadPage = () => {
                       {recentReplays.length > 0 ? (
                         recentReplays.map((replay: Replay) => (
                           <div key={replay.id} className="flex justify-between items-center p-2 rounded hover:bg-secondary/20 text-sm">
-                            <span className="truncate mr-2">
+                            <span className="truncate mr-2 max-w-[160px]" title={replay.original_filename || `${replay.player_name || 'Unknown'} vs ${replay.opponent_name || 'Unknown'}`}>
                               {replay.original_filename || `${replay.player_name || 'Unknown'} vs ${replay.opponent_name || 'Unknown'}`}
                             </span>
                             <span className="text-xs text-muted-foreground">

@@ -69,9 +69,7 @@ export function mapRawToParsed(rawResult: any): ParsedReplayResult {
     
     // Ensure we have at least one player
     if (!players || players.length < 1) {
-      // Fallback to default data if parser couldn't extract players
-      console.warn('🗺️ [replayMapper] No players detected in replay, using fallback data');
-      return createFallbackReplayData(rawResult);
+      throw new Error('No players found in replay data');
     }
     
     // Extract player information - first player is main player, second is opponent
@@ -307,34 +305,6 @@ function mapScrepJsRace(raceStr?: string): 'Terran' | 'Protoss' | 'Zerg' {
   
   // Default fallback
   return 'Terran';
-}
-
-/**
- * Create fallback data when parser couldn't extract meaningful information
- * This prevents the UI from crashing and gives user partial information
- */
-function createFallbackReplayData(rawResult: any): ParsedReplayResult {
-  console.warn('🗺️ [replayMapper] Creating fallback data due to parsing issues');
-  
-  const fallbackPlayerRace: 'Terran' | 'Protoss' | 'Zerg' = 'Terran';
-  const fallbackOpponentRace: 'Terran' | 'Protoss' | 'Zerg' = 'Protoss';
-  const durationMs = 600000; // 10 minutes
-  
-  return {
-    playerName: 'Player',
-    opponentName: 'Opponent',
-    playerRace: fallbackPlayerRace,
-    opponentRace: fallbackOpponentRace,
-    map: 'Unknown Map',
-    duration: formatDuration(durationMs),
-    date: new Date().toISOString().split('T')[0],
-    result: 'win',
-    apm: 120,
-    eapm: 100,
-    matchup: `${fallbackPlayerRace.charAt(0)}v${fallbackOpponentRace.charAt(0)}`,
-    buildOrder: generateBuildOrder(fallbackPlayerRace, durationMs),
-    resourcesGraph: generateResourceData(durationMs)
-  };
 }
 
 /**

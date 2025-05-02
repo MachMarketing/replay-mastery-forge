@@ -49,6 +49,7 @@ export async function initParserWasm(): Promise<void> {
     
     try {
       // Import the module dynamically to avoid CommonJS issues
+      console.log('📊 [wasmLoader] Importing screp-js module...');
       const importedModule = await import('screp-js');
       
       // Check if we got a valid module
@@ -64,9 +65,11 @@ export async function initParserWasm(): Promise<void> {
       
       // Wait for module initialization if it provides a ready promise
       if (screpModule && typeof screpModule.ready === 'function') {
+        console.log('📊 [wasmLoader] Calling module ready() function');
         await screpModule.ready();
         console.log('📊 [wasmLoader] Module ready() function completed');
       } else if (screpModule && screpModule.ready && typeof screpModule.ready.then === 'function') {
+        console.log('📊 [wasmLoader] Waiting for module ready promise');
         await screpModule.ready;
         console.log('📊 [wasmLoader] Module ready promise resolved');
       } else {
@@ -75,6 +78,7 @@ export async function initParserWasm(): Promise<void> {
       
       // Initialize the module if it has an init function
       if (screpModule && typeof screpModule.init === 'function') {
+        console.log('📊 [wasmLoader] Calling module init() function');
         await screpModule.init();
         console.log('📊 [wasmLoader] Module init() function completed');
       }
@@ -127,26 +131,7 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
     ));
   
   if (typeof parser !== 'function') {
-    // If we can't find the parser function, try to work with mock data
-    console.error('❌ [wasmLoader] No valid parse function found, creating mock data');
-    
-    // Create a minimal mock result with essential data structure
-    return {
-      Header: {
-        Players: [
-          { Name: "Player", Race: { Name: "Terran" }, Team: 0 },
-          { Name: "Opponent", Race: { Name: "Protoss" }, Team: 1 }
-        ],
-        Map: "Mock Map",
-        Frames: 10000
-      },
-      Computed: {
-        WinnerTeam: 0,
-        PlayerDescs: [
-          { PlayerID: 0, APM: 120, EAPM: 95 }
-        ]
-      }
-    };
+    throw new Error('No valid parse function found in the WASM module');
   }
   
   // Parse the replay data with better error handling
@@ -155,54 +140,19 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
     const result = await parser(data);
     
     if (!result) {
-      console.warn('📊 [wasmLoader] Parser returned empty result, using fallback data');
-      // Return mockup data to prevent UI crashing
-      return {
-        Header: {
-          Players: [
-            { Name: "Player", Race: { Name: "Terran" }, Team: 0 },
-            { Name: "Opponent", Race: { Name: "Protoss" }, Team: 1 }
-          ],
-          Map: "Unknown Map",
-          Frames: 10000
-        },
-        Computed: {
-          WinnerTeam: 0,
-          PlayerDescs: [
-            { PlayerID: 0, APM: 120, EAPM: 95 }
-          ]
-        }
-      };
+      throw new Error('Parser returned empty result');
     }
     
     console.log('📊 [wasmLoader] Parsing successful, result structure:', Object.keys(result));
     return result;
   } catch (error) {
     console.error('❌ [wasmLoader] Error during parsing:', error);
-    
-    // Return mockup data to prevent UI crashing
-    console.warn('❌ [wasmLoader] Returning mock data due to parsing error');
-    return {
-      Header: {
-        Players: [
-          { Name: "Player", Race: { Name: "Terran" }, Team: 0 },
-          { Name: "Opponent", Race: { Name: "Protoss" }, Team: 1 }
-        ],
-        Map: "Error Map",
-        Frames: 10000
-      },
-      Computed: {
-        WinnerTeam: 0,
-        PlayerDescs: [
-          { PlayerID: 0, APM: 120, EAPM: 95 }
-        ]
-      }
-    };
+    throw error;
   }
 }
 
 // Pre-initialize the WASM module when this file is imported - but don't block on it
 initParserWasm().catch(err => {
   console.warn('❌ [wasmLoader] Failed to pre-initialize WASM module:', err);
-  // Don't throw here - we'll retry when needed
+  // We'll retry when needed
 });

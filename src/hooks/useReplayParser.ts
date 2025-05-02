@@ -54,6 +54,11 @@ export function useReplayParser(): ReplayParserResult {
   const parseReplay = async (file: File): Promise<AnalyzedReplayResult | null> => {
     if (isProcessing) {
       console.log('[useReplayParser] Already processing a file, aborting');
+      toast({
+        title: "Processing in progress",
+        description: "Please wait for the current file to finish processing",
+        variant: "default",
+      });
       return null;
     }
     
@@ -87,13 +92,8 @@ export function useReplayParser(): ReplayParserResult {
           setWasmInitialized(true);
           console.log('[useReplayParser] WASM initialization successful');
         } catch (err) {
-          console.warn('[useReplayParser] WASM initialization failed, but continuing with parsing:', err);
-          // Show a toast but continue anyway
-          toast({
-            title: "Parser Initialization Warning",
-            description: "WASM initialization had issues, but we'll try to parse anyway",
-            variant: "default",
-          });
+          console.error('[useReplayParser] WASM initialization failed:', err);
+          throw new Error('Failed to initialize WASM parser. Please try again.');
         }
       }
       

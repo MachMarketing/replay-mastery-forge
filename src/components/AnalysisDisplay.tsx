@@ -90,8 +90,7 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     );
   }
   
-  // Show analysis results if either replayData or rawParsedData is available
-  // and if analysisComplete is true
+  // Show analysis results if data is available and analysis is complete
   if ((replayData || rawParsedData) && analysisComplete) {
     console.log('Rendering analysis result with data:', replayData || rawParsedData);
     

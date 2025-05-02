@@ -54,17 +54,14 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     const mappedData = mapRawToParsed(parsedReplay);
     console.log('📊 [browserReplayParser] Mapping successful:', mappedData);
     
-    // Create fallback values for essential fields if they're missing
-    if (!mappedData.playerName) mappedData.playerName = 'Unknown Player';
-    if (!mappedData.opponentName) mappedData.opponentName = 'Unknown Opponent';
-    if (!mappedData.playerRace) mappedData.playerRace = 'Terran';
-    if (!mappedData.opponentRace) mappedData.opponentRace = 'Terran';
-    if (!mappedData.map) mappedData.map = 'Unknown Map';
-    if (!mappedData.result) mappedData.result = 'win';
+    // Validate essential fields
+    if (!mappedData.playerName || !mappedData.opponentName || !mappedData.map) {
+      throw new Error('Critical replay data is missing after parsing');
+    }
     
     return mappedData;
   } catch (error) {
     console.error('❌ [browserReplayParser] Parsing error:', error);
-    throw error;
+    throw error; // Let the caller handle the error
   }
 }

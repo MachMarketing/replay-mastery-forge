@@ -64,11 +64,7 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     
     // Validate analysis data
     if (!analysis || !analysis.strengths) {
-      console.warn('🔍 [replayParserService] Analysis returned incomplete data, using defaults');
-      // Provide default analysis if needed
-      analysis.strengths = analysis.strengths || ['Consistently executing build orders'];
-      analysis.weaknesses = analysis.weaknesses || ['Could improve scouting frequency'];
-      analysis.recommendations = analysis.recommendations || ['Practice standard opening timing'];
+      throw new Error('Analysis returned incomplete data');
     }
     
     // Return combined result with parsing and analysis
