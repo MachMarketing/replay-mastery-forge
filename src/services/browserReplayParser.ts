@@ -27,8 +27,8 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     await wasmReady;
     
     // Read the file as array buffer with validation
-    if (file.size === 0) {
-      throw new Error('File is empty (0 bytes)');
+    if (!file || file.size === 0) {
+      throw new Error('File is empty (0 bytes) or invalid');
     }
     
     const fileData = await readFileAsUint8Array(file);
@@ -48,7 +48,6 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       throw new Error('Parser returned null or empty result');
     }
     
-    console.log('📊 [browserReplayParser] Raw parser output:', parsedReplay);
     console.log('📊 [browserReplayParser] Raw parser output structure:', Object.keys(parsedReplay));
     
     // Map the raw parser output to our application's format

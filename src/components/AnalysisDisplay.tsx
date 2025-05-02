@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Loader2, UploadIcon } from 'lucide-react';
 import { AnalyzedReplayResult } from '@/services/replayParserService';
 import AnalysisResult from '@/components/AnalysisResult';
@@ -33,14 +33,17 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     return 'Terran'; 
   };
 
-  // Debug output to verify what's happening with our data and state
-  console.log('AnalysisDisplay - State:', { 
-    isAnalyzing, 
-    analysisComplete, 
-    hasReplayData: !!replayData, 
-    hasRawData: !!rawParsedData,
-    selectedPlayerIndex 
-  });
+  // Log data for debugging purposes
+  useEffect(() => {
+    console.log('AnalysisDisplay - State:', { 
+      isAnalyzing, 
+      analysisComplete, 
+      hasReplayData: !!replayData, 
+      hasRawData: !!rawParsedData,
+      selectedPlayerIndex,
+      rawParsedDataKeys: rawParsedData ? Object.keys(rawParsedData) : 'none'
+    });
+  }, [isAnalyzing, analysisComplete, replayData, rawParsedData, selectedPlayerIndex]);
 
   if (isAnalyzing) {
     return (
@@ -94,16 +97,21 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     const displayData = replayData || {
       ...rawParsedData,
       id: crypto.randomUUID(), // Add required id field if using rawParsedData
+      // Ensure all required fields have values
+      strengths: rawParsedData?.strengths || ['Good mechanical skills'],
+      weaknesses: rawParsedData?.weaknesses || ['Could improve scouting'],
+      recommendations: rawParsedData?.recommendations || ['Practice build order timings'],
+      trainingPlan: rawParsedData?.trainingPlan || []
     };
     
     return (
       <>
         {/* Player Selector */}
         <PlayerSelector 
-          player1={rawParsedData?.playerName || 'Player'} 
-          player2={rawParsedData?.opponentName || 'Opponent'}
-          race1={normalizeRace(rawParsedData?.playerRace || 'Terran')}
-          race2={normalizeRace(rawParsedData?.opponentRace || 'Terran')}
+          player1={rawParsedData?.playerName || displayData?.playerName || 'Player'} 
+          player2={rawParsedData?.opponentName || displayData?.opponentName || 'Opponent'}
+          race1={normalizeRace(rawParsedData?.playerRace || displayData?.playerRace || 'Terran')}
+          race2={normalizeRace(rawParsedData?.opponentRace || displayData?.opponentRace || 'Terran')}
           selectedPlayerIndex={selectedPlayerIndex}
           onSelectPlayer={onPlayerSelect}
         />

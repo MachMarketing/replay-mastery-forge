@@ -31,8 +31,10 @@ export function useReplayParser(): ReplayParserResult {
         }
       })
       .catch(err => {
-        console.error('[useReplayParser] Failed to pre-initialize WASM:', err);
-        // Don't set error state here, we'll retry before parsing
+        if (isMounted) {
+          console.error('[useReplayParser] Failed to pre-initialize WASM:', err);
+          // Don't set error state here, we'll retry before parsing
+        }
       });
       
     return () => {
@@ -45,6 +47,11 @@ export function useReplayParser(): ReplayParserResult {
   };
 
   const parseReplay = async (file: File): Promise<AnalyzedReplayResult | null> => {
+    if (isProcessing) {
+      console.log('[useReplayParser] Already processing a file, aborting');
+      return null;
+    }
+    
     setIsProcessing(true);
     setError(null);
     

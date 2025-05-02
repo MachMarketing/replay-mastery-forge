@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -149,7 +150,7 @@ const UploadPage = () => {
     // Add a success toast to give user feedback
     toast({
       title: "Analysis Complete",
-      description: `Analysis complete for ${uploadedFile?.name || 'your replay'}`,
+      description: `Analysis complete for ${file?.name || 'your replay'}`,
     });
   };
 

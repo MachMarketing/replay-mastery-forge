@@ -1,105 +1,76 @@
 
 /**
- * Helper functions for reading files
+ * Utility functions for file reading operations
  */
 
 /**
- * Reads a file and returns its contents as a Uint8Array
- * with improved error handling and validation
+ * Read a file as Uint8Array asynchronously
+ * @param file The file to read
+ * @returns Promise that resolves with the file contents as Uint8Array
  */
-export function readFileAsUint8Array(file: File): Promise<Uint8Array> {
+export async function readFileAsUint8Array(file: File): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
-    // Check for valid file
+    // Validate the file
     if (!file) {
       reject(new Error('No file provided'));
       return;
     }
 
-    // Check for empty file
     if (file.size === 0) {
-      reject(new Error('File is empty (0 bytes)'));
+      reject(new Error('File is empty'));
       return;
     }
     
-    // Create file reader with timeout protection
     const reader = new FileReader();
     
-    // Set up a timeout to prevent hanging reads
-    const timeoutMs = 30000; // 30 seconds timeout
-    const timeout = setTimeout(() => {
-      reader.abort();
-      reject(new Error(`File read timed out after ${timeoutMs/1000} seconds`));
-    }, timeoutMs);
-    
-    reader.onload = () => {
-      clearTimeout(timeout);
-      
-      if (!reader.result) {
-        reject(new Error('File reader returned empty result'));
+    reader.onload = (event) => {
+      if (!event.target || !event.target.result) {
+        reject(new Error('Failed to read file: No result available'));
         return;
       }
       
       try {
-        const arrayBuffer = reader.result as ArrayBuffer;
+        // Convert ArrayBuffer to Uint8Array
+        const arrayBuffer = event.target.result as ArrayBuffer;
         const uint8Array = new Uint8Array(arrayBuffer);
-        
-        // Validation check
-        if (uint8Array.length === 0) {
-          reject(new Error('File read successfully but content is empty'));
-          return;
-        }
-        
-        console.log(`📊 [fileReader] Successfully read file: ${file.name}, size: ${uint8Array.length} bytes`);
         resolve(uint8Array);
       } catch (error) {
-        reject(new Error(`Error converting file to Uint8Array: ${error}`));
+        reject(new Error(`Error processing file data: ${error instanceof Error ? error.message : String(error)}`));
       }
     };
     
-    reader.onerror = () => {
-      clearTimeout(timeout);
-      reject(new Error(`Error reading file: ${reader.error?.message || 'unknown error'}`));
+    reader.onerror = (event) => {
+      reject(new Error(`Error reading file: ${event.target?.error?.message || 'Unknown error'}`));
     };
     
-    reader.onabort = () => {
-      clearTimeout(timeout);
-      reject(new Error('File reading was aborted'));
-    };
-    
-    try {
-      console.log(`📊 [fileReader] Starting to read file: ${file.name}, size: ${file.size} bytes`);
-      reader.readAsArrayBuffer(file);
-    } catch (error) {
-      clearTimeout(timeout);
-      reject(new Error(`Error initiating file read: ${error}`));
-    }
+    // Start reading the file as ArrayBuffer
+    reader.readAsArrayBuffer(file);
   });
 }
 
 /**
- * Creates a File object from a Uint8Array for testing purposes
- * @param data The Uint8Array data to be converted to a File
- * @param fileName Optional name for the file (default: 'test.rep')
- * @param fileType Optional MIME type (default: 'application/octet-stream')
- * @returns A File object containing the provided data
+ * Creates a mock File object from a Uint8Array
+ * @param data The Uint8Array data to create a file from
+ * @param fileName The name of the file
+ * @param options Additional file options
+ * @returns A File object
  */
 export function createMockFileFromUint8Array(
   data: Uint8Array,
   fileName: string = 'test.rep',
-  fileType: string = 'application/octet-stream'
+  options?: FilePropertyBag
 ): File {
+  const defaultOptions: FilePropertyBag = {
+    type: 'application/octet-stream',
+    ...options
+  };
+  
   try {
-    // Create a Blob from the Uint8Array
-    const blob = new Blob([data], { type: fileType });
-    
-    // Create a File from the Blob
-    const file = new File([blob], fileName, { type: fileType });
-    
-    console.log(`📊 [fileReader] Created mock file: ${fileName}, size: ${file.size} bytes`);
-    return file;
+    // Create the File object
+    return new File([data], fileName, defaultOptions);
   } catch (error) {
-    console.error(`❌ [fileReader] Error creating mock file: ${error}`);
-    // Create an empty file as fallback
-    return new File([], fileName, { type: fileType });
+    console.error('Error creating File from Uint8Array:', error);
+    // Fallback for environments where File constructor is not fully supported
+    return new File([data.buffer], fileName, defaultOptions);
   }
 }
