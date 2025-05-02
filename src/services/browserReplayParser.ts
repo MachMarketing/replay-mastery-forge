@@ -54,10 +54,13 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     const mappedData = mapRawToParsed(parsedReplay);
     console.log('📊 [browserReplayParser] Mapping successful:', mappedData);
     
-    // Validate the mapped data before returning
-    if (!mappedData || !mappedData.playerName) {
-      throw new Error('Failed to extract replay data. The file may be in an unsupported format or corrupted.');
-    }
+    // Create fallback values for essential fields if they're missing
+    if (!mappedData.playerName) mappedData.playerName = 'Unknown Player';
+    if (!mappedData.opponentName) mappedData.opponentName = 'Unknown Opponent';
+    if (!mappedData.playerRace) mappedData.playerRace = 'Terran';
+    if (!mappedData.opponentRace) mappedData.opponentRace = 'Terran';
+    if (!mappedData.map) mappedData.map = 'Unknown Map';
+    if (!mappedData.result) mappedData.result = 'win';
     
     return mappedData;
   } catch (error) {

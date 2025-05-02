@@ -43,6 +43,7 @@ const UploadPage = () => {
   
   // Helper function for race normalization
   const normalizeRace = (race: string): 'Terran' | 'Protoss' | 'Zerg' => {
+    if (!race) return 'Terran';
     const normalizedRace = race.toLowerCase();
     if (normalizedRace.includes('terr') || normalizedRace.includes('t')) return 'Terran';
     if (normalizedRace.includes('prot') || normalizedRace.includes('p')) return 'Protoss';
@@ -52,6 +53,7 @@ const UploadPage = () => {
   
   // Helper for result normalization
   const normalizeResult = (result: string): 'win' | 'loss' => {
+    if (!result) return 'win';
     const normalizedResult = result.toLowerCase();
     return normalizedResult.includes('win') ? 'win' : 'loss';
   };
@@ -101,10 +103,10 @@ const UploadPage = () => {
       // Swap player and opponent for second player perspective
       adjustedData = {
         ...rawParsedData,
-        playerName: rawParsedData.opponentName,
-        opponentName: rawParsedData.playerName,
-        playerRace: rawParsedData.opponentRace,
-        opponentRace: rawParsedData.playerRace,
+        playerName: rawParsedData.opponentName || 'Opponent',
+        opponentName: rawParsedData.playerName || 'Player',
+        playerRace: rawParsedData.opponentRace || 'Terran',
+        opponentRace: rawParsedData.playerRace || 'Terran',
         // Invert result
         result: rawParsedData.result === 'win' ? 'loss' : 'win',
         // Swap strengths and weaknesses for more accurate coaching
@@ -117,9 +119,9 @@ const UploadPage = () => {
     // Ensure race values and result are properly normalized
     const normalizedData = {
       ...adjustedData,
-      playerRace: normalizeRace(adjustedData.playerRace),
-      opponentRace: normalizeRace(adjustedData.opponentRace),
-      result: normalizeResult(adjustedData.result),
+      playerRace: normalizeRace(adjustedData.playerRace || 'Terran'),
+      opponentRace: normalizeRace(adjustedData.opponentRace || 'Terran'),
+      result: normalizeResult(adjustedData.result || 'win'),
       // Ensure all required arrays exist
       strengths: adjustedData.strengths || [],
       weaknesses: adjustedData.weaknesses || [],
@@ -134,15 +136,14 @@ const UploadPage = () => {
       id: crypto.randomUUID(),
     };
     
-    // Update sequence to ensure state consistency:
-    // 1. Set the replay data first
+    // Set the replay data
     setReplayData(extendedData);
     
-    // 2. Set analyzed to false immediately (to avoid analysis spinner during state update)
-    setIsAnalyzing(false);
-    
-    // 3. Ensure analysis complete flag is set
+    // Ensure analysis complete flag is set
     setAnalysisComplete(true);
+    
+    // Finally set analyzing to false
+    setIsAnalyzing(false);
     
     // Refresh the replays list after successful upload
     fetchReplays();

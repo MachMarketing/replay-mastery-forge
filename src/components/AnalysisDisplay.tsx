@@ -26,7 +26,8 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
 }) => {
   // Helper function for race normalization
   const normalizeRace = (race: string): 'Terran' | 'Protoss' | 'Zerg' => {
-    const normalizedRace = race?.toLowerCase() || '';
+    if (!race) return 'Terran';
+    const normalizedRace = race.toLowerCase() || '';
     if (normalizedRace.includes('terr') || normalizedRace.includes('t')) return 'Terran';
     if (normalizedRace.includes('prot') || normalizedRace.includes('p')) return 'Protoss';
     if (normalizedRace.includes('zerg') || normalizedRace.includes('z')) return 'Zerg';
@@ -89,8 +90,9 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     );
   }
   
-  // Modified condition: Check for either replayData OR analysisComplete with rawParsedData
-  if (replayData || (analysisComplete && rawParsedData)) {
+  // Show analysis results if either replayData or rawParsedData is available
+  // and if analysisComplete is true
+  if ((replayData || rawParsedData) && analysisComplete) {
     console.log('Rendering analysis result with data:', replayData || rawParsedData);
     
     // Use either replayData or create a compatible object from rawParsedData

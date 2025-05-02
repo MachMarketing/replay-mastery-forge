@@ -34,6 +34,11 @@ export function useReplayParser(): ReplayParserResult {
         if (isMounted) {
           console.error('[useReplayParser] Failed to pre-initialize WASM:', err);
           // Don't set error state here, we'll retry before parsing
+          toast({
+            title: "WASM initialization warning",
+            description: "Parser initialization encountered an issue. Will retry when needed.",
+            variant: "default",
+          });
         }
       });
       
@@ -83,6 +88,12 @@ export function useReplayParser(): ReplayParserResult {
           console.log('[useReplayParser] WASM initialization successful');
         } catch (err) {
           console.warn('[useReplayParser] WASM initialization failed, but continuing with parsing:', err);
+          // Show a toast but continue anyway
+          toast({
+            title: "Parser Initialization Warning",
+            description: "WASM initialization had issues, but we'll try to parse anyway",
+            variant: "default",
+          });
         }
       }
       

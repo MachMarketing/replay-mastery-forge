@@ -50,6 +50,8 @@ export async function readFileAsUint8Array(file: File): Promise<Uint8Array> {
 
 /**
  * Creates a mock File object from a Uint8Array
+ * Used for testing the parser with simulated data
+ * 
  * @param data The Uint8Array data to create a file from
  * @param fileName The name of the file
  * @param options Additional file options
