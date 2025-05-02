@@ -43,7 +43,14 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     
     // Parse the replay with WASM parser
     console.log('📊 [browserReplayParser] Parsing replay with WASM parser...');
-    const parsedReplay = await parseReplayWasm(fileData);
+    let parsedReplay;
+    
+    try {
+      parsedReplay = await parseReplayWasm(fileData);
+    } catch (parseError) {
+      console.error('❌ [browserReplayParser] WASM parser error:', parseError);
+      throw new Error(`Parser-Fehler: ${parseError instanceof Error ? parseError.message : 'Unbekannter Fehler'}`);
+    }
     
     if (!parsedReplay) {
       console.error('❌ [browserReplayParser] Parser returned null or empty result');
@@ -53,8 +60,14 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     console.log('📊 [browserReplayParser] Raw parser output keys:', Object.keys(parsedReplay));
     
     // Map the raw parser output to our application's format
-    const mappedData = mapRawToParsed(parsedReplay);
-    console.log('📊 [browserReplayParser] Mapping successful:', mappedData);
+    let mappedData;
+    try {
+      mappedData = mapRawToParsed(parsedReplay);
+      console.log('📊 [browserReplayParser] Mapping successful:', mappedData);
+    } catch (mappingError) {
+      console.error('❌ [browserReplayParser] Data mapping error:', mappingError);
+      throw new Error(`Datenumwandlungsfehler: ${mappingError instanceof Error ? mappingError.message : 'Unbekannter Fehler'}`);
+    }
     
     // Validate essential fields
     if (!mappedData.playerName || !mappedData.map) {

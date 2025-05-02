@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
@@ -116,7 +115,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   };
 
   const processFile = async (file: File) => {
-    console.log('[UploadBox] Starte Dateiverarbeitung:', file.name);
+    console.log('[UploadBox] Starting file processing:', file.name);
     clearError();
     setFile(file);
     setUploadStatus('uploading');
@@ -136,12 +135,21 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       }, 800);
       
       // Parse the file with browser-based parser
-      console.log('[UploadBox] Starte Parsing:', file.name);
+      console.log('[UploadBox] Starting parsing:', file.name);
       const parsedData = await parseReplay(file);
       
       if (!parsedData) {
         throw new Error(parsingError || 'Fehler beim Parsen der Replay-Datei');
       }
+      
+      // Validate that the returned data contains the required analysis
+      if (!parsedData.strengths || parsedData.strengths.length === 0) {
+        console.error('[UploadBox] Parsed data missing strengths:', parsedData);
+        throw new Error('Analyse enthält keine Erkenntnisse');
+      }
+      
+      // Log full parsed data for debugging
+      console.log('[UploadBox] Successfully parsed data:', JSON.stringify(parsedData, null, 2));
       
       // Complete the progress
       window.clearInterval(progressInterval);
@@ -158,12 +166,15 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       // Ensure we wait a moment before transitioning to the analysis view
       setTimeout(() => {
         if (onUploadComplete && parsedData) {
-          console.log('[UploadBox] Sende geparste Daten an übergeordnete Komponente:', parsedData);
+          console.log('[UploadBox] Sending parsed data to parent component with keys:', 
+            Object.keys(parsedData).join(', '));
           onUploadComplete(file, parsedData);
+        } else {
+          console.warn('[UploadBox] Cannot complete upload: onUploadComplete missing or no data');
         }
       }, 500);
     } catch (error) {
-      console.error('[UploadBox] Fehler bei der Dateiverarbeitung:', error);
+      console.error('[UploadBox] File processing error:', error);
       
       window.clearInterval(progressInterval);
       progressIntervalRef.current = null;

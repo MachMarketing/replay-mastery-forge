@@ -36,14 +36,29 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
 
   // Log data for debugging purposes
   useEffect(() => {
-    console.log('AnalysisDisplay - State:', { 
+    console.log('AnalysisDisplay - State update:', { 
       isAnalyzing, 
       analysisComplete, 
       hasReplayData: !!replayData, 
       hasRawData: !!rawParsedData,
-      selectedPlayerIndex,
-      rawParsedDataKeys: rawParsedData ? Object.keys(rawParsedData) : 'none'
+      selectedPlayerIndex
     });
+    
+    if (replayData) {
+      console.log('AnalysisDisplay - ReplayData keys:', Object.keys(replayData));
+      
+      // Check for essential data
+      if (!replayData.strengths || replayData.strengths.length === 0) {
+        console.warn('AnalysisDisplay - Missing strengths in replayData');
+      }
+      if (!replayData.playerName) {
+        console.warn('AnalysisDisplay - Missing playerName in replayData');
+      }
+    }
+    
+    if (rawParsedData) {
+      console.log('AnalysisDisplay - RawParsedData keys:', Object.keys(rawParsedData));
+    }
   }, [isAnalyzing, analysisComplete, replayData, rawParsedData, selectedPlayerIndex]);
 
   if (isAnalyzing) {
@@ -92,40 +107,72 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
   
   // Show analysis results if data is available and analysis is complete
   if ((replayData || rawParsedData) && analysisComplete) {
-    console.log('Zeige Analyseergebnis mit Daten:', replayData || rawParsedData);
+    console.log('AnalysisDisplay - Showing analysis result with data keys:', 
+      replayData ? Object.keys(replayData) : (rawParsedData ? Object.keys(rawParsedData) : 'none'));
     
     // Use either replayData or create a compatible object from rawParsedData
-    const displayData = replayData || {
-      ...rawParsedData,
-      id: crypto.randomUUID(), // Add required id field if using rawParsedData
-      // Ensure all required fields have values
-      strengths: rawParsedData?.strengths || ['Gute mechanische Fähigkeiten'],
-      weaknesses: rawParsedData?.weaknesses || ['Könnte Scouting verbessern'],
-      recommendations: rawParsedData?.recommendations || ['Übe Build-Order Timings'],
-      trainingPlan: rawParsedData?.trainingPlan || []
-    };
+    let displayData = replayData;
     
-    return (
-      <>
-        {/* Player Selector */}
-        <PlayerSelector 
-          player1={rawParsedData?.playerName || displayData?.playerName || 'Spieler'} 
-          player2={rawParsedData?.opponentName || displayData?.opponentName || 'Gegner'}
-          race1={normalizeRace(rawParsedData?.playerRace || displayData?.playerRace || 'Terran')}
-          race2={normalizeRace(rawParsedData?.opponentRace || displayData?.opponentRace || 'Terran')}
-          selectedPlayerIndex={selectedPlayerIndex}
-          onSelectPlayer={onPlayerSelect}
-        />
-        
-        <div className="mt-4">
-          <AnalysisResult data={displayData} isPremium={isPremium} />
-        </div>
-      </>
-    );
+    // If we don't have processed replayData but we have rawParsedData
+    if (!displayData && rawParsedData) {
+      // Ensure minimum required data is present
+      const hasMinimumData = rawParsedData.playerName && 
+                             rawParsedData.map && 
+                             rawParsedData.strengths &&
+                             rawParsedData.weaknesses &&
+                             rawParsedData.recommendations;
+                             
+      if (hasMinimumData) {
+        displayData = {
+          ...rawParsedData,
+          id: crypto.randomUUID(), // Add required id field if using rawParsedData
+          // Ensure all required fields have values with fallbacks
+          strengths: rawParsedData.strengths || ['Gute mechanische Fähigkeiten'],
+          weaknesses: rawParsedData.weaknesses || ['Könnte Scouting verbessern'],
+          recommendations: rawParsedData.recommendations || ['Übe Build-Order Timings'],
+          trainingPlan: rawParsedData.trainingPlan || []
+        };
+      } else {
+        console.error('AnalysisDisplay - Raw data missing essential fields:', rawParsedData);
+        // Fall back to placeholder display
+        return (
+          <div className="h-96 flex flex-col items-center justify-center bg-destructive/10 backdrop-blur-sm rounded-lg border border-destructive/30 shadow-lg">
+            <div className="text-center max-w-md p-6">
+              <h3 className="text-xl font-semibold mb-3 text-destructive">Unvollständige Daten</h3>
+              <p className="text-muted-foreground mb-6">
+                Die Analyse konnte nicht vollständig abgeschlossen werden. 
+                Bitte versuche es mit einem anderen Replay oder kontaktiere den Support.
+              </p>
+            </div>
+          </div>
+        );
+      }
+    }
+    
+    // Now if we have valid display data
+    if (displayData) {
+      return (
+        <>
+          {/* Player Selector */}
+          <PlayerSelector 
+            player1={displayData.playerName || 'Spieler'} 
+            player2={displayData.opponentName || 'Gegner'}
+            race1={normalizeRace(displayData.playerRace || 'Terran')}
+            race2={normalizeRace(displayData.opponentRace || 'Terran')}
+            selectedPlayerIndex={selectedPlayerIndex}
+            onSelectPlayer={onPlayerSelect}
+          />
+          
+          <div className="mt-4">
+            <AnalysisResult data={displayData} isPremium={isPremium} />
+          </div>
+        </>
+      );
+    }
   }
   
   // Default fallback state when no data is available
-  console.log('Zeige Upload-Platzhalter');
+  console.log('AnalysisDisplay - Showing upload placeholder');
   return (
     <div className="h-96 flex flex-col items-center justify-center bg-card/30 backdrop-blur-sm rounded-lg border border-dashed border-border shadow-inner">
       <div className="text-center max-w-md p-6">

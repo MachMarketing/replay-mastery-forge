@@ -32,6 +32,32 @@ export interface AnalyzedReplayResult extends ParsedReplayResult {
 }
 
 /**
+ * Validate that the analysis result has all required fields
+ */
+function validateAnalysisResult(result: AnalyzedReplayResult): boolean {
+  if (!result) return false;
+  
+  const requiredStringFields = ['playerName', 'opponentName', 'map', 'duration', 'date'];
+  for (const field of requiredStringFields) {
+    if (!result[field as keyof AnalyzedReplayResult]) {
+      console.error(`Missing required field: ${field}`);
+      return false;
+    }
+  }
+  
+  const requiredArrayFields = ['strengths', 'weaknesses', 'recommendations', 'buildOrder'];
+  for (const field of requiredArrayFields) {
+    const array = result[field as keyof AnalyzedReplayResult] as any[];
+    if (!array || !Array.isArray(array) || array.length === 0) {
+      console.error(`Missing required array field or empty array: ${field}`);
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+/**
  * Parse a StarCraft: Brood War replay file using browser-based parsing with screp-js
  * This analyzes actual binary data from the replay file to extract information
  * 
@@ -50,7 +76,7 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     // Use the browser-based parser to extract data from the file
     console.log('🔍 [replayParserService] Starting browser parsing...');
     const parsedData = await parseReplayInBrowser(file);
-    console.log('🔍 [replayParserService] Successfully parsed replay data:', parsedData);
+    console.log('🔍 [replayParserService] Successfully parsed replay data with keys:', Object.keys(parsedData));
     
     // Validate parsed data before analyzing
     if (!parsedData || !parsedData.playerName) {
@@ -60,10 +86,14 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     // Analyze the replay data to generate insights
     console.log('🔍 [replayParserService] Starting analysis...');
     const analysis = await analyzeReplayData(parsedData);
-    console.log('🔍 [replayParserService] Generated analysis based on parsed data:', analysis);
+    console.log('🔍 [replayParserService] Generated analysis with:',
+      analysis.strengths.length, 'strengths,',
+      analysis.weaknesses.length, 'weaknesses,',
+      analysis.recommendations.length, 'recommendations');
     
     // Validate analysis data
     if (!analysis || !analysis.strengths || analysis.strengths.length === 0) {
+      console.error('🔍 [replayParserService] Analysis returned incomplete data:', analysis);
       throw new Error('Analyse hat unvollständige Daten zurückgegeben');
     }
     
@@ -76,6 +106,13 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
       trainingPlan: analysis.trainingPlan
     };
     
+    // Final validation of the complete result
+    if (!validateAnalysisResult(result)) {
+      console.error('🔍 [replayParserService] Final validation failed for:', result);
+      throw new Error('Analyse-Ergebnis ist unvollständig');
+    }
+    
+    console.log('🔍 [replayParserService] Final analysis result keys:', Object.keys(result));
     return result;
   } catch (error) {
     console.error('❌ [replayParserService] Error during replay parsing:', error);

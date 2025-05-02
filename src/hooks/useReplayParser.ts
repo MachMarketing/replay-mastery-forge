@@ -58,6 +58,7 @@ export function useReplayParser(): ReplayParserResult {
       return null;
     }
     
+    console.log('[useReplayParser] Starting to process file:', file.name);
     setIsProcessing(true);
     setError(null);
     
@@ -93,8 +94,26 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error('Parser hat keine Daten zurückgegeben');
       }
       
-      console.log('[useReplayParser] Parsing completed successfully:', parsedData);
-      setIsProcessing(false);
+      // Log all key-value pairs for debugging
+      console.log('[useReplayParser] Parsing completed. All data fields:');
+      Object.entries(parsedData).forEach(([key, value]) => {
+        if (typeof value === 'object' && value !== null) {
+          console.log(`[useReplayParser] ${key}:`, JSON.stringify(value).substring(0, 100) + '...');
+        } else {
+          console.log(`[useReplayParser] ${key}:`, value);
+        }
+      });
+      
+      // Verify we have essential data
+      if (!parsedData.playerName || !parsedData.map || !parsedData.strengths || parsedData.strengths.length === 0) {
+        console.error('[useReplayParser] Missing essential data in parsed result', parsedData);
+        throw new Error('Unvollständige Analyse-Daten');
+      }
+      
+      console.log('[useReplayParser] Parsing completed successfully with', 
+        parsedData.strengths.length, 'strengths,', 
+        parsedData.weaknesses.length, 'weaknesses');
+      
       return parsedData;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Fehler beim Parsen der Replay-Datei';
@@ -108,8 +127,9 @@ export function useReplayParser(): ReplayParserResult {
         variant: 'destructive',
       });
       
-      setIsProcessing(false);
       return null;
+    } finally {
+      setIsProcessing(false);
     }
   }, [isProcessing, toast]);
 
