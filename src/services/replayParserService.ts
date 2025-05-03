@@ -1,3 +1,4 @@
+
 /**
  * API for parsing StarCraft: Brood War replay files
  */
@@ -18,6 +19,11 @@ export interface ParsedReplayResult {
   matchup: string;
   buildOrder?: { time: string; supply: number; action: string }[];
   resourcesGraph?: { time: string; minerals: number; gas: number }[];
+  // Add missing fields to fix TypeScript errors
+  strengths?: string[];
+  weaknesses?: string[];
+  recommendations?: string[];
+  trainingPlan?: { focus: string; exercise: string; duration: string }[];
 }
 
 export interface AnalyzedReplayResult extends ParsedReplayResult {

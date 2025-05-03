@@ -112,8 +112,7 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error(`Unvollständige Analyse-Daten: ${missingFields.join(', ')} fehlen`);
       }
       
-      // Generate dummy data ONLY if specified by the user for testing,
-      // not automatically in development mode
+      // Generate dummy data ONLY if file name explicitly includes 'mock_test'
       if (process.env.NODE_ENV === 'development' && file.name.includes('mock_test')) {
         console.log('[useReplayParser] Adding dummy analysis data for explicit testing file');
         parsedData.strengths = ['Gute mechanische Fähigkeiten', 'Effektives Makromanagement'];

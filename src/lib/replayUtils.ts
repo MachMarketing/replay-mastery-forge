@@ -1,3 +1,4 @@
+
 /**
  * Utility functions for StarCraft replay parsing
  */
@@ -134,6 +135,17 @@ export function standardizeRaceName(raceName: string | undefined | null): 'Terra
   
   console.log('🏁 [replayUtils] Standardizing race name:', raceName, '→', normalized);
 
+  // Check for single letter race codes (commonly used in replay data)
+  if (normalized === 't' || normalized === '1') {
+    return 'Terran';
+  }
+  if (normalized === 'p' || normalized === '2') {
+    return 'Protoss';
+  }
+  if (normalized === 'z' || normalized === '0') {
+    return 'Zerg';
+  }
+
   // Additional debugging for numbered race values
   const raceNumber = parseInt(normalized);
   if (!isNaN(raceNumber)) {
@@ -141,30 +153,21 @@ export function standardizeRaceName(raceName: string | undefined | null): 'Terra
     return getRaceFromNumber(raceNumber);
   }
 
-  // Check for Protoss first to avoid false matches with "pro" in other words
+  // Check for text matches - Protoss first to avoid false matches with "pro" in other words
   if (normalized.includes('prot') || 
-      normalized.includes('toss') || 
-      normalized === 'p' || 
-      normalized === 'protoss') {
+      normalized.includes('toss')) {
     return 'Protoss';
   }
   
   // Check for Zerg
-  if (normalized.includes('zerg') || 
-      normalized === 'z') {
+  if (normalized.includes('zerg')) {
     return 'Zerg';
   }
   
   // Check for Terran
-  if (normalized.includes('terr') || 
-      normalized === 't') {
+  if (normalized.includes('terr')) {
     return 'Terran';
   }
-  
-  // Handle numbers directly provided as strings
-  if (normalized === '0') return 'Zerg';
-  if (normalized === '1') return 'Terran';
-  if (normalized === '2') return 'Protoss';
   
   // Default fallback with warning
   console.warn('🏁 [replayUtils] Unrecognized race name:', raceName, 'defaulting to Terran');
