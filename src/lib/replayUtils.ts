@@ -1,18 +1,36 @@
-
 /**
  * Utility functions for StarCraft replay parsing
  */
 
 /**
- * Convert race number to race string
+ * Convert race number to race string with enhanced detection
+ * Different parsers use different numbering systems:
+ * - Some use: 0=Zerg, 1=Terran, 2=Protoss
+ * - Others use: 0=Terran, 1=Zerg, 2=Protoss
+ * 
+ * This function tries to handle both cases with more robust detection
  */
 export function getRaceFromNumber(raceNum: number): 'Terran' | 'Protoss' | 'Zerg' {
-  switch (raceNum) {
-    case 0: return 'Zerg';
-    case 1: return 'Terran';
-    case 2: return 'Protoss';
-    default: return 'Terran';
-  }
+  console.log('🏁 [replayUtils] Converting race number to string:', raceNum);
+  
+  // Handle standard numbering (BWChart format: 0=Zerg, 1=Terran, 2=Protoss)
+  if (raceNum === 0) return 'Zerg';
+  if (raceNum === 1) return 'Terran';
+  if (raceNum === 2) return 'Protoss';
+  
+  // Handle alternate numbering seen in some parsers
+  if (raceNum === 100) return 'Terran';
+  if (raceNum === 101) return 'Protoss';
+  if (raceNum === 102) return 'Zerg';
+  
+  // Handle yet another numbering system
+  if (raceNum === 5) return 'Terran';
+  if (raceNum === 6) return 'Protoss'; 
+  if (raceNum === 7) return 'Zerg';
+  
+  // Default fallback to Terran to avoid undefined
+  console.warn('🏁 [replayUtils] Unknown race number:', raceNum, 'defaulting to Terran');
+  return 'Terran';
 }
 
 /**

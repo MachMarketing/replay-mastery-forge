@@ -24,13 +24,31 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
   isPremium,
   onPlayerSelect
 }) => {
-  // Helper function for race normalization
+  // Helper function for race normalization with enhanced validation
   const normalizeRace = (race: string): 'Terran' | 'Protoss' | 'Zerg' => {
     if (!race) return 'Terran';
-    const normalizedRace = race.toLowerCase() || '';
-    if (normalizedRace.includes('terr') || normalizedRace.includes('t')) return 'Terran';
-    if (normalizedRace.includes('prot') || normalizedRace.includes('p')) return 'Protoss';
-    if (normalizedRace.includes('zerg') || normalizedRace.includes('z')) return 'Zerg';
+    
+    // Convert to lowercase for case-insensitive matching
+    const normalizedRace = race.toLowerCase();
+    
+    // Log for debugging
+    console.log('🧙‍♂️ [AnalysisDisplay] Normalizing race input:', race, '→', normalizedRace);
+    
+    // Enhanced matching that prioritizes more specific matches first
+    if (normalizedRace.includes('prot') || normalizedRace.includes('toss') || normalizedRace === 'p') {
+      return 'Protoss';
+    }
+    
+    if (normalizedRace.includes('zerg') || normalizedRace === 'z') {
+      return 'Zerg';
+    }
+    
+    if (normalizedRace.includes('terr') || normalizedRace === 't') {
+      return 'Terran';
+    }
+    
+    // If no specific match, use default
+    console.warn('🧙‍♂️ [AnalysisDisplay] Unrecognized race:', race, 'defaulting to Terran');
     return 'Terran'; 
   };
 
@@ -55,12 +73,26 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       if (!replayData.playerName) {
         console.warn('⚠️ AnalysisDisplay - Missing playerName in replayData');
       }
+      
+      // Log race information for debugging
+      console.log('💡 AnalysisDisplay - Player race data:', {
+        raw: replayData.playerRace,
+        normalized: normalizeRace(replayData.playerRace)
+      });
+      console.log('💡 AnalysisDisplay - Opponent race data:', {
+        raw: replayData.opponentRace,
+        normalized: normalizeRace(replayData.opponentRace)
+      });
     } else {
       console.log('💡 AnalysisDisplay - No replayData available');
     }
     
     if (rawParsedData) {
       console.log('💡 AnalysisDisplay - RawParsedData available with keys:', Object.keys(rawParsedData));
+      
+      // Log race information from raw data
+      console.log('💡 AnalysisDisplay - Raw player race:', rawParsedData.playerRace);
+      console.log('💡 AnalysisDisplay - Raw opponent race:', rawParsedData.opponentRace);
     } else {
       console.log('💡 AnalysisDisplay - No rawParsedData available');
     }
@@ -146,7 +178,10 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
           weaknesses: rawParsedData.weaknesses || ['Könnte Scouting verbessern'],
           recommendations: rawParsedData.recommendations || ['Übe Build-Order Timings'],
           trainingPlan: rawParsedData.trainingPlan || [],
-          buildOrder: rawParsedData.buildOrder || []
+          buildOrder: rawParsedData.buildOrder || [],
+          // Normalize race information
+          playerRace: normalizeRace(rawParsedData.playerRace),
+          opponentRace: normalizeRace(rawParsedData.opponentRace)
         };
         console.log('💡 AnalysisDisplay - Created displayData from rawParsedData:', displayData);
       } else {
@@ -168,14 +203,23 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     
     // Now if we have valid display data
     if (displayData) {
+      // Ensure race information is properly normalized before displaying
+      const normalizedPlayerRace = normalizeRace(displayData.playerRace);
+      const normalizedOpponentRace = normalizeRace(displayData.opponentRace);
+      
+      console.log('💡 AnalysisDisplay - Final normalized races:', {
+        player: normalizedPlayerRace,
+        opponent: normalizedOpponentRace
+      });
+      
       return (
         <>
           {/* Player Selector */}
           <PlayerSelector 
             player1={displayData.playerName || 'Spieler'} 
             player2={displayData.opponentName || 'Gegner'}
-            race1={normalizeRace(displayData.playerRace || 'Terran')}
-            race2={normalizeRace(displayData.opponentRace || 'Terran')}
+            race1={normalizedPlayerRace}
+            race2={normalizedOpponentRace}
             selectedPlayerIndex={selectedPlayerIndex}
             onSelectPlayer={onPlayerSelect}
           />

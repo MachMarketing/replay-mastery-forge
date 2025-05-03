@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -63,6 +62,12 @@ const UploadPage = () => {
       return;
     }
     
+    // Log race information for debugging
+    console.log("🚀 Upload - Race information:", {
+      playerRace: parsedReplayData.playerRace,
+      opponentRace: parsedReplayData.opponentRace
+    });
+    
     // First set state variables
     setFile(uploadedFile);
     setRawParsedData(parsedReplayData);
@@ -84,7 +89,7 @@ const UploadPage = () => {
     }
   };
 
-  // Handle player perspective selection
+  // Handle player perspective selection with enhanced race handling
   const handlePlayerSelection = (playerIndex: number, data: AnalyzedReplayResult = rawParsedData!) => {
     console.log("🎮 Processing player selection:", playerIndex);
     
@@ -98,6 +103,12 @@ const UploadPage = () => {
     console.log("🎮 Processing with data:", data);
     
     setSelectedPlayerIndex(playerIndex);
+    
+    // Log race information before processing
+    console.log("🎮 Race information before processing:", {
+      playerRace: data.playerRace,
+      opponentRace: data.opponentRace
+    });
     
     // Create adjusted data based on player selection
     let adjustedData: AnalyzedReplayResult;
@@ -122,7 +133,13 @@ const UploadPage = () => {
       };
     }
     
-    // Normalize data
+    // Log race information after adjustment
+    console.log("🎮 Race information after adjustment:", {
+      playerRace: adjustedData.playerRace,
+      opponentRace: adjustedData.opponentRace
+    });
+    
+    // Normalize data with enhanced race detection
     const normalizedData: AnalyzedReplayResult = {
       ...adjustedData,
       playerRace: normalizeRace(adjustedData.playerRace || 'Terran'),
@@ -135,7 +152,10 @@ const UploadPage = () => {
       buildOrder: adjustedData.buildOrder || []
     };
     
-    console.log("🎮 Final normalized data:", normalizedData);
+    console.log("🎮 Final normalized data with races:", {
+      playerRace: normalizedData.playerRace,
+      opponentRace: normalizedData.opponentRace
+    });
     
     // Extend the parsedReplayData with ID for AnalysisResult
     const extendedData: ReplayData = {
@@ -162,14 +182,33 @@ const UploadPage = () => {
     });
   };
 
-  // Helper function for race normalization
+  // Enhanced helper function for race normalization with better race detection
   const normalizeRace = (race: string): 'Terran' | 'Protoss' | 'Zerg' => {
     if (!race) return 'Terran';
+    
+    // Log for debugging
+    console.log("🎮 Normalizing race:", race);
+    
+    // Convert to lowercase for case-insensitive matching
     const normalizedRace = race.toLowerCase();
-    if (normalizedRace.includes('terr') || normalizedRace.includes('t')) return 'Terran';
-    if (normalizedRace.includes('prot') || normalizedRace.includes('p')) return 'Protoss';
-    if (normalizedRace.includes('zerg') || normalizedRace.includes('z')) return 'Zerg';
-    return 'Terran'; 
+    
+    // Enhanced matching that prioritizes more specific matches
+    // Protoss checks first to avoid "Terr" in "Protoss" being misinterpreted
+    if (normalizedRace.includes('prot') || normalizedRace.includes('toss') || normalizedRace === 'p') {
+      return 'Protoss';
+    }
+    
+    if (normalizedRace.includes('zerg') || normalizedRace === 'z') {
+      return 'Zerg';
+    }
+    
+    if (normalizedRace.includes('terr') || normalizedRace === 't') {
+      return 'Terran';
+    }
+    
+    // If no specific match, use default
+    console.warn('🎮 Unrecognized race:', race, 'defaulting to Terran');
+    return 'Terran';
   };
   
   // Helper for result normalization

@@ -1,4 +1,3 @@
-
 /**
  * Maps raw replay data to our domain model
  */
@@ -100,15 +99,15 @@ export function mapRawToParsed(rawResult: any): ParsedReplayResult {
     const mapName = header?.map_name || replay.map || metadata?.map || metadata?.mapName || 'Unknown Map';
     console.log('🗺️ [replayMapper] Extracted map name:', mapName);
     
-    // Get player races
-    // Race can be provided as number (0=Zerg, 1=Terran, 2=Protoss) or as string
-    const playerRace = typeof mainPlayer.race === 'number' 
-      ? getRaceFromNumber(mainPlayer.race)
-      : standardizeRaceString(mainPlayer.race || 'Terran');
-      
-    const opponentRace = typeof opponentPlayer.race === 'number'
-      ? getRaceFromNumber(opponentPlayer.race)
-      : standardizeRaceString(opponentPlayer.race || 'Terran');
+    // Enhanced race detection - log raw race data for debugging
+    console.log('🗺️ [replayMapper] Raw player race data:', mainPlayer.race);
+    console.log('🗺️ [replayMapper] Raw opponent race data:', opponentPlayer.race);
+    
+    // Get player races with enhanced detection
+    const playerRace = detectRace(mainPlayer);
+    const opponentRace = detectRace(opponentPlayer);
+    
+    console.log('🗺️ [replayMapper] Detected races - Player:', playerRace, 'Opponent:', opponentRace);
     
     // Create matchup string
     const matchup = `${playerRace.charAt(0)}v${opponentRace.charAt(0)}`;
@@ -153,6 +152,69 @@ export function mapRawToParsed(rawResult: any): ParsedReplayResult {
 }
 
 /**
+ * Enhanced race detection function that checks multiple properties and formats
+ */
+function detectRace(player: any): 'Terran' | 'Protoss' | 'Zerg' {
+  if (!player) return 'Terran';
+  
+  // Log all race-related properties for debugging
+  console.log('🗺️ [replayMapper] Race detection for player:', player.name, 'Race data:', {
+    race: player.race,
+    raceValue: player.raceValue,
+    raceName: player.raceName,
+    raceString: player.raceString
+  });
+  
+  // Check for explicit race name first (highest priority)
+  if (player.raceName) {
+    const raceName = String(player.raceName).toLowerCase();
+    if (raceName.includes('terr')) return 'Terran';
+    if (raceName.includes('prot')) return 'Protoss';
+    if (raceName.includes('zerg')) return 'Zerg';
+  }
+  
+  // Check for race string
+  if (player.raceString) {
+    const raceStr = String(player.raceString).toLowerCase();
+    if (raceStr.includes('t') || raceStr === 't') return 'Terran';
+    if (raceStr.includes('p') || raceStr === 'p') return 'Protoss';
+    if (raceStr.includes('z') || raceStr === 'z') return 'Zerg';
+  }
+  
+  // If it's an object with name property (like in screp-js)
+  if (player.race && typeof player.race === 'object' && player.race.Name) {
+    const raceName = player.race.Name.toLowerCase();
+    if (raceName.includes('terr')) return 'Terran';
+    if (raceName.includes('prot')) return 'Protoss';
+    if (raceName.includes('zerg')) return 'Zerg';
+  }
+  
+  // If it's a simple string
+  if (typeof player.race === 'string') {
+    const raceStr = player.race.toLowerCase();
+    if (raceStr.includes('terr') || raceStr === 't') return 'Terran';
+    if (raceStr.includes('prot') || raceStr === 'p') return 'Protoss';
+    if (raceStr.includes('zerg') || raceStr === 'z') return 'Zerg';
+  }
+  
+  // If it's a number, use our utility function
+  if (typeof player.race === 'number') {
+    return getRaceFromNumber(player.race);
+  }
+  
+  // Last resort: check if player name contains race hint (less reliable)
+  if (player.name) {
+    const name = player.name.toLowerCase();
+    if (name.includes('terr')) return 'Terran';
+    if (name.includes('prot') || name.includes('toss')) return 'Protoss';
+    if (name.includes('zerg')) return 'Zerg';
+  }
+  
+  // Default fallback if nothing detected
+  return 'Terran';
+}
+
+/**
  * Map screp-js format replay data (used by the WASM parser)
  */
 function mapScrepJsFormat(rawResult: any): ParsedReplayResult {
@@ -189,10 +251,15 @@ function mapScrepJsFormat(rawResult: any): ParsedReplayResult {
     const playerName = mainPlayer.Name || 'Unknown Player';
     const opponentName = opponentPlayer ? opponentPlayer.Name || 'Unknown Opponent' : 'Unknown Opponent';
     
-    // Get race info from the player data
-    // In screp-js, Race is an object with Name property
-    const playerRace = mapScrepJsRace(mainPlayer.Race?.Name);
-    const opponentRace = opponentPlayer ? mapScrepJsRace(opponentPlayer.Race?.Name) : 'Protoss';
+    // Log race data for debugging
+    console.log('🗺️ [replayMapper] Player race data:', mainPlayer.Race);
+    console.log('🗺️ [replayMapper] Opponent race data:', opponentPlayer ? opponentPlayer.Race : 'N/A');
+    
+    // Enhanced race detection for screp-js format
+    const playerRace = mapScrepJsRace(mainPlayer);
+    const opponentRace = opponentPlayer ? mapScrepJsRace(opponentPlayer) : 'Protoss';
+    
+    console.log('🗺️ [replayMapper] Detected races - Player:', playerRace, 'Opponent:', opponentRace);
     
     // Create matchup string
     const matchup = `${playerRace.charAt(0)}v${opponentRace.charAt(0)}`;
@@ -255,6 +322,54 @@ function mapScrepJsFormat(rawResult: any): ParsedReplayResult {
 }
 
 /**
+ * Enhanced race detection for screp-js formatted data
+ */
+function mapScrepJsRace(player: any): 'Terran' | 'Protoss' | 'Zerg' {
+  if (!player) return 'Terran';
+  
+  // Log detailed race data
+  console.log('🗺️ [replayMapper] ScrepJs race detection for:', player.Name, 'Race:', player.Race);
+  
+  // Check if Race object exists and has Name property
+  if (player.Race && player.Race.Name) {
+    const raceName = player.Race.Name.toLowerCase();
+    console.log('🗺️ [replayMapper] ScrepJs race name:', raceName);
+    
+    if (raceName.includes('terr')) return 'Terran';
+    if (raceName.includes('prot')) return 'Protoss'; 
+    if (raceName.includes('zerg')) return 'Zerg';
+  }
+  
+  // Check if there's a race ID we can use
+  if (player.Race && typeof player.Race.ID === 'number') {
+    const raceFromId = getRaceFromNumber(player.Race.ID);
+    console.log('🗺️ [replayMapper] ScrepJs race from ID:', raceFromId);
+    return raceFromId;
+  }
+  
+  // Try getting race from various other possible properties
+  if (player.RaceName) {
+    const raceName = player.RaceName.toLowerCase();
+    if (raceName.includes('terr')) return 'Terran';
+    if (raceName.includes('prot')) return 'Protoss';
+    if (raceName.includes('zerg')) return 'Zerg';
+  }
+  
+  // Last resort check for any race identifier in the player object
+  for (const key in player) {
+    if (typeof player[key] === 'string' && key.toLowerCase().includes('race')) {
+      const raceValue = player[key].toLowerCase();
+      if (raceValue.includes('t')) return 'Terran';
+      if (raceValue.includes('p')) return 'Protoss';
+      if (raceValue.includes('z')) return 'Zerg';
+    }
+  }
+  
+  // Default fallback
+  return 'Terran';
+}
+
+/**
  * Clean map name by removing control characters and formatting codes
  */
 function cleanMapName(rawMapName: string): string {
@@ -288,22 +403,6 @@ function cleanMapName(rawMapName: string): string {
   }
   
   return cleanName;
-}
-
-/**
- * Map screp-js race format to our race type
- */
-function mapScrepJsRace(raceStr?: string): 'Terran' | 'Protoss' | 'Zerg' {
-  if (!raceStr) return 'Terran';
-  
-  const raceLower = raceStr.toLowerCase();
-  
-  if (raceLower.includes('terr')) return 'Terran';
-  if (raceLower.includes('toss') || raceLower.includes('prot')) return 'Protoss';
-  if (raceLower.includes('zerg')) return 'Zerg';
-  
-  // Default fallback
-  return 'Terran';
 }
 
 /**
