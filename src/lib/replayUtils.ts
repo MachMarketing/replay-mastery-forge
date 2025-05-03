@@ -1,4 +1,3 @@
-
 /**
  * Utility functions for StarCraft replay parsing
  */
@@ -134,6 +133,13 @@ export function standardizeRaceName(raceName: string | undefined | null): 'Terra
   const normalized = String(raceName).toLowerCase().trim();
   
   console.log('🏁 [replayUtils] Standardizing race name:', raceName, '→', normalized);
+
+  // Additional debugging for numbered race values
+  const raceNumber = parseInt(normalized);
+  if (!isNaN(raceNumber)) {
+    console.log('🏁 [replayUtils] Race provided as number:', raceNumber);
+    return getRaceFromNumber(raceNumber);
+  }
 
   // Check for Protoss first to avoid false matches with "pro" in other words
   if (normalized.includes('prot') || 

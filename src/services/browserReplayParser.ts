@@ -30,9 +30,9 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     } catch (wasmError) {
       console.error('❌ [browserReplayParser] WASM initialization failed:', wasmError);
       
-      // Generate stub data for development to proceed with flow testing
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('📊 [browserReplayParser] Development mode detected, generating stub data');
+      // Only generate stub data if explicitly requested for testing
+      if (process.env.NODE_ENV === 'development' && file.name.includes('mock_test')) {
+        console.warn('📊 [browserReplayParser] Test mode detected, generating stub data');
         return generateStubData(file);
       }
       
@@ -58,9 +58,9 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     } catch (parseError) {
       console.error('❌ [browserReplayParser] WASM parser error:', parseError);
       
-      // Generate stub data for development to proceed with flow testing
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('📊 [browserReplayParser] Development mode detected after parsing error, generating stub data');
+      // Only generate stub data if explicitly requested for testing
+      if (process.env.NODE_ENV === 'development' && file.name.includes('mock_test')) {
+        console.warn('📊 [browserReplayParser] Test mode detected after parsing error, generating stub data');
         return generateStubData(file);
       }
       
@@ -70,9 +70,9 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     if (!parsedReplay) {
       console.error('❌ [browserReplayParser] Parser returned null or empty result');
       
-      // Generate stub data for development to proceed with flow testing
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('📊 [browserReplayParser] Development mode detected after null result, generating stub data');
+      // Only generate stub data if explicitly requested for testing
+      if (process.env.NODE_ENV === 'development' && file.name.includes('mock_test')) {
+        console.warn('📊 [browserReplayParser] Test mode detected after null result, generating stub data');
         return generateStubData(file);
       }
       
@@ -89,9 +89,9 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     } catch (mappingError) {
       console.error('❌ [browserReplayParser] Data mapping error:', mappingError);
       
-      // Generate stub data for development to proceed with flow testing
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('📊 [browserReplayParser] Development mode detected after mapping error, generating stub data');
+      // Only generate stub data if explicitly requested for testing
+      if (process.env.NODE_ENV === 'development' && file.name.includes('mock_test')) {
+        console.warn('📊 [browserReplayParser] Test mode detected after mapping error, generating stub data');
         return generateStubData(file);
       }
       
@@ -102,9 +102,9 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     if (!mappedData.playerName || !mappedData.map) {
       console.warn('❌ [browserReplayParser] Essential data missing after mapping');
       
-      // Generate stub data for development to proceed with flow testing
-      if (process.env.NODE_ENV === 'development') {
-        console.warn('📊 [browserReplayParser] Development mode detected after validation, generating stub data');
+      // Only generate stub data if explicitly requested for testing
+      if (process.env.NODE_ENV === 'development' && file.name.includes('mock_test')) {
+        console.warn('📊 [browserReplayParser] Test mode detected after validation, generating stub data');
         return generateStubData(file);
       }
       
@@ -115,9 +115,9 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
   } catch (error) {
     console.error('❌ [browserReplayParser] Parsing error:', error);
     
-    // In development mode, generate stub data to allow testing
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('📊 [browserReplayParser] Development mode detected, returning stub data');
+    // Only generate stub data if explicitly requested for testing
+    if (process.env.NODE_ENV === 'development' && file.name.includes('mock_test')) {
+      console.warn('📊 [browserReplayParser] Test mode detected, returning stub data');
       return generateStubData(file);
     }
     

@@ -112,9 +112,10 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error(`Unvollständige Analyse-Daten: ${missingFields.join(', ')} fehlen`);
       }
       
-      // Generate dummy data for testing if needed
-      if (process.env.NODE_ENV === 'development' && !parsedData.strengths.length) {
-        console.log('[useReplayParser] Adding dummy analysis data for development');
+      // Generate dummy data ONLY if specified by the user for testing,
+      // not automatically in development mode
+      if (process.env.NODE_ENV === 'development' && file.name.includes('mock_test')) {
+        console.log('[useReplayParser] Adding dummy analysis data for explicit testing file');
         parsedData.strengths = ['Gute mechanische Fähigkeiten', 'Effektives Makromanagement'];
         parsedData.weaknesses = ['Könnte Scouting verbessern', 'Unregelmäßige Produktion'];
         parsedData.recommendations = ['Übe Build-Order Timings', 'Fokussiere dich auf Map-Kontrolle'];

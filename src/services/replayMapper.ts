@@ -7,7 +7,8 @@ import {
   getRaceFromNumber,
   formatDuration,
   generateBuildOrder,
-  generateResourceData
+  generateResourceData,
+  standardizeRaceName
 } from '@/lib/replayUtils';
 
 /**
@@ -103,7 +104,15 @@ export function mapRawToParsed(rawResult: any): ParsedReplayResult {
     console.log('🗺️ [replayMapper] Raw player race data:', mainPlayer.race);
     console.log('🗺️ [replayMapper] Raw opponent race data:', opponentPlayer.race);
     
-    // Get player races with enhanced detection
+    // Get player races with enhanced detection - logging all available race information
+    console.log('🗺️ [replayMapper] Player race detection - all available fields:', {
+      race: mainPlayer.race,
+      raceId: mainPlayer.raceId,
+      raceValue: mainPlayer.raceValue,
+      raceName: mainPlayer.raceName,
+      raceString: mainPlayer.raceString
+    });
+    
     const playerRace = detectRace(mainPlayer);
     const opponentRace = detectRace(opponentPlayer);
     
@@ -157,6 +166,9 @@ export function mapRawToParsed(rawResult: any): ParsedReplayResult {
 function detectRace(player: any): 'Terran' | 'Protoss' | 'Zerg' {
   if (!player) return 'Terran';
   
+  // Dump all properties for debugging
+  console.log('🗺️ [replayMapper] Race detection for player, all properties:', player);
+  
   // Log all race-related properties for debugging
   console.log('🗺️ [replayMapper] Race detection for player:', player.name, 'Race data:', {
     race: player.race,
@@ -181,36 +193,79 @@ function detectRace(player: any): 'Terran' | 'Protoss' | 'Zerg' {
     if (raceStr.includes('z') || raceStr === 'z') return 'Zerg';
   }
   
-  // If it's an object with name property (like in screp-js)
-  if (player.race && typeof player.race === 'object' && player.race.Name) {
-    const raceName = player.race.Name.toLowerCase();
-    if (raceName.includes('terr')) return 'Terran';
-    if (raceName.includes('prot')) return 'Protoss';
-    if (raceName.includes('zerg')) return 'Zerg';
+  // If player.race includes a name property, it might be an object
+  if (player.race && typeof player.race === 'object') {
+    console.log('🗺️ [replayMapper] Race is an object:', player.race);
+    
+    // If it's an object with name property (like in screp-js)
+    if (player.race.Name) {
+      const raceName = String(player.race.Name).toLowerCase();
+      console.log('🗺️ [replayMapper] Race.Name:', raceName);
+      if (raceName.includes('terr')) return 'Terran';
+      if (raceName.includes('prot')) return 'Protoss';
+      if (raceName.includes('zerg')) return 'Zerg';
+    }
+    
+    // Might have an ID property
+    if (player.race.ID !== undefined || player.race.id !== undefined) {
+      const raceId = player.race.ID !== undefined ? player.race.ID : player.race.id;
+      console.log('🗺️ [replayMapper] Race.ID:', raceId);
+      return getRaceFromNumber(raceId);
+    }
   }
   
   // If it's a simple string
   if (typeof player.race === 'string') {
     const raceStr = player.race.toLowerCase();
+    console.log('🗺️ [replayMapper] Race is string:', raceStr);
     if (raceStr.includes('terr') || raceStr === 't') return 'Terran';
     if (raceStr.includes('prot') || raceStr === 'p') return 'Protoss';
     if (raceStr.includes('zerg') || raceStr === 'z') return 'Zerg';
+    
+    // Also check if it's "0", "1", or "2" as strings
+    if (raceStr === '0') return 'Zerg';
+    if (raceStr === '1') return 'Terran';
+    if (raceStr === '2') return 'Protoss';
   }
   
   // If it's a number, use our utility function
   if (typeof player.race === 'number') {
+    console.log('🗺️ [replayMapper] Race is number:', player.race);
     return getRaceFromNumber(player.race);
   }
   
-  // Last resort: check if player name contains race hint (less reliable)
-  if (player.name) {
-    const name = player.name.toLowerCase();
-    if (name.includes('terr')) return 'Terran';
-    if (name.includes('prot') || name.includes('toss')) return 'Protoss';
-    if (name.includes('zerg')) return 'Zerg';
+  // Check any field that might contain "race" in its name
+  for (const key in player) {
+    if (key.toLowerCase().includes('race') && player[key] !== undefined && player[key] !== null) {
+      console.log(`🗺️ [replayMapper] Found potential race field ${key}:`, player[key]);
+      
+      // If it's a string
+      if (typeof player[key] === 'string') {
+        const raceValue = player[key].toLowerCase();
+        if (raceValue.includes('t')) return 'Terran';
+        if (raceValue.includes('p')) return 'Protoss';
+        if (raceValue.includes('z')) return 'Zerg';
+      }
+      
+      // If it's a number
+      if (typeof player[key] === 'number') {
+        return getRaceFromNumber(player[key]);
+      }
+    }
   }
   
-  // Default fallback if nothing detected
+  // Last resort check for any race identifier in the player object
+  for (const key in player) {
+    if (typeof player[key] === 'string' && key.toLowerCase().includes('race')) {
+      const raceValue = player[key].toLowerCase();
+      if (raceValue.includes('t')) return 'Terran';
+      if (raceValue.includes('p')) return 'Protoss';
+      if (raceValue.includes('z')) return 'Zerg';
+    }
+  }
+  
+  // Default fallback
+  console.warn('🗺️ [replayMapper] Could not detect race, defaulting to Terran');
   return 'Terran';
 }
 

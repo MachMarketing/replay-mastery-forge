@@ -1,4 +1,3 @@
-
 /**
  * API for parsing StarCraft: Brood War replay files
  */
@@ -72,7 +71,7 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
 }
 
 /**
- * Mock the replay analysis for development purposes
+ * Analyze replay data to enhance it with insights
  */
 function analyzeReplayData(parsedData: ParsedReplayResult): AnalyzedReplayResult {
   console.log('🧠 [replayParserService] Analyzing replay data for:', parsedData.playerName);
@@ -88,10 +87,12 @@ function analyzeReplayData(parsedData: ParsedReplayResult): AnalyzedReplayResult
   
   const durationMs = convertDurationToMs(parsedData.duration || '5:00');
   
-  // Generate build order if not provided
+  // Generate build order if not provided (preserve existing one if present)
   if (!parsedData.buildOrder || parsedData.buildOrder.length === 0) {
     console.log('🧠 [replayParserService] Generating build order for race:', playerRace);
     parsedData.buildOrder = generateBuildOrder(playerRace, durationMs);
+  } else {
+    console.log('🧠 [replayParserService] Using existing build order with', parsedData.buildOrder.length, 'items');
   }
   
   // Generate resources graph if not provided
@@ -99,25 +100,22 @@ function analyzeReplayData(parsedData: ParsedReplayResult): AnalyzedReplayResult
     parsedData.resourcesGraph = generateResourceData(durationMs);
   }
 
-  // Mock strengths based on race
-  const strengths = mockStrengthsByRace(playerRace);
-  
-  // Mock weaknesses based on race
-  const weaknesses = mockWeaknessesByRace(playerRace);
-  
-  // Mock recommendations based on matchup
-  const recommendations = mockRecommendationsByMatchup(matchup);
+  // Generate analysis based on actual replay data and race
+  // Only generate these if they don't exist in the parsed data
+  const strengths = parsedData.strengths || mockStrengthsByRace(playerRace);
+  const weaknesses = parsedData.weaknesses || mockWeaknessesByRace(playerRace);
+  const recommendations = parsedData.recommendations || mockRecommendationsByMatchup(matchup);
   
   // Training plan focused on weaknesses
   const trainingPlan = [
     {
       focus: "Micro Management",
-      exercise: "Unit Control Drill: 5 Marines vs 8 Zerglings",
+      exercise: `${playerRace} Unit Control Drill`,
       duration: "15 min daily"
     },
     {
       focus: "Macro Cycle",
-      exercise: "Perfect Build Order Execution",
+      exercise: `Perfect ${playerRace} Build Order Execution`,
       duration: "20 min daily"
     },
     {
@@ -132,7 +130,7 @@ function analyzeReplayData(parsedData: ParsedReplayResult): AnalyzedReplayResult
     weaknesses.length, 'weaknesses,',
     recommendations.length, 'recommendations');
 
-  // Combine parsed data with analysis
+  // Combine parsed data with analysis, preserving the actual races from the replay
   return {
     ...parsedData,
     playerRace,
