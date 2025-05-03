@@ -46,7 +46,6 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     
     if (replayData) {
       console.log('💡 AnalysisDisplay - ReplayData:', replayData);
-      console.log('💡 AnalysisDisplay - ReplayData keys:', Object.keys(replayData));
       
       // Check for essential data
       if (!replayData.strengths || replayData.strengths.length === 0) {
@@ -65,8 +64,6 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
         raw: replayData.opponentRace,
         normalized: standardizeRaceName(replayData.opponentRace)
       });
-    } else {
-      console.log('💡 AnalysisDisplay - No replayData available');
     }
     
     if (rawParsedData) {
@@ -75,8 +72,6 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       // Log race information from raw data
       console.log('💡 AnalysisDisplay - Raw player race:', rawParsedData.playerRace);
       console.log('💡 AnalysisDisplay - Raw opponent race:', rawParsedData.opponentRace);
-    } else {
-      console.log('💡 AnalysisDisplay - No rawParsedData available');
     }
 
     // Log render decision criteria

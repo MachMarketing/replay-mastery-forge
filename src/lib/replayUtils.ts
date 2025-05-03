@@ -55,6 +55,8 @@ export function generateBuildOrder(
   race: 'Terran' | 'Protoss' | 'Zerg', 
   durationMs: number
 ): { time: string; supply: number; action: string }[] {
+  console.log('🏁 [replayUtils] Generating build order for race:', race, 'duration:', durationMs);
+  
   // Race-specific build orders
   const builds: Record<string, { time: string; supply: number; action: string }[]> = {
     'Terran': [
@@ -83,8 +85,12 @@ export function generateBuildOrder(
     ]
   };
   
+  // Normalize race to ensure we get a valid key
+  const normalizedRace = standardizeRaceName(race);
+  console.log('🏁 [replayUtils] Normalized race for build order:', normalizedRace);
+  
   // Return the appropriate build based on race and game duration
-  return builds[race].filter(item => {
+  return (builds[normalizedRace] || builds['Terran']).filter(item => {
     const [minutes, seconds] = item.time.split(':').map(Number);
     const itemTimeMs = (minutes * 60 + seconds) * 1000;
     return itemTimeMs <= durationMs;
@@ -129,7 +135,7 @@ export function standardizeRaceName(raceName: string | undefined | null): 'Terra
   
   console.log('🏁 [replayUtils] Standardizing race name:', raceName, '→', normalized);
 
-  // Check for Protoss first to avoid false matches
+  // Check for Protoss first to avoid false matches with "pro" in other words
   if (normalized.includes('prot') || 
       normalized.includes('toss') || 
       normalized === 'p' || 

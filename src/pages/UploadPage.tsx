@@ -64,14 +64,6 @@ const UploadPage = () => {
       return;
     }
     
-    // Log race information for debugging
-    console.log("🚀 Upload - Race information:", {
-      playerRace: parsedReplayData.playerRace,
-      standardized: standardizeRaceName(parsedReplayData.playerRace),
-      opponentRace: parsedReplayData.opponentRace,
-      opponentStandardized: standardizeRaceName(parsedReplayData.opponentRace)
-    });
-    
     // First set state variables
     setFile(uploadedFile);
     
@@ -82,12 +74,20 @@ const UploadPage = () => {
       opponentRace: standardizeRaceName(parsedReplayData.opponentRace),
     };
     
+    // Log race information after standardization
+    console.log("🚀 Upload - Race information after standardization:", {
+      playerRace: standardizedData.playerRace,
+      opponentRace: standardizedData.opponentRace
+    });
+    
     setRawParsedData(standardizedData);
     setIsAnalyzing(true);
     
     try {
       // Pass the data directly to handlePlayerSelection with standardized races
-      handlePlayerSelection(0, standardizedData);
+      setTimeout(() => {
+        handlePlayerSelection(0, standardizedData);
+      }, 1000); // Short delay for smoother UX
     } catch (error) {
       console.error('⛔ Analysis error:', error);
       toast({
@@ -109,9 +109,6 @@ const UploadPage = () => {
       setIsAnalyzing(false);
       return;
     }
-    
-    console.log("🎮 Processing player selection with playerIndex:", playerIndex);
-    console.log("🎮 Processing with data:", data);
     
     setSelectedPlayerIndex(playerIndex);
     
@@ -143,12 +140,6 @@ const UploadPage = () => {
         recommendations: data.strengths || []
       };
     }
-    
-    // Log race information after adjustment
-    console.log("🎮 Race information after adjustment:", {
-      playerRace: adjustedData.playerRace,
-      opponentRace: adjustedData.opponentRace
-    });
     
     // Normalize data with enhanced race detection
     const normalizedData: AnalyzedReplayResult = {

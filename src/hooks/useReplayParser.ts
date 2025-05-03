@@ -58,7 +58,7 @@ export function useReplayParser(): ReplayParserResult {
       return null;
     }
     
-    console.log('[useReplayParser] Starting to process file:', file.name);
+    console.log('[useReplayParser] Starting to process file:', file.name, 'size:', file.size);
     setIsProcessing(true);
     setError(null);
     
@@ -79,8 +79,6 @@ export function useReplayParser(): ReplayParserResult {
         return null;
       }
       
-      console.log('[useReplayParser] Starting replay parsing for file:', file.name, 'size:', file.size);
-      
       // Verify file is readable
       if (!file.size) {
         throw new Error('Die Datei scheint leer oder beschädigt zu sein');
@@ -94,25 +92,33 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error('Parser hat keine Daten zurückgegeben');
       }
       
-      // Log all key-value pairs for debugging
-      console.log('[useReplayParser] Parsing completed. All data fields:');
-      Object.entries(parsedData).forEach(([key, value]) => {
-        if (typeof value === 'object' && value !== null) {
-          console.log(`[useReplayParser] ${key}:`, JSON.stringify(value).substring(0, 100) + '...');
-        } else {
-          console.log(`[useReplayParser] ${key}:`, value);
-        }
+      // Enhanced logging
+      console.log('[useReplayParser] Parsing completed. Data received:', parsedData);
+      console.log('[useReplayParser] Player data:', {
+        name: parsedData.playerName,
+        race: parsedData.playerRace,
+        opponent: parsedData.opponentName,
+        opponentRace: parsedData.opponentRace
       });
       
       // Verify we have essential data
-      if (!parsedData.playerName || !parsedData.map || !parsedData.strengths || parsedData.strengths.length === 0) {
-        console.error('[useReplayParser] Missing essential data in parsed result', parsedData);
-        throw new Error('Unvollständige Analyse-Daten');
+      const missingFields = [];
+      if (!parsedData.playerName) missingFields.push('playerName');
+      if (!parsedData.map) missingFields.push('map');
+      if (!parsedData.strengths || parsedData.strengths.length === 0) missingFields.push('strengths');
+      
+      if (missingFields.length > 0) {
+        console.error('[useReplayParser] Missing essential data:', missingFields.join(', '));
+        throw new Error(`Unvollständige Analyse-Daten: ${missingFields.join(', ')} fehlen`);
       }
       
-      console.log('[useReplayParser] Parsing completed successfully with', 
-        parsedData.strengths.length, 'strengths,', 
-        parsedData.weaknesses.length, 'weaknesses');
+      // Generate dummy data for testing if needed
+      if (process.env.NODE_ENV === 'development' && !parsedData.strengths.length) {
+        console.log('[useReplayParser] Adding dummy analysis data for development');
+        parsedData.strengths = ['Gute mechanische Fähigkeiten', 'Effektives Makromanagement'];
+        parsedData.weaknesses = ['Könnte Scouting verbessern', 'Unregelmäßige Produktion'];
+        parsedData.recommendations = ['Übe Build-Order Timings', 'Fokussiere dich auf Map-Kontrolle'];
+      }
       
       return parsedData;
     } catch (err) {

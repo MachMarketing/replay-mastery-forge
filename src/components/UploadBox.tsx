@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
@@ -142,14 +143,14 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         throw new Error(parsingError || 'Fehler beim Parsen der Replay-Datei');
       }
       
+      // Enhanced debugging for parsed data
+      console.log('[UploadBox] Raw parsed data:', parsedData);
+      
       // Validate that the returned data contains the required analysis
       if (!parsedData.strengths || parsedData.strengths.length === 0) {
         console.error('[UploadBox] Parsed data missing strengths:', parsedData);
         throw new Error('Analyse enthält keine Erkenntnisse');
       }
-      
-      // Log full parsed data for debugging
-      console.log('[UploadBox] Successfully parsed data:', JSON.stringify(parsedData, null, 2));
       
       // Complete the progress
       window.clearInterval(progressInterval);
@@ -166,8 +167,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       // Ensure we wait a moment before transitioning to the analysis view
       setTimeout(() => {
         if (onUploadComplete && parsedData) {
-          console.log('[UploadBox] Sending parsed data to parent component with keys:', 
-            Object.keys(parsedData).join(', '));
+          console.log('[UploadBox] Sending parsed data to parent component');
           onUploadComplete(file, parsedData);
         } else {
           console.warn('[UploadBox] Cannot complete upload: onUploadComplete missing or no data');
