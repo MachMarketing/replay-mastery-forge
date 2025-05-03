@@ -25,6 +25,15 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
   isPremium,
   onPlayerSelect
 }) => {
+  // Debug rendering state
+  useEffect(() => {
+    console.log('💡 AnalysisDisplay - Component mounted');
+    
+    return () => {
+      console.log('💡 AnalysisDisplay - Component unmounted');
+    };
+  }, []);
+  
   // Log data for debugging purposes with better visibility
   useEffect(() => {
     console.log('💡 AnalysisDisplay - Props received:', { 
@@ -78,6 +87,9 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     });
   }, [isAnalyzing, analysisComplete, replayData, rawParsedData, selectedPlayerIndex]);
 
+  // -- Render Logic --
+
+  // 1. Show loading state while analyzing
   if (isAnalyzing) {
     console.log('💡 AnalysisDisplay - Rendering loading state');
     return (
@@ -123,8 +135,7 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     );
   }
   
-  // Show analysis results if analysis is complete AND we have data
-  // Critical fix: This condition must be evaluated correctly to show results
+  // 2. Show analysis results if analysis is complete AND we have data
   if (analysisComplete && (replayData || rawParsedData)) {
     console.log('💡 AnalysisDisplay - Rendering analysis results');
     
@@ -210,7 +221,7 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     }
   }
   
-  // Default fallback state when no data is available
+  // 3. Default fallback state when no data is available
   console.log('💡 AnalysisDisplay - Rendering upload placeholder');
   return (
     <div className="h-96 flex flex-col items-center justify-center bg-card/30 backdrop-blur-sm rounded-lg border border-dashed border-border shadow-inner">

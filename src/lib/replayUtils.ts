@@ -117,30 +117,44 @@ export function generateResourceData(durationMs: number): { time: string; minera
  * Enhanced race name standardization
  * This function takes any race string/name and standardizes it to one of our three race types
  */
-export function standardizeRaceName(raceName: string | undefined): 'Terran' | 'Protoss' | 'Zerg' {
-  if (!raceName) return 'Terran';
+export function standardizeRaceName(raceName: string | undefined | null): 'Terran' | 'Protoss' | 'Zerg' {
+  // Handle empty or null values
+  if (!raceName) {
+    console.warn('🏁 [replayUtils] Empty race name provided, defaulting to Terran');
+    return 'Terran';
+  }
 
-  // Convert to lowercase for case-insensitive matching
-  const normalized = raceName.toLowerCase();
+  // Convert to lowercase and trim for reliable case-insensitive matching
+  const normalized = String(raceName).toLowerCase().trim();
   
   console.log('🏁 [replayUtils] Standardizing race name:', raceName, '→', normalized);
 
-  // Check for Protoss first to avoid false matches with "Terr" in "Protoss"
-  if (normalized.includes('prot') || normalized.includes('toss') || normalized === 'p') {
+  // Check for Protoss first to avoid false matches
+  if (normalized.includes('prot') || 
+      normalized.includes('toss') || 
+      normalized === 'p' || 
+      normalized === 'protoss') {
     return 'Protoss';
   }
   
   // Check for Zerg
-  if (normalized.includes('zerg') || normalized === 'z') {
+  if (normalized.includes('zerg') || 
+      normalized === 'z') {
     return 'Zerg';
   }
   
   // Check for Terran
-  if (normalized.includes('terr') || normalized === 't') {
+  if (normalized.includes('terr') || 
+      normalized === 't') {
     return 'Terran';
   }
   
-  // Default fallback
+  // Handle numbers directly provided as strings
+  if (normalized === '0') return 'Zerg';
+  if (normalized === '1') return 'Terran';
+  if (normalized === '2') return 'Protoss';
+  
+  // Default fallback with warning
   console.warn('🏁 [replayUtils] Unrecognized race name:', raceName, 'defaulting to Terran');
   return 'Terran';
 }
