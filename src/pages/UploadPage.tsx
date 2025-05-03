@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -8,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useReplayParser } from '@/hooks/useReplayParser';
 import { AnalyzedReplayResult } from '@/services/replayParserService';
 import AnalysisDisplay from '@/components/AnalysisDisplay';
+import { standardizeRaceName } from '@/lib/replayUtils';
 
 interface ReplayData extends AnalyzedReplayResult {
   id: string;
@@ -65,18 +67,27 @@ const UploadPage = () => {
     // Log race information for debugging
     console.log("🚀 Upload - Race information:", {
       playerRace: parsedReplayData.playerRace,
-      opponentRace: parsedReplayData.opponentRace
+      standardized: standardizeRaceName(parsedReplayData.playerRace),
+      opponentRace: parsedReplayData.opponentRace,
+      opponentStandardized: standardizeRaceName(parsedReplayData.opponentRace)
     });
     
     // First set state variables
     setFile(uploadedFile);
-    setRawParsedData(parsedReplayData);
+    
+    // Make sure race information is properly standardized before setting state
+    const standardizedData = {
+      ...parsedReplayData,
+      playerRace: standardizeRaceName(parsedReplayData.playerRace),
+      opponentRace: standardizeRaceName(parsedReplayData.opponentRace),
+    };
+    
+    setRawParsedData(standardizedData);
     setIsAnalyzing(true);
     
     try {
-      // Pass the data directly to handlePlayerSelection instead of relying on state
-      // Critical fix: Pass parsedReplayData explicitly to avoid timing issues with state updates
-      handlePlayerSelection(0, parsedReplayData);
+      // Pass the data directly to handlePlayerSelection with standardized races
+      handlePlayerSelection(0, standardizedData);
     } catch (error) {
       console.error('⛔ Analysis error:', error);
       toast({
@@ -142,8 +153,8 @@ const UploadPage = () => {
     // Normalize data with enhanced race detection
     const normalizedData: AnalyzedReplayResult = {
       ...adjustedData,
-      playerRace: normalizeRace(adjustedData.playerRace || 'Terran'),
-      opponentRace: normalizeRace(adjustedData.opponentRace || 'Terran'),
+      playerRace: standardizeRaceName(adjustedData.playerRace || 'Terran'),
+      opponentRace: standardizeRaceName(adjustedData.opponentRace || 'Terran'),
       result: normalizeResult(adjustedData.result || 'win'),
       strengths: adjustedData.strengths || [],
       weaknesses: adjustedData.weaknesses || [],
@@ -180,35 +191,6 @@ const UploadPage = () => {
       title: "Analyse abgeschlossen",
       description: `Analyse abgeschlossen für ${file?.name || 'dein Replay'}`,
     });
-  };
-
-  // Enhanced helper function for race normalization with better race detection
-  const normalizeRace = (race: string): 'Terran' | 'Protoss' | 'Zerg' => {
-    if (!race) return 'Terran';
-    
-    // Log for debugging
-    console.log("🎮 Normalizing race:", race);
-    
-    // Convert to lowercase for case-insensitive matching
-    const normalizedRace = race.toLowerCase();
-    
-    // Enhanced matching that prioritizes more specific matches
-    // Protoss checks first to avoid "Terr" in "Protoss" being misinterpreted
-    if (normalizedRace.includes('prot') || normalizedRace.includes('toss') || normalizedRace === 'p') {
-      return 'Protoss';
-    }
-    
-    if (normalizedRace.includes('zerg') || normalizedRace === 'z') {
-      return 'Zerg';
-    }
-    
-    if (normalizedRace.includes('terr') || normalizedRace === 't') {
-      return 'Terran';
-    }
-    
-    // If no specific match, use default
-    console.warn('🎮 Unrecognized race:', race, 'defaulting to Terran');
-    return 'Terran';
   };
   
   // Helper for result normalization

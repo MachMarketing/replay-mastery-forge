@@ -4,6 +4,7 @@ import { Loader2, Upload } from 'lucide-react';
 import { AnalyzedReplayResult } from '@/services/replayParserService';
 import AnalysisResult from '@/components/AnalysisResult';
 import PlayerSelector from '@/components/PlayerSelector';
+import { standardizeRaceName } from '@/lib/replayUtils';
 
 interface AnalysisDisplayProps {
   isAnalyzing: boolean;
@@ -24,34 +25,6 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
   isPremium,
   onPlayerSelect
 }) => {
-  // Helper function for race normalization with enhanced validation
-  const normalizeRace = (race: string): 'Terran' | 'Protoss' | 'Zerg' => {
-    if (!race) return 'Terran';
-    
-    // Convert to lowercase for case-insensitive matching
-    const normalizedRace = race.toLowerCase();
-    
-    // Log for debugging
-    console.log('🧙‍♂️ [AnalysisDisplay] Normalizing race input:', race, '→', normalizedRace);
-    
-    // Enhanced matching that prioritizes more specific matches first
-    if (normalizedRace.includes('prot') || normalizedRace.includes('toss') || normalizedRace === 'p') {
-      return 'Protoss';
-    }
-    
-    if (normalizedRace.includes('zerg') || normalizedRace === 'z') {
-      return 'Zerg';
-    }
-    
-    if (normalizedRace.includes('terr') || normalizedRace === 't') {
-      return 'Terran';
-    }
-    
-    // If no specific match, use default
-    console.warn('🧙‍♂️ [AnalysisDisplay] Unrecognized race:', race, 'defaulting to Terran');
-    return 'Terran'; 
-  };
-
   // Log data for debugging purposes with better visibility
   useEffect(() => {
     console.log('💡 AnalysisDisplay - Props received:', { 
@@ -77,11 +50,11 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       // Log race information for debugging
       console.log('💡 AnalysisDisplay - Player race data:', {
         raw: replayData.playerRace,
-        normalized: normalizeRace(replayData.playerRace)
+        normalized: standardizeRaceName(replayData.playerRace)
       });
       console.log('💡 AnalysisDisplay - Opponent race data:', {
         raw: replayData.opponentRace,
-        normalized: normalizeRace(replayData.opponentRace)
+        normalized: standardizeRaceName(replayData.opponentRace)
       });
     } else {
       console.log('💡 AnalysisDisplay - No replayData available');
@@ -179,9 +152,9 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
           recommendations: rawParsedData.recommendations || ['Übe Build-Order Timings'],
           trainingPlan: rawParsedData.trainingPlan || [],
           buildOrder: rawParsedData.buildOrder || [],
-          // Normalize race information
-          playerRace: normalizeRace(rawParsedData.playerRace),
-          opponentRace: normalizeRace(rawParsedData.opponentRace)
+          // Normalize race information using standardizeRaceName for consistent representation
+          playerRace: standardizeRaceName(rawParsedData.playerRace),
+          opponentRace: standardizeRaceName(rawParsedData.opponentRace)
         };
         console.log('💡 AnalysisDisplay - Created displayData from rawParsedData:', displayData);
       } else {
@@ -204,8 +177,9 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     // Now if we have valid display data
     if (displayData) {
       // Ensure race information is properly normalized before displaying
-      const normalizedPlayerRace = normalizeRace(displayData.playerRace);
-      const normalizedOpponentRace = normalizeRace(displayData.opponentRace);
+      // Use our improved standardizeRaceName function for consistent results
+      const normalizedPlayerRace = standardizeRaceName(displayData.playerRace);
+      const normalizedOpponentRace = standardizeRaceName(displayData.opponentRace);
       
       console.log('💡 AnalysisDisplay - Final normalized races:', {
         player: normalizedPlayerRace,
@@ -225,7 +199,11 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
           />
           
           <div className="mt-4">
-            <AnalysisResult data={displayData} isPremium={isPremium} />
+            <AnalysisResult data={{
+              ...displayData,
+              playerRace: normalizedPlayerRace,
+              opponentRace: normalizedOpponentRace
+            }} isPremium={isPremium} />
           </div>
         </>
       );

@@ -1,3 +1,4 @@
+
 /**
  * Utility functions for StarCraft replay parsing
  */
@@ -27,6 +28,10 @@ export function getRaceFromNumber(raceNum: number): 'Terran' | 'Protoss' | 'Zerg
   if (raceNum === 5) return 'Terran';
   if (raceNum === 6) return 'Protoss'; 
   if (raceNum === 7) return 'Zerg';
+  
+  // Additional numbering system sometimes encountered
+  if (raceNum === 3) return 'Protoss'; // Some parsers use 3 for Protoss 
+  if (raceNum === 4) return 'Zerg';    // Some parsers use 4 for Zerg
   
   // Default fallback to Terran to avoid undefined
   console.warn('🏁 [replayUtils] Unknown race number:', raceNum, 'defaulting to Terran');
@@ -106,4 +111,36 @@ export function generateResourceData(durationMs: number): { time: string; minera
   }
   
   return resourceGraph;
+}
+
+/**
+ * Enhanced race name standardization
+ * This function takes any race string/name and standardizes it to one of our three race types
+ */
+export function standardizeRaceName(raceName: string | undefined): 'Terran' | 'Protoss' | 'Zerg' {
+  if (!raceName) return 'Terran';
+
+  // Convert to lowercase for case-insensitive matching
+  const normalized = raceName.toLowerCase();
+  
+  console.log('🏁 [replayUtils] Standardizing race name:', raceName, '→', normalized);
+
+  // Check for Protoss first to avoid false matches with "Terr" in "Protoss"
+  if (normalized.includes('prot') || normalized.includes('toss') || normalized === 'p') {
+    return 'Protoss';
+  }
+  
+  // Check for Zerg
+  if (normalized.includes('zerg') || normalized === 'z') {
+    return 'Zerg';
+  }
+  
+  // Check for Terran
+  if (normalized.includes('terr') || normalized === 't') {
+    return 'Terran';
+  }
+  
+  // Default fallback
+  console.warn('🏁 [replayUtils] Unrecognized race name:', raceName, 'defaulting to Terran');
+  return 'Terran';
 }
