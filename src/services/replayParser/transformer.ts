@@ -6,10 +6,29 @@ import { ParsedReplayData } from './types';
  */
 export function transformJSSUHData(jssuhData: any): ParsedReplayData {
   try {
+    console.log('[transformer] Starting transformation of JSSUH data');
+    console.log('[transformer] Raw JSSUH data keys:', Object.keys(jssuhData));
+    
+    if (jssuhData.players) {
+      console.log('[transformer] Player data available:', 
+        jssuhData.players.map((p: any) => ({
+          name: p.name,
+          race: p.race,
+          raceLetter: p.raceLetter,
+          id: p.id
+        }))
+      );
+    }
+    
     // Extract player information
     const players = jssuhData.players || [];
-    const playerInfo = players[0] || { name: 'Unknown', race: 'T' };
-    const opponentInfo = players.length > 1 ? players[1] : { name: 'Unknown', race: 'T' };
+    const playerInfo = players[0] || { name: 'Unknown', race: 'T', raceLetter: 'T' };
+    const opponentInfo = players.length > 1 ? players[1] : { name: 'Unknown', race: 'T', raceLetter: 'T' };
+    
+    console.log('[transformer] Extracted player info:', {
+      player: { name: playerInfo.name, race: playerInfo.race, raceLetter: playerInfo.raceLetter },
+      opponent: { name: opponentInfo.name, race: opponentInfo.race, raceLetter: opponentInfo.raceLetter }
+    });
     
     // Calculate game duration
     const ms = jssuhData.durationMS || 0;
@@ -22,9 +41,26 @@ export function transformJSSUHData(jssuhData: any): ParsedReplayData {
     const gameMinutes = ms / 60000;
     const apm = Math.round(totalActions / (gameMinutes || 1));
     
-    // Map race codes to full names
-    const playerRace = mapRace(playerInfo.race);
-    const opponentRace = mapRace(opponentInfo.race);
+    // Map race codes to full names with enhanced detection
+    // First check if we already have mapped race names
+    const playerRace = playerInfo.race && typeof playerInfo.race === 'string' && 
+                      (playerInfo.race.toLowerCase() === 'terran' ||
+                       playerInfo.race.toLowerCase() === 'protoss' ||
+                       playerInfo.race.toLowerCase() === 'zerg') 
+                      ? playerInfo.race 
+                      : mapRace(playerInfo.race || playerInfo.raceLetter);
+                      
+    const opponentRace = opponentInfo.race && typeof opponentInfo.race === 'string' && 
+                        (opponentInfo.race.toLowerCase() === 'terran' ||
+                         opponentInfo.race.toLowerCase() === 'protoss' ||
+                         opponentInfo.race.toLowerCase() === 'zerg')
+                        ? opponentInfo.race
+                        : mapRace(opponentInfo.race || opponentInfo.raceLetter);
+    
+    console.log('[transformer] Mapped races:', {
+      playerRace, 
+      opponentRace
+    });
     
     // Determine matchup
     const matchup = `${playerRace.charAt(0)}v${opponentRace.charAt(0)}`;
@@ -32,7 +68,7 @@ export function transformJSSUHData(jssuhData: any): ParsedReplayData {
     // Extract build order
     const buildOrder = extractBuildOrder(jssuhData.actions || []);
     
-    return {
+    const result: ParsedReplayData = {
       playerName: playerInfo.name,
       opponentName: opponentInfo.name,
       playerRace,
@@ -47,23 +83,68 @@ export function transformJSSUHData(jssuhData: any): ParsedReplayData {
       buildOrder,
       resourcesGraph: []
     };
+    
+    console.log('[transformer] Transformation complete:', {
+      playerName: result.playerName,
+      opponentName: result.opponentName,
+      playerRace: result.playerRace,
+      opponentRace: result.opponentRace,
+      matchup: result.matchup
+    });
+    
+    return result;
   } catch (error) {
-    console.error('Error transforming jssuh data:', error);
+    console.error('[transformer] Error transforming jssuh data:', error);
     throw new Error('Failed to process replay data');
   }
 }
 
 /**
- * Map race codes to full names
+ * Map race codes to full names with enhanced detection
  */
-function mapRace(race: string): 'Terran' | 'Protoss' | 'Zerg' {
-  if (!race) return 'Terran';
-  switch (race.toUpperCase()) {
-    case 'T': return 'Terran';
-    case 'P': return 'Protoss';
-    case 'Z': return 'Zerg';
-    default: return 'Terran';
+function mapRace(race: string | undefined): 'Terran' | 'Protoss' | 'Zerg' {
+  if (!race) {
+    console.warn('[transformer] Empty race value, defaulting to Terran');
+    return 'Terran';
   }
+  
+  console.log('[transformer] Mapping race:', race);
+  
+  // Ensure we're working with a string
+  const raceStr = String(race).trim().toUpperCase();
+  
+  // Direct character/code matching
+  switch (raceStr) {
+    case 'T':
+    case '0':
+    case 'TERR':
+    case 'TERRA':
+    case 'TERRAN':
+      return 'Terran';
+    case 'P':
+    case '1':
+    case 'PROT':
+    case 'PROTO':
+    case 'PROTOS':
+    case 'PROTOSS':
+      return 'Protoss';
+    case 'Z':
+    case '2':
+    case 'ZERG':
+      return 'Zerg';
+  }
+  
+  // Secondary check for substring matches
+  if (raceStr.includes('T') || raceStr.includes('TERR')) {
+    return 'Terran';
+  } else if (raceStr.includes('P') || raceStr.includes('PROT')) {
+    return 'Protoss';
+  } else if (raceStr.includes('Z') || raceStr.includes('ZERG')) {
+    return 'Zerg';
+  }
+  
+  console.warn('[transformer] Unknown race format:', race, 'defaulting to Terran');
+  return 'Terran';
 }
 
 /**

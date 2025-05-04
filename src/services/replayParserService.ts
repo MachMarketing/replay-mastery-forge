@@ -45,7 +45,7 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     const parsedData = await parseReplayInBrowser(file);
     console.log('🚀 [replayParserService] Browser parser returned data:', parsedData);
     
-    // Enhance the parsed data with more analysis
+    // Enhance the parsed data with more analysis (but don't override actual data)
     const enrichedData = analyzeReplayData(parsedData);
     console.log('🚀 [replayParserService] Analysis complete with data keys:', 
       Object.keys(enrichedData).join(', '));
@@ -67,7 +67,15 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     }
     
     // Log full enhanced data for debugging
-    console.log('🚀 [replayParserService] Full enhanced data:', JSON.stringify(enrichedData, null, 2));
+    console.log('🚀 [replayParserService] Final enriched data:', {
+      playerName: enrichedData.playerName,
+      opponentName: enrichedData.opponentName,
+      playerRace: enrichedData.playerRace,
+      opponentRace: enrichedData.opponentRace,
+      map: enrichedData.map,
+      duration: enrichedData.duration,
+      matchup: enrichedData.matchup
+    });
     
     return enrichedData;
   } catch (error) {
@@ -77,7 +85,7 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
 }
 
 /**
- * Analyze replay data to enhance it with insights
+ * Analyze replay data to enhance it with insights without overriding actual data
  */
 function analyzeReplayData(parsedData: ParsedReplayResult): AnalyzedReplayResult {
   console.log('🧠 [replayParserService] Analyzing replay data for:', parsedData.playerName);
@@ -93,27 +101,50 @@ function analyzeReplayData(parsedData: ParsedReplayResult): AnalyzedReplayResult
   
   const durationMs = convertDurationToMs(parsedData.duration || '5:00');
   
-  // Generate build order if not provided (preserve existing one if present)
-  if (!parsedData.buildOrder || parsedData.buildOrder.length === 0) {
+  // Only generate build order if not provided
+  let buildOrder = parsedData.buildOrder || [];
+  if (buildOrder.length === 0) {
     console.log('🧠 [replayParserService] Generating build order for race:', playerRace);
-    parsedData.buildOrder = generateBuildOrder(playerRace, durationMs);
+    buildOrder = generateBuildOrder(playerRace, durationMs);
   } else {
-    console.log('🧠 [replayParserService] Using existing build order with', parsedData.buildOrder.length, 'items');
+    console.log('🧠 [replayParserService] Using existing build order with', buildOrder.length, 'items');
   }
   
   // Generate resources graph if not provided
-  if (!parsedData.resourcesGraph || parsedData.resourcesGraph.length === 0) {
-    parsedData.resourcesGraph = generateResourceData(durationMs);
-  }
+  const resourcesGraph = parsedData.resourcesGraph || generateResourceData(durationMs);
 
-  // Generate analysis based on actual replay data and race
-  // Only generate these if they don't exist in the parsed data
-  const strengths = parsedData.strengths || mockStrengthsByRace(playerRace);
-  const weaknesses = parsedData.weaknesses || mockWeaknessesByRace(playerRace);
-  const recommendations = parsedData.recommendations || mockRecommendationsByMatchup(matchup);
+  // Generate analysis only if not already present
+  let strengths: string[] = [];
+  let weaknesses: string[] = [];
+  let recommendations: string[] = [];
+  
+  // Check if we already have analysis data
+  if (parsedData.strengths && parsedData.strengths.length > 0) {
+    console.log('🧠 [replayParserService] Using existing strengths:', parsedData.strengths);
+    strengths = parsedData.strengths;
+  } else {
+    console.log('🧠 [replayParserService] Generating strengths for race:', playerRace);
+    strengths = generateStrengthsByRace(playerRace);
+  }
+  
+  if (parsedData.weaknesses && parsedData.weaknesses.length > 0) {
+    console.log('🧠 [replayParserService] Using existing weaknesses:', parsedData.weaknesses);
+    weaknesses = parsedData.weaknesses;
+  } else {
+    console.log('🧠 [replayParserService] Generating weaknesses for race:', playerRace);
+    weaknesses = generateWeaknessesByRace(playerRace);
+  }
+  
+  if (parsedData.recommendations && parsedData.recommendations.length > 0) {
+    console.log('🧠 [replayParserService] Using existing recommendations:', parsedData.recommendations);
+    recommendations = parsedData.recommendations;
+  } else {
+    console.log('🧠 [replayParserService] Generating recommendations for matchup:', matchup);
+    recommendations = generateRecommendationsByMatchup(matchup);
+  }
   
   // Training plan focused on weaknesses
-  const trainingPlan = [
+  const trainingPlan = parsedData.trainingPlan || [
     {
       focus: "Micro Management",
       exercise: `${playerRace} Unit Control Drill`,
@@ -142,6 +173,8 @@ function analyzeReplayData(parsedData: ParsedReplayResult): AnalyzedReplayResult
     playerRace,
     opponentRace,
     matchup,
+    buildOrder,
+    resourcesGraph,
     strengths,
     weaknesses,
     recommendations,
@@ -155,8 +188,8 @@ function convertDurationToMs(duration: string): number {
   return (minutes * 60 + (seconds || 0)) * 1000;
 }
 
-// Mock data generation based on race
-function mockStrengthsByRace(race: string): string[] {
+// Generate data based on race
+function generateStrengthsByRace(race: string): string[] {
   const commonStrengths = [
     "Gute Ressourcenverwaltung",
     "Effektive Gebäudepositionierung",
@@ -188,7 +221,7 @@ function mockStrengthsByRace(race: string): string[] {
   return [...commonStrengths, ...(raceSpecific[standardRace] || [])].slice(0, 4);
 }
 
-function mockWeaknessesByRace(race: string): string[] {
+function generateWeaknessesByRace(race: string): string[] {
   const commonWeaknesses = [
     "Unregelmäßiges Scouting",
     "Produktionslücken unter Druck",
@@ -220,7 +253,7 @@ function mockWeaknessesByRace(race: string): string[] {
   return [...commonWeaknesses, ...(raceSpecific[standardRace] || [])].slice(0, 4);
 }
 
-function mockRecommendationsByMatchup(matchup: string): string[] {
+function generateRecommendationsByMatchup(matchup: string): string[] {
   const commonRecommendations = [
     "Implementiere ein strukturiertes Scout-Timing",
     "Übe deine Build-Order bis sie perfekt ist",

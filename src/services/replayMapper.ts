@@ -1,4 +1,3 @@
-
 /**
  * Maps raw parser output to our application's format
  */
@@ -14,12 +13,22 @@ export function mapRawToParsed(rawData: any): ParsedReplayResult {
   const opponent = players.opponent;
   
   // Process race information with enhanced detection
-  const playerRace = standardizeRaceName(player.race);
-  const opponentRace = standardizeRaceName(opponent.race);
+  // Use the pre-mapped race from the WASM parser if available, otherwise use the race letter
+  let playerRaceInfo = player.race || player.raceLetter;
+  let opponentRaceInfo = opponent.race || opponent.raceLetter;
   
-  console.log('🔄 [replayMapper] Race information:', { 
-    player: { raw: player.race, standardized: playerRace },
-    opponent: { raw: opponent.race, standardized: opponentRace }
+  console.log('🔄 [replayMapper] Raw race information:', { 
+    playerRaceInfo,
+    opponentRaceInfo
+  });
+  
+  // Standardize race names
+  const playerRace = standardizeRaceName(playerRaceInfo);
+  const opponentRace = standardizeRaceName(opponentRaceInfo);
+  
+  console.log('🔄 [replayMapper] Standardized race information:', { 
+    playerRace,
+    opponentRace
   });
   
   // Extract map name with fallbacks
@@ -51,7 +60,16 @@ export function mapRawToParsed(rawData: any): ParsedReplayResult {
   console.log('🔄 [replayMapper] Build order items:', buildOrder.length);
 
   // Log raw players for debugging
-  console.log('🔄 [replayMapper] Raw player data:', rawData.players);
+  if (rawData.players) {
+    console.log('🔄 [replayMapper] Raw player data (from rawData.players):', 
+      rawData.players.map((p: any) => ({
+        name: p.name,
+        race: p.race,
+        raceLetter: p.raceLetter,
+        id: p.id
+      }))
+    );
+  }
   
   // Return mapped data
   const mappedData: ParsedReplayResult = {
@@ -91,18 +109,35 @@ function extractPlayers(data: any): { player: any, opponent: any } {
   // Handle different parser output formats
   if (Array.isArray(data.players)) {
     rawPlayers = data.players;
+    console.log('🔄 [replayMapper] Using data.players array:', 
+      rawPlayers.map(p => ({name: p.name, race: p.race, raceLetter: p.raceLetter}))
+    );
   } else if (data.header && Array.isArray(data.header.players)) {
     rawPlayers = data.header.players;
+    console.log('🔄 [replayMapper] Using data.header.players array');
   } else if (typeof data.players === 'object') {
     // Convert player object to array (some formats use object with numeric keys)
     rawPlayers = Object.values(data.players);
+    console.log('🔄 [replayMapper] Converted player object to array');
   }
   
-  console.log('🔄 [replayMapper] Raw players data:', rawPlayers);
+  console.log('🔄 [replayMapper] Raw players data count:', rawPlayers.length);
+  
+  if (rawPlayers.length > 0) {
+    // Log the first few players for debugging
+    rawPlayers.slice(0, Math.min(rawPlayers.length, 3)).forEach((p, i) => {
+      console.log(`🔄 [replayMapper] Raw player ${i + 1}:`, {
+        name: p.name,
+        race: p.race,
+        raceLetter: p.raceLetter, 
+        id: p.id
+      });
+    });
+  }
   
   // Default player objects
-  const defaultPlayer = { id: '1', name: 'Player', race: 'T' };
-  const defaultOpponent = { id: '2', name: 'Opponent', race: 'Z' };
+  const defaultPlayer = { id: '1', name: 'Player', race: 'Terran', raceLetter: 'T' };
+  const defaultOpponent = { id: '2', name: 'Opponent', race: 'Terran', raceLetter: 'T' };
   
   // Try to extract meaningful player information
   let player = defaultPlayer;
@@ -112,11 +147,14 @@ function extractPlayers(data: any): { player: any, opponent: any } {
     // Normal case: we have at least 2 players
     player = sanitizePlayer(rawPlayers[0]);
     opponent = sanitizePlayer(rawPlayers[1]);
-    console.log('🔄 [replayMapper] Found 2+ players in replay');
+    console.log('🔄 [replayMapper] Found 2+ players in replay:', 
+      { player: `${player.name} (${player.race || player.raceLetter})`, 
+        opponent: `${opponent.name} (${opponent.race || opponent.raceLetter})` });
   } else if (rawPlayers.length === 1) {
     // Edge case: only 1 player in data
     player = sanitizePlayer(rawPlayers[0]);
-    console.log('🔄 [replayMapper] Found only 1 player in replay, using default opponent');
+    console.log('🔄 [replayMapper] Found only 1 player in replay, using default opponent:', 
+      { player: `${player.name} (${player.race || player.raceLetter})` });
   } else {
     // No players found, use defaults
     console.warn('🔄 [replayMapper] No players found in replay data, using defaults');
@@ -129,7 +167,9 @@ function extractPlayers(data: any): { player: any, opponent: any } {
  * Clean up player data and ensure required fields
  */
 function sanitizePlayer(rawPlayer: any): any {
-  if (!rawPlayer) return { id: '0', name: 'Unknown', race: 'T' };
+  if (!rawPlayer) return { id: '0', name: 'Unknown', race: 'Terran', raceLetter: 'T' };
+  
+  console.log('🔄 [replayMapper] Sanitizing player data:', rawPlayer);
   
   // Extract name with fallbacks
   let name = 'Unknown';
@@ -139,12 +179,29 @@ function sanitizePlayer(rawPlayer: any): any {
     name = String(rawPlayer.playerName);
   }
   
-  // Extract race with fallbacks
-  let race = 'T';
-  if (typeof rawPlayer.race === 'string' || typeof rawPlayer.race === 'number') {
-    race = String(rawPlayer.race);
-  } else if (rawPlayer.playerRace) {
-    race = String(rawPlayer.playerRace);
+  // Extract race with enhanced fallbacks
+  let race = rawPlayer.race || '';
+  let raceLetter = rawPlayer.raceLetter || '';
+  
+  // If we have a full race name but no letter, extract the letter
+  if (race && !raceLetter && typeof race === 'string') {
+    if (race.toUpperCase().startsWith('P')) raceLetter = 'P';
+    else if (race.toUpperCase().startsWith('T')) raceLetter = 'T';
+    else if (race.toUpperCase().startsWith('Z')) raceLetter = 'Z';
+  }
+  
+  // If we have a letter but no full race name, map to full name
+  if (raceLetter && !race) {
+    if (raceLetter.toUpperCase() === 'P') race = 'Protoss';
+    else if (raceLetter.toUpperCase() === 'T') race = 'Terran';
+    else if (raceLetter.toUpperCase() === 'Z') race = 'Zerg';
+  }
+  
+  // Fallbacks for race information
+  if (!race && !raceLetter) {
+    console.warn('🔄 [replayMapper] No race information found, defaulting to Terran');
+    race = 'Terran';
+    raceLetter = 'T';
   }
   
   // Extract ID with fallbacks
@@ -157,7 +214,9 @@ function sanitizePlayer(rawPlayer: any): any {
     id = String(rawPlayer.playerId);
   }
   
-  return { id, name, race };
+  console.log('🔄 [replayMapper] Sanitized player data:', { name, race, raceLetter, id });
+  
+  return { id, name, race, raceLetter };
 }
 
 /**
