@@ -23,7 +23,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       throw new Error('Datei ist leer oder ungültig');
     }
     
-    // Ensure WASM is initialized
+    // Ensure WASM is initialized with proper error handling
     try {
       await initParserWasm();
       console.log('📊 [browserReplayParser] WASM initialized successfully');
@@ -33,6 +33,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     }
     
     // Read file data
+    console.log('📊 [browserReplayParser] Reading file data...');
     const fileData = await readFileAsUint8Array(file);
     
     if (!fileData || fileData.byteLength === 0) {
@@ -47,21 +48,22 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     
     try {
       parsedReplay = await parseReplayWasm(fileData);
-      console.log('📊 [browserReplayParser] WASM parser returned data with keys:', Object.keys(parsedReplay));
+      console.log('📊 [browserReplayParser] WASM parser returned data:', parsedReplay);
       
-      // Specifically log player data to verify race information
-      if (parsedReplay.players && Array.isArray(parsedReplay.players)) {
-        parsedReplay.players.forEach((player, index) => {
-          console.log(`📊 [browserReplayParser] Player ${index + 1}:`, {
-            name: player.name,
-            rawRace: player.raceLetter || 'unknown',
-            mappedRace: player.race || 'unknown',
-            id: player.id
-          });
-        });
-      } else {
-        console.warn('📊 [browserReplayParser] No players array found in parsedReplay');
+      // Verify we have player data
+      if (!parsedReplay.players || !Array.isArray(parsedReplay.players) || parsedReplay.players.length === 0) {
+        throw new Error('Keine Spielerdaten im Replay gefunden');
       }
+      
+      // Log player data specifically to verify race information
+      parsedReplay.players.forEach((player, index) => {
+        console.log(`📊 [browserReplayParser] Player ${index + 1}:`, {
+          name: player.name || 'Unknown',
+          rawRace: player.raceLetter || 'unknown',
+          mappedRace: player.race || 'unknown',
+          id: player.id || index
+        });
+      });
     } catch (parseError) {
       console.error('❌ [browserReplayParser] WASM parser error:', parseError);
       throw new Error(`Parser-Fehler: ${parseError instanceof Error ? parseError.message : 'Unbekannter Fehler'}`);
@@ -72,9 +74,9 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       throw new Error('Parser gab kein Ergebnis zurück');
     }
     
-    console.log('📊 [browserReplayParser] Raw parser output keys:', Object.keys(parsedReplay));
+    console.log('📊 [browserReplayParser] Raw parser output:', parsedReplay);
     
-    // Map the raw parser output to our application's format
+    // Map the raw parser output to our application's format with better error handling
     let mappedData;
     try {
       mappedData = mapRawToParsed(parsedReplay);
@@ -93,7 +95,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     }
 
     // Only use explicit test mode for development and only if explicitly requested
-    const isTestMode = process.env.NODE_ENV === 'development' && file.name.toLowerCase().includes('mock_test');
+    const isTestMode = process.env.NODE_ENV === 'development' && file.name.toLowerCase().includes('test_mock');
     if (isTestMode) {
       console.warn('📊 [browserReplayParser] Test mode detected, enhancing with test data');
       return enhanceWithTestData(mappedData);
@@ -108,7 +110,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
 
 /**
  * For development testing only, enhance data with test values
- * This is only used when a file with "mock_test" in its name is uploaded
+ * This is only used when a file with "test_mock" in its name is uploaded
  * and the application is running in development mode
  */
 function enhanceWithTestData(data: ParsedReplayResult): ParsedReplayResult {

@@ -19,15 +19,20 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   const [progress, setProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'parsing' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState('');
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const progressIntervalRef = useRef<number | null>(null);
+  const processingTimeoutRef = useRef<number | null>(null);
   const { toast } = useToast();
   const { parseReplay, isProcessing, error: parsingError, clearError } = useReplayParser();
   
-  // Clean up progress interval on unmount
+  // Clean up intervals and timeouts on unmount
   useEffect(() => {
     return () => {
       if (progressIntervalRef.current) {
         window.clearInterval(progressIntervalRef.current);
+      }
+      if (processingTimeoutRef.current) {
+        window.clearTimeout(processingTimeoutRef.current);
       }
     };
   }, []);
@@ -86,6 +91,13 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     }
     setProgress(0);
   };
+  
+  const clearTimeouts = () => {
+    if (processingTimeoutRef.current) {
+      window.clearTimeout(processingTimeoutRef.current);
+      processingTimeoutRef.current = null;
+    }
+  };
 
   const simulateProgress = () => {
     resetProgress();
@@ -119,9 +131,19 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     console.log('[UploadBox] Starting file processing:', file.name);
     clearError();
     setFile(file);
+    setErrorDetails(null);
     setUploadStatus('uploading');
     setStatusMessage('Bereite Replay-Datei vor...');
     resetProgress();
+    clearTimeouts();
+    
+    // Set a timeout to detect processing issues
+    processingTimeoutRef.current = window.setTimeout(() => {
+      if (uploadStatus === 'parsing') {
+        console.warn('[UploadBox] Processing is taking longer than expected');
+        setStatusMessage('Verarbeitung läuft... (Dies kann einen Moment dauern)');
+      }
+    }, 10000);
     
     // Start progress simulation
     const progressInterval = simulateProgress();
@@ -143,18 +165,24 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         throw new Error(parsingError || 'Fehler beim Parsen der Replay-Datei');
       }
       
-      // Enhanced debugging for parsed data
+      // Log parsed data for debugging
       console.log('[UploadBox] Raw parsed data:', parsedData);
       
-      // Validate that the returned data contains the required analysis
-      if (!parsedData.strengths || parsedData.strengths.length === 0) {
-        console.error('[UploadBox] Parsed data missing strengths:', parsedData);
-        throw new Error('Analyse enthält keine Erkenntnisse');
+      // Validate that the returned data contains required fields
+      if (!parsedData.playerName) {
+        console.error('[UploadBox] Parsed data missing player name');
+        throw new Error('Fehler: Keine Spielernamen gefunden');
+      }
+      
+      if (!parsedData.playerRace || parsedData.playerRace === 'Unknown') {
+        console.warn('[UploadBox] No valid player race detected:', parsedData.playerRace);
       }
       
       // Complete the progress
       window.clearInterval(progressInterval);
       progressIntervalRef.current = null;
+      clearTimeouts();
+      
       setProgress(100);
       setUploadStatus('success');
       setStatusMessage('Analyse erfolgreich abgeschlossen!');
@@ -178,28 +206,30 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       
       window.clearInterval(progressInterval);
       progressIntervalRef.current = null;
+      clearTimeouts();
       
+      const errorMessage = error instanceof Error ? error.message : 'Unbekannter Fehler beim Parsen der Replay-Datei';
+      setErrorDetails(errorMessage);
       setUploadStatus('error');
-      setStatusMessage(error instanceof Error ? error.message : 'Fehler beim Parsen der Replay-Datei');
+      setStatusMessage('Fehler bei der Verarbeitung');
       setProgress(0);
       
       toast({
         title: "Verarbeitung fehlgeschlagen",
-        description: error instanceof Error ? error.message : "Fehler beim Parsen der Replay-Datei",
+        description: errorMessage,
         variant: "destructive",
       });
     }
   };
 
   const handleCancel = () => {
-    if (progressIntervalRef.current) {
-      window.clearInterval(progressIntervalRef.current);
-      progressIntervalRef.current = null;
-    }
+    resetProgress();
+    clearTimeouts();
     setFile(null);
     setProgress(0);
     setUploadStatus('idle');
     setStatusMessage('');
+    setErrorDetails(null);
     clearError();
   };
 
@@ -217,10 +247,10 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         <div className="mt-4 p-4 bg-opacity-10 bg-destructive border border-destructive/40 rounded-md">
           <div className="flex items-center gap-2 text-destructive mb-1">
             <AlertCircle className="h-4 w-4" />
-            <p className="font-medium">{statusMessage || 'Fehler beim Parsen der Replay-Datei'}</p>
+            <p className="font-medium">Verarbeitung fehlgeschlagen</p>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Bitte versuche es erneut oder kontaktiere den Support, wenn das Problem weiterhin besteht.
+          <p className="text-xs text-muted-foreground mb-2">
+            {errorDetails || statusMessage || 'Fehler beim Parsen der Replay-Datei'}
           </p>
           <div className="flex gap-2 mt-2">
             <Button 
