@@ -44,6 +44,7 @@ export async function initParser(): Promise<void> {
 
 /**
  * Parse a replay file and return the parsed data
+ * IMPORTANT: This function must use mapRawToParsed to match browserReplayParser behavior
  */
 export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult> {
   console.log('[replayParserService] Starting to parse replay file');
@@ -67,11 +68,11 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     
     console.log('[replayParserService] Raw parsed data:', parsedRaw);
     
-    // Transform the raw data using our mapper function
+    // CRITICAL FIX: Transform the raw data using our consistent mapper function
     const parsed = mapRawToParsed(parsedRaw);
     console.log('[replayParserService] Mapped parsed data:', parsed);
     
-    // Return the analyzed data using the actual parsed data, not empty arrays
+    // Return the analyzed data using the actual parsed data from the mapper
     const analyzedData: AnalyzedReplayResult = {
       ...parsed,
       // Use actual data from parsed result

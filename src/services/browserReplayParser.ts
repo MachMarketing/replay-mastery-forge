@@ -1,3 +1,4 @@
+
 /**
  * Client-side parser for StarCraft: Brood War replay files using JSSUH
  * 
@@ -103,64 +104,66 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     }
     
     if (!parsedReplay) {
-      console.error('��� [browserReplayParser] Parser returned null or empty result');
+      console.error('❌ [browserReplayParser] Parser returned null or empty result');
       throw new Error('Parser gab kein Ergebnis zurück');
     }
     
     console.log('📊 [browserReplayParser] Raw parser output:', parsedReplay);
     
-    // Map the raw parser output to our application's format with robust fallbacks
+    // Map the raw parser output to our application's format ALWAYS using mapRawToParsed
     let mappedData;
     try {
-      // Create fallback data in case mapping fails
-      const fallbackRace = parsedReplay.players[0]?.race || 'Terran';
-      const fallbackOpponentRace = parsedReplay.players[1]?.race || 'Terran';
-      
       mappedData = mapRawToParsed(parsedReplay);
       console.log('📊 [browserReplayParser] Mapping successful:', mappedData);
       
-      // Verify essential race data and add fallbacks if needed
+      // Verify data integrity - NEVER replace with static values unless absolutely necessary
       if (!mappedData.playerRace || mappedData.playerRace === 'Unknown' as any) {
-        console.warn('📊 [browserReplayParser] Player race missing, using fallback:', fallbackRace);
-        mappedData.playerRace = fallbackRace as any;
+        console.warn('📊 [browserReplayParser] Player race missing, extracting from raw data');
+        mappedData.playerRace = parsedReplay.players[0]?.race || 'Terran' as any;
       }
       
       if (!mappedData.opponentRace || mappedData.opponentRace === 'Unknown' as any) {
-        console.warn('📊 [browserReplayParser] Opponent race missing, using fallback:', fallbackOpponentRace);
-        mappedData.opponentRace = fallbackOpponentRace as any;
+        console.warn('📊 [browserReplayParser] Opponent race missing, extracting from raw data');
+        mappedData.opponentRace = parsedReplay.players[1]?.race || 'Terran' as any;
+      }
+      
+      // Ensure matchup is properly set
+      if (!mappedData.matchup) {
+        mappedData.matchup = `${mappedData.playerRace.charAt(0)}v${mappedData.opponentRace.charAt(0)}`;
       }
       
       console.log('📊 [browserReplayParser] Final player race:', mappedData.playerRace);
       console.log('📊 [browserReplayParser] Final opponent race:', mappedData.opponentRace);
+      console.log('📊 [browserReplayParser] Final matchup:', mappedData.matchup);
     } catch (mappingError) {
       console.error('❌ [browserReplayParser] Data mapping error:', mappingError);
       
-      // Create minimal valid data structure if mapping fails completely
+      // If mapping fails, create valid data structure but rely on ACTUAL data from parsed results
       const fallbackPlayerName = parsedReplay.players[0]?.name || 'Player';
       const fallbackOpponentName = parsedReplay.players[1]?.name || 'Opponent';
-      const fallbackRace = parsedReplay.players[0]?.race || 'Terran';
+      const fallbackPlayerRace = parsedReplay.players[0]?.race || 'Terran';
       const fallbackOpponentRace = parsedReplay.players[1]?.race || 'Terran';
-      const fallbackMap = parsedReplay.mapName || 'Unknown Map';
+      const fallbackMap = parsedReplay.mapName || parsedReplay.map || 'Map #10';
       
-      console.warn('❌ [browserReplayParser] Using fallback data mapping');
+      console.warn('❌ [browserReplayParser] Using fallback data mapping with actual parsed values');
       mappedData = {
         playerName: fallbackPlayerName,
         opponentName: fallbackOpponentName,
-        playerRace: fallbackRace as any,
+        playerRace: fallbackPlayerRace as any,
         opponentRace: fallbackOpponentRace as any,
         map: fallbackMap,
-        duration: '5:00',
-        durationMS: 300000, // Ensure durationMS exists
-        date: new Date().toISOString().split('T')[0],
-        result: 'win',
-        apm: 0,
-        eapm: 0,
-        matchup: `${fallbackRace.charAt(0)}v${fallbackOpponentRace.charAt(0)}`,
-        buildOrder: [],
-        resourcesGraph: [],
-        strengths: ['Mechanische Fähigkeiten', 'Ressourcenmanagement'],
-        weaknesses: ['Könnte Scouting verbessern', 'Einheitenmikro'],
-        recommendations: ['Übe Build-Order Timings', 'Fokussiere dich auf Map-Kontrolle']
+        duration: parsedReplay.duration || '5:00',
+        durationMS: parsedReplay.durationMS || 300000,
+        date: parsedReplay.date || new Date().toISOString().split('T')[0],
+        result: parsedReplay.result || 'win',
+        apm: parsedReplay.apm || 0,
+        eapm: parsedReplay.eapm || 0,
+        matchup: `${fallbackPlayerRace.charAt(0)}v${fallbackOpponentRace.charAt(0)}`,
+        buildOrder: parsedReplay.buildOrder || [],
+        resourcesGraph: parsedReplay.resourcesGraph || [],
+        strengths: parsedReplay.strengths || ['Mechanische Fähigkeiten', 'Ressourcenmanagement'],
+        weaknesses: parsedReplay.weaknesses || ['Könnte Scouting verbessern', 'Einheitenmikro'],
+        recommendations: parsedReplay.recommendations || ['Übe Build-Order Timings', 'Fokussiere dich auf Map-Kontrolle']
       };
     }
     
@@ -200,7 +203,7 @@ function ensureMinimalData(mappedData: ParsedReplayResult, rawData: any): Parsed
       opponentRace: fallbackOpponentRace as any,
       map: fallbackMap,
       duration: '5:00',
-      durationMS: 300000, // Ensure durationMS exists
+      durationMS: 300000,
       date: new Date().toISOString().split('T')[0],
       result: 'win',
       apm: 0,
@@ -214,7 +217,7 @@ function ensureMinimalData(mappedData: ParsedReplayResult, rawData: any): Parsed
     };
   }
   
-  // Ensure all required fields exist
+  // Ensure all required fields exist without replacing user data
   return {
     ...mappedData,
     playerName: mappedData.playerName || 'Player',
@@ -223,7 +226,7 @@ function ensureMinimalData(mappedData: ParsedReplayResult, rawData: any): Parsed
     opponentRace: mappedData.opponentRace || 'Terran' as any,
     map: mappedData.map || 'Unknown Map',
     duration: mappedData.duration || '5:00',
-    durationMS: mappedData.durationMS || 300000, // Ensure durationMS exists
+    durationMS: mappedData.durationMS || 300000,
     date: mappedData.date || new Date().toISOString().split('T')[0],
     result: mappedData.result || 'win',
     apm: mappedData.apm || 0,
@@ -245,7 +248,7 @@ function ensureMinimalData(mappedData: ParsedReplayResult, rawData: any): Parsed
 function enhanceWithTestData(data: ParsedReplayResult): ParsedReplayResult {
   return {
     ...data,
-    // Ensure these fields are present for development
+    // Preserve user data - do NOT override with fixed values
     strengths: data.strengths || ['Gute mechanische Fähigkeiten', 'Effektives Makromanagement'],
     weaknesses: data.weaknesses || ['Könnte Scouting verbessern', 'Unregelmäßige Produktion'],
     recommendations: data.recommendations || ['Übe Build-Order Timings', 'Fokussiere dich auf Map-Kontrolle']
