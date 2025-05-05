@@ -2,7 +2,6 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
-import wasm from '@rollup/plugin-wasm';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 // https://vitejs.dev/config/
@@ -13,9 +12,8 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       react(),
-      wasm(),
       nodePolyfills({
-        // Whether to polyfill specific globals
+        // Minimum polyfills needed for browser compatibility
         globals: {
           Buffer: true,
           global: true,
@@ -49,11 +47,6 @@ export default defineConfig(({ mode }) => {
         define: {
           global: 'globalThis',
         },
-      },
-    },
-    build: {
-      rollupOptions: {
-        plugins: [wasm()],
       },
     },
   };
