@@ -120,8 +120,6 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error('Unvollständige Analyse-Daten: playerName fehlt');
       }
       
-      // NO MOCK DATA - remove test mock condition
-      
       // Final progress update
       setProgress(100);
       
