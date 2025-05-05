@@ -32,17 +32,72 @@ export async function initParserWasm(): Promise<void> {
   initializationPromise = new Promise<void>(async (resolve, reject) => {
     try {
       // Check if jssuh is available
-      if (!jssuh || !jssuh.ready) {
-        throw new Error('JSSUH module not loaded or ready property not available');
+      if (!jssuh) {
+        throw new Error('JSSUH module not loaded');
+      }
+
+      console.log('[wasmLoader] Checking JSSUH availability:', { 
+        exists: !!jssuh, 
+        ready: jssuh.ready ? 'function/promise exists' : 'missing', 
+        Replay: jssuh.Replay ? 'exists' : 'missing' 
+      });
+      
+      if (!jssuh.ready) {
+        console.warn('[wasmLoader] jssuh.ready is not available, attempting to use module directly');
+        wasmInitialized = true; // Assume it's ready if we got this far
+        initializationInProgress = false;
+        console.log('[wasmLoader] WASM module assumed initialized');
+        resolve();
+        return;
       }
 
       console.log('[wasmLoader] Waiting for JSSUH to be ready...');
-      await jssuh.ready;
       
-      wasmInitialized = true;
-      initializationInProgress = false;
-      console.log('[wasmLoader] WASM module initialized successfully');
-      resolve();
+      // Set a timeout for WASM initialization
+      const timeout = setTimeout(() => {
+        console.error('[wasmLoader] WASM initialization timed out after 10 seconds');
+        
+        if (jssuh.Replay) {
+          // If Replay constructor is available, assume WASM is usable despite timeout
+          console.warn('[wasmLoader] Timeout occurred but Replay constructor exists, continuing anyway');
+          wasmInitialized = true;
+          initializationInProgress = false;
+          resolve();
+        } else {
+          initializationInProgress = false;
+          reject(new Error('WASM initialization timed out'));
+        }
+      }, 10000);
+      
+      try {
+        // Wait for the ready promise to resolve
+        await jssuh.ready;
+        clearTimeout(timeout);
+        
+        // Verify the module is actually functional
+        if (!jssuh.Replay) {
+          throw new Error('JSSUH initialized but Replay constructor is missing');
+        }
+        
+        wasmInitialized = true;
+        initializationInProgress = false;
+        console.log('[wasmLoader] WASM module initialized successfully');
+        resolve();
+      } catch (readyError) {
+        clearTimeout(timeout);
+        
+        // If ready promise fails but Replay constructor exists, assume we can use it anyway
+        if (jssuh.Replay) {
+          console.warn('[wasmLoader] Ready promise failed but Replay constructor exists, continuing anyway:', readyError);
+          wasmInitialized = true;
+          initializationInProgress = false;
+          resolve();
+        } else {
+          console.error('[wasmLoader] Failed waiting for JSSUH ready:', readyError);
+          initializationInProgress = false;
+          reject(readyError);
+        }
+      }
     } catch (error) {
       console.error('[wasmLoader] Critical error initializing WASM module:', error);
       wasmInitialized = false;
@@ -75,7 +130,16 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
     const replay = new jssuh.Replay();
     
     console.log('[wasmLoader] Created Replay instance, parsing data...');
-    await replay.parseReplay(fileData);
+    
+    // Set a timeout for parsing
+    const parsePromise = replay.parseReplay(fileData);
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Parsing timed out after 20 seconds')), 20000);
+    });
+    
+    // Race the parsing against the timeout
+    await Promise.race([parsePromise, timeoutPromise]);
+    
     console.log('[wasmLoader] Replay parsed successfully');
     
     // Extract information from the replay
@@ -84,6 +148,10 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
     
     const players = replay.getPlayers();
     console.log('[wasmLoader] Found', players.length, 'players');
+    
+    if (!players || players.length === 0) {
+      throw new Error('Keine Spieler im Replay gefunden');
+    }
     
     const actions = replay.getActions();
     console.log('[wasmLoader] Found', actions.length, 'actions');

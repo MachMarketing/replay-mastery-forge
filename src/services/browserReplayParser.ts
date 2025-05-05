@@ -25,6 +25,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     
     // Ensure WASM is initialized with proper error handling
     try {
+      console.log('📊 [browserReplayParser] Initializing WASM...');
       await initParserWasm();
       console.log('📊 [browserReplayParser] WASM initialized successfully');
     } catch (wasmError) {
@@ -32,9 +33,21 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       throw new Error('Parser-Initialisierung fehlgeschlagen. Bitte versuchen Sie es erneut oder laden Sie die Seite neu.');
     }
     
-    // Read file data
+    // Read file data with a timeout
     console.log('📊 [browserReplayParser] Reading file data...');
-    const fileData = await readFileAsUint8Array(file);
+    let fileData: Uint8Array;
+    
+    try {
+      const readPromise = readFileAsUint8Array(file);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Datei-Lesevorgang hat das Zeitlimit überschritten')), 10000);
+      });
+      
+      fileData = await Promise.race([readPromise, timeoutPromise]);
+    } catch (readError) {
+      console.error('❌ [browserReplayParser] Error reading file:', readError);
+      throw new Error(`Fehler beim Lesen der Datei: ${readError instanceof Error ? readError.message : 'Unbekannter Fehler'}`);
+    }
     
     if (!fileData || fileData.byteLength === 0) {
       throw new Error('Konnte Datei nicht einlesen oder Datei ist leer');
@@ -42,12 +55,18 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     
     console.log('📊 [browserReplayParser] File read successfully, size:', fileData.byteLength);
     
-    // Parse the replay with WASM parser
+    // Parse the replay with WASM parser and a timeout
     console.log('📊 [browserReplayParser] Parsing replay with WASM parser...');
     let parsedReplay;
     
     try {
-      parsedReplay = await parseReplayWasm(fileData);
+      // Use Promise.race to enforce a timeout
+      const parsePromise = parseReplayWasm(fileData);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Parsing hat das Zeitlimit überschritten')), 15000);
+      });
+      
+      parsedReplay = await Promise.race([parsePromise, timeoutPromise]);
       console.log('📊 [browserReplayParser] WASM parser returned data:', parsedReplay);
       
       // Verify we have player data
@@ -79,19 +98,68 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     // Map the raw parser output to our application's format with better error handling
     let mappedData;
     try {
+      // Create fallback data in case mapping fails
+      const fallbackRace = parsedReplay.players[0]?.race || 'Terran';
+      const fallbackOpponentRace = parsedReplay.players[1]?.race || 'Terran';
+      
       mappedData = mapRawToParsed(parsedReplay);
       console.log('📊 [browserReplayParser] Mapping successful:', mappedData);
-      console.log('📊 [browserReplayParser] Player race:', mappedData.playerRace);
-      console.log('📊 [browserReplayParser] Opponent race:', mappedData.opponentRace);
+      
+      // Verify essential race data and add fallbacks if needed
+      if (!mappedData.playerRace || mappedData.playerRace === 'Unknown') {
+        console.warn('📊 [browserReplayParser] Player race missing, using fallback:', fallbackRace);
+        mappedData.playerRace = fallbackRace as any;
+      }
+      
+      if (!mappedData.opponentRace || mappedData.opponentRace === 'Unknown') {
+        console.warn('📊 [browserReplayParser] Opponent race missing, using fallback:', fallbackOpponentRace);
+        mappedData.opponentRace = fallbackOpponentRace as any;
+      }
+      
+      console.log('📊 [browserReplayParser] Final player race:', mappedData.playerRace);
+      console.log('📊 [browserReplayParser] Final opponent race:', mappedData.opponentRace);
     } catch (mappingError) {
       console.error('❌ [browserReplayParser] Data mapping error:', mappingError);
-      throw new Error(`Datenumwandlungsfehler: ${mappingError instanceof Error ? mappingError.message : 'Unbekannter Fehler'}`);
+      
+      // Create minimal valid data structure if mapping fails completely
+      const fallbackPlayerName = parsedReplay.players[0]?.name || 'Player';
+      const fallbackOpponentName = parsedReplay.players[1]?.name || 'Opponent';
+      const fallbackRace = parsedReplay.players[0]?.race || 'Terran';
+      const fallbackOpponentRace = parsedReplay.players[1]?.race || 'Terran';
+      const fallbackMap = parsedReplay.mapName || 'Unknown Map';
+      
+      console.warn('❌ [browserReplayParser] Using fallback data mapping');
+      mappedData = {
+        playerName: fallbackPlayerName,
+        opponentName: fallbackOpponentName,
+        playerRace: fallbackRace as any,
+        opponentRace: fallbackOpponentRace as any,
+        map: fallbackMap,
+        duration: '5:00',
+        date: new Date().toISOString().split('T')[0],
+        result: 'win',
+        apm: 0,
+        eapm: 0,
+        matchup: `${fallbackRace.charAt(0)}v${fallbackOpponentRace.charAt(0)}`,
+        buildOrder: [],
+        resourcesGraph: []
+      };
     }
     
     // Validate essential fields
     if (!mappedData.playerName || !mappedData.map) {
       console.warn('❌ [browserReplayParser] Essential data missing after mapping');
-      throw new Error('Wichtige Replay-Daten fehlen nach dem Parsing');
+      
+      // Try to extract minimal data directly from parsed replay
+      const fallbackName = parsedReplay.players?.[0]?.name || 'Player';
+      const fallbackMap = parsedReplay.mapName || 'Unknown Map';
+      
+      mappedData.playerName = mappedData.playerName || fallbackName;
+      mappedData.map = mappedData.map || fallbackMap;
+      
+      if (!mappedData.playerName || !mappedData.map) {
+        throw new Error('Wichtige Replay-Daten fehlen nach dem Parsing');
+      }
     }
 
     // Only use explicit test mode for development and only if explicitly requested

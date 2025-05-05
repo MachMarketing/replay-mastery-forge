@@ -23,7 +23,32 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   const progressIntervalRef = useRef<number | null>(null);
   const processingTimeoutRef = useRef<number | null>(null);
   const { toast } = useToast();
-  const { parseReplay, isProcessing, error: parsingError, clearError } = useReplayParser();
+  const { parseReplay, isProcessing, error: parsingError, clearError, progress: parserProgress } = useReplayParser();
+  
+  // Update progress when parser progress changes
+  useEffect(() => {
+    if (parserProgress > 0 && uploadStatus === 'parsing') {
+      // Calculate combined progress:
+      // - First 50% is upload simulation
+      // - Remaining 50% is parsing progress scaled from parser
+      const baseProgress = 50;
+      const scaledParserProgress = parserProgress * 0.5;
+      const combinedProgress = baseProgress + scaledParserProgress;
+      
+      setProgress(combinedProgress);
+      
+      // Update status message for better feedback
+      if (parserProgress < 25) {
+        setStatusMessage('Initialisiere Parser...');
+      } else if (parserProgress < 50) {
+        setStatusMessage('Lese Replay-Daten...');
+      } else if (parserProgress < 75) {
+        setStatusMessage('Analysiere Spieler-Daten...');
+      } else {
+        setStatusMessage('Fast fertig...');
+      }
+    }
+  }, [parserProgress, uploadStatus]);
   
   // Clean up intervals and timeouts on unmount
   useEffect(() => {
@@ -102,19 +127,22 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   const simulateProgress = () => {
     resetProgress();
     
-    // Realistic progress simulation
+    // Start with a smaller initial progress and slow down near 50%
     const interval = window.setInterval(() => {
       setProgress(prev => {
-        // Slow down progress as we get closer to completion
-        const remainingPercent = 100 - prev;
-        const increment = Math.max(0.5, remainingPercent * 0.05);
+        if (prev >= 50) {
+          // Stop automatic progress at 50%, the rest will be controlled by parser
+          window.clearInterval(interval);
+          return prev;
+        }
         
-        // Different max progress for different stages
-        const maxProgress = uploadStatus === 'parsing' ? 95 : 50;
-        const newProgress = Math.min(prev + increment, maxProgress);
+        // Slow down as we approach 50%
+        const remainingToHalf = 50 - prev;
+        const increment = Math.max(0.3, remainingToHalf * 0.03);
+        const newProgress = Math.min(prev + increment, 50);
         
-        // When uploading completes, move to parsing stage
-        if (uploadStatus === 'uploading' && newProgress >= 50) {
+        // When we get close to 50%, switch to parsing stage
+        if (newProgress >= 40 && uploadStatus === 'uploading') {
           setUploadStatus('parsing');
           setStatusMessage('Analysiere Replay-Daten...');
         }
@@ -137,16 +165,24 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     resetProgress();
     clearTimeouts();
     
-    // Set a timeout to detect processing issues
+    // Set a timeout to detect processing issues - extended to 45 seconds
     processingTimeoutRef.current = window.setTimeout(() => {
-      if (uploadStatus === 'parsing') {
-        console.warn('[UploadBox] Processing is taking longer than expected');
-        setStatusMessage('Verarbeitung läuft... (Dies kann einen Moment dauern)');
+      if (uploadStatus === 'parsing' || uploadStatus === 'uploading') {
+        console.error('[UploadBox] Processing timeout reached after 45 seconds');
+        setUploadStatus('error');
+        setStatusMessage('Verarbeitung fehlgeschlagen');
+        setErrorDetails('Die Verarbeitung hat das Zeitlimit überschritten. Bitte versuche es erneut oder kontaktiere den Support.');
+        
+        toast({
+          title: 'Zeitüberschreitung',
+          description: 'Die Replay-Verarbeitung hat zu lange gedauert. Bitte versuche es erneut.',
+          variant: 'destructive',
+        });
       }
-    }, 10000);
+    }, 45000);
     
-    // Start progress simulation
-    const progressInterval = simulateProgress();
+    // Start progress simulation for first 50%
+    simulateProgress();
     
     try {
       // Start parsing after short delay for better UX
@@ -179,9 +215,8 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       }
       
       // Complete the progress
-      window.clearInterval(progressInterval);
-      progressIntervalRef.current = null;
       clearTimeouts();
+      resetProgress();
       
       setProgress(100);
       setUploadStatus('success');
@@ -204,8 +239,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     } catch (error) {
       console.error('[UploadBox] File processing error:', error);
       
-      window.clearInterval(progressInterval);
-      progressIntervalRef.current = null;
+      resetProgress();
       clearTimeouts();
       
       const errorMessage = error instanceof Error ? error.message : 'Unbekannter Fehler beim Parsen der Replay-Datei';

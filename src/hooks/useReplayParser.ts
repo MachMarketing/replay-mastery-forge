@@ -9,12 +9,14 @@ interface ReplayParserResult {
   isProcessing: boolean;
   error: string | null;
   clearError: () => void;
+  progress: number; // Added progress tracking
 }
 
 export function useReplayParser(): ReplayParserResult {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [wasmReady, setWasmReady] = useState(isWasmInitialized());
+  const [progress, setProgress] = useState(0);
   const { toast } = useToast();
 
   // Pre-initialize WASM on hook mount
@@ -53,6 +55,7 @@ export function useReplayParser(): ReplayParserResult {
 
   const clearError = useCallback(() => {
     setError(null);
+    setProgress(0);
   }, []);
 
   const parseReplay = useCallback(async (file: File): Promise<AnalyzedReplayResult | null> => {
@@ -69,6 +72,17 @@ export function useReplayParser(): ReplayParserResult {
     console.log('[useReplayParser] Starting to process file:', file.name, 'size:', file.size);
     setIsProcessing(true);
     setError(null);
+    setProgress(0);
+    
+    // Update progress at regular intervals to give user feedback
+    const progressUpdateInterval = setInterval(() => {
+      setProgress(prev => {
+        if (prev >= 100) return prev;
+        // Progress will be slow at first, then accelerate
+        const increment = prev < 50 ? 2 : prev < 80 ? 5 : 2;
+        return Math.min(prev + increment, 95); // Never reach 100% automatically
+      });
+    }, 800);
     
     // Set a timeout to prevent infinite processing
     const processingTimeout = setTimeout(() => {
@@ -76,6 +90,7 @@ export function useReplayParser(): ReplayParserResult {
         console.error('[useReplayParser] Processing timed out after 30 seconds');
         setError('Zeitüberschreitung bei der Verarbeitung');
         setIsProcessing(false);
+        clearInterval(progressUpdateInterval);
         
         toast({
           title: 'Verarbeitung abgebrochen',
@@ -99,6 +114,7 @@ export function useReplayParser(): ReplayParserResult {
         });
         
         clearTimeout(processingTimeout);
+        clearInterval(progressUpdateInterval);
         setIsProcessing(false);
         return null;
       }
@@ -108,20 +124,30 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error('Die Datei scheint leer oder beschädigt zu sein');
       }
       
+      // Progress update - file validated
+      setProgress(10);
+      
       // Initialize WASM if needed
       if (!wasmReady) {
         try {
           console.log('[useReplayParser] WASM not ready, initializing now...');
           await initParserWasm();
           setWasmReady(true);
+          // Progress update - WASM initialized
+          setProgress(20);
         } catch (wasmError) {
           throw new Error(`WASM-Initialisierung fehlgeschlagen: ${wasmError instanceof Error ? wasmError.message : 'Unbekannter Fehler'}`);
         }
+      } else {
+        // Skip ahead if WASM was already initialized
+        setProgress(25);
       }
       
-      // Parse the file
+      // Parse the file - this will take the longest time
       console.log('[useReplayParser] WASM ready, calling parseReplayFile with file:', file.name);
+      setProgress(30);
       const parsedData = await parseReplayFile(file);
+      setProgress(70);
       
       if (!parsedData) {
         throw new Error('Parser hat keine Daten zurückgegeben');
@@ -135,6 +161,9 @@ export function useReplayParser(): ReplayParserResult {
         opponent: parsedData.opponentName,
         opponentRace: parsedData.opponentRace
       });
+      
+      // Progress update - data verification
+      setProgress(90);
       
       // Verify we have essential data
       const missingFields = [];
@@ -154,7 +183,11 @@ export function useReplayParser(): ReplayParserResult {
         parsedData.recommendations = ['Übe Build-Order Timings', 'Fokussiere dich auf Map-Kontrolle'];
       }
       
+      // Final progress update
+      setProgress(100);
+      
       clearTimeout(processingTimeout);
+      clearInterval(progressUpdateInterval);
       return parsedData;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Fehler beim Parsen der Replay-Datei';
@@ -171,6 +204,7 @@ export function useReplayParser(): ReplayParserResult {
       return null;
     } finally {
       clearTimeout(processingTimeout);
+      clearInterval(progressUpdateInterval);
       setIsProcessing(false);
     }
   }, [isProcessing, wasmReady, toast]);
@@ -179,6 +213,7 @@ export function useReplayParser(): ReplayParserResult {
     parseReplay,
     isProcessing,
     error,
-    clearError
+    clearError,
+    progress
   };
 }
