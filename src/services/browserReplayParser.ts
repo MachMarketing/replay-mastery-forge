@@ -1,22 +1,23 @@
 
 /**
- * Client-side parser for StarCraft: Brood War replay files using JSSUH
+ * Client-side parser for StarCraft: Brood War replay files
  * 
- * This implementation uses the JSSUH (JavaScript StarCraft: Brood War Unit Handling) library
- * for client-side parsing of .rep files directly in the browser.
+ * This implementation provides multiple fallback strategies for parsing .rep files
+ * directly in the browser, with priority on the SCREP parser if available.
  */
 import { initParserWasm, parseReplayWasm, forceWasmReset } from './wasmLoader';
 import { mapRawToParsed } from './replayMapper';
 import { ParsedReplayResult } from './replayParserService';
 import { readFileAsUint8Array } from './fileReader';
 import { initBrowserSafeParser, parseReplayWithBrowserSafeParser } from './replayParser/browserSafeParser';
+import { API_CONFIG } from '@/config/environment';
 
 // Flag to track if we're already initializing
 let isInitializing = false;
 let isInitialized = false;
 
 /**
- * Parse a StarCraft: Brood War replay file in the browser using WASM
+ * Parse a StarCraft: Brood War replay file in the browser
  * 
  * @param file The replay file to parse
  * @returns The parsed replay data
@@ -30,6 +31,10 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     if (!file || file.size === 0) {
       throw new Error('Datei ist leer oder ungültig');
     }
+    
+    // Prüfen, ob wir versuchen sollten, den SCREP-Server zu verwenden
+    const useSCREPServer = API_CONFIG.SCREP_API_URL && API_CONFIG.SCREP_API_URL.length > 0;
+    console.log('📊 [browserReplayParser] SCREP server available:', useSCREPServer);
     
     // Prevent multiple simultaneous initializations
     if (!isInitialized && !isInitializing) {
@@ -63,7 +68,6 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       } catch (wasmError) {
         console.error('❌ [browserReplayParser] Parser initialization failed:', wasmError);
         isInitialized = false; // Force re-initialization on next attempt
-        throw new Error('Parser-Initialisierung fehlgeschlagen. Bitte versuchen Sie es erneut oder laden Sie die Seite neu.');
       } finally {
         isInitializing = false;
       }
@@ -91,12 +95,59 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     
     console.log('📊 [browserReplayParser] File read successfully, size:', fileData.byteLength);
     
+    // Versuche erst SCREP-Server, wenn verfügbar und nicht in Entwicklung
+    if (useSCREPServer && process.env.NODE_ENV !== 'development') {
+      try {
+        console.log('📊 [browserReplayParser] Trying SCREP server API...');
+        
+        // Bereite FormData für den Upload vor
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        // Sende Request zum SCREP-Server
+        const fetchPromise = fetch(API_CONFIG.SCREP_API_URL, {
+          method: 'POST',
+          body: formData
+        });
+        
+        // Setze ein Timeout für den Request
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('SCREP-Server-Anfrage hat das Zeitlimit überschritten')), 15000);
+        });
+        
+        // Warte auf Antwort oder Timeout
+        const response = await Promise.race([fetchPromise, timeoutPromise]);
+        
+        if (response.ok) {
+          const screpData = await response.json();
+          console.log('📊 [browserReplayParser] SCREP server returned data:', screpData);
+          
+          if (screpData && !screpData.error) {
+            // Map SCREP data to our format
+            const mappedData = mapRawToParsed(screpData);
+            
+            if (mappedData) {
+              console.log('📊 [browserReplayParser] Successfully parsed with SCREP server');
+              return mappedData;
+            }
+          } else if (screpData.error) {
+            console.error('❌ [browserReplayParser] SCREP server returned error:', screpData.error);
+          }
+        } else {
+          console.error('❌ [browserReplayParser] SCREP server request failed:', response.status, response.statusText);
+        }
+      } catch (screpError) {
+        console.error('❌ [browserReplayParser] Error with SCREP server:', screpError);
+        // Fall through to client-side parsing
+      }
+    }
+    
     // Try primary WASM parser first
     let parsedReplay;
     let parsingSuccessful = false;
     
     try {
-      console.log('📊 [browserReplayParser] Trying primary WASM parser first...');
+      console.log('📊 [browserReplayParser] Trying primary WASM parser...');
       // Use Promise.race to enforce a timeout
       const parsePromise = parseReplayWasm(fileData);
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -136,7 +187,14 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
         }
       } catch (fallbackError) {
         console.error('❌ [browserReplayParser] All parsers failed:', fallbackError);
-        throw new Error(`Parser-Fehler: ${fallbackError instanceof Error ? fallbackError.message : 'Unbekannter Fehler'}`);
+        
+        // In development, create mock data
+        if (process.env.NODE_ENV === 'development') {
+          console.log('📊 [browserReplayParser] Creating mock data for development');
+          parsedReplay = createMockReplayData();
+        } else {
+          throw new Error(`Parser-Fehler: ${fallbackError instanceof Error ? fallbackError.message : 'Unbekannter Fehler'}`);
+        }
       }
     }
     
@@ -166,4 +224,38 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     console.error('❌ [browserReplayParser] Parsing error:', error);
     throw error; // Let the caller handle the error
   }
+}
+
+/**
+ * Creates mock replay data for development/testing
+ */
+function createMockReplayData() {
+  return {
+    playerName: 'TestPlayer',
+    opponentName: 'TestOpponent',
+    playerRace: 'Terran',
+    opponentRace: 'Zerg',
+    map: 'Test Map',
+    matchup: 'TvZ',
+    duration: '10:30',
+    durationMS: 630000,
+    date: new Date().toISOString().split('T')[0],
+    result: 'win',
+    apm: 180,
+    eapm: 145,
+    buildOrder: [
+      { time: '0:45', supply: 9, action: 'Supply Depot' },
+      { time: '1:30', supply: 11, action: 'Barracks' },
+      { time: '2:15', supply: 13, action: 'Refinery' }
+    ],
+    resourcesGraph: [
+      { time: '1:00', minerals: 250, gas: 0 },
+      { time: '2:00', minerals: 320, gas: 40 },
+      { time: '3:00', minerals: 450, gas: 100 }
+    ],
+    strengths: ['Gute Einheitenkontrolle', 'Effektives Makromanagement'],
+    weaknesses: ['Könnte besseres Scouting betreiben', 'Build-Order Timing verbessern'],
+    recommendations: ['Früher expandieren', 'Aggressiver gegen Zerg spielen'],
+    _isMockData: true
+  };
 }
