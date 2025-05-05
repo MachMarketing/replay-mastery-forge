@@ -5,15 +5,15 @@
  * This implementation focuses exclusively on the WASM-based parser for 
  * processing .rep files directly in the browser.
  */
-import { initParserWasm, parseReplayWasm } from './wasmLoader';
+import { initParserWasm, parseReplayWasm, isWasmInitialized, forceWasmReset } from './wasmLoader';
 import { mapRawToParsed } from './replayMapper';
 import { ParsedReplayResult } from './replayParserService';
-import { screp } from 'screp-js';
+import { parseReplayWithBrowserSafeParser } from './replayParser/browserSafeParser';
 
-// Flag to track if we're already initializing
-let isInitializing = false;
-let isInitialized = false;
+// Flags to track parser state
 let wasmParsingEnabled = true;
+let wasmInitializeAttempted = false;
+let wasmInitializeFailed = false;
 
 /**
  * Validates a replay file before attempting to parse it
@@ -117,65 +117,102 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     
     // Skip WASM if it's been disabled due to previous errors
     if (!wasmParsingEnabled) {
-      console.warn('[browserReplayParser] WASM parsing disabled due to previous errors');
-      return createFallbackData(file.name);
+      console.warn('[browserReplayParser] WASM parsing disabled due to previous errors, using browser-safe parser');
+      try {
+        // Try browser-safe parser implementation instead
+        const safeParsedData = await parseReplayWithBrowserSafeParser(fileData);
+        console.log('[browserReplayParser] Browser-safe parser successful');
+        return safeParsedData;
+      } catch (error) {
+        console.error('[browserReplayParser] Browser-safe parser also failed:', error);
+        return createFallbackData(file.name);
+      }
     }
     
     // Try WASM parsing with timeout and error protection
     try {
-      // Initialize WASM with timeout
-      const timeoutMs = 5000;
-      const initPromise = screp.init();
-      const initTimeout = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('WASM initialization timed out')), timeoutMs);
-      });
-      
-      await Promise.race([initPromise, initTimeout]).catch(error => {
-        console.warn('[browserReplayParser] WASM initialization error:', error);
-        wasmParsingEnabled = false;
-        throw error;
-      });
-      
-      // Defensive copy for WASM parsing (helps prevent memory corruption)
-      const safeData = new Uint8Array(fileData.length);
-      safeData.set(fileData);
-      
-      // Parse with timeout protection
-      const parsePromise = screp.parseReplay(safeData);
-      const parseTimeout = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Parsing timed out')), timeoutMs);
-      });
-      
-      const parsedData = await Promise.race([parsePromise, parseTimeout]).catch(error => {
-        console.warn('[browserReplayParser] WASM parsing timeout:', error);
-        throw error;
-      });
-      
-      if (!parsedData) {
-        console.warn('[browserReplayParser] No data returned from WASM parser');
-        return createFallbackData(file.name);
+      // Only attempt to initialize WASM once to avoid repeated failures
+      if (!wasmInitializeAttempted) {
+        wasmInitializeAttempted = true;
+        try {
+          // Initialize WASM with timeout and catch errors
+          console.log('[browserReplayParser] Initializing WASM parser...');
+          await initParserWasm().catch(error => {
+            console.error('[browserReplayParser] WASM initialization failed:', error);
+            wasmInitializeFailed = true;
+            throw error;
+          });
+        } catch (error) {
+          console.error('[browserReplayParser] WASM initialization error:', error);
+          wasmInitializeFailed = true;
+          wasmParsingEnabled = false;
+          throw error;
+        }
       }
       
-      return mapRawToParsed(parsedData);
-    } catch (wasmError) {
-      console.error('[browserReplayParser] WASM parsing error:', wasmError);
-      
-      // Disable WASM parsing for future attempts if we hit a critical error
-      if (wasmError.message && (
-        wasmError.message.includes('makeslice') || 
-        wasmError.message.includes('len out of range') ||
-        wasmError.message.includes('runtime error')
-      )) {
-        console.warn('[browserReplayParser] Disabling WASM parsing due to critical error');
-        wasmParsingEnabled = false;
+      // If WASM initialization previously failed, don't try to use it
+      if (wasmInitializeFailed) {
+        console.warn('[browserReplayParser] WASM initialization previously failed, using browser-safe parser');
+        try {
+          const safeParsedData = await parseReplayWithBrowserSafeParser(fileData);
+          return safeParsedData;
+        } catch (error) {
+          return createFallbackData(file.name);
+        }
       }
       
-      // Always return fallback data on any WASM error
+      // If WASM is initialized, try to parse
+      if (isWasmInitialized()) {
+        console.log('[browserReplayParser] WASM initialized, attempting to parse replay');
+        try {
+          // Create a defensive copy to prevent memory corruption
+          const defensiveData = new Uint8Array(fileData.length);
+          defensiveData.set(fileData);
+          
+          // Parse with WASM
+          const rawData = await parseReplayWasm(defensiveData);
+          const parsedData = mapRawToParsed(rawData);
+          console.log('[browserReplayParser] WASM parsing successful');
+          return parsedData;
+        } catch (wasmError) {
+          console.error('[browserReplayParser] WASM parsing error:', wasmError);
+          
+          // Disable WASM parsing for future attempts on critical errors
+          if (wasmError.message && (
+            wasmError.message.includes('makeslice') || 
+            wasmError.message.includes('len out of range') ||
+            wasmError.message.includes('runtime error')
+          )) {
+            console.warn('[browserReplayParser] Critical WASM error, disabling WASM parser');
+            wasmParsingEnabled = false;
+            forceWasmReset();
+            
+            // Try browser-safe parser as fallback
+            try {
+              console.log('[browserReplayParser] Trying browser-safe parser as fallback');
+              const safeParsedData = await parseReplayWithBrowserSafeParser(fileData);
+              return safeParsedData;
+            } catch (fallbackError) {
+              console.error('[browserReplayParser] Browser-safe parser also failed:', fallbackError);
+              return createFallbackData(file.name);
+            }
+          }
+          
+          throw wasmError;
+        }
+      } else {
+        console.warn('[browserReplayParser] WASM not initialized properly, using browser-safe parser');
+        const safeParsedData = await parseReplayWithBrowserSafeParser(fileData);
+        return safeParsedData;
+      }
+    } catch (error) {
+      console.error('[browserReplayParser] Error during parsing:', error);
+      
+      // Ensure we always return fallback data rather than crashing
       return createFallbackData(file.name);
     }
   } catch (error) {
     console.error('[browserReplayParser] Error:', error);
-    const errorMessage = error instanceof Error ? error.message : String(error);
     
     // Ensure we always return fallback data rather than crashing
     return createFallbackData(file.name);

@@ -4,14 +4,13 @@
  * 
  * This module uses the SCREP-WASM parser to handle StarCraft replay files.
  */
-import { screp } from 'screp-js';
 
 // Flag to track if parser has been initialized
 let parserInitialized = false;
 let initializationInProgress = false;
 let initializationPromise: Promise<void> | null = null;
 let initializationAttempts = 0;
-const MAX_INIT_ATTEMPTS = 3;
+const MAX_INIT_ATTEMPTS = 2;
 let lastInitTime = 0;
 
 /**
@@ -45,17 +44,36 @@ export async function initParserWasm(): Promise<void> {
   // Store the initialization promise to allow multiple requestors to wait for it
   initializationPromise = new Promise<void>(async (resolve, reject) => {
     try {
-      // Initialize WASM parser with timeout protection
-      const initPromise = screp.init();
+      // Use defensive try/catch mechanism for imported objects
+      let screpModule;
+      try {
+        // Dynamically import to prevent initialization errors
+        const { screp } = await import('screp-js');
+        screpModule = screp;
+      } catch (importError) {
+        console.error('[wasmLoader] Error importing screp-js module:', importError);
+        throw new Error('Failed to import WASM parser module');
+      }
       
-      // Set a timeout for initialization (15 seconds)
+      if (!screpModule || typeof screpModule.init !== 'function') {
+        console.error('[wasmLoader] Invalid screp-js module imported');
+        throw new Error('Invalid WASM parser module');
+      }
+      
+      // Initialize WASM parser with timeout protection
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('WASM initialization timed out after 15 seconds')), 15000);
+        setTimeout(() => reject(new Error('WASM initialization timed out after 10 seconds')), 10000);
       });
       
       // Race the initialization against the timeout
       try {
-        await Promise.race([initPromise, timeoutPromise]);
+        await Promise.race([
+          Promise.resolve(screpModule.init()).catch(e => {
+            console.error('[wasmLoader] Init error:', e);
+            throw e;
+          }),
+          timeoutPromise
+        ]);
         console.log('[wasmLoader] WASM parser initialized successfully');
       } catch (error) {
         console.error('[wasmLoader] WASM initialization error:', error);
@@ -100,7 +118,6 @@ export function forceWasmReset(): void {
 
 /**
  * Enhanced file validation specifically for StarCraft replay files
- * Checks common replay file signatures and validates structure
  */
 function validateReplayData(data: Uint8Array): boolean {
   if (!data || data.length < 12) {
@@ -165,6 +182,21 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
 
     console.log('[wasmLoader] Starting parsing of replay data with WASM, size:', fileData.byteLength);
     
+    // Use dynamic import to prevent initialization failures
+    let screpModule;
+    try {
+      const { screp } = await import('screp-js');
+      screpModule = screp;
+    } catch (importError) {
+      console.error('[wasmLoader] Error importing screp-js for parsing:', importError);
+      throw new Error('Failed to import WASM parser module for parsing');
+    }
+    
+    if (!screpModule || typeof screpModule.parseReplay !== 'function') {
+      console.error('[wasmLoader] Invalid screp-js module imported for parsing');
+      throw new Error('Invalid WASM parser module for parsing');
+    }
+    
     // Use screp-js WASM parser with explicit error handling and timeout
     const parsePromise = new Promise((resolve, reject) => {
       try {
@@ -173,9 +205,9 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
         const defensiveCopy = new Uint8Array(fileData.length);
         defensiveCopy.set(fileData, 0);
         
-        // Use a try-catch with custom error handling
+        // Wrap the parsing in a try-catch to handle WASM errors
         try {
-          const result = screp.parseReplay(defensiveCopy);
+          const result = screpModule.parseReplay(defensiveCopy);
           
           // Additional validation on the result
           if (!result || typeof result !== 'object') {
@@ -212,7 +244,7 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
     
     // Set a timeout for parsing to prevent browser hanging
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Parsing timed out after 15 seconds')), 15000);
+      setTimeout(() => reject(new Error('Parsing timed out after 10 seconds')), 10000);
     });
     
     // Race the parsing against the timeout
