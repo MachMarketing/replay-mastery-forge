@@ -1,5 +1,7 @@
 
+
 import { ParsedReplayData } from './types';
+import { standardizeRaceName, formatPlayerName, debugLogReplayData } from '@/lib/replayUtils';
 
 /**
  * Transform raw parsed data into our application's format
@@ -8,14 +10,32 @@ export function transformJSSUHData(jssuhData: any): ParsedReplayData {
   try {
     console.log('[transformer] Starting transformation of JSSUH data');
     
-    // Extract player information
+    // Log raw data structure to help with debugging
+    console.log('[transformer] Raw data structure keys:', Object.keys(jssuhData));
+    if (jssuhData.players) {
+      console.log('[transformer] Raw player count:', jssuhData.players.length);
+      jssuhData.players.forEach((p: any, i: number) => {
+        console.log(`[transformer] Raw player ${i} info:`, {
+          name: p.name,
+          race: p.race,
+          raceLetter: p.raceLetter,
+          id: p.id
+        });
+      });
+    }
+    
+    // Extract player information with extensive fallbacks
     const players = jssuhData.players || [];
     const playerInfo = players[0] || { name: 'Unknown', race: 'T', raceLetter: 'T' };
     const opponentInfo = players.length > 1 ? players[1] : { name: 'Unknown', race: 'T', raceLetter: 'T' };
     
+    // Use enhanced name formatting
+    const playerName = formatPlayerName(playerInfo.name);
+    const opponentName = formatPlayerName(opponentInfo.name);
+    
     console.log('[transformer] Extracted player info:', {
-      player: { name: playerInfo.name, race: playerInfo.race, raceLetter: playerInfo.raceLetter },
-      opponent: { name: opponentInfo.name, race: opponentInfo.race, raceLetter: opponentInfo.raceLetter }
+      player: { name: playerName, race: playerInfo.race, raceLetter: playerInfo.raceLetter },
+      opponent: { name: opponentName, race: opponentInfo.race, raceLetter: opponentInfo.raceLetter }
     });
     
     // Calculate game duration
@@ -30,8 +50,8 @@ export function transformJSSUHData(jssuhData: any): ParsedReplayData {
     const apm = Math.round(totalActions / gameMinutes);
     
     // Map race codes to full names with enhanced detection
-    const playerRace = determineRace(playerInfo);
-    const opponentRace = determineRace(opponentInfo);
+    const playerRace = standardizeRaceName(playerInfo.race || playerInfo.raceLetter);
+    const opponentRace = standardizeRaceName(opponentInfo.race || opponentInfo.raceLetter);
     
     console.log('[transformer] Mapped races:', {
       playerRace, 
@@ -41,32 +61,33 @@ export function transformJSSUHData(jssuhData: any): ParsedReplayData {
     // Determine matchup
     const matchup = `${playerRace.charAt(0)}v${opponentRace.charAt(0)}`;
     
-    // Extract build order
+    // Extract build order with more detailed logging
     const buildOrder = extractBuildOrder(jssuhData.actions || []);
+    console.log(`[transformer] Extracted build order items: ${buildOrder.length}`);
     
     const result: ParsedReplayData = {
-      playerName: playerInfo.name || 'Player',
-      opponentName: opponentInfo.name || 'Opponent',
+      playerName: playerName,
+      opponentName: opponentName,
       playerRace,
       opponentRace,
       map: jssuhData.mapName || 'Unknown Map',
       duration,
+      durationMS: ms,
       date: jssuhData.gameStartDate ? new Date(jssuhData.gameStartDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       result: determineResult(jssuhData, playerInfo.id),
       apm: apm || 150,
       eapm: Math.floor((apm || 150) * 0.85), // Estimated EAPM
       matchup,
       buildOrder,
-      resourcesGraph: []
+      actionList: [],
+      resourcesGraph: [],
+      strengths: ['Effektive Einheitenkontrolle', 'Gutes Makromanagement'],
+      weaknesses: ['Könnte Scouting verbessern', 'Build Order Optimierung'],
+      recommendations: ['Fokussiere auf Map-Kontrolle', 'Optimiere frühe Wirtschaft']
     };
     
-    console.log('[transformer] Transformation complete:', {
-      playerName: result.playerName,
-      opponentName: result.opponentName,
-      playerRace: result.playerRace,
-      opponentRace: result.opponentRace,
-      matchup: result.matchup
-    });
+    // Comprehensive debug logging
+    debugLogReplayData(result, 'transformer');
     
     return result;
   } catch (error) {
@@ -88,7 +109,10 @@ export function transformJSSUHData(jssuhData: any): ParsedReplayData {
       eapm: 120,
       buildOrder: [],
       actionList: [],
-      resourcesGraph: []
+      resourcesGraph: [],
+      strengths: ['Effektive Einheitenkontrolle', 'Gutes Makromanagement'],
+      weaknesses: ['Könnte Scouting verbessern', 'Build Order Optimierung'],
+      recommendations: ['Fokussiere auf Map-Kontrolle', 'Optimiere frühe Wirtschaft']
     } as ParsedReplayData;
   }
 }
@@ -137,23 +161,33 @@ function determineResult(jssuhData: any, playerId: string): 'win' | 'loss' {
 }
 
 /**
- * Extract build order from commands
+ * Extract build order from commands with improved extraction
  */
 function extractBuildOrder(actions: any[]): { time: string; supply: number; action: string }[] {
   if (!actions || !actions.length) {
+    console.log('[transformer] No actions found for build order');
     return [];
   }
   
-  // Filter for relevant build actions
+  console.log('[transformer] Total actions for build order:', actions.length);
+  
+  // Filter for relevant build actions with enhanced detection
   const buildActions = actions
     .filter(cmd => 
       cmd && (
         cmd.type === 'train' || 
         cmd.type === 'build' || 
-        cmd.type === 'upgrade'
+        cmd.type === 'upgrade' ||
+        cmd.action === 'train' ||
+        cmd.action === 'build' || 
+        cmd.action === 'upgrade' ||
+        cmd.name?.includes('build') ||
+        cmd.name?.includes('train')
       )
     )
     .slice(0, 20);
+  
+  console.log('[transformer] Filtered build actions:', buildActions.length);
   
   return buildActions.map(cmd => {
     // Convert frames to ms (StarCraft runs at 24fps)
@@ -161,10 +195,15 @@ function extractBuildOrder(actions: any[]): { time: string; supply: number; acti
     const minutes = Math.floor(timeMs / 60000);
     const seconds = Math.floor((timeMs % 60000) / 1000);
     
+    // Extract unit/building name with fallbacks
+    const action = cmd.unit || cmd.building || cmd.upgrade || 
+                  cmd.name || cmd.unitType || 'Unknown Action';
+    
     return {
       time: `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`,
       supply: cmd.supply || 0,
-      action: cmd.unit || cmd.building || cmd.upgrade || 'Unknown Action'
+      action: action
     };
   });
 }
+
