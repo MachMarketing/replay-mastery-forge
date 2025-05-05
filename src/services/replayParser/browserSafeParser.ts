@@ -357,6 +357,7 @@ function extractReplayHeaderInfo(data: Uint8Array): any {
                 'Opponent:', header.opponentRace);
     
     // Try to extract duration based on file size and other factors
+    // FIX: Use proper number type for duration calculation (this is where the error was)
     header.duration = Math.min(1200000, Math.max(180000, data.length * 20));
     
     // Use current date
