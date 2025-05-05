@@ -5,7 +5,10 @@
  * This module initializes and manages the JSSUH (JavaScript StarCraft: Brood War Unit Handling) 
  * WASM module for parsing StarCraft replay files in the browser.
  */
-import jssuh from 'jssuh';
+import { initSafeJSSUH } from './replayParser/browserSafeParser';
+
+// Reference to the JSSUH module
+let jssuh: any = null;
 
 // Flag to track if WASM module has been initialized
 let wasmInitialized = false;
@@ -34,7 +37,7 @@ export async function initParserWasm(): Promise<void> {
   }
 
   // Return immediately if already initialized
-  if (wasmInitialized) {
+  if (wasmInitialized && jssuh) {
     console.log('[wasmLoader] WASM module already initialized');
     return Promise.resolve();
   }
@@ -46,153 +49,46 @@ export async function initParserWasm(): Promise<void> {
   // Store the initialization promise to allow multiple requestors to wait for it
   initializationPromise = new Promise<void>(async (resolve, reject) => {
     try {
-      // Check if jssuh is available
+      // Initialize JSSUH safely for browser environment
+      jssuh = await initSafeJSSUH();
+      
       if (!jssuh) {
-        throw new Error('JSSUH module not loaded');
+        throw new Error('Failed to initialize JSSUH');
       }
 
-      console.log('[wasmLoader] Checking JSSUH availability:', { 
-        exists: !!jssuh, 
-        hasReady: typeof jssuh.ready !== 'undefined',
-        hasReplay: typeof jssuh.Replay !== 'undefined'
-      });
+      console.log('[wasmLoader] JSSUH loaded, checking availability');
       
-      // Wait for JSSUH module to be fully loaded - important fix!
-      // We need to ensure the module is loaded before trying to use it
-      if (typeof window !== 'undefined') {
-        // Give time for the WASM module to fully initialize on the main thread
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // In browser environments, dynamically import JSSUH to ensure it's fully loaded
-        try {
-          // Dynamically re-import to ensure proper initialization
-          const dynamicJSSUH = await import('jssuh');
-          console.log('[wasmLoader] Dynamic JSSUH import completed:', {
-            hasReady: typeof dynamicJSSUH.default.ready !== 'undefined',
-            hasReplay: typeof dynamicJSSUH.default.Replay !== 'undefined'
-          });
-          
-          // Update our reference
-          Object.assign(jssuh, dynamicJSSUH.default);
-        } catch (importError) {
-          console.error('[wasmLoader] Dynamic import failed:', importError);
-        }
-      }
-      
-      // Check if Replay constructor exists directly
+      // Check if Replay constructor exists
       if (jssuh.Replay) {
         console.log('[wasmLoader] JSSUH Replay constructor exists, marking as initialized');
         wasmInitialized = true;
         initializationInProgress = false;
         resolve();
         return;
-      }
-
-      // If ready promise exists, wait for it
-      if (jssuh.ready) {
-        console.log('[wasmLoader] Waiting for JSSUH to be ready...');
-        
-        // Set a timeout for WASM initialization
-        const timeout = setTimeout(() => {
-          console.warn('[wasmLoader] WASM initialization timed out after 10 seconds, checking if usable anyway');
-          
-          if (jssuh.Replay) {
-            // If Replay constructor is available, assume WASM is usable despite timeout
-            console.log('[wasmLoader] Timeout occurred but Replay constructor exists, continuing anyway');
-            wasmInitialized = true;
-            initializationInProgress = false;
-            resolve();
-          } else {
-            initializationInProgress = false;
-            
-            if (initializationAttempts < MAX_INIT_ATTEMPTS) {
-              console.log(`[wasmLoader] Retry WASM init (attempt ${initializationAttempts}/${MAX_INIT_ATTEMPTS})`);
-              setTimeout(() => {
-                initParserWasm().then(resolve).catch(reject);
-              }, 1000);
-            } else {
-              reject(new Error('WASM initialization timed out after multiple attempts'));
-            }
-          }
-        }, 10000);
-        
-        try {
-          // Wait for the ready promise to resolve
-          await jssuh.ready;
-          clearTimeout(timeout);
-          
-          // After ready resolves, verify Replay exists
-          if (jssuh.Replay) {
-            wasmInitialized = true;
-            initializationInProgress = false;
-            console.log('[wasmLoader] WASM module initialized successfully');
-            resolve();
-          } else {
-            throw new Error('JSSUH initialized but Replay constructor is missing');
-          }
-        } catch (readyError) {
-          clearTimeout(timeout);
-          console.error('[wasmLoader] Error waiting for JSSUH ready:', readyError);
-          
-          // Final check - if Replay exists despite error, we can continue
-          if (jssuh.Replay) {
-            console.warn('[wasmLoader] Ready promise failed but Replay constructor exists, continuing anyway');
-            wasmInitialized = true;
-            initializationInProgress = false;
-            resolve();
-          } else {
-            initializationInProgress = false;
-            
-            if (initializationAttempts < MAX_INIT_ATTEMPTS) {
-              console.log(`[wasmLoader] Retry WASM init (attempt ${initializationAttempts}/${MAX_INIT_ATTEMPTS})`);
-              setTimeout(() => {
-                initParserWasm().then(resolve).catch(reject);
-              }, 1000);
-            } else {
-              reject(new Error('WASM initialization failed after multiple attempts'));
-            }
-          }
-        }
       } else {
-        // If no ready promise, try to mock initialization
-        console.warn('[wasmLoader] No jssuh.ready promise available, attempting fallback initialization');
-        
-        // Create a minimal mock if JSSUH isn't properly initialized
-        if (!jssuh.Replay) {
-          console.warn('[wasmLoader] Creating fallback Replay constructor mock');
-          // Add a basic Replay constructor that will handle simple replays
-          // This is just a fallback to prevent crashes
-          jssuh.Replay = class {
-            parseReplay() {
-              return Promise.resolve();
-            }
-            getGameInfo() {
-              return { mapName: 'Unknown Map', durationFrames: 7200 };
-            }
-            getPlayers() {
-              return [
-                { name: 'Player', race: 'T', id: '1', color: 0, isComputer: false },
-                { name: 'Opponent', race: 'Z', id: '2', color: 1, isComputer: false }
-              ];
-            }
-            getActions() {
-              return [];
-            }
-          };
-          console.log('[wasmLoader] Fallback Replay constructor created');
-        }
-        
-        // Mark as initialized with fallback
-        wasmInitialized = true;
-        initializationInProgress = false;
-        console.log('[wasmLoader] WASM module initialized with fallback');
-        resolve();
+        // If no Replay constructor, use our fallback
+        console.warn('[wasmLoader] JSSUH initialized but Replay constructor is missing');
+        throw new Error('JSSUH missing Replay constructor');
       }
     } catch (error) {
-      console.error('[wasmLoader] Critical error initializing WASM module:', error);
-      wasmInitialized = false;
-      initializationInProgress = false;
-      reject(new Error(`WASM initialization failed: ${error instanceof Error ? error.message : String(error)}`));
+      console.error('[wasmLoader] Error initializing WASM module:', error);
+      
+      // Even if initialization fails, we'll use our fallback implementation
+      // This ensures the app can continue to function, albeit with limited features
+      console.log('[wasmLoader] Using fallback parser implementation');
+      
+      try {
+        // Try one more time with our fallback approach
+        jssuh = await initSafeJSSUH();
+        wasmInitialized = true;
+        initializationInProgress = false;
+        resolve();
+      } catch (fallbackError) {
+        console.error('[wasmLoader] Even fallback initialization failed:', fallbackError);
+        wasmInitialized = false;
+        initializationInProgress = false;
+        reject(new Error(`WASM initialization failed completely: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`));
+      }
     }
   });
 
@@ -209,6 +105,7 @@ export function forceWasmReset(): void {
   initializationInProgress = false;
   initializationPromise = null;
   initializationAttempts = 0;
+  jssuh = null;
 }
 
 /**
@@ -217,7 +114,7 @@ export function forceWasmReset(): void {
 export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
   try {
     // Ensure WASM is initialized
-    if (!wasmInitialized) {
+    if (!wasmInitialized || !jssuh) {
       console.log('[wasmLoader] WASM not initialized, initializing now...');
       await initParserWasm();
     }
@@ -382,4 +279,5 @@ export function resetWasmStatus(): void {
   initializationInProgress = false;
   initializationPromise = null;
   initializationAttempts = 0;
+  jssuh = null;
 }
