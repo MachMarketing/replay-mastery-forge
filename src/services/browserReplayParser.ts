@@ -107,24 +107,51 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       }
     }
     
+    // Set up a timeout for the parsing operation
+    const abortController = new AbortController();
+    const signal = abortController.signal;
+    
+    // Create a timeout that will abort parsing if it takes too long
+    const timeoutId = setTimeout(() => {
+      abortController.abort();
+      console.warn('📊 [browserReplayParser] Parsing timed out after 20 seconds');
+    }, 20000);
+    
     // Parse using WASM parser
     let parsedReplay;
     try {
       console.log('📊 [browserReplayParser] Using WASM parser...');
-      parsedReplay = await parseReplayWasm(fileData);
+      // Create a defensive copy of the data to prevent memory issues
+      const safeData = new Uint8Array(fileData.length);
+      safeData.set(fileData);
+      
+      // Add the timeout signal to the parse call
+      parsedReplay = await Promise.race([
+        parseReplayWasm(safeData),
+        new Promise((_, reject) => {
+          signal.addEventListener('abort', () => reject(new Error('Parsing timed out after 20 seconds')));
+        })
+      ]);
+      
+      clearTimeout(timeoutId);
       console.log('📊 [browserReplayParser] WASM parsing successful');
     } catch (parseError) {
+      clearTimeout(timeoutId);
       console.error('❌ [browserReplayParser] Parser error:', parseError);
       
-      // Check for the specific WASM length error
+      // Check for the specific WASM slice error
       const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
       if (errorMessage.includes('len out of range') || errorMessage.includes('makeslice')) {
+        console.error('💥 [browserReplayParser] Encountered WASM makeslice error, using fallback data');
         // Create fallback minimal data instead of throwing
         console.log('📊 [browserReplayParser] Using fallback data for corrupted file');
         
+        // Generate a more meaningful fallback with the filename at least
+        const filename = file.name.replace('.rep', '').replace(/_/g, ' ');
+        
         // Very minimal data structure for fallback
         return {
-          playerName: 'Player',
+          playerName: filename || 'Player',
           opponentName: 'Opponent',
           playerRace: 'Terran',
           opponentRace: 'Zerg',
@@ -142,6 +169,10 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
           weaknesses: ['Datei konnte nicht vollständig analysiert werden'],
           recommendations: ['Versuche eine andere Replay-Datei hochzuladen']
         };
+      }
+      
+      if (errorMessage.includes('timeout')) {
+        throw new Error('Analyse-Zeitüberschreitung: Die Verarbeitung dauerte zu lange. Die Datei könnte zu groß oder komplex sein.');
       }
       
       throw new Error(`Parser-Fehler: ${errorMessage}`);
@@ -178,8 +209,11 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       // Instead of throwing, return minimal data
       console.warn('📊 [browserReplayParser] Using minimal fallback data for makeslice error');
       
+      // Create a more meaningful fallback with the filename at least
+      const filename = file.name.replace('.rep', '').replace(/_/g, ' ');
+      
       return {
-        playerName: 'Player',
+        playerName: filename || 'Player',
         opponentName: 'Opponent',
         playerRace: 'Terran',
         opponentRace: 'Protoss',

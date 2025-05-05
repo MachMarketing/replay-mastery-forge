@@ -53,6 +53,25 @@ export async function runE2EParserTest(file: File): Promise<{
       };
     }
     
+    // New validation - check for file signature
+    try {
+      const buffer = await file.arrayBuffer();
+      const signature = new Uint8Array(buffer, 0, 4);
+      const signatureStr = String.fromCharCode(...signature);
+      
+      // StarCraft replays typically start with "(B)w" or "(B)W"
+      if (signatureStr !== "(B)w" && signatureStr !== "(B)W") {
+        console.warn("❌ Invalid replay file signature detected:", signatureStr);
+        return {
+          success: false,
+          message: "❌ E2E Test fehlgeschlagen: Die Datei hat kein gültiges StarCraft-Replay-Format"
+        };
+      }
+    } catch (signatureError) {
+      console.warn("Failed to check file signature:", signatureError);
+      // Continue anyway, as the main parsers will do their own validation
+    }
+    
     // Parse using the browser parser directly (debug flow)
     console.log("Parsing with debug flow (browserReplayParser)...");
     let debugResult;
@@ -63,6 +82,7 @@ export async function runE2EParserTest(file: File): Promise<{
       const errorMessage = error instanceof Error ? error.message : String(error);
       
       if (errorMessage.includes('len out of range') || errorMessage.includes('makeslice')) {
+        console.error("💥 WASM makeslice error during debug flow:", errorMessage);
         return {
           success: false,
           message: "❌ E2E Test fehlgeschlagen: Die Replay-Datei scheint beschädigt zu sein. Der Parser kann die Dateistruktur nicht korrekt lesen."
@@ -92,6 +112,7 @@ export async function runE2EParserTest(file: File): Promise<{
       
       // Handle specific makeslice error
       if (errorMessage.includes('len out of range') || errorMessage.includes('makeslice')) {
+        console.error("💥 WASM makeslice error during upload flow:", errorMessage);
         return {
           success: false,
           message: "❌ E2E Test fehlgeschlagen: Die Replay-Datei scheint beschädigt zu sein. Der Parser kann die Dateistruktur nicht korrekt lesen."
@@ -144,6 +165,7 @@ export async function runE2EParserTest(file: File): Promise<{
     
     // Handle the specific WASM slice error
     if (errorMessage.includes('len out of range') || errorMessage.includes('makeslice')) {
+      console.error("💥 WASM makeslice error in e2eParserTest main flow:", errorMessage);
       errorMessage = 'Replay-Datei scheint beschädigt zu sein. Der Parser kann die Dateistruktur nicht korrekt lesen.';
     }
     

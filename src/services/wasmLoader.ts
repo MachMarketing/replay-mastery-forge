@@ -173,33 +173,40 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
         const defensiveCopy = new Uint8Array(fileData.length);
         defensiveCopy.set(fileData, 0);
         
-        // Wrap the WASM parsing in a try-catch block with detailed error handling
-        const result = screp.parseReplay(defensiveCopy);
-        
-        // Additional validation on the result
-        if (!result || typeof result !== 'object') {
-          reject(new Error('Parser returned invalid or empty result'));
-          return;
+        // Use a try-catch with custom error handling
+        try {
+          const result = screp.parseReplay(defensiveCopy);
+          
+          // Additional validation on the result
+          if (!result || typeof result !== 'object') {
+            reject(new Error('Parser returned invalid or empty result'));
+            return;
+          }
+          
+          // Check for required fields to validate result
+          if (!result.header) {
+            reject(new Error('Parser result missing header information'));
+            return;
+          }
+          
+          resolve(result);
+        } catch (wasmError) {
+          // This is the critical error handling for WASM errors
+          console.error('[wasmLoader] WASM parsing exception:', wasmError);
+          
+          const errorMessage = wasmError instanceof Error ? wasmError.message : String(wasmError);
+          
+          // Special handling for makeslice errors
+          if (errorMessage.includes('len out of range') || errorMessage.includes('makeslice')) {
+            console.error('💥 [wasmLoader] WASM makeslice error encountered');
+            reject(new Error('Die Replay-Datei ist beschädigt oder in einem nicht unterstützten Format. Der WASM-Parser konnte die Datenstruktur nicht verarbeiten.'));
+          } else {
+            reject(new Error(`WASM parser exception: ${errorMessage}`));
+          }
         }
-        
-        // Check for required fields to validate result
-        if (!result.header) {
-          reject(new Error('Parser result missing header information'));
-          return;
-        }
-        
-        resolve(result);
-      } catch (error) {
-        console.error('[wasmLoader] WASM parsing exception:', error);
-        
-        // Enhanced error reporting for specific WASM errors
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        
-        if (errorMessage.includes('len out of range') || errorMessage.includes('makeslice')) {
-          reject(new Error('Die Replay-Datei ist beschädigt oder in einem nicht unterstützten Format. Der WASM-Parser konnte die Datenstruktur nicht verarbeiten.'));
-        } else {
-          reject(new Error(`WASM parser exception: ${errorMessage}`));
-        }
+      } catch (outerError) {
+        console.error('[wasmLoader] Outer error during WASM parsing:', outerError);
+        reject(outerError);
       }
     });
     
@@ -224,7 +231,12 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
     // If we encounter the specific "len out of range" error, provide a more helpful message
     const errorMessage = error instanceof Error ? error.message : String(error);
     if (errorMessage.includes('len out of range') || errorMessage.includes('makeslice')) {
+      console.error('💥 [wasmLoader] Fatal WASM makeslice error');
       throw new Error('Replay-Datei scheint beschädigt zu sein. Der Parser kann die Dateistruktur nicht korrekt lesen.');
+    }
+    
+    if (errorMessage.includes('timeout')) {
+      throw new Error('Zeitüberschreitung beim Parsen. Die Datei ist möglicherweise zu komplex.');
     }
     
     // In production, throw the error with a user-friendly message
