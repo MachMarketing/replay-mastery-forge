@@ -45,10 +45,17 @@ export async function initParserWasm(): Promise<void> {
   // Store the initialization promise to allow multiple requestors to wait for it
   initializationPromise = new Promise<void>(async (resolve, reject) => {
     try {
-      // Initialize WASM parser (screp-js will initialize itself on first use)
+      // Initialize WASM parser with timeout protection
+      const initPromise = screp.init();
+      
+      // Set a timeout for initialization (15 seconds)
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('WASM initialization timed out after 15 seconds')), 15000);
+      });
+      
+      // Race the initialization against the timeout
       try {
-        // Force WASM initialization by calling a simple method
-        await screp.init();
+        await Promise.race([initPromise, timeoutPromise]);
         console.log('[wasmLoader] WASM parser initialized successfully');
       } catch (error) {
         console.error('[wasmLoader] WASM initialization error:', error);
@@ -100,16 +107,25 @@ function validateReplayData(data: Uint8Array): boolean {
     return false;
   }
   
-  // Check for common replay file signatures
-  // Most StarCraft replays start with "(B)" followed by version info
-  const signature = String.fromCharCode(...data.slice(0, 4));
-  if (signature !== "(B)w" && signature !== "(B)W") {
-    console.warn('[wasmLoader] Invalid replay signature:', signature);
+  try {
+    // Check for common replay file signatures
+    // Most StarCraft replays start with "(B)" followed by version info
+    const signature = String.fromCharCode(...data.slice(0, 4));
+    if (signature !== "(B)w" && signature !== "(B)W") {
+      console.warn('[wasmLoader] Invalid replay signature:', signature);
+      return false;
+    }
+    
+    // Additional structural checks
+    // Verify expected offsets - minimal replay headers contain certain recognizable patterns
+    const hasExpectedFormat = data.length > 50 && 
+                             (data[12] === 0x88 || data[12] === 0x69 || data[12] === 0x48);
+    
+    return hasExpectedFormat;
+  } catch (error) {
+    console.error('[wasmLoader] Error validating replay data:', error);
     return false;
   }
-  
-  // Additional structural checks could be added here
-  return true;
 }
 
 /**
@@ -139,16 +155,26 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
     // Ensure parser is initialized
     if (!parserInitialized) {
       console.log('[wasmLoader] WASM parser not initialized, initializing now...');
-      await initParserWasm();
+      try {
+        await initParserWasm();
+      } catch (error) {
+        console.error('[wasmLoader] Failed to initialize WASM parser:', error);
+        throw new Error('Fehler bei der Initialisierung des WASM-Parsers. Bitte versuchen Sie es später erneut.');
+      }
     }
 
     console.log('[wasmLoader] Starting parsing of replay data with WASM, size:', fileData.byteLength);
     
-    // Use screp-js WASM parser with explicit error handling
+    // Use screp-js WASM parser with explicit error handling and timeout
     const parsePromise = new Promise((resolve, reject) => {
       try {
+        // Create a defensive copy of the file data to prevent WASM errors
+        // This helps with some "makeslice" errors by ensuring the buffer is properly aligned
+        const defensiveCopy = new Uint8Array(fileData.length);
+        defensiveCopy.set(fileData, 0);
+        
         // Wrap the WASM parsing in a try-catch block with detailed error handling
-        const result = screp.parseReplay(fileData);
+        const result = screp.parseReplay(defensiveCopy);
         
         // Additional validation on the result
         if (!result || typeof result !== 'object') {
@@ -179,7 +205,7 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
     
     // Set a timeout for parsing to prevent browser hanging
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Parsing timed out after 20 seconds')), 20000);
+      setTimeout(() => reject(new Error('Parsing timed out after 15 seconds')), 15000);
     });
     
     // Race the parsing against the timeout

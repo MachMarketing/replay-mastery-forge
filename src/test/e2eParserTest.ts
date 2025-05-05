@@ -38,18 +38,41 @@ export async function runE2EParserTest(file: File): Promise<{
       };
     }
     
+    // Additional validation for file size
+    if (file.size < 100) {
+      return {
+        success: false,
+        message: "❌ E2E Test fehlgeschlagen: Die Datei ist zu klein, um eine gültige Replay-Datei zu sein"
+      };
+    }
+    
+    if (file.size > 5000000) {
+      return {
+        success: false,
+        message: "❌ E2E Test fehlgeschlagen: Die Datei ist zu groß (max. 5MB)"
+      };
+    }
+    
     // Parse using the browser parser directly (debug flow)
     console.log("Parsing with debug flow (browserReplayParser)...");
     let debugResult;
     try {
       debugResult = await parseReplayInBrowser(file);
     } catch (error) {
-      // Handle the specific makeslice error
+      // Handle specific makeslice error with detailed message
       const errorMessage = error instanceof Error ? error.message : String(error);
+      
       if (errorMessage.includes('len out of range') || errorMessage.includes('makeslice')) {
         return {
           success: false,
           message: "❌ E2E Test fehlgeschlagen: Die Replay-Datei scheint beschädigt zu sein. Der Parser kann die Dateistruktur nicht korrekt lesen."
+        };
+      }
+      
+      if (errorMessage.includes('timeout')) {
+        return {
+          success: false,
+          message: "❌ E2E Test fehlgeschlagen: Zeitüberschreitung beim Parsen. Die Datei ist möglicherweise zu komplex oder enthält ungewöhnliche Daten."
         };
       }
       
@@ -66,6 +89,15 @@ export async function runE2EParserTest(file: File): Promise<{
       uploadResult = await parseReplayFile(file);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Handle specific makeslice error
+      if (errorMessage.includes('len out of range') || errorMessage.includes('makeslice')) {
+        return {
+          success: false,
+          message: "❌ E2E Test fehlgeschlagen: Die Replay-Datei scheint beschädigt zu sein. Der Parser kann die Dateistruktur nicht korrekt lesen."
+        };
+      }
+      
       return {
         success: false,
         message: `❌ E2E Test fehlgeschlagen (upload flow): ${errorMessage}`
