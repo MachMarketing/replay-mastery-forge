@@ -1,8 +1,7 @@
-
 /**
  * API for parsing StarCraft: Brood War replay files using the SCREP parser
  */
-import { parseReplayFile } from './replayParser';
+import { parseReplayFile as screpParseReplayFile } from './replayParser';
 import { generateBuildOrder, generateResourceData, standardizeRaceName } from '@/lib/replayUtils';
 import { createProcessController } from './replayParser';
 
@@ -44,7 +43,7 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     const controller = createProcessController();
     
     // Parse with SCREP parser
-    const parsedData = await parseReplayFile(file);
+    const parsedData = await screpParseReplayFile(file);
     console.log('🚀 [replayParserService] SCREP parser returned data:', parsedData);
     
     if (!parsedData) {
