@@ -92,10 +92,24 @@ export function forceWasmReset(): void {
 }
 
 /**
- * Parse a replay file using the WASM parser
+ * Parse a replay file using the WASM parser with enhanced error handling
  */
 export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
   try {
+    // Validate input data
+    if (!fileData || fileData.length === 0) {
+      throw new Error('Empty replay data provided');
+    }
+    
+    // Size sanity check - typical replay files are between 20KB and 200KB
+    if (fileData.length < 1000) {
+      throw new Error('Replay file too small, likely corrupted');
+    }
+    
+    if (fileData.length > 5000000) {
+      throw new Error('Replay file too large, maximum size is 5MB');
+    }
+    
     // Ensure parser is initialized
     if (!parserInitialized) {
       console.log('[wasmLoader] WASM parser not initialized, initializing now...');
@@ -105,9 +119,18 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
     console.log('[wasmLoader] Starting parsing of replay data with WASM, size:', fileData.byteLength);
     
     // Use screp-js WASM parser with explicit error handling
-    const parsePromise = screp.parseReplay(fileData);
+    const parsePromise = new Promise((resolve, reject) => {
+      try {
+        // Wrap the WASM parsing in a try-catch block with timeout handling
+        const result = screp.parseReplay(fileData);
+        resolve(result);
+      } catch (error) {
+        console.error('[wasmLoader] WASM parsing exception:', error);
+        reject(new Error(`WASM parser exception: ${error instanceof Error ? error.message : String(error)}`));
+      }
+    });
     
-    // Set a timeout for parsing
+    // Set a timeout for parsing to prevent browser hanging
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error('Parsing timed out after 30 seconds')), 30000);
     });
@@ -125,8 +148,13 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
   } catch (error) {
     console.error('[wasmLoader] Error during WASM parsing:', error);
     
-    // In production, throw the error
+    // If we encounter the specific "len out of range" error, provide a more helpful message
     const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('len out of range') || errorMessage.includes('makeslice')) {
+      throw new Error('Replay-Datei scheint beschädigt zu sein. Der Parser kann die Dateistruktur nicht korrekt lesen.');
+    }
+    
+    // In production, throw the error with a user-friendly message
     throw new Error(`WASM parsing failed: ${errorMessage}`);
   }
 }

@@ -27,6 +27,20 @@ export interface AnalyzedReplayResult extends ParsedReplayResult {
   // All properties are now inherited from ParsedReplayResult
 }
 
+// Track active parsing process for potential abort
+let activeParsingAbortController: AbortController | null = null;
+
+/**
+ * Aborts any active parsing process
+ */
+export function abortActiveProcess(): void {
+  if (activeParsingAbortController) {
+    console.log('[replayParserService] Aborting active parsing process');
+    activeParsingAbortController.abort();
+    activeParsingAbortController = null;
+  }
+}
+
 /**
  * Initialize the replay parser
  */
@@ -48,7 +62,16 @@ export async function initParser(): Promise<void> {
 export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult> {
   console.log('[replayParserService] Starting to parse replay file using WASM parser');
   
+  // Create a new abort controller for this parsing operation
+  activeParsingAbortController = new AbortController();
+  const signal = activeParsingAbortController.signal;
+  
   try {
+    // Check if the parsing was aborted
+    if (signal.aborted) {
+      throw new Error('Parsing was aborted');
+    }
+    
     // Parse using the browser WASM parser
     const parsedData = await parseReplayInBrowser(file);
     
@@ -58,10 +81,23 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     
     console.log('[replayParserService] Raw parsed data:', parsedData);
     
+    // Clear the abort controller since we're done
+    activeParsingAbortController = null;
+    
     // Return the analyzed data directly
     return parsedData;
   } catch (error) {
     console.error('[replayParserService] Error parsing replay:', error);
+    
+    // Clear the abort controller in case of error
+    activeParsingAbortController = null;
+    
+    // Provide a more user-friendly error message for the specific WASM slice error
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('len out of range') || errorMessage.includes('makeslice')) {
+      throw new Error('Replay-Datei scheint beschädigt zu sein. Der Parser kann die Dateistruktur nicht korrekt lesen.');
+    }
+    
     throw error;
   }
 }

@@ -21,6 +21,14 @@ export async function runE2EParserTest(file: File): Promise<{
   console.log("Running E2E parser test comparing upload and debug flows");
   
   try {
+    // First validate the file exists and is a proper replay file
+    if (!file || file.size === 0) {
+      return {
+        success: false,
+        message: "❌ E2E Test fehlgeschlagen: Ungültige oder leere Datei"
+      };
+    }
+    
     // Parse using the browser parser directly (debug flow)
     console.log("Parsing with debug flow (browserReplayParser)...");
     const debugResult = await parseReplayInBrowser(file);
@@ -63,9 +71,18 @@ export async function runE2EParserTest(file: File): Promise<{
     }
   } catch (error) {
     console.error("E2E Parser Test failed:", error);
+    
+    // Provide a more user-friendly error message
+    let errorMessage = error instanceof Error ? error.message : String(error);
+    
+    // Handle the specific WASM slice error
+    if (errorMessage.includes('len out of range') || errorMessage.includes('makeslice')) {
+      errorMessage = 'Replay-Datei scheint beschädigt zu sein. Der Parser kann die Dateistruktur nicht korrekt lesen.';
+    }
+    
     return {
       success: false,
-      message: `❌ E2E Test fehlgeschlagen mit Fehler: ${error instanceof Error ? error.message : String(error)}`
+      message: `❌ E2E Test fehlgeschlagen mit Fehler: ${errorMessage}`
     };
   }
 }

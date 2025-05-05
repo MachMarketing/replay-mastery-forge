@@ -2,20 +2,49 @@
 /**
  * Client-side parser for StarCraft: Brood War replay files
  * 
- * This implementation uses exclusively the SCREP-WASM parser for processing
- * .rep files directly in the browser.
+ * This implementation focuses exclusively on the WASM-based parser for 
+ * processing .rep files directly in the browser.
  */
 import { initParserWasm, parseReplayWasm } from './wasmLoader';
 import { mapRawToParsed } from './replayMapper';
 import { ParsedReplayResult } from './replayParserService';
-import { readFileAsUint8Array } from './fileReader';
 
 // Flag to track if we're already initializing
-let isInitialized = false;
 let isInitializing = false;
+let isInitialized = false;
 
 /**
- * Parse a StarCraft: Brood War replay file in the browser using WASM
+ * Validates a replay file before attempting to parse it
+ * 
+ * @param file The file to validate
+ * @returns True if the file passes basic validation
+ */
+function validateReplayFile(file: File): boolean {
+  // Check if file exists and has content
+  if (!file || file.size === 0) {
+    throw new Error('Datei ist leer oder ungültig');
+  }
+  
+  // Verify file size
+  if (file.size < 1000) {
+    throw new Error('Replay-Datei zu klein, möglicherweise beschädigt');
+  }
+  
+  if (file.size > 5000000) {
+    throw new Error('Replay-Datei zu groß, maximale Größe ist 5MB');
+  }
+  
+  // Check file extension
+  const fileExtension = file.name.split('.').pop()?.toLowerCase();
+  if (fileExtension !== 'rep') {
+    throw new Error('Ungültiges Dateiformat. Nur StarCraft Replay-Dateien (.rep) werden unterstützt');
+  }
+  
+  return true;
+}
+
+/**
+ * Parse a StarCraft: Brood War replay file in the browser
  * 
  * @param file The replay file to parse
  * @returns The parsed replay data
@@ -26,13 +55,12 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
   
   try {
     // Validate file
-    if (!file || file.size === 0) {
-      throw new Error('Datei ist leer oder ungültig');
-    }
+    validateReplayFile(file);
     
-    // Ensure WASM parser is initialized
+    // Prevent multiple simultaneous initializations
     if (!isInitialized && !isInitializing) {
       isInitializing = true;
+      
       try {
         console.log('📊 [browserReplayParser] Initializing WASM parser...');
         await initParserWasm();
@@ -51,7 +79,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     let fileData: Uint8Array;
     
     try {
-      fileData = await readFileAsUint8Array(file);
+      fileData = new Uint8Array(await file.arrayBuffer());
       
       if (!fileData || fileData.byteLength === 0) {
         throw new Error('Konnte Datei nicht einlesen oder Datei ist leer');
@@ -70,7 +98,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       parsedReplay = await parseReplayWasm(fileData);
       console.log('📊 [browserReplayParser] WASM parsing successful');
     } catch (parseError) {
-      console.error('❌ [browserReplayParser] WASM parser error:', parseError);
+      console.error('❌ [browserReplayParser] Parser error:', parseError);
       throw new Error(`Parser-Fehler: ${parseError instanceof Error ? parseError.message : 'Unbekannter Fehler'}`);
     }
     
@@ -100,38 +128,4 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     console.error('❌ [browserReplayParser] Parsing error:', error);
     throw error; // Let the caller handle the error
   }
-}
-
-/**
- * For development only - creates mock replay data
- */
-function createMockReplayData() {
-  return {
-    playerName: 'TestPlayer',
-    opponentName: 'TestOpponent',
-    playerRace: 'Terran',
-    opponentRace: 'Zerg',
-    map: 'Test Map',
-    matchup: 'TvZ',
-    duration: '10:30',
-    durationMS: 630000,
-    date: new Date().toISOString().split('T')[0],
-    result: 'win',
-    apm: 180,
-    eapm: 145,
-    buildOrder: [
-      { time: '0:45', supply: 9, action: 'Supply Depot' },
-      { time: '1:30', supply: 11, action: 'Barracks' },
-      { time: '2:15', supply: 13, action: 'Refinery' }
-    ],
-    resourcesGraph: [
-      { time: '1:00', minerals: 250, gas: 0 },
-      { time: '2:00', minerals: 320, gas: 40 },
-      { time: '3:00', minerals: 450, gas: 100 }
-    ],
-    strengths: ['Gute Einheitenkontrolle', 'Effektives Makromanagement'],
-    weaknesses: ['Könnte besseres Scouting betreiben', 'Build-Order Timing verbessern'],
-    recommendations: ['Früher expandieren', 'Aggressiver gegen Zerg spielen'],
-    _isMockData: true
-  };
 }
