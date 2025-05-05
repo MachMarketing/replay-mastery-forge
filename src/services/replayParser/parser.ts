@@ -1,12 +1,12 @@
-
 /**
  * This file contains functionality for parsing StarCraft: Brood War replay files
  * using the SCREP parser API.
  */
 import type { ParsedReplayData } from './types';
+import { API_CONFIG } from '@/config/environment';
 
 // Export constants for API access
-export const DEFAULT_SCREP_API_URL = 'http://localhost:8000/parse';
+export const DEFAULT_SCREP_API_URL = API_CONFIG.SCREP_API_URL;
 
 /**
  * Parse a StarCraft: Brood War replay file using the SCREP API
@@ -23,8 +23,8 @@ export async function parseReplayFile(file: File): Promise<ParsedReplayData | nu
     const formData = new FormData();
     formData.append('file', file);
     
-    // Get API URL (fallback to default if not configured)
-    const apiUrl = process.env.SCREP_API_URL || DEFAULT_SCREP_API_URL;
+    // Get API URL from our centralized config
+    const apiUrl = DEFAULT_SCREP_API_URL;
     console.log('🔍 [parser.ts] Using SCREP API URL:', apiUrl);
     
     // Send the request to the SCREP API

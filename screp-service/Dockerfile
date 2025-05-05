@@ -26,6 +26,7 @@ EXPOSE 8000
 # Tell SCREP server to listen on all interfaces
 ENV HOST=0.0.0.0
 ENV PORT=8000
+ENV CORS_ORIGIN=*
 
 # Command to run the server
 CMD ["/app/screp-server"]

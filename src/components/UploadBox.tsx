@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
@@ -240,6 +239,18 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     return null;
   };
 
+  // Update the parser status indicator
+  const renderParserStatus = () => {
+    return (
+      <div className="mt-4 flex items-center">
+        <div className="h-2 w-2 rounded-full mr-2 bg-green-500 animate-pulse" />
+        <p className="text-xs text-muted-foreground">
+          SCREP-Parser bereit
+        </p>
+      </div>
+    );
+  };
+
   return (
     <div className="w-full">
       {uploadStatus === 'idle' ? (
@@ -270,12 +281,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
           </p>
           
           {/* Parser status indicator */}
-          <div className="mt-4 flex items-center">
-            <div className="h-2 w-2 rounded-full mr-2 bg-green-500 animate-pulse" />
-            <p className="text-xs text-muted-foreground">
-              JSSUH-Parser bereit
-            </p>
-          </div>
+          {renderParserStatus()}
         </div>
       ) : (
         <div className="border rounded-lg p-6 bg-card shadow-sm">
