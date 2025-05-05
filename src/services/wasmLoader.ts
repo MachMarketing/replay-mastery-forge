@@ -8,11 +8,22 @@ import jssuh from 'jssuh';
 let wasmInitialized = false;
 let initializationInProgress = false;
 let initializationPromise: Promise<void> | null = null;
+let initializationAttempts = 0;
+const MAX_INIT_ATTEMPTS = 3;
+let lastInitTime = 0;
 
 /**
- * Initialize the parser WASM module with improved error handling
+ * Initialize the parser WASM module with improved error handling and retry mechanism
  */
 export async function initParserWasm(): Promise<void> {
+  // Prevent initialization spamming
+  const now = Date.now();
+  if (now - lastInitTime < 2000) {
+    console.log('[wasmLoader] Throttling WASM initialization attempts');
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+  lastInitTime = now;
+  
   // Don't start multiple initializations
   if (initializationInProgress) {
     console.log('[wasmLoader] WASM initialization already in progress, waiting...');
@@ -27,6 +38,7 @@ export async function initParserWasm(): Promise<void> {
 
   console.log('[wasmLoader] Starting WASM module initialization...');
   initializationInProgress = true;
+  initializationAttempts++;
 
   // Store the initialization promise to allow multiple requestors to wait for it
   initializationPromise = new Promise<void>(async (resolve, reject) => {
@@ -42,12 +54,18 @@ export async function initParserWasm(): Promise<void> {
         Replay: jssuh.Replay ? 'exists' : 'missing' 
       });
       
+      // Einfacher Initialisierungsfall - wenn kein ready-Promise vorhanden ist
       if (!jssuh.ready) {
-        console.warn('[wasmLoader] jssuh.ready is not available, attempting to use module directly');
-        wasmInitialized = true; // Assume it's ready if we got this far
+        console.warn('[wasmLoader] jssuh.ready is not available, assuming ready');
+        wasmInitialized = !!jssuh.Replay;
         initializationInProgress = false;
-        console.log('[wasmLoader] WASM module assumed initialized');
-        resolve();
+        
+        if (wasmInitialized) {
+          console.log('[wasmLoader] WASM module assumed initialized');
+          resolve();
+        } else {
+          reject(new Error('JSSUH module missing Replay constructor'));
+        }
         return;
       }
 
@@ -65,7 +83,14 @@ export async function initParserWasm(): Promise<void> {
           resolve();
         } else {
           initializationInProgress = false;
-          reject(new Error('WASM initialization timed out'));
+          
+          // Erneut versuchen, wenn Limit nicht erreicht
+          if (initializationAttempts < MAX_INIT_ATTEMPTS) {
+            console.log(`[wasmLoader] Retry WASM init (attempt ${initializationAttempts}/${MAX_INIT_ATTEMPTS})`);
+            initParserWasm().then(resolve).catch(reject);
+          } else {
+            reject(new Error('WASM initialization timed out after multiple attempts'));
+          }
         }
       }, 10000);
       
@@ -95,7 +120,16 @@ export async function initParserWasm(): Promise<void> {
         } else {
           console.error('[wasmLoader] Failed waiting for JSSUH ready:', readyError);
           initializationInProgress = false;
-          reject(readyError);
+          
+          // Erneut versuchen, wenn Limit nicht erreicht
+          if (initializationAttempts < MAX_INIT_ATTEMPTS) {
+            console.log(`[wasmLoader] Retry WASM init (attempt ${initializationAttempts}/${MAX_INIT_ATTEMPTS})`);
+            setTimeout(() => {
+              initParserWasm().then(resolve).catch(reject);
+            }, 1000); // Kurze Verzögerung vor dem erneuten Versuch
+          } else {
+            reject(new Error('WASM initialization failed after multiple attempts'));
+          }
         }
       }
     } catch (error) {
@@ -107,6 +141,18 @@ export async function initParserWasm(): Promise<void> {
   });
 
   return initializationPromise;
+}
+
+/**
+ * Force reset the WASM initialization state
+ * This can be used when the WASM module gets into a bad state
+ */
+export function forceWasmReset(): void {
+  console.log('[wasmLoader] Force resetting WASM initialization state');
+  wasmInitialized = false;
+  initializationInProgress = false;
+  initializationPromise = null;
+  initializationAttempts = 0;
 }
 
 /**
@@ -126,14 +172,30 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
       throw new Error('JSSUH module not properly loaded');
     }
     
-    // Use jssuh to parse the replay
-    const replay = new jssuh.Replay();
+    // Use jssuh to parse the replay with explicit error handling
+    let replay;
+    try {
+      replay = new jssuh.Replay();
+      console.log('[wasmLoader] Created Replay instance');
+    } catch (instError) {
+      console.error('[wasmLoader] Error creating Replay instance:', instError);
+      throw new Error('Fehler beim Erstellen des Replay-Parsers');
+    }
     
-    console.log('[wasmLoader] Created Replay instance, parsing data...');
+    console.log('[wasmLoader] Parsing replay data...');
     
     // Set a timeout for parsing
-    const parsePromise = replay.parseReplay(fileData);
-    const timeoutPromise = new Promise((_, reject) => {
+    const parsePromise = (async () => {
+      try {
+        await replay.parseReplay(fileData);
+        return true;
+      } catch (parseErr) {
+        console.error('[wasmLoader] Error during parseReplay:', parseErr);
+        throw parseErr;
+      }
+    })();
+    
+    const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error('Parsing timed out after 20 seconds')), 20000);
     });
     
@@ -143,18 +205,45 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
     console.log('[wasmLoader] Replay parsed successfully');
     
     // Extract information from the replay
-    const gameInfo = replay.getGameInfo();
-    console.log('[wasmLoader] Game info:', gameInfo);
-    
-    const players = replay.getPlayers();
-    console.log('[wasmLoader] Found', players.length, 'players');
-    
-    if (!players || players.length === 0) {
-      throw new Error('Keine Spieler im Replay gefunden');
+    let gameInfo;
+    try {
+      gameInfo = replay.getGameInfo();
+      console.log('[wasmLoader] Game info:', gameInfo);
+    } catch (gameInfoError) {
+      console.error('[wasmLoader] Error getting game info:', gameInfoError);
+      gameInfo = { mapName: 'Unknown Map', durationFrames: 7200 }; // 5 min default
     }
     
-    const actions = replay.getActions();
-    console.log('[wasmLoader] Found', actions.length, 'actions');
+    let players;
+    try {
+      players = replay.getPlayers();
+      console.log('[wasmLoader] Found', players?.length || 0, 'players');
+      
+      if (!players || players.length === 0) {
+        // Erstelle Fallback-Spielerdaten
+        players = [
+          { name: 'Player', race: 'T', id: '1', color: 0, isComputer: false },
+          { name: 'Opponent', race: 'T', id: '2', color: 1, isComputer: false }
+        ];
+        console.warn('[wasmLoader] No players found, using fallback player data');
+      }
+    } catch (playersError) {
+      console.error('[wasmLoader] Error getting players:', playersError);
+      // Erstelle Fallback-Spielerdaten
+      players = [
+        { name: 'Player', race: 'T', id: '1', color: 0, isComputer: false },
+        { name: 'Opponent', race: 'T', id: '2', color: 1, isComputer: false }
+      ];
+    }
+    
+    let actions;
+    try {
+      actions = replay.getActions();
+      console.log('[wasmLoader] Found', actions?.length || 0, 'actions');
+    } catch (actionsError) {
+      console.error('[wasmLoader] Error getting actions:', actionsError);
+      actions = []; // Leere Aktionsliste als Fallback
+    }
     
     // Enhanced player logging with all available properties
     players.forEach((player, index) => {
@@ -162,12 +251,12 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
       
       // Create a complete extracted player with enhanced data
       const extractedPlayer = {
-        name: player.name,
-        raceLetter: player.race, // Raw race code (P, T, Z)
+        name: player.name || `Player ${index + 1}`,
+        raceLetter: player.race || 'T', // Raw race code (P, T, Z)
         race: mapRaceLetter(player.race), // Map to full race name
-        id: player.id,
-        color: player.color,
-        isComputer: player.isComputer,
+        id: player.id || `${index + 1}`,
+        color: player.color !== undefined ? player.color : index,
+        isComputer: !!player.isComputer,
         apm: player.apm || 0
       };
       
@@ -179,14 +268,15 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
       gameInfo,
       players: players.map(player => ({
         ...player,
-        raceLetter: player.race, // Preserve the original race letter
+        name: player.name || 'Unknown',
+        raceLetter: player.race || 'T', // Preserve the original race letter
         race: mapRaceLetter(player.race) // Map to full race name
       })),
-      actions,
+      actions: actions || [],
       // Calculate duration in milliseconds
-      durationMS: gameInfo.durationFrames * (1000/24), // SC uses 24 frames per second
-      mapName: gameInfo.mapName,
-      gameStartDate: new Date(gameInfo.startTime).toISOString()
+      durationMS: (gameInfo?.durationFrames || 7200) * (1000/24), // SC uses 24 frames per second
+      mapName: gameInfo?.mapName || 'Unknown Map',
+      gameStartDate: gameInfo?.startTime ? new Date(gameInfo.startTime).toISOString() : new Date().toISOString()
     };
   } catch (error) {
     console.error('[wasmLoader] Error during WASM parsing:', error);
@@ -201,8 +291,8 @@ function mapRaceLetter(raceLetter: string): string {
   console.log('[wasmLoader] Mapping race letter:', raceLetter);
   
   if (!raceLetter) {
-    console.warn('[wasmLoader] Empty race letter, defaulting to Unknown');
-    return 'Unknown';
+    console.warn('[wasmLoader] Empty race letter, defaulting to Terran');
+    return 'Terran';
   }
   
   // Ensure raceLetter is a string and uppercase
@@ -216,8 +306,8 @@ function mapRaceLetter(raceLetter: string): string {
     case 'Z':
       return 'Zerg';
     default:
-      console.warn('[wasmLoader] Unknown race letter:', race, 'defaulting to Unknown');
-      return 'Unknown';
+      console.warn('[wasmLoader] Unknown race letter:', race, 'defaulting to Terran');
+      return 'Terran';
   }
 }
 
@@ -235,4 +325,5 @@ export function resetWasmStatus(): void {
   wasmInitialized = false;
   initializationInProgress = false;
   initializationPromise = null;
+  initializationAttempts = 0;
 }

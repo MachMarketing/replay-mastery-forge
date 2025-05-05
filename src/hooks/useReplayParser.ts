@@ -9,7 +9,7 @@ interface ReplayParserResult {
   isProcessing: boolean;
   error: string | null;
   clearError: () => void;
-  progress: number; // Added progress tracking
+  progress: number;
 }
 
 export function useReplayParser(): ReplayParserResult {
@@ -74,20 +74,25 @@ export function useReplayParser(): ReplayParserResult {
     setError(null);
     setProgress(0);
     
-    // Update progress at regular intervals to give user feedback
+    // Verbesserte Fortschrittsanzeige mit mehr Schritten und kleineren Intervallen
     const progressUpdateInterval = setInterval(() => {
       setProgress(prev => {
-        if (prev >= 100) return prev;
-        // Progress will be slow at first, then accelerate
-        const increment = prev < 50 ? 2 : prev < 80 ? 5 : 2;
-        return Math.min(prev + increment, 95); // Never reach 100% automatically
+        // Verhindern, dass der Fortschritt bei bestimmten Prozentsätzen hängen bleibt
+        if (prev >= 95) return prev;
+        // Schnellerer anfänglicher Fortschritt, dann langsamer bei mittleren Werten
+        // und wieder schneller zum Ende hin
+        if (prev < 30) return prev + 3;
+        if (prev >= 60 && prev < 65) return 66; // Problem bei 65% überspringen
+        if (prev >= 65 && prev < 70) return 70; // Problem bei 65% überspringen
+        const increment = prev < 50 ? 2 : prev < 80 ? 1 : 2;
+        return Math.min(prev + increment, 95);
       });
-    }, 800);
+    }, 600); // Häufigere Updates
     
-    // Set a timeout to prevent infinite processing
+    // Processingzeitlimit verlängert
     const processingTimeout = setTimeout(() => {
       if (isProcessing) {
-        console.error('[useReplayParser] Processing timed out after 30 seconds');
+        console.error('[useReplayParser] Processing timed out after 45 seconds');
         setError('Zeitüberschreitung bei der Verarbeitung');
         setIsProcessing(false);
         clearInterval(progressUpdateInterval);
@@ -98,7 +103,7 @@ export function useReplayParser(): ReplayParserResult {
           variant: 'destructive',
         });
       }
-    }, 30000);
+    }, 45000); // Auf 45 Sekunden erhöht
     
     try {
       // Check file extension
@@ -125,16 +130,21 @@ export function useReplayParser(): ReplayParserResult {
       }
       
       // Progress update - file validated
-      setProgress(10);
+      setProgress(15);
       
-      // Initialize WASM if needed
+      // Initialize WASM if needed - mit verbesserten Timeouts
       if (!wasmReady) {
         try {
           console.log('[useReplayParser] WASM not ready, initializing now...');
-          await initParserWasm();
+          const wasmPromise = initParserWasm();
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('WASM Initialisierung dauerte zu lange')), 15000);
+          });
+          
+          await Promise.race([wasmPromise, timeoutPromise]);
           setWasmReady(true);
           // Progress update - WASM initialized
-          setProgress(20);
+          setProgress(25);
         } catch (wasmError) {
           throw new Error(`WASM-Initialisierung fehlgeschlagen: ${wasmError instanceof Error ? wasmError.message : 'Unbekannter Fehler'}`);
         }
@@ -143,52 +153,75 @@ export function useReplayParser(): ReplayParserResult {
         setProgress(25);
       }
       
-      // Parse the file - this will take the longest time
+      // Parse the file with explicit timeout handling
       console.log('[useReplayParser] WASM ready, calling parseReplayFile with file:', file.name);
-      setProgress(30);
-      const parsedData = await parseReplayFile(file);
-      setProgress(70);
+      setProgress(35);
       
-      if (!parsedData) {
-        throw new Error('Parser hat keine Daten zurückgegeben');
-      }
-      
-      // Log parsed data
-      console.log('[useReplayParser] Parsing completed. Data received:', parsedData);
-      console.log('[useReplayParser] Player data:', {
-        name: parsedData.playerName,
-        race: parsedData.playerRace,
-        opponent: parsedData.opponentName,
-        opponentRace: parsedData.opponentRace
+      // Race zwischen Parser und Timeout
+      const parsePromise = parseReplayFile(file);
+      const parseTimeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Parsing dauerte zu lange')), 30000);
       });
       
-      // Progress update - data verification
-      setProgress(90);
+      // Explizite Progress-Updates während der Parsing-Phase
+      const parsingProgressInterval = setInterval(() => {
+        setProgress(prev => {
+          if (prev >= 35 && prev < 70) {
+            return prev + 1;
+          }
+          return prev;
+        });
+      }, 800);
       
-      // Verify we have essential data
-      const missingFields = [];
-      if (!parsedData.playerName) missingFields.push('playerName');
-      if (!parsedData.map) missingFields.push('map');
-      
-      if (missingFields.length > 0) {
-        console.error('[useReplayParser] Missing essential data:', missingFields.join(', '));
-        throw new Error(`Unvollständige Analyse-Daten: ${missingFields.join(', ')} fehlen`);
+      try {
+        const parsedData = await Promise.race([parsePromise, parseTimeoutPromise]);
+        clearInterval(parsingProgressInterval);
+        setProgress(75);
+        
+        if (!parsedData) {
+          throw new Error('Parser hat keine Daten zurückgegeben');
+        }
+        
+        // Log parsed data
+        console.log('[useReplayParser] Parsing completed. Data received:', parsedData);
+        console.log('[useReplayParser] Player data:', {
+          name: parsedData.playerName,
+          race: parsedData.playerRace,
+          opponent: parsedData.opponentName,
+          opponentRace: parsedData.opponentRace
+        });
+        
+        // Progress update - data verification
+        setProgress(90);
+        
+        // Verify we have essential data
+        const missingFields = [];
+        if (!parsedData.playerName) missingFields.push('playerName');
+        if (!parsedData.map) missingFields.push('map');
+        
+        if (missingFields.length > 0) {
+          console.error('[useReplayParser] Missing essential data:', missingFields.join(', '));
+          throw new Error(`Unvollständige Analyse-Daten: ${missingFields.join(', ')} fehlen`);
+        }
+        
+        // Generate dummy data ONLY if file name explicitly includes 'test_mock'
+        if (process.env.NODE_ENV === 'development' && file.name.includes('test_mock')) {
+          console.log('[useReplayParser] Adding dummy analysis data for explicit testing file');
+          parsedData.strengths = ['Gute mechanische Fähigkeiten', 'Effektives Makromanagement'];
+          parsedData.weaknesses = ['Könnte Scouting verbessern', 'Unregelmäßige Produktion'];
+          parsedData.recommendations = ['Übe Build-Order Timings', 'Fokussiere dich auf Map-Kontrolle'];
+        }
+        
+        // Final progress update
+        setProgress(100);
+        
+        clearTimeout(processingTimeout);
+        clearInterval(progressUpdateInterval);
+        return parsedData;
+      } catch (parseErr) {
+        clearInterval(parsingProgressInterval);
+        throw parseErr; // Weitergeben zum äußeren catch-Block
       }
-      
-      // Generate dummy data ONLY if file name explicitly includes 'test_mock'
-      if (process.env.NODE_ENV === 'development' && file.name.includes('test_mock')) {
-        console.log('[useReplayParser] Adding dummy analysis data for explicit testing file');
-        parsedData.strengths = ['Gute mechanische Fähigkeiten', 'Effektives Makromanagement'];
-        parsedData.weaknesses = ['Könnte Scouting verbessern', 'Unregelmäßige Produktion'];
-        parsedData.recommendations = ['Übe Build-Order Timings', 'Fokussiere dich auf Map-Kontrolle'];
-      }
-      
-      // Final progress update
-      setProgress(100);
-      
-      clearTimeout(processingTimeout);
-      clearInterval(progressUpdateInterval);
-      return parsedData;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Fehler beim Parsen der Replay-Datei';
       setError(errorMessage);
