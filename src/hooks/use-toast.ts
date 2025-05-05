@@ -4,10 +4,6 @@ import {
   ToastProps,
 } from "@/components/ui/toast"
 
-import {
-  useToast as useToastOriginal,
-} from "@radix-ui/react-toast"
-
 type ToasterToast = ToastProps & {
   id: string
   title?: React.ReactNode

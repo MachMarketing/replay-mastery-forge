@@ -14,13 +14,16 @@ export interface ParsedReplayResult {
   result: 'win' | 'loss';
   apm: number;
   eapm: number;
-}
-
-export interface AnalyzedReplayResult extends ParsedReplayResult {
+  buildOrder: Array<{ time: string; supply: number; action: string }>;
+  resourcesGraph?: Array<{ time: string; minerals: number; gas: number }>;
   strengths: string[];
   weaknesses: string[];
   recommendations: string[];
-  buildOrder: Array<{ time: string; supply: number; action: string }>;
+  trainingPlan?: Array<{ day: number; focus: string; drill: string }>;
+}
+
+export interface AnalyzedReplayResult extends ParsedReplayResult {
+  // All properties are now inherited from ParsedReplayResult
 }
 
 /**
