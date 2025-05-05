@@ -1,3 +1,4 @@
+
 /**
  * Maps raw parser output to our application's format
  */
@@ -78,17 +79,18 @@ export function mapRawToParsed(rawData: any): ParsedReplayResult {
     playerRace: playerRace,
     opponentRace: opponentRace,
     map,
+    matchup, // Ensure matchup is included
     duration: durationInfo.duration,
+    durationMS: durationInfo.durationMs, // Include durationMS
     date,
     result,
     apm: apmInfo.apm,
     eapm: apmInfo.eapm,
-    matchup,
     buildOrder,
     // These will be filled by the analyzer later if not present:
-    strengths: [],
-    weaknesses: [],
-    recommendations: []
+    strengths: rawData.strengths || [],
+    weaknesses: rawData.weaknesses || [],
+    recommendations: rawData.recommendations || []
   };
   
   console.log('🔄 [replayMapper] Final mapped data:', mappedData);
