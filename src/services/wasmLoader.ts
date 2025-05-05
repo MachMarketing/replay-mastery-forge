@@ -135,6 +135,18 @@ export function forceWasmReset(): void {
       // Ignore errors - gc() isn't standard
     }
   }
+  
+  // Add additional checks to ensure clean state
+  setTimeout(() => {
+    console.log('[wasmLoader] Verifying WASM reset');
+    if (parserInitialized || initializationInProgress || screpModule) {
+      console.warn('[wasmLoader] WASM reset verification failed, forcing again');
+      parserInitialized = false;
+      initializationInProgress = false;
+      initializationPromise = null;
+      screpModule = null;
+    }
+  }, 200);
 }
 
 /**
@@ -194,19 +206,23 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
       defensiveCopy.set(fileData, 0);
       
       // Add extra padding to the buffer as a protection against buffer overflows
-      // This can prevent some "makeslice: len out of range" errors
-      const paddedCopy = new Uint8Array(defensiveCopy.length + 2048);
+      // Increased padding for better protection against "makeslice: len out of range" errors
+      const paddedCopy = new Uint8Array(defensiveCopy.length + 4096);
       paddedCopy.set(defensiveCopy, 0);
       
       // Try parsing with different approaches
       try {
         let result;
         
+        // For first attempt, try the padded buffer immediately
+        // This helps prevent the "makeslice: len out of range" error
+        const dataToUse = attempt === 0 ? paddedCopy : defensiveCopy;
+        
         // First try the standard parse function or alternatives
         if (typeof screpModule.parseReplay === 'function') {
-          result = await Promise.resolve(screpModule.parseReplay(defensiveCopy));
+          result = await Promise.resolve(screpModule.parseReplay(dataToUse));
         } else if (typeof screpModule.parse === 'function') {
-          result = await Promise.resolve(screpModule.parse(defensiveCopy));
+          result = await Promise.resolve(screpModule.parse(dataToUse));
         } else {
           throw new Error('No valid parse function found in screp-js module');
         }
@@ -233,27 +249,32 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
           lastMemoryErrorTime = Date.now();
           memoryErrorCount++;
           
-          // If this is the first attempt, try again with the padded buffer
+          // Immediately reset WASM for memory errors
+          forceWasmReset();
+          await new Promise(resolve => setTimeout(resolve, 500)); // Small delay before retry
+          
+          // If this is the first attempt, try again with an even larger padded buffer
           if (attempt === 0) {
-            console.log('[wasmLoader] Retrying with padded buffer after memory error');
-            forceWasmReset();
-            await new Promise(resolve => setTimeout(resolve, 500)); // Small delay before retry
+            console.log('[wasmLoader] Retrying with larger padded buffer after memory error');
             
             try {
               // Try to initialize with fresh state
               await initParserWasm();
               
-              // Try with padded buffer on second attempt
+              // Try with extra-padded buffer on second attempt
+              const extraPaddedCopy = new Uint8Array(defensiveCopy.length + 8192); // Double the padding
+              extraPaddedCopy.set(defensiveCopy, 0);
+              
               if (typeof screpModule.parseReplay === 'function') {
-                const result = await Promise.resolve(screpModule.parseReplay(paddedCopy));
+                const result = await Promise.resolve(screpModule.parseReplay(extraPaddedCopy));
                 if (!result || typeof result !== 'object') {
-                  throw new Error('Parser returned invalid result with padded buffer');
+                  throw new Error('Parser returned invalid result with extra padded buffer');
                 }
-                console.log('[wasmLoader] WASM parsing successful with padded buffer');
+                console.log('[wasmLoader] WASM parsing successful with extra padded buffer');
                 return result;
               }
             } catch (paddedError) {
-              console.error('[wasmLoader] Error with padded buffer:', paddedError);
+              console.error('[wasmLoader] Error with extra padded buffer:', paddedError);
               // Let it fall through to retry on next iteration
             }
           }

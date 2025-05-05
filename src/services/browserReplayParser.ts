@@ -65,7 +65,8 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       try {
         const parsedData = await parseReplayWithBrowserSafeParser(fileData);
         console.log('[browserReplayParser] Successfully parsed with browser-safe parser');
-        return parsedData;
+        // Type assertion to ensure it matches ParsedReplayResult
+        return parsedData as ParsedReplayResult;
       } catch (fallbackError) {
         console.error('[browserReplayParser] Browser-safe parser failed:', fallbackError);
         // Continue to WASM parser as a last resort
@@ -94,7 +95,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
           const parsedData = await parseReplayWithBrowserSafeParser(fileData);
           console.log('[browserReplayParser] Successfully parsed with browser-safe parser');
           hasUsedFallbackParser = true;
-          return parsedData;
+          return parsedData as ParsedReplayResult;
         } catch (fallbackError) {
           console.error('[browserReplayParser] Browser-safe parser also failed:', fallbackError);
           throw new Error('All parsing methods failed: ' + (error instanceof Error ? error.message : String(error)));
@@ -116,7 +117,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       
       try {
         // Add extra padding to the buffer as a protection against buffer overflows
-        const paddedData = new Uint8Array(defensiveData.length + 2048);
+        const paddedData = new Uint8Array(defensiveData.length + 4096); // Increased padding
         paddedData.set(defensiveData);
         
         // Use the defensive copy that will be processed by WASM
@@ -140,6 +141,9 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
         const parsedData = mapRawToParsed(rawData);
         console.log('[browserReplayParser] WASM parsing successful on attempt', attempts);
         
+        // Ensure required fields are present
+        ensureRequiredFields(parsedData);
+        
         // Reset error tracking on success
         consecutiveErrorCount = 0;
         hasUsedFallbackParser = false;
@@ -150,7 +154,8 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
         // Special handling for makeslice errors
         if (wasmError.message && (
            wasmError.message.includes('makeslice: len out of range') || 
-           wasmError.message.includes('runtime error')
+           wasmError.message.includes('runtime error') ||
+           wasmError.message.includes('memory access out of bounds')
         )) {
           console.log('[browserReplayParser] Detected WASM memory error, resetting WASM');
           
@@ -174,7 +179,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
               const parsedData = await parseReplayWithBrowserSafeParser(fileData);
               console.log('[browserReplayParser] Successfully parsed with browser-safe parser');
               hasUsedFallbackParser = true;
-              return parsedData;
+              return parsedData as ParsedReplayResult;
             } catch (fallbackError) {
               console.error('[browserReplayParser] Browser-safe parser also failed:', fallbackError);
               // Continue with the error flow
@@ -199,7 +204,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
           const parsedData = await parseReplayWithBrowserSafeParser(fileData);
           console.log('[browserReplayParser] Successfully parsed with browser-safe parser');
           hasUsedFallbackParser = true;
-          return parsedData;
+          return parsedData as ParsedReplayResult;
         } catch (fallbackError) {
           console.error('[browserReplayParser] Browser-safe parser also failed:', fallbackError);
           
@@ -228,5 +233,32 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     lastErrorTime = Date.now();
     consecutiveErrorCount++;
     throw error;
+  }
+}
+
+/**
+ * Helper function to ensure all required fields are present
+ */
+function ensureRequiredFields(data: any): void {
+  // Make sure strengths, weaknesses, and recommendations are always arrays
+  if (!data.strengths || !Array.isArray(data.strengths) || data.strengths.length === 0) {
+    data.strengths = ['Solid macro gameplay'];
+  }
+  
+  if (!data.weaknesses || !Array.isArray(data.weaknesses) || data.weaknesses.length === 0) {
+    data.weaknesses = ['Build order efficiency'];
+  }
+  
+  if (!data.recommendations || !Array.isArray(data.recommendations) || data.recommendations.length === 0) {
+    data.recommendations = ['Focus on early game scouting'];
+  }
+  
+  // Ensure all other required fields have values
+  if (!data.eapm || typeof data.eapm !== 'number') {
+    data.eapm = data.apm ? Math.floor(data.apm * 0.8) : 120;
+  }
+  
+  if (!data.buildOrder || !Array.isArray(data.buildOrder)) {
+    data.buildOrder = [];
   }
 }

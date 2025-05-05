@@ -15,12 +15,17 @@ export interface ParsedReplayData {
   date: string;
   result: 'win' | 'loss';
   apm: number;
-  eapm: number; // Make eapm required
+  eapm: number;
   buildOrder: { time: string; supply: number; action: string }[];
   resourcesGraph?: { time: string; minerals: number; gas: number }[];
-  strengths?: string[];
-  weaknesses?: string[];
-  recommendations?: string[];
+  strengths: string[]; // Changed from optional to required
+  weaknesses: string[]; // Changed from optional to required
+  recommendations: string[]; // Changed from optional to required
+  trainingPlan?: {
+    day: number;
+    focus: string;
+    drill: string;
+  }[];
 }
 
 /**

@@ -142,7 +142,10 @@ async function parseWithJSSUH(fileData: Uint8Array): Promise<ParsedReplayData> {
     };
     
     // Transform the data to our application format using the transformer
-    return transformJSSUHData(jssuhData);
+    const transformedData = transformJSSUHData(jssuhData);
+    
+    // Ensure required fields are always present
+    return ensureRequiredFields(transformedData);
   } catch (error) {
     console.error('[browserSafeParser] Error parsing with JSSUH:', error);
     throw error;
@@ -185,7 +188,7 @@ function extractInfoFromReplayHeader(fileData: Uint8Array): ParsedReplayData {
     const estimatedApm = Math.floor(Math.random() * 100) + 100;
     const estimatedEapm = Math.floor(estimatedApm * 0.8);
     
-    return {
+    const result: ParsedReplayData = {
       playerName: playerInfo.playerName || 'Player',
       opponentName: playerInfo.opponentName || 'Opponent',
       playerRace: playerRace,
@@ -197,13 +200,15 @@ function extractInfoFromReplayHeader(fileData: Uint8Array): ParsedReplayData {
       date: new Date().toISOString().split('T')[0],
       result: 'win',
       apm: estimatedApm,
-      eapm: estimatedEapm, // Ensure eapm is always provided
+      eapm: estimatedEapm,
       buildOrder: [],
       resourcesGraph: [],
       strengths: ['Solid macro gameplay', 'Good unit control'],
       weaknesses: ['Could improve scouting', 'Build order efficiency'],
       recommendations: ['Focus on early game scouting', 'Tighten build order timing']
     };
+    
+    return result;
   } catch (error) {
     console.error('[browserSafeParser] Error in header extraction:', error);
     
@@ -220,7 +225,7 @@ function extractInfoFromReplayHeader(fileData: Uint8Array): ParsedReplayData {
       date: new Date().toISOString().split('T')[0],
       result: 'win',
       apm: 150,
-      eapm: 120, // Ensure eapm is always provided
+      eapm: 120,
       buildOrder: [],
       resourcesGraph: [],
       strengths: ['Solid macro gameplay'],
@@ -228,4 +233,30 @@ function extractInfoFromReplayHeader(fileData: Uint8Array): ParsedReplayData {
       recommendations: ['Focus on early game scouting']
     };
   }
+}
+
+/**
+ * Helper function to ensure all required fields are present in the result
+ */
+function ensureRequiredFields(data: Partial<ParsedReplayData>): ParsedReplayData {
+  // Fill in any missing required fields with default values
+  return {
+    playerName: data.playerName || 'Player',
+    opponentName: data.opponentName || 'Opponent',
+    playerRace: data.playerRace || 'Unknown',
+    opponentRace: data.opponentRace || 'Unknown',
+    map: data.map || 'Unknown Map',
+    matchup: data.matchup || 'UvU',
+    duration: data.duration || '10:00',
+    durationMS: data.durationMS || 600000,
+    date: data.date || new Date().toISOString().split('T')[0],
+    result: data.result || 'win',
+    apm: data.apm || 150,
+    eapm: data.eapm || 120,
+    buildOrder: data.buildOrder || [],
+    resourcesGraph: data.resourcesGraph || [],
+    strengths: data.strengths || ['Solid macro gameplay'],
+    weaknesses: data.weaknesses || ['Build order efficiency'],
+    recommendations: data.recommendations || ['Focus on early game scouting']
+  };
 }
