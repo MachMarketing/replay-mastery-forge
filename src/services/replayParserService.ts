@@ -1,3 +1,4 @@
+
 import { ParsedReplayData } from './replayParser/types';
 import { parseReplayInBrowser } from './browserReplayParser';
 
@@ -29,6 +30,9 @@ export interface AnalyzedReplayResult extends ParsedReplayResult {
 // Track active parsing process for potential abort
 let activeParsingAbortController: AbortController | null = null;
 
+// Flag to track major parsing failures to avoid repeated attempts
+let hadMajorParsingFailure = false;
+
 /**
  * Aborts any active parsing process
  */
@@ -55,6 +59,58 @@ export async function initParser(): Promise<void> {
 }
 
 /**
+ * Creates fallback data when parsing completely fails
+ */
+function createEmergencyFallbackData(file: File): AnalyzedReplayResult {
+  const filename = file.name.replace('.rep', '').replace(/_/g, ' ');
+  
+  return {
+    playerName: filename || 'Player',
+    opponentName: 'Opponent',
+    playerRace: 'Terran',
+    opponentRace: 'Protoss',
+    map: 'Error: Corrupted Replay File',
+    matchup: 'TvP',
+    duration: '10:00',
+    durationMS: 600000,
+    date: new Date().toISOString().split('T')[0],
+    result: 'win',
+    apm: 120,
+    eapm: 90,
+    buildOrder: [],
+    resourcesGraph: [],
+    strengths: ['Konnte die Datei nicht analysieren'],
+    weaknesses: ['Die Datei scheint beschädigt zu sein'],
+    recommendations: ['Bitte lade eine andere Replay-Datei hoch']
+  };
+}
+
+/**
+ * Validates a replay file before processing
+ */
+function validateReplayFile(file: File): boolean {
+  if (!file || file.size === 0) {
+    throw new Error('Ungültige oder leere Datei');
+  }
+  
+  if (file.size < 1024) {
+    throw new Error('Die Datei ist zu klein, um eine gültige Replay-Datei zu sein');
+  }
+  
+  if (file.size > 5000000) {
+    throw new Error('Die Datei ist zu groß. Die maximale Größe beträgt 5MB');
+  }
+  
+  // Check file extension
+  const fileExtension = file.name.split('.').pop()?.toLowerCase();
+  if (fileExtension !== 'rep') {
+    throw new Error('Ungültiges Dateiformat. Nur StarCraft Replay-Dateien (.rep) werden unterstützt');
+  }
+  
+  return true;
+}
+
+/**
  * Parse a replay file and return the parsed data
  * Uses the WASM-based parser via parseReplayInBrowser
  */
@@ -62,59 +118,78 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
   console.log('[replayParserService] Starting to parse replay file using WASM parser');
   
   try {
+    // If we've had major parsing failures before, use fallback immediately
+    if (hadMajorParsingFailure) {
+      console.warn('[replayParserService] Using fallback due to previous major parsing failures');
+      return createEmergencyFallbackData(file);
+    }
+    
     // Additional validation before parsing
-    if (!file || file.size === 0) {
-      throw new Error('Ungültige oder leere Datei');
+    if (!validateReplayFile(file)) {
+      throw new Error('Ungültige oder fehlerhafte Datei');
     }
     
-    if (file.size < 1024) {
-      throw new Error('Die Datei ist zu klein, um eine gültige Replay-Datei zu sein');
-    }
-    
-    if (file.size > 5000000) {
-      throw new Error('Die Datei ist zu groß. Die maximale Größe beträgt 5MB');
-    }
+    // Create abort controller for this parsing operation
+    activeParsingAbortController = new AbortController();
     
     // Set a timeout for the entire parsing operation
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Zeitüberschreitung beim Parsen')), 15000);
+      const timeoutId = setTimeout(() => {
+        reject(new Error('Zeitüberschreitung beim Parsen'));
+        activeParsingAbortController = null;
+      }, 15000);
+      
+      // Clean up timeout if aborted
+      activeParsingAbortController?.signal.addEventListener('abort', () => {
+        clearTimeout(timeoutId);
+      });
     });
     
     // Parse using the browser WASM parser with timeout
     const parsePromise = parseReplayInBrowser(file);
-    const result = await Promise.race([parsePromise, timeoutPromise]);
+    
+    let result: AnalyzedReplayResult;
+    try {
+      result = await Promise.race([parsePromise, timeoutPromise]);
+    } catch (error) {
+      console.error('[replayParserService] Parsing error:', error);
+      
+      // Check for known WASM errors
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      if (errorMessage.includes('makeslice') || 
+          errorMessage.includes('len out of range') ||
+          errorMessage.includes('runtime error')) {
+        console.warn('[replayParserService] Critical WASM error detected, using fallback');
+        hadMajorParsingFailure = true; // Mark as having major failures
+        return createEmergencyFallbackData(file);
+      }
+      
+      throw error; // Re-throw other types of errors
+    } finally {
+      activeParsingAbortController = null;
+    }
+    
+    // Validate the parsed result
+    if (!result || !result.playerName) {
+      console.warn('[replayParserService] Invalid result from parser, using fallback');
+      return createEmergencyFallbackData(file);
+    }
     
     return result;
   } catch (error) {
     console.error('[replayParserService] Error:', error);
     const errorMessage = error instanceof Error ? error.message : String(error);
     
+    // For specific WASM errors, mark as having major failures
     if (errorMessage.includes('len out of range') || 
         errorMessage.includes('makeslice') ||
         errorMessage.includes('runtime error')) {
       console.warn('[replayParserService] WASM error detected, using fallback');
+      hadMajorParsingFailure = true;
       
       // Return minimal fallback data
-      const filename = file.name.replace('.rep', '').replace(/_/g, ' ');
-      return {
-        playerName: filename || 'Player',
-        opponentName: 'Opponent',
-        playerRace: 'Terran',
-        opponentRace: 'Protoss',
-        map: 'Error: Corrupted Replay File',
-        matchup: 'TvP',
-        duration: '10:00',
-        durationMS: 600000,
-        date: new Date().toISOString().split('T')[0],
-        result: 'win',
-        apm: 120,
-        eapm: 90,
-        buildOrder: [],
-        resourcesGraph: [],
-        strengths: ['Konnte die Datei nicht analysieren'],
-        weaknesses: ['Die Datei scheint beschädigt zu sein'],
-        recommendations: ['Bitte lade eine andere Replay-Datei hoch']
-      };
+      return createEmergencyFallbackData(file);
     }
     
     throw error;
