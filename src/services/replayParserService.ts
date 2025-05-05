@@ -1,4 +1,3 @@
-
 import { ParsedReplayData } from './replayParser/types';
 import { parseReplayInBrowser } from './browserReplayParser';
 
@@ -62,130 +61,41 @@ export async function initParser(): Promise<void> {
 export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult> {
   console.log('[replayParserService] Starting to parse replay file using WASM parser');
   
-  // Create a new abort controller for this parsing operation
-  activeParsingAbortController = new AbortController();
-  const signal = activeParsingAbortController.signal;
-  
   try {
-    // Check if the parsing was aborted
-    if (signal.aborted) {
-      throw new Error('Parsing was aborted');
-    }
-    
-    // Additional file validation
+    // Additional validation before parsing
     if (!file || file.size === 0) {
       throw new Error('Ungültige oder leere Datei');
     }
     
-    const fileExtension = file.name.split('.').pop()?.toLowerCase();
-    if (fileExtension !== 'rep') {
-      throw new Error('Ungültiges Dateiformat. Nur .rep Dateien werden unterstützt.');
-    }
-    
-    // Check file size limits
-    if (file.size < 1000) {
-      throw new Error('Die Datei ist zu klein, um eine gültige Replay-Datei zu sein.');
+    if (file.size < 1024) {
+      throw new Error('Die Datei ist zu klein, um eine gültige Replay-Datei zu sein');
     }
     
     if (file.size > 5000000) {
-      throw new Error('Die Datei ist zu groß. Die maximale Größe beträgt 5MB.');
+      throw new Error('Die Datei ist zu groß. Die maximale Größe beträgt 5MB');
     }
     
-    // Set a timeout to abort very long parsing operations
-    const timeoutId = setTimeout(() => {
-      if (activeParsingAbortController) {
-        console.log('[replayParserService] Parsing timeout reached, aborting');
-        activeParsingAbortController.abort();
-      }
-    }, 25000); // 25 second timeout
+    // Set a timeout for the entire parsing operation
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Zeitüberschreitung beim Parsen')), 15000);
+    });
     
-    try {
-      // Check replay file signature (if possible)
-      try {
-        const buffer = await file.arrayBuffer();
-        const signature = new Uint8Array(buffer, 0, 4);
-        const signatureStr = String.fromCharCode(...signature);
-        
-        // StarCraft replays typically start with "(B)w" or "(B)W"
-        if (signatureStr !== "(B)w" && signatureStr !== "(B)W") {
-          console.warn("[replayParserService] Suspicious replay file signature:", signatureStr);
-          // Continue anyway, but log the warning
-        }
-      } catch (signatureError) {
-        console.warn("[replayParserService] Failed to check file signature:", signatureError);
-        // Continue anyway
-      }
-      
-      // Parse using the browser WASM parser
-      const parsedData = await parseReplayInBrowser(file);
-      
-      // Clear the timeout since parsing completed
-      clearTimeout(timeoutId);
-      
-      if (!parsedData) {
-        throw new Error('Failed to parse replay file');
-      }
-      
-      console.log('[replayParserService] Raw parsed data:', parsedData);
-      
-      // Clear the abort controller since we're done
-      activeParsingAbortController = null;
-      
-      // Return the analyzed data directly
-      return parsedData;
-    } catch (error) {
-      // Clear the timeout in case of error
-      clearTimeout(timeoutId);
-      
-      // Handle specific WASM errors with fallback minimal data
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      if (errorMessage.includes('len out of range') || errorMessage.includes('makeslice')) {
-        console.warn('[replayParserService] Providing fallback minimal data for corrupted file');
-        
-        // Generate a more meaningful fallback with the filename at least
-        const filename = file.name.replace('.rep', '').replace(/_/g, ' ');
-        
-        // Return minimal fallback data instead of throwing
-        return {
-          playerName: filename || 'Player',
-          opponentName: 'Opponent',
-          playerRace: 'Terran',
-          opponentRace: 'Zerg',
-          map: 'Unknown Map (corrupted file)',
-          matchup: 'TvZ',
-          duration: '10:00',
-          durationMS: 600000,
-          date: new Date().toISOString().split('T')[0],
-          result: 'win',
-          apm: 120,
-          eapm: 90,
-          buildOrder: [],
-          resourcesGraph: [],
-          strengths: ['Datei konnte nicht analysiert werden'],
-          weaknesses: ['Beschädigte Replay-Datei'],
-          recommendations: ['Bitte lade eine andere Replay-Datei hoch, diese ist beschädigt oder in einem nicht unterstützten Format.']
-        };
-      }
-      
-      throw error;
-    }
+    // Parse using the browser WASM parser with timeout
+    const parsePromise = parseReplayInBrowser(file);
+    const result = await Promise.race([parsePromise, timeoutPromise]);
+    
+    return result;
   } catch (error) {
-    console.error('[replayParserService] Error parsing replay:', error);
-    
-    // Clear the abort controller in case of error
-    activeParsingAbortController = null;
-    
-    // Provide a more user-friendly error message for the specific WASM slice error
+    console.error('[replayParserService] Error:', error);
     const errorMessage = error instanceof Error ? error.message : String(error);
     
-    if (errorMessage.includes('len out of range') || errorMessage.includes('makeslice')) {
-      console.error('[replayParserService] WASM makeslice error:', errorMessage);
+    if (errorMessage.includes('len out of range') || 
+        errorMessage.includes('makeslice') ||
+        errorMessage.includes('runtime error')) {
+      console.warn('[replayParserService] WASM error detected, using fallback');
       
-      // Generate a more meaningful fallback with the filename at least
+      // Return minimal fallback data
       const filename = file.name.replace('.rep', '').replace(/_/g, ' ');
-      
-      // Instead of throwing, return fallback data
       return {
         playerName: filename || 'Player',
         opponentName: 'Opponent',
@@ -207,7 +117,6 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
       };
     }
     
-    // For other errors, throw as normal
-    throw new Error(`Fehler beim Parsen: ${errorMessage}`);
+    throw error;
   }
 }
