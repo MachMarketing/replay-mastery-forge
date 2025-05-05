@@ -21,7 +21,7 @@ export interface ParsedReplayData {
   date: string;
   result: 'win' | 'loss';
   apm: number;
-  eapm?: number;
+  eapm: number; // Changed from optional to required to match ParsedReplayResult
   matchup: string;
   buildOrder: {
     time: string;
