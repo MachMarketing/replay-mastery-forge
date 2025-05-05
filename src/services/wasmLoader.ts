@@ -55,11 +55,18 @@ export async function initParserWasm(): Promise<void> {
     } catch (error) {
       console.error('[wasmLoader] Error initializing parser module:', error);
       
-      // Even if initialization fails, we'll mark as initialized
-      // since our browser-safe implementation doesn't really need initialization
-      parserInitialized = true;
-      initializationInProgress = false;
-      resolve(); // Resolve anyway to allow the app to continue
+      if (initializationAttempts <= MAX_INIT_ATTEMPTS) {
+        console.log(`[wasmLoader] Retrying initialization (attempt ${initializationAttempts}/${MAX_INIT_ATTEMPTS})`);
+        initializationInProgress = false;
+        resolve(initParserWasm()); // Try again
+      } else {
+        console.log('[wasmLoader] Maximum initialization attempts reached, using fallback');
+        // Even if initialization fails, we'll mark as initialized
+        // since our browser-safe implementation doesn't really need initialization
+        parserInitialized = true;
+        initializationInProgress = false;
+        resolve(); // Resolve anyway to allow the app to continue
+      }
     }
   });
 
@@ -95,18 +102,45 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
     
     // Set a timeout for parsing
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Parsing timed out after 20 seconds')), 20000);
+      setTimeout(() => reject(new Error('Parsing timed out after 30 seconds')), 30000);
     });
     
     // Race the parsing against the timeout
     const parsedData = await Promise.race([parsePromise, timeoutPromise]);
     
-    console.log('[wasmLoader] Replay parsed successfully');
+    // Verify we have data
+    if (!parsedData) {
+      throw new Error('Parser returned empty data');
+    }
+    
+    console.log('[wasmLoader] Replay parsed successfully:', parsedData);
     
     return parsedData;
   } catch (error) {
     console.error('[wasmLoader] Error during parsing:', error);
-    throw new Error(`Parsing failed: ${error instanceof Error ? error.message : String(error)}`);
+    
+    // Create fallback data
+    const fallbackData = {
+      playerName: 'Player',
+      opponentName: 'Opponent',
+      playerRace: 'Terran',
+      opponentRace: 'Zerg',
+      map: 'Unknown Map',
+      matchup: 'TvZ', 
+      duration: '5:00',
+      date: new Date().toISOString().split('T')[0],
+      result: 'win',
+      apm: 150,
+      eapm: 120,
+      strengths: ['Gute mechanische Fähigkeiten', 'Effektives Makromanagement'],
+      weaknesses: ['Könnte Scouting verbessern', 'Unregelmäßige Produktion'],
+      recommendations: ['Übe Build-Order Timings', 'Fokussiere dich auf Map-Kontrolle'],
+      buildOrder: []
+    };
+    
+    // Throw error with informative message
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    throw new Error(`Parsing failed: ${errorMessage}`);
   }
 }
 
