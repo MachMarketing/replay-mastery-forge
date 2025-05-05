@@ -201,6 +201,20 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
           
           // Parse with WASM
           const rawData = await parseReplayWasm(defensiveData);
+          
+          // Log the raw data structure to debug what WASM parser is returning
+          console.log('[browserReplayParser] WASM parsing raw result - keys:', Object.keys(rawData));
+          console.log('[browserReplayParser] WASM parsing raw result - sample:', {
+            playerName: rawData.playerName,
+            opponentName: rawData.opponentName,
+            playerRace: rawData.playerRace,
+            opponentRace: rawData.opponentRace,
+            map: rawData.map,
+            matchup: rawData.matchup,
+            apm: rawData.apm,
+            eapm: rawData.eapm
+          });
+          
           const parsedData = mapRawToParsed(rawData);
           console.log('[browserReplayParser] WASM parsing successful');
           return parsedData;

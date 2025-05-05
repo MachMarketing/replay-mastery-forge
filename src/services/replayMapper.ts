@@ -1,3 +1,4 @@
+
 /**
  * Maps raw parser output to our application's format
  */
@@ -17,14 +18,71 @@ function isAlreadyParsed(obj: any): obj is ParsedReplayResult {
       && typeof obj.apm === 'number';
 }
 
+/**
+ * Format milliseconds to a MM:SS string
+ */
+function formatMs(ms: number): string {
+  const minutes = Math.floor(ms / 60000);
+  const seconds = Math.floor((ms % 60000) / 1000).toString().padStart(2, '0');
+  return `${minutes}:${seconds}`;
+}
+
 export function mapRawToParsed(rawData: any): ParsedReplayResult {
   console.log('🔄 [replayMapper] Mapping raw data to application format, keys:', Object.keys(rawData));
 
-  // Guard: if data is already in ParsedReplayResult format, return it directly
+  // Case A: Flat object from WASM parser with directly accessible fields
+  if (
+    typeof rawData.playerName === 'string' &&
+    typeof rawData.opponentName === 'string' &&
+    typeof rawData.playerRace === 'string' &&
+    typeof rawData.opponentRace === 'string'
+  ) {
+    console.log('🔄 [replayMapper] Detected flat SCREP-WASM output, applying minimal mapping');
+    
+    // Create matchup if not already present
+    const playerRace = standardizeRaceName(rawData.playerRace);
+    const opponentRace = standardizeRaceName(rawData.opponentRace);
+    const matchup = rawData.matchup || `${playerRace.charAt(0)}v${opponentRace.charAt(0)}`;
+    
+    // Format duration if needed
+    const durationMS = typeof rawData.durationMS === 'number' ? rawData.durationMS : 
+                        typeof rawData.duration === 'number' ? rawData.duration : 600000;
+    const duration = rawData.duration && typeof rawData.duration === 'string' ? 
+                      rawData.duration : formatMs(durationMS);
+    
+    // Calculate EAPM if not present
+    const apm = typeof rawData.apm === 'number' ? rawData.apm : 120;
+    const eapm = typeof rawData.eapm === 'number' ? rawData.eapm : Math.round(apm * 0.85);
+    
+    return {
+      playerName: rawData.playerName,
+      opponentName: rawData.opponentName,
+      playerRace: playerRace,
+      opponentRace: opponentRace,
+      map: rawData.map || 'Unknown Map',
+      matchup: matchup,
+      duration: duration,
+      durationMS: durationMS,
+      date: rawData.date || new Date().toISOString().split('T')[0],
+      result: rawData.result || 'win',
+      apm: apm,
+      eapm: eapm,
+      buildOrder: Array.isArray(rawData.buildOrder) ? rawData.buildOrder : [],
+      resourcesGraph: Array.isArray(rawData.resourcesGraph) ? rawData.resourcesGraph : [],
+      strengths: Array.isArray(rawData.strengths) ? rawData.strengths : [],
+      weaknesses: Array.isArray(rawData.weaknesses) ? rawData.weaknesses : [],
+      recommendations: Array.isArray(rawData.recommendations) ? rawData.recommendations : []
+    };
+  }
+  
+  // Case B: If data is already in ParsedReplayResult format, return it directly
   if (isAlreadyParsed(rawData)) {
     console.log('🛑 [replayMapper] Data already parsed; skipping mapping');
     return rawData;
   }
+  
+  // Case C: Legacy format with nested player data - use the original extraction logic
+  console.log('🔄 [replayMapper] Detected legacy format with nested data, using full extraction');
   
   // Extract player information with better validation
   const players = extractPlayers(rawData);
