@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
@@ -26,7 +27,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   // Update UI based on parser progress
   useEffect(() => {
     if (isProcessing && uploadStatus === 'parsing') {
-      // Basierend auf dem Fortschritt des Parsers die Statusnachricht aktualisieren
+      // Update status message based on parser progress
       if (parserProgress < 25) {
         setStatusMessage('Initialisiere Parser...');
       } else if (parserProgress < 50) {
@@ -122,7 +123,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     setFile(file);
     setErrorDetails(null);
     setUploadStatus('parsing');
-    setStatusMessage('Verarbeite Replay-Daten...');
+    setStatusMessage('Verbinde mit SCREP-Parser...');
     resetProgress();
     clearTimeouts();
     

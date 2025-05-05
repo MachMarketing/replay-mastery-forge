@@ -1,9 +1,9 @@
+
 /**
  * API for parsing StarCraft: Brood War replay files using the SCREP parser
  */
-import { parseReplayFile as screpParseReplayFile } from './replayParser';
+import { parseReplayFile as screpParseReplayFile, createProcessController } from './replayParser';
 import { generateBuildOrder, generateResourceData, standardizeRaceName } from '@/lib/replayUtils';
-import { createProcessController } from './replayParser';
 
 export interface ParsedReplayResult {
   playerName: string;

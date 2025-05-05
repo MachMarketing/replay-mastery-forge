@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { parseReplayFile, AnalyzedReplayResult } from '@/services/replayParserService';
 import { useToast } from '@/hooks/use-toast';
-import { abortLongRunningProcess } from '@/services/replayParser';
+import { abortActiveProcess } from '@/services/replayParser';
 
 interface ReplayParserResult {
   parseReplay: (file: File) => Promise<AnalyzedReplayResult | null>;
@@ -83,7 +83,7 @@ export function useReplayParser(): ReplayParserResult {
         }
         
         // Abort the running process
-        abortLongRunningProcess();
+        abortActiveProcess();
         
         toast({
           title: 'Verarbeitung abgebrochen',

@@ -4,10 +4,9 @@
  * using the SCREP parser API.
  */
 import type { ParsedReplayData } from './types';
-import { transformJSSUHData } from './transformer';
 
 // Export constants for API access
-export const DEFAULT_SCREP_API_URL = 'https://api.replayanalyzer.com/parse';
+export const DEFAULT_SCREP_API_URL = 'http://localhost:8000/parse';
 
 /**
  * Parse a StarCraft: Brood War replay file using the SCREP API
@@ -53,6 +52,33 @@ export async function parseReplayFile(file: File): Promise<ParsedReplayData | nu
   }
 }
 
-// Still export the transformer for backwards compatibility
-export { transformJSSUHData };
-export type { ParsedReplayData };
+// Create an abort controller for managing parser process
+let activeController: AbortController | null = null;
+
+export function createProcessController(): AbortController {
+  // Cancel previous controller if exists
+  if (activeController) {
+    try {
+      activeController.abort();
+    } catch (e) {
+      console.error('Error canceling previous process:', e);
+    }
+  }
+  
+  // Create new controller
+  activeController = new AbortController();
+  return activeController;
+}
+
+export function abortActiveProcess(): void {
+  if (activeController) {
+    try {
+      activeController.abort();
+      console.log('[parser.ts] Aborted active SCREP parsing process');
+    } catch (e) {
+      console.error('[parser.ts] Error during abort:', e);
+    } finally {
+      activeController = null;
+    }
+  }
+}

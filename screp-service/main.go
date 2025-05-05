@@ -23,8 +23,8 @@ func enableCors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Set CORS headers
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
 		// Handle preflight OPTIONS request
 		if r.Method == "OPTIONS" {
@@ -113,16 +113,28 @@ func main() {
 	if port == "" {
 		port = "8000" // Default port
 	}
+	
+	// Get host from environment or use default
+	host := os.Getenv("HOST")
+	if host == "" {
+		host = "localhost" // Default host
+	}
 
-	// Register route handlers
-	http.Handle("/parse", enableCors(http.HandlerFunc(handleParseReplay)))
+	// Create router
+	mux := http.NewServeMux()
+	
+	// Register route handlers with CORS
+	mux.Handle("/parse", enableCors(http.HandlerFunc(handleParseReplay)))
 	
 	// Add health check endpoint
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
 
-	fmt.Printf("SCREP parsing service starting on port %s...\n", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	// Start server
+	serverAddr := fmt.Sprintf("%s:%s", host, port)
+	fmt.Printf("SCREP parsing service starting at http://%s...\n", serverAddr)
+	log.Fatal(http.ListenAndServe(serverAddr, mux))
 }

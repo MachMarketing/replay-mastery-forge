@@ -23,5 +23,9 @@ RUN chmod +x /app/screp-server
 # Expose the port the server listens on
 EXPOSE 8000
 
+# Tell SCREP server to listen on all interfaces
+ENV HOST=0.0.0.0
+ENV PORT=8000
+
 # Command to run the server
 CMD ["/app/screp-server"]
