@@ -76,3 +76,101 @@ export function mapRace(race: string): 'Terran' | 'Protoss' | 'Zerg' {
   };
   return raceMap[race] || 'Terran';
 }
+
+/**
+ * Extract basic header information from a replay file
+ */
+export function extractReplayHeaderInfo(fileData: Uint8Array): { 
+  mapName: string; 
+  frameCount: number; 
+  gameType: string;
+} {
+  // Simple extraction of map name from the binary data
+  // Note: This is a very basic implementation
+  let mapName = 'Unknown Map';
+  let frameCount = 0;
+  let gameType = 'Unknown';
+  
+  try {
+    // Try to find map name in the header (often after a specific byte pattern)
+    // This is a simplified approach and might not work for all replay formats
+    const headerBytes = fileData.slice(0, 2000);
+    const headerText = new TextDecoder().decode(headerBytes);
+    
+    // Extract map name (simplified approach)
+    const mapMatch = headerText.match(/\((\w+)\)/);
+    if (mapMatch && mapMatch[1]) {
+      mapName = mapMatch[1];
+    }
+    
+    // Estimate frame count from file size
+    // This is just a rough estimate, not accurate
+    frameCount = Math.floor(fileData.length / 100);
+    
+    // Try to determine game type
+    if (headerText.includes('melee')) {
+      gameType = 'Melee';
+    } else if (headerText.includes('UMS')) {
+      gameType = 'UMS';
+    }
+  } catch (e) {
+    console.error('Error extracting header info:', e);
+  }
+  
+  return {
+    mapName,
+    frameCount,
+    gameType
+  };
+}
+
+/**
+ * Extract player information from a replay file
+ */
+export function extractPlayerInfo(fileData: Uint8Array): {
+  playerName: string;
+  opponentName: string;
+  playerRace: string;
+  opponentRace: string;
+} {
+  // Default values
+  let playerName = 'Player';
+  let opponentName = 'Opponent';
+  let playerRace = 'T';
+  let opponentRace = 'Z';
+  
+  try {
+    // In a real implementation, we would parse the replay file
+    // to extract player information. This is a simplified approach.
+    const headerBytes = fileData.slice(0, 5000);
+    const headerText = new TextDecoder().decode(headerBytes);
+    
+    // Try to find player names (very simplified approach)
+    const nameMatches = headerText.match(/name\s*=\s*"([^"]+)"/g);
+    if (nameMatches && nameMatches.length >= 2) {
+      playerName = nameMatches[0].replace(/name\s*=\s*"/, '').replace(/"$/, '');
+      opponentName = nameMatches[1].replace(/name\s*=\s*"/, '').replace(/"$/, '');
+    }
+    
+    // Try to find race information (very simplified approach)
+    if (headerText.includes('Terran') && headerText.includes('Zerg')) {
+      playerRace = 'T';
+      opponentRace = 'Z';
+    } else if (headerText.includes('Protoss') && headerText.includes('Terran')) {
+      playerRace = 'P';
+      opponentRace = 'T';
+    } else if (headerText.includes('Zerg') && headerText.includes('Protoss')) {
+      playerRace = 'Z';
+      opponentRace = 'P';
+    }
+  } catch (e) {
+    console.error('Error extracting player info:', e);
+  }
+  
+  return {
+    playerName,
+    opponentName,
+    playerRace,
+    opponentRace
+  };
+}
