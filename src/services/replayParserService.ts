@@ -68,14 +68,15 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     
     console.log('[replayParserService] Raw parsed data:', parsedRaw);
     
-    // CRITICAL FIX: Transform the raw data using our consistent mapper function
+    // CRITICAL: Transform the raw data using our mapper function to match browser parser
     const parsed = mapRawToParsed(parsedRaw);
     console.log('[replayParserService] Mapped parsed data:', parsed);
     
     // Return the analyzed data using the actual parsed data from the mapper
+    // WITHOUT any mock/dummy data
     const analyzedData: AnalyzedReplayResult = {
       ...parsed,
-      // Use actual data from parsed result
+      // Use actual data from parsed result, no mock data
       strengths: parsed.strengths || [],
       weaknesses: parsed.weaknesses || [],
       recommendations: parsed.recommendations || []

@@ -105,7 +105,7 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error('Die Datei scheint leer oder beschädigt zu sein');
       }
       
-      // Parse the file
+      // Parse the file with real parsing, not mock data
       console.log('[useReplayParser] Calling parseReplayFile with file:', file.name);
       
       const parsedData = await parseReplayFile(file);
@@ -120,13 +120,7 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error('Unvollständige Analyse-Daten: playerName fehlt');
       }
       
-      // Generate dummy data ONLY if file name explicitly includes 'test_mock'
-      if (process.env.NODE_ENV === 'development' && file.name.includes('test_mock')) {
-        console.log('[useReplayParser] Adding dummy analysis data for explicit testing file');
-        parsedData.strengths = ['Gute mechanische Fähigkeiten', 'Effektives Makromanagement'];
-        parsedData.weaknesses = ['Könnte Scouting verbessern', 'Unregelmäßige Produktion'];
-        parsedData.recommendations = ['Übe Build-Order Timings', 'Fokussiere dich auf Map-Kontrolle'];
-      }
+      // NO MOCK DATA - remove test mock condition
       
       // Final progress update
       setProgress(100);

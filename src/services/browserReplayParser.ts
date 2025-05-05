@@ -88,16 +88,6 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       if (!parsedReplay.players || !Array.isArray(parsedReplay.players) || parsedReplay.players.length === 0) {
         throw new Error('Keine Spielerdaten im Replay gefunden');
       }
-      
-      // Log player data specifically to verify race information
-      parsedReplay.players.forEach((player, index) => {
-        console.log(`📊 [browserReplayParser] Player ${index + 1}:`, {
-          name: player.name || 'Unknown',
-          rawRace: player.raceLetter || 'unknown',
-          mappedRace: player.race || 'unknown',
-          id: player.id || index
-        });
-      });
     } catch (parseError) {
       console.error('❌ [browserReplayParser] WASM parser error:', parseError);
       throw new Error(`Parser-Fehler: ${parseError instanceof Error ? parseError.message : 'Unbekannter Fehler'}`);
@@ -111,146 +101,23 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     console.log('📊 [browserReplayParser] Raw parser output:', parsedReplay);
     
     // Map the raw parser output to our application's format ALWAYS using mapRawToParsed
+    // NEVER use mock data
     let mappedData;
     try {
       mappedData = mapRawToParsed(parsedReplay);
       console.log('📊 [browserReplayParser] Mapping successful:', mappedData);
-      
-      // Verify data integrity - NEVER replace with static values unless absolutely necessary
-      if (!mappedData.playerRace || mappedData.playerRace === 'Unknown' as any) {
-        console.warn('📊 [browserReplayParser] Player race missing, extracting from raw data');
-        mappedData.playerRace = parsedReplay.players[0]?.race || 'Terran' as any;
-      }
-      
-      if (!mappedData.opponentRace || mappedData.opponentRace === 'Unknown' as any) {
-        console.warn('📊 [browserReplayParser] Opponent race missing, extracting from raw data');
-        mappedData.opponentRace = parsedReplay.players[1]?.race || 'Terran' as any;
-      }
-      
-      // Ensure matchup is properly set
-      if (!mappedData.matchup) {
-        mappedData.matchup = `${mappedData.playerRace.charAt(0)}v${mappedData.opponentRace.charAt(0)}`;
-      }
-      
-      console.log('📊 [browserReplayParser] Final player race:', mappedData.playerRace);
-      console.log('📊 [browserReplayParser] Final opponent race:', mappedData.opponentRace);
-      console.log('📊 [browserReplayParser] Final matchup:', mappedData.matchup);
     } catch (mappingError) {
       console.error('❌ [browserReplayParser] Data mapping error:', mappingError);
-      
-      // If mapping fails, create valid data structure but rely on ACTUAL data from parsed results
-      const fallbackPlayerName = parsedReplay.players[0]?.name || 'Player';
-      const fallbackOpponentName = parsedReplay.players[1]?.name || 'Opponent';
-      const fallbackPlayerRace = parsedReplay.players[0]?.race || 'Terran';
-      const fallbackOpponentRace = parsedReplay.players[1]?.race || 'Terran';
-      const fallbackMap = parsedReplay.mapName || parsedReplay.map || 'Map #10';
-      
-      console.warn('❌ [browserReplayParser] Using fallback data mapping with actual parsed values');
-      mappedData = {
-        playerName: fallbackPlayerName,
-        opponentName: fallbackOpponentName,
-        playerRace: fallbackPlayerRace as any,
-        opponentRace: fallbackOpponentRace as any,
-        map: fallbackMap,
-        duration: parsedReplay.duration || '5:00',
-        durationMS: parsedReplay.durationMS || 300000,
-        date: parsedReplay.date || new Date().toISOString().split('T')[0],
-        result: parsedReplay.result || 'win',
-        apm: parsedReplay.apm || 0,
-        eapm: parsedReplay.eapm || 0,
-        matchup: `${fallbackPlayerRace.charAt(0)}v${fallbackOpponentRace.charAt(0)}`,
-        buildOrder: parsedReplay.buildOrder || [],
-        resourcesGraph: parsedReplay.resourcesGraph || [],
-        strengths: parsedReplay.strengths || ['Mechanische Fähigkeiten', 'Ressourcenmanagement'],
-        weaknesses: parsedReplay.weaknesses || ['Könnte Scouting verbessern', 'Einheitenmikro'],
-        recommendations: parsedReplay.recommendations || ['Übe Build-Order Timings', 'Fokussiere dich auf Map-Kontrolle']
-      };
+      throw new Error(`Fehler bei der Datentransformation: ${mappingError instanceof Error ? mappingError.message : 'Unbekannter Fehler'}`);
     }
     
-    // Guarantee minimum result data regardless of what happens
-    const finalData = ensureMinimalData(mappedData, parsedReplay);
-    
-    // Check for test mode
-    const isTestMode = process.env.NODE_ENV === 'development' && file.name.toLowerCase().includes('test_mock');
-    if (isTestMode) {
-      console.warn('📊 [browserReplayParser] Test mode detected, enhancing with test data');
-      return enhanceWithTestData(finalData);
+    if (!mappedData) {
+      throw new Error('Datentransformation fehlgeschlagen');
     }
     
-    return finalData;
+    return mappedData;
   } catch (error) {
     console.error('❌ [browserReplayParser] Parsing error:', error);
     throw error; // Let the caller handle the error
   }
-}
-
-/**
- * Stellt sicher, dass minimale Daten vorhanden sind, unabhängig von Parsing-Fehlern
- */
-function ensureMinimalData(mappedData: ParsedReplayResult, rawData: any): ParsedReplayResult {
-  // If mapping fails completely, create minimal data
-  if (!mappedData) {
-    const fallbackPlayerName = rawData.players?.[0]?.name || 'Player';
-    const fallbackOpponentName = rawData.players?.[1]?.name || 'Opponent';
-    const fallbackRace = rawData.players?.[0]?.race || 'Terran';
-    const fallbackOpponentRace = rawData.players?.[1]?.race || 'Terran';
-    const fallbackMap = rawData.mapName || 'Unknown Map';
-    
-    return {
-      playerName: fallbackPlayerName,
-      opponentName: fallbackOpponentName,
-      playerRace: fallbackRace as any,
-      opponentRace: fallbackOpponentRace as any,
-      map: fallbackMap,
-      duration: '5:00',
-      durationMS: 300000,
-      date: new Date().toISOString().split('T')[0],
-      result: 'win',
-      apm: 0,
-      eapm: 0,
-      matchup: `${fallbackRace.charAt(0)}v${fallbackOpponentRace.charAt(0)}`,
-      buildOrder: [],
-      resourcesGraph: [],
-      strengths: ['Mechanische Fähigkeiten', 'Ressourcenmanagement'],
-      weaknesses: ['Könnte Scouting verbessern', 'Einheitenmikro'],
-      recommendations: ['Übe Build-Order Timings', 'Fokussiere dich auf Map-Kontrolle']
-    };
-  }
-  
-  // Ensure all required fields exist without replacing user data
-  return {
-    ...mappedData,
-    playerName: mappedData.playerName || 'Player',
-    opponentName: mappedData.opponentName || 'Opponent',
-    playerRace: mappedData.playerRace || 'Terran' as any,
-    opponentRace: mappedData.opponentRace || 'Terran' as any,
-    map: mappedData.map || 'Unknown Map',
-    duration: mappedData.duration || '5:00',
-    durationMS: mappedData.durationMS || 300000,
-    date: mappedData.date || new Date().toISOString().split('T')[0],
-    result: mappedData.result || 'win',
-    apm: mappedData.apm || 0,
-    eapm: mappedData.eapm || 0,
-    matchup: mappedData.matchup || 'TvT',
-    buildOrder: mappedData.buildOrder || [],
-    resourcesGraph: mappedData.resourcesGraph || [],
-    strengths: mappedData.strengths || ['Mechanische Fähigkeiten', 'Ressourcenmanagement'],
-    weaknesses: mappedData.weaknesses || ['Könnte Scouting verbessern', 'Einheitenmikro'],
-    recommendations: mappedData.recommendations || ['Übe Build-Order Timings', 'Fokussiere dich auf Map-Kontrolle']
-  };
-}
-
-/**
- * For development testing only, enhance data with test values
- * This is only used when a file with "test_mock" in its name is uploaded
- * and the application is running in development mode
- */
-function enhanceWithTestData(data: ParsedReplayResult): ParsedReplayResult {
-  return {
-    ...data,
-    // Preserve user data - do NOT override with fixed values
-    strengths: data.strengths || ['Gute mechanische Fähigkeiten', 'Effektives Makromanagement'],
-    weaknesses: data.weaknesses || ['Könnte Scouting verbessern', 'Unregelmäßige Produktion'],
-    recommendations: data.recommendations || ['Übe Build-Order Timings', 'Fokussiere dich auf Map-Kontrolle']
-  };
 }
