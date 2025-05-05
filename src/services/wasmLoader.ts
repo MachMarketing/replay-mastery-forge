@@ -61,7 +61,7 @@ export async function initParserWasm(): Promise<void> {
         return cleanupAndReject(new Error(`Failed to initialize WASM after ${MAX_INIT_ATTEMPTS} attempts`));
       }
       
-      // Try to load the module
+      // Initialize the screp module
       if (!screpModule) {
         try {
           screpModule = Screp.default || Screp;
@@ -141,7 +141,7 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
   }
   
   try {
-    if (!parserInitialized || !screpModule) {
+    if (!screpModule) {
       await initParserWasm();
     }
     
