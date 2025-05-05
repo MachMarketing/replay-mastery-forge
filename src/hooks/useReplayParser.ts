@@ -75,19 +75,21 @@ export function useReplayParser(): ReplayParserResult {
     setError(null);
     setProgress(0);
     
-    // Verbesserte Progress-Animation mit gleichmäßiger Geschwindigkeit und ohne Hänger
+    // Kontinuierlicher Fortschritt mit konstanter Geschwindigkeit
+    // Keine Probleme bei bestimmten Prozentwerten (z.B. 65%)
     let progressUpdateInterval: number | null = null;
     progressUpdateInterval = window.setInterval(() => {
       setProgress(prev => {
-        // Problem bei 65% beheben: gleichmäßiger Fortschritt
-        if (prev >= 95) return prev;
+        // Den Fortschritt kontinuierlich bis 98% erhöhen
+        // Dann übernimmt die eigentliche Fertigstellung
+        if (prev >= 98) return 98;
         
-        // Konstante Geschwindigkeit statt variabler Stufensprünge
-        return Math.min(prev + 1, 95);
+        // Lineare Erhöhung mit gleichmäßiger Geschwindigkeit
+        return Math.min(prev + 0.6, 98);
       });
-    }, 300); // Häufigere Updates für gleichmäßigeres Fortschreiten
+    }, 100);
     
-    // Timeout für die gesamte Verarbeitung 
+    // Timeout für die gesamte Verarbeitung (30 Sekunden)
     let processingTimeout: number | null = null;
     processingTimeout = window.setTimeout(() => {
       if (isProcessing) {
@@ -97,7 +99,7 @@ export function useReplayParser(): ReplayParserResult {
         
         if (progressUpdateInterval) clearInterval(progressUpdateInterval);
         
-        // Abbruch des laufenden Prozesses über die abortLongRunningProcess-Funktion
+        // Abbruch des laufenden Prozesses
         abortLongRunningProcess();
         
         toast({
@@ -106,7 +108,7 @@ export function useReplayParser(): ReplayParserResult {
           variant: 'destructive',
         });
       }
-    }, 30000); // 30 Sekunden Timeout
+    }, 30000);
     
     try {
       // Check file extension
@@ -132,7 +134,7 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error('Die Datei scheint leer oder beschädigt zu sein');
       }
       
-      // Initialize WASM if needed - vereinfacht
+      // Initialize WASM if needed
       if (!wasmReady) {
         try {
           console.log('[useReplayParser] WASM not ready, initializing now...');
@@ -143,7 +145,7 @@ export function useReplayParser(): ReplayParserResult {
         }
       }
       
-      // Parse the file
+      // Parse the file - jetzt mit verbessertem Progress
       console.log('[useReplayParser] WASM ready, calling parseReplayFile with file:', file.name);
       
       const parsedData = await parseReplayFile(file);
