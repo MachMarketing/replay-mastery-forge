@@ -174,7 +174,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         throw new Error('Fehler: Keine Spielernamen gefunden');
       }
       
-      if (!parsedData.playerRace || parsedData.playerRace === 'Unknown') {
+      if (!parsedData.playerRace || parsedData.playerRace === 'Unknown' as any) {
         console.warn('[UploadBox] No valid player race detected:', parsedData.playerRace);
       }
       
