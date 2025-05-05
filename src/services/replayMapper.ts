@@ -5,9 +5,28 @@
 import { standardizeRaceName } from '@/lib/replayUtils';
 import type { ParsedReplayResult } from './replayParserService';
 
+/**
+ * Check if the object is already in ParsedReplayResult format
+ * to avoid mapping twice or handling incorrect nested structures
+ */
+function isAlreadyParsed(obj: any): obj is ParsedReplayResult {
+  return typeof obj === 'object' 
+      && typeof obj.playerName === 'string'
+      && typeof obj.opponentName === 'string'
+      && typeof obj.playerRace === 'string'
+      && typeof obj.matchup === 'string'
+      && typeof obj.eapm === 'number'; // Make sure eapm is present and a number
+}
+
 export function mapRawToParsed(rawData: any): ParsedReplayResult {
   console.log('🔄 [replayMapper] Mapping raw data to application format, keys:', Object.keys(rawData));
 
+  // Guard: if data is already in ParsedReplayResult format, return it directly
+  if (isAlreadyParsed(rawData)) {
+    console.log('🔄 [replayMapper] Data already in parsed format, skipping mapping');
+    return rawData;
+  }
+  
   // Extract player information with better validation
   const players = extractPlayers(rawData);
   const player = players.player;
