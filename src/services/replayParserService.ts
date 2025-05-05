@@ -1,7 +1,6 @@
 
 import { ParsedReplayData } from './replayParser/types';
 import { parseReplayInBrowser } from './browserReplayParser';
-import { mapRawToParsed } from './replayMapper';
 
 export interface ParsedReplayResult {
   playerName: string;
@@ -51,21 +50,17 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
   
   try {
     // Parse using the browser parser
-    const parsedRaw = await parseReplayInBrowser(file);
+    const parsedData = await parseReplayInBrowser(file);
     
-    if (!parsedRaw) {
+    if (!parsedData) {
       throw new Error('Failed to parse replay file');
     }
     
-    console.log('[replayParserService] Raw parsed data:', parsedRaw);
+    console.log('[replayParserService] Raw parsed data:', parsedData);
     
     // No need to map again as browserReplayParser already uses mapRawToParsed
     // Just return the analyzed data
-    const analyzedData: AnalyzedReplayResult = {
-      ...parsedRaw
-    };
-    
-    return analyzedData;
+    return parsedData;
   } catch (error) {
     console.error('[replayParserService] Error parsing replay:', error);
     throw error;

@@ -1,4 +1,3 @@
-
 /**
  * Client-side parser for StarCraft: Brood War replay files
  * 
@@ -38,8 +37,6 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     
     // Prevent multiple simultaneous initializations
     if (!isInitialized && !isInitializing) {
-      isInitializing = true;
-      
       // Bei wiederholten Fehlern WASM zurücksetzen
       const resetWasm = Math.random() > 0.9; // 10% Chance für Reset bei jedem Versuch
       if (resetWasm) {
