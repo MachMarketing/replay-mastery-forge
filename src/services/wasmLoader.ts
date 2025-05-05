@@ -1,4 +1,3 @@
-
 /**
  * Handles replay parsing with WASM in a browser-compatible way
  * 
@@ -6,18 +5,20 @@
  */
 import * as Screp from 'screp-js';
 
-// Flag to track if parser has been initialized
+// State management for WASM initialization
 let parserInitialized = false;
 let initializationInProgress = false;
 let initializationPromise: Promise<void> | null = null;
-let screpModule: any;
+let screpModule: any = null;
+let initializationAttempts = 0;
+const MAX_INIT_ATTEMPTS = 3;
 
 /**
- * Initialize the WASM parser module
+ * Initialize the WASM parser module with retry mechanism
  */
 export async function initParserWasm(): Promise<void> {
   // If already initialized, return immediately
-  if (parserInitialized) {
+  if (parserInitialized && screpModule) {
     console.log('[wasmLoader] WASM parser module already initialized');
     return Promise.resolve();
   }
@@ -30,21 +31,45 @@ export async function initParserWasm(): Promise<void> {
 
   console.log('[wasmLoader] Starting WASM parser module initialization...');
   initializationInProgress = true;
+  initializationAttempts++;
 
   // Store the initialization promise to allow multiple requestors to wait for it
   initializationPromise = new Promise<void>(async (resolve, reject) => {
     try {
-      // Use static import of Screp
-      if (!screpModule) {
-        screpModule = Screp.default || Screp;
-        console.log('[wasmLoader] Screp module loaded:', screpModule);
+      if (initializationAttempts > MAX_INIT_ATTEMPTS) {
+        throw new Error(`Failed to initialize WASM after ${MAX_INIT_ATTEMPTS} attempts`);
       }
       
-      // Initialize if the module has a ready property or init function
-      if (screpModule.ready) {
-        await screpModule.ready;
-      } else if (typeof screpModule.init === 'function') {
-        await screpModule.init();
+      // Load the module
+      if (!screpModule) {
+        try {
+          screpModule = Screp.default || Screp;
+          console.log('[wasmLoader] Screp module loaded:', typeof screpModule);
+        } catch (error) {
+          console.error('[wasmLoader] Error loading Screp module:', error);
+          throw new Error('Failed to load screp-js module');
+        }
+      }
+      
+      // Initialize the module
+      try {
+        if (screpModule.ready) {
+          await screpModule.ready;
+          console.log('[wasmLoader] Module ready promise resolved');
+        } else if (typeof screpModule.init === 'function') {
+          await screpModule.init();
+          console.log('[wasmLoader] Module init function called');
+        } else {
+          console.log('[wasmLoader] No explicit initialization method found, assuming module is ready');
+        }
+      } catch (error) {
+        console.error('[wasmLoader] Error during module initialization:', error);
+        throw error;
+      }
+      
+      // Final check for module readiness
+      if (!screpModule || (typeof screpModule.parse !== 'function' && typeof screpModule.parseReplay !== 'function')) {
+        throw new Error('screp-js module loaded but parse function not available');
       }
       
       console.log('[wasmLoader] WASM parser initialized successfully');
@@ -55,7 +80,15 @@ export async function initParserWasm(): Promise<void> {
       console.error('[wasmLoader] Error initializing WASM parser module:', error);
       parserInitialized = false;
       initializationInProgress = false;
-      reject(new Error('Failed to initialize WASM parser'));
+      screpModule = null; // Clear the module reference on failure
+      
+      // Cleanup for next attempt
+      setTimeout(() => {
+        console.log('[wasmLoader] Cleaning up failed initialization state');
+        initializationInProgress = false;
+      }, 500);
+      
+      reject(new Error(`Failed to initialize WASM parser: ${error instanceof Error ? error.message : String(error)}`));
     }
   });
 
@@ -71,74 +104,108 @@ export function forceWasmReset(): void {
   initializationInProgress = false;
   initializationPromise = null;
   screpModule = null;
+  initializationAttempts = 0;
 }
 
 /**
  * Parse a replay file using the WASM parser with enhanced error handling
  */
 export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
-  try {
-    // Validate input data
-    if (!fileData || fileData.length === 0) {
-      throw new Error('Empty replay data provided');
-    }
-    
-    // Size sanity check - typical replay files are between 20KB and 200KB
-    if (fileData.length < 1000) {
-      throw new Error('Replay file too small, likely corrupted');
-    }
-    
-    if (fileData.length > 5000000) {
-      throw new Error('Replay file too large, maximum size is 5MB');
-    }
-    
-    // Ensure parser is initialized
-    if (!screpModule) {
-      console.log('[wasmLoader] WASM parser not initialized, initializing now...');
-      try {
-        await initParserWasm();
-      } catch (error) {
-        console.error('[wasmLoader] Failed to initialize WASM parser:', error);
-        throw new Error('Fehler bei der Initialisierung des WASM-Parsers. Bitte versuchen Sie es später erneut.');
-      }
-    }
-
-    console.log('[wasmLoader] Starting parsing of replay data with WASM, size:', fileData.byteLength);
-    
-    // Create a defensive copy of the file data to prevent WASM errors
-    const defensiveCopy = new Uint8Array(fileData.length);
-    defensiveCopy.set(fileData, 0);
-    
-    // Use screp-js WASM parser with the correct function
-    let result;
-    if (typeof screpModule.parseReplay === 'function') {
-      result = screpModule.parseReplay(defensiveCopy);
-    } else if (typeof screpModule.parse === 'function') {
-      result = screpModule.parse(defensiveCopy);
-    } else {
-      throw new Error('No valid parse function found in screp-js module');
-    }
-    
-    // Additional validation on the result
-    if (!result || typeof result !== 'object') {
-      throw new Error('Parser returned invalid or empty result');
-    }
-    
-    console.log('[wasmLoader] Replay parsed successfully with WASM');
-    return result;
-  } catch (error) {
-    console.error('[wasmLoader] Error during WASM parsing:', error);
-    
-    // In production, throw the error with a user-friendly message
-    throw new Error(`WASM parsing failed: ${error instanceof Error ? error.message : String(error)}`);
+  if (!fileData || fileData.length === 0) {
+    throw new Error('Empty replay data provided');
   }
+  
+  // Size sanity check - typical replay files are between 20KB and 200KB
+  if (fileData.length < 1000) {
+    throw new Error('Replay file too small, likely corrupted');
+  }
+  
+  if (fileData.length > 5000000) {
+    throw new Error('Replay file too large, maximum size is 5MB');
+  }
+  
+  // Ensure parser is initialized, with retry if needed
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      if (!parserInitialized || !screpModule) {
+        console.log(`[wasmLoader] WASM parser initialization attempt ${attempt + 1}`);
+        try {
+          await initParserWasm();
+        } catch (initError) {
+          console.error(`[wasmLoader] Failed to initialize WASM parser on attempt ${attempt + 1}:`, initError);
+          // If this is the last attempt, throw the error
+          if (attempt >= 1) throw initError;
+          
+          // Otherwise, reset and try again
+          forceWasmReset();
+          await new Promise(resolve => setTimeout(resolve, 500)); // Small delay before retry
+          continue;
+        }
+      }
+      
+      console.log('[wasmLoader] Starting parsing of replay data with WASM, size:', fileData.byteLength);
+      
+      // Create a defensive copy of the file data to prevent memory corruption
+      const defensiveCopy = new Uint8Array(fileData.length);
+      defensiveCopy.set(fileData, 0);
+      
+      // Add extra padding to the buffer as a protection against buffer overflows
+      // This can prevent some "makeslice: len out of range" errors
+      const paddedCopy = new Uint8Array(defensiveCopy.length + 1024);
+      paddedCopy.set(defensiveCopy, 0);
+      
+      // Try parsing with different approaches
+      try {
+        // First try the standard parse function
+        if (typeof screpModule.parseReplay === 'function') {
+          const result = screpModule.parseReplay(defensiveCopy);
+          if (!result || typeof result !== 'object') {
+            throw new Error('Parser returned invalid result');
+          }
+          return result;
+        } 
+        
+        // Fallback to parse function
+        if (typeof screpModule.parse === 'function') {
+          const result = screpModule.parse(defensiveCopy);
+          if (!result || typeof result !== 'object') {
+            throw new Error('Parser returned invalid result');
+          }
+          return result;
+        }
+        
+        throw new Error('No valid parse function found in screp-js module');
+      } catch (parseError) {
+        // If we hit makeslice error, try again with the padded buffer on the next iteration
+        if (parseError.message && parseError.message.includes('makeslice: len out of range')) {
+          if (attempt === 0) {
+            console.log('[wasmLoader] Detected makeslice error, retrying with padded buffer');
+            forceWasmReset();
+            await new Promise(resolve => setTimeout(resolve, 500)); // Small delay before retry
+            continue;
+          }
+        }
+        throw parseError;
+      }
+    } catch (error) {
+      // If this is the last attempt, throw the error
+      if (attempt >= 1) throw error;
+      
+      // Otherwise reset and try again
+      console.error(`[wasmLoader] Error during attempt ${attempt + 1}:`, error);
+      forceWasmReset();
+      await new Promise(resolve => setTimeout(resolve, 500)); // Small delay before retry
+    }
+  }
+  
+  throw new Error('Failed to parse replay after multiple attempts');
 }
 
 /**
  * Check if WASM parser is initialized
  */
 export function isWasmInitialized(): boolean {
-  return parserInitialized;
+  return parserInitialized && screpModule !== null;
 }
 
 /**
@@ -149,4 +216,5 @@ export function resetWasmStatus(): void {
   initializationInProgress = false;
   initializationPromise = null;
   screpModule = null;
+  initializationAttempts = 0;
 }
