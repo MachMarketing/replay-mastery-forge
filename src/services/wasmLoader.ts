@@ -16,6 +16,9 @@ let screpModule: any = null;
 export async function initParserWasm(): Promise<void> {
   if (!screpModule) {
     console.log('[wasmLoader] Initializing WASM parser module');
+    console.log('🔍 Screp module exports:', Object.keys(Screp));
+    console.log('🔍 Screp.default exports:', Object.keys(Screp.default || {}));
+    
     screpModule = Screp.default || Screp;
     
     if (screpModule.ready && typeof screpModule.ready.then === 'function') {
@@ -53,6 +56,7 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
     }
     
     console.log('[wasmLoader] Starting parsing with WASM, size:', data.byteLength);
+    console.log('[wasmLoader] Available methods on screpModule:', Object.keys(screpModule));
     
     // Use whatever parse function is available
     if (typeof screpModule.parseReplay === 'function') {
