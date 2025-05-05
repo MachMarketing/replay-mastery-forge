@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -85,6 +84,7 @@ const UploadPage = () => {
         playerName: parsedReplayData.playerName || 'Spieler',
         opponentName: parsedReplayData.opponentName || 'Gegner',
         buildOrder: Array.isArray(parsedReplayData.buildOrder) ? parsedReplayData.buildOrder : [],
+        matchup: parsedReplayData.matchup || `${parsedReplayData.playerRace.charAt(0)}v${parsedReplayData.opponentRace.charAt(0)}`,
       };
       
       // Set the raw parsed data first
@@ -149,6 +149,8 @@ const UploadPage = () => {
           opponentName: data.playerName || 'Player',
           playerRace: data.opponentRace || 'Terran',
           opponentRace: data.playerRace || 'Terran',
+          // Update matchup to match the swapped perspective
+          matchup: `${(data.opponentRace || 'Terran').charAt(0)}v${(data.playerRace || 'Terran').charAt(0)}`,
           // Invert result
           result: data.result === 'win' ? 'loss' : 'win',
           // Swap strengths and weaknesses for more accurate coaching
@@ -172,6 +174,7 @@ const UploadPage = () => {
         result: data.result || 'win',
         apm: data.apm || 150,
         eapm: data.eapm || 120,
+        matchup: data.matchup || `${(data.playerRace || 'Terran').charAt(0)}v${(data.opponentRace || 'Terran').charAt(0)}`,
         buildOrder: data.buildOrder || [],
         resourcesGraph: data.resourcesGraph || [],
         strengths: data.strengths || ['Defensive Spielweise'],
@@ -186,6 +189,7 @@ const UploadPage = () => {
       playerRace: standardizeRaceName(adjustedData.playerRace || 'Terran'),
       opponentRace: standardizeRaceName(adjustedData.opponentRace || 'Terran'),
       result: normalizeResult(adjustedData.result || 'win'),
+      matchup: adjustedData.matchup || `${(adjustedData.playerRace || 'Terran').charAt(0)}v${(adjustedData.opponentRace || 'Terran').charAt(0)}`,
       // Ensure these arrays exist
       buildOrder: Array.isArray(adjustedData.buildOrder) ? adjustedData.buildOrder : [],
       resourcesGraph: Array.isArray(adjustedData.resourcesGraph) ? adjustedData.resourcesGraph : [],
@@ -199,7 +203,8 @@ const UploadPage = () => {
       opponentRace: normalizedData.opponentRace,
       playerName: normalizedData.playerName,
       opponentName: normalizedData.opponentName,
-      buildOrderItems: normalizedData.buildOrder?.length || 0
+      buildOrderItems: normalizedData.buildOrder?.length || 0,
+      matchup: normalizedData.matchup
     });
     
     // Extend the parsedReplayData with ID for AnalysisResult

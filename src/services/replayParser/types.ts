@@ -17,7 +17,7 @@ export interface ParsedReplayData {
   opponentRace: 'Terran' | 'Protoss' | 'Zerg';
   map: string;
   duration: string;
-  durationMS: number; // Added this field to fix the type error
+  durationMS: number; // This field is required
   date: string;
   result: 'win' | 'loss';
   apm: number;

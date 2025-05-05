@@ -1,4 +1,3 @@
-
 /**
  * Client-side parser for StarCraft: Brood War replay files using JSSUH
  * 
@@ -151,6 +150,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
         opponentRace: fallbackOpponentRace as any,
         map: fallbackMap,
         duration: '5:00',
+        durationMS: 300000, // Adding the required durationMS field 
         date: new Date().toISOString().split('T')[0],
         result: 'win',
         apm: 0,
@@ -164,10 +164,10 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       };
     }
     
-    // Garantiere minimale Ergebnisdaten unabhängig davon, was passiert
+    // Guarantee minimum result data regardless of what happens
     const finalData = ensureMinimalData(mappedData, parsedReplay);
     
-    // Für Testmodus prüfen
+    // Check for test mode
     const isTestMode = process.env.NODE_ENV === 'development' && file.name.toLowerCase().includes('test_mock');
     if (isTestMode) {
       console.warn('📊 [browserReplayParser] Test mode detected, enhancing with test data');
@@ -185,7 +185,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
  * Stellt sicher, dass minimale Daten vorhanden sind, unabhängig von Parsing-Fehlern
  */
 function ensureMinimalData(mappedData: ParsedReplayResult, rawData: any): ParsedReplayResult {
-  // Falls Mapping komplett fehlschlägt, erstelle minimale Daten
+  // If mapping fails completely, create minimal data
   if (!mappedData) {
     const fallbackPlayerName = rawData.players?.[0]?.name || 'Player';
     const fallbackOpponentName = rawData.players?.[1]?.name || 'Opponent';
@@ -200,6 +200,7 @@ function ensureMinimalData(mappedData: ParsedReplayResult, rawData: any): Parsed
       opponentRace: fallbackOpponentRace as any,
       map: fallbackMap,
       duration: '5:00',
+      durationMS: 300000, // Adding the required durationMS field 
       date: new Date().toISOString().split('T')[0],
       result: 'win',
       apm: 0,
@@ -213,7 +214,7 @@ function ensureMinimalData(mappedData: ParsedReplayResult, rawData: any): Parsed
     };
   }
   
-  // Stelle sicher, dass alle erforderlichen Felder existieren
+  // Ensure all required fields exist
   return {
     ...mappedData,
     playerName: mappedData.playerName || 'Player',
@@ -222,6 +223,7 @@ function ensureMinimalData(mappedData: ParsedReplayResult, rawData: any): Parsed
     opponentRace: mappedData.opponentRace || 'Terran' as any,
     map: mappedData.map || 'Unknown Map',
     duration: mappedData.duration || '5:00',
+    durationMS: mappedData.durationMS || 300000, // Ensure durationMS exists
     date: mappedData.date || new Date().toISOString().split('T')[0],
     result: mappedData.result || 'win',
     apm: mappedData.apm || 0,

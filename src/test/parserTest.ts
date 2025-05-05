@@ -1,3 +1,4 @@
+
 import { ParsedReplayResult } from '../services/replayParserService';
 import { parseReplayInBrowser } from '../services/browserReplayParser';
 
@@ -10,6 +11,7 @@ export const sampleReplayData: ParsedReplayResult = {
   map: "Test Map",
   matchup: "TvP",
   duration: "10:45",
+  durationMS: 645000, // Added durationMS field (10:45 = 645000ms)
   date: "2023-01-01",
   result: "win",
   apm: 150,
@@ -72,6 +74,7 @@ export const secondaryTestData: ParsedReplayResult = {
   map: "Another Test Map",
   matchup: "ZvT",
   duration: "15:20",
+  durationMS: 920000, // Added durationMS field (15:20 = 920000ms)
   date: "2023-02-15",
   result: "loss",
   apm: 200,

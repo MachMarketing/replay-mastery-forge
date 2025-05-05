@@ -11,7 +11,7 @@ export interface ParsedReplayResult {
   map: string;
   matchup: string;
   duration: string;
-  durationMS: number; // Added this to fix the TypeScript error
+  durationMS: number; // This field is required
   date: string;
   result: 'win' | 'loss';
   apm: number;
