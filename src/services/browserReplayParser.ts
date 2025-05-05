@@ -200,7 +200,7 @@ function ensureMinimalData(mappedData: ParsedReplayResult, rawData: any): Parsed
       opponentRace: fallbackOpponentRace as any,
       map: fallbackMap,
       duration: '5:00',
-      durationMS: 300000, // Adding the required durationMS field 
+      durationMS: 300000, // Ensure durationMS exists
       date: new Date().toISOString().split('T')[0],
       result: 'win',
       apm: 0,

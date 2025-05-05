@@ -71,10 +71,10 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     const parsed = mapRawToParsed(parsedRaw);
     console.log('[replayParserService] Mapped parsed data:', parsed);
     
-    // Return the analyzed data
+    // Return the analyzed data using the actual parsed data, not empty arrays
     const analyzedData: AnalyzedReplayResult = {
       ...parsed,
-      // Use actual data from parsed result instead of empty arrays
+      // Use actual data from parsed result
       strengths: parsed.strengths || [],
       weaknesses: parsed.weaknesses || [],
       recommendations: parsed.recommendations || []
