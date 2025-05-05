@@ -50,28 +50,55 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     const defensiveData = new Uint8Array(fileData.length);
     defensiveData.set(fileData);
     
-    // Direct call to WASM parser without any validation
-    const rawData = await parseReplayWasm(defensiveData);
-    
-    // Log the raw data structure for debugging
-    console.log('[browserReplayParser] WASM parsing raw result - keys:', Object.keys(rawData));
-    console.log('[browserReplayParser] WASM parsing raw result - sample:', {
-      playerName: rawData.playerName,
-      opponentName: rawData.opponentName,
-      playerRace: rawData.playerRace,
-      opponentRace: rawData.opponentRace,
-      map: rawData.map,
-      matchup: rawData.matchup,
-      apm: rawData.apm,
-      eapm: rawData.eapm
-    });
-    
-    const parsedData = mapRawToParsed(rawData);
-    console.log('[browserReplayParser] WASM parsing successful');
-    return parsedData;
+    try {
+      // Direct call to WASM parser without any validation
+      const rawData = await parseReplayWasm(defensiveData);
+      
+      // Log the raw data structure for debugging
+      console.log('[browserReplayParser] WASM parsing raw result - keys:', Object.keys(rawData));
+      console.log('[browserReplayParser] WASM parsing raw result - sample:', {
+        playerName: rawData.playerName,
+        opponentName: rawData.opponentName,
+        playerRace: rawData.playerRace,
+        opponentRace: rawData.opponentRace,
+        map: rawData.map,
+        matchup: rawData.matchup,
+        apm: rawData.apm,
+        eapm: rawData.eapm
+      });
+      
+      const parsedData = mapRawToParsed(rawData);
+      console.log('[browserReplayParser] WASM parsing successful');
+      return parsedData;
+    } catch (wasmError) {
+      console.error('[browserReplayParser] WASM parser error:', wasmError);
+      
+      // If we get the makeslice error, try forcing a reset of the WASM module
+      if (wasmError.message && wasmError.message.includes('makeslice: len out of range')) {
+        console.log('[browserReplayParser] Detected makeslice error, attempting WASM reset...');
+        forceWasmReset();
+        wasmInitializeAttempted = false;
+        
+        // Retry initialization after reset
+        await initParserWasm();
+        
+        // Retry parsing with a fresh copy of the data
+        const freshCopy = new Uint8Array(fileData.length);
+        freshCopy.set(fileData);
+        
+        // Retry parsing with the fresh copy
+        const retriedData = await parseReplayWasm(freshCopy);
+        const parsedData = mapRawToParsed(retriedData);
+        console.log('[browserReplayParser] WASM parsing successful after reset');
+        return parsedData;
+      }
+      
+      // If not a makeslice error or retry failed, throw the original error
+      throw wasmError;
+    }
   } catch (error) {
     console.error('[browserReplayParser] Error during parsing:', error);
-    // No fallback anymore, just pass the error up
+    // Just pass the error up for handling by the caller
     throw error;
   }
 }
