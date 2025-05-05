@@ -1,4 +1,5 @@
 import { ParsedReplayResult } from '../services/replayParserService';
+import { parseReplayInBrowser } from '../services/browserReplayParser';
 
 // Sample test data with corrected type structure
 export const sampleReplayData: ParsedReplayResult = {
@@ -23,7 +24,11 @@ export const sampleReplayData: ParsedReplayResult = {
   ],
   strengths: ["Macro management", "Build efficiency"],
   weaknesses: ["Scout timing", "Expansion timing"],
-  recommendations: ["Scout earlier", "Focus on constant worker production"]
+  recommendations: ["Scout earlier", "Focus on constant worker production"],
+  trainingPlan: [
+    { day: 1, focus: "Macro", drill: "Constant worker production" },
+    { day: 2, focus: "Micro", drill: "Unit control" }
+  ]
 };
 
 // Test functions for replay parsing
@@ -81,7 +86,11 @@ export const secondaryTestData: ParsedReplayResult = {
   ],
   strengths: ["Early aggression", "Creep spread"],
   weaknesses: ["Late game transitions", "Resource management"],
-  recommendations: ["Practice late-game scenarios", "Improve drone saturation timing"]
+  recommendations: ["Practice late-game scenarios", "Improve drone saturation timing"],
+  trainingPlan: [
+    { day: 1, focus: "Early game", drill: "Drone saturation" },
+    { day: 2, focus: "Mid game", drill: "Expansion timing" }
+  ]
 };
 
 // Test race detection
@@ -144,4 +153,34 @@ export function runAllTests() {
   console.log(`=== TEST SUMMARY: ${passCount} passed, ${failCount} failed ===`);
   
   return failCount === 0;
+}
+
+/**
+ * This function is specifically for testing the browser-based replay parser
+ * It's used by the ParserTestPage component to test parsing functionality
+ * 
+ * @param file The replay file to parse
+ * @returns Parsed replay data
+ */
+export async function runBrowserParserTest(file: File): Promise<ParsedReplayResult> {
+  console.log("Running browser parser test with file:", file.name, file.size, "bytes");
+  
+  try {
+    // Try to parse the replay using the browser parser
+    const result = await parseReplayInBrowser(file);
+    console.log("Parser test completed successfully:", result);
+    return result;
+  } catch (error) {
+    console.error("Parser test failed:", error);
+    
+    // For testing purposes, return sample data if parsing fails
+    console.warn("Returning sample test data due to parsing failure");
+    return {
+      ...sampleReplayData,
+      playerName: "Test User (Fallback)",
+      opponentName: "Test Opponent (Fallback)",
+      map: file.name.replace(".rep", "") || "Test Map",
+      date: new Date().toISOString().split("T")[0]
+    };
+  }
 }
