@@ -3,8 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { ParsedReplayResult } from '@/services/replayParserService';
 import { useToast } from '@/hooks/use-toast';
 import { parseReplayInBrowser } from '@/services/browserReplayParser';
-import { abortActiveProcess } from '@/services/replayParser';
-import { initParserWasm, forceWasmReset } from '@/services/wasmLoader';
+import { hasBrowserWasmIssues } from '@/utils/browserDetection';
 
 interface ReplayParserResult {
   parseReplay: (file: File) => Promise<ParsedReplayResult | null>;
@@ -21,25 +20,15 @@ export function useReplayParser(): ReplayParserResult {
   const { toast } = useToast();
   const progressIntervalRef = useRef<number | null>(null);
   const processingTimeoutRef = useRef<number | null>(null);
-  const [parserInitialized, setParserInitialized] = useState(false);
-
-  // Try to initialize the parser on mount
+  
+  // Check for known WASM issues on mount
   useEffect(() => {
-    if (!parserInitialized) {
-      console.log('[useReplayParser] Pre-initializing parser');
-      // Initialize parser in the background
-      initParserWasm()
-        .then(() => {
-          console.log('[useReplayParser] Parser pre-initialization successful');
-          setParserInitialized(true);
-        })
-        .catch(err => {
-          console.error('[useReplayParser] Parser pre-initialization failed:', err);
-          // This is not critical, we'll try again when needed
-        });
+    // If we already know there are WASM issues, show a warning toast
+    if (hasBrowserWasmIssues()) {
+      console.warn('[useReplayParser] WASM issues detected, using fallback parser');
     }
     
-    // Clean up intervals and timeouts on unmount
+    // Clean up on unmount
     return () => {
       if (progressIntervalRef.current) {
         window.clearInterval(progressIntervalRef.current);
@@ -48,7 +37,7 @@ export function useReplayParser(): ReplayParserResult {
         window.clearTimeout(processingTimeoutRef.current);
       }
     };
-  }, [parserInitialized]);
+  }, []);
 
   const clearError = useCallback(() => {
     setError(null);
@@ -66,32 +55,32 @@ export function useReplayParser(): ReplayParserResult {
       return null;
     }
     
-    console.log('[useReplayParser] Starting to process file:', file.name, 'size:', file.size);
+    console.log('[useReplayParser] Starting to process file:', file.name);
     setIsProcessing(true);
     setError(null);
     setProgress(0);
     
-    // Show continuous progress with steady speed
+    // Show continuous progress
     if (progressIntervalRef.current) {
       window.clearInterval(progressIntervalRef.current);
     }
     
     progressIntervalRef.current = window.setInterval(() => {
       setProgress(prev => {
-        // Increase progress continuously up to 98%
-        if (prev >= 98) return 98;
-        return Math.min(prev + 0.8, 98);
+        // Increase progress continuously up to 95%
+        if (prev >= 95) return 95;
+        return Math.min(prev + 0.6, 95);
       });
     }, 100);
     
-    // Timeout for the entire processing (30 seconds)
+    // Set timeout for the entire processing (20 seconds)
     if (processingTimeoutRef.current) {
       window.clearTimeout(processingTimeoutRef.current);
     }
     
     processingTimeoutRef.current = window.setTimeout(() => {
       if (isProcessing) {
-        console.error('[useReplayParser] Processing timed out after 30 seconds');
+        console.error('[useReplayParser] Processing timed out after 20 seconds');
         setError('Zeitüberschreitung bei der Verarbeitung');
         setIsProcessing(false);
         
@@ -100,43 +89,32 @@ export function useReplayParser(): ReplayParserResult {
           progressIntervalRef.current = null;
         }
         
-        // Abort the running process and reset WASM state
-        abortActiveProcess();
-        forceWasmReset();
-        
         toast({
           title: 'Verarbeitung abgebrochen',
           description: 'Die Verarbeitung hat zu lange gedauert. Bitte versuche es erneut.',
           variant: 'destructive',
         });
       }
-    }, 30000);
+    }, 20000);
     
     try {
-      // Check file extension
+      // Validate file
+      if (!file || file.size === 0) {
+        throw new Error('Ungültige oder leere Datei');
+      }
+      
       const fileExtension = file.name.split('.').pop()?.toLowerCase();
       if (fileExtension !== 'rep') {
         throw new Error('Nur StarCraft Replay Dateien (.rep) sind erlaubt');
       }
       
-      // Verify file is readable
-      if (!file.size) {
-        throw new Error('Die Datei scheint leer oder beschädigt zu sein');
-      }
-      
-      // Now use parseReplayInBrowser directly for a unified approach
+      // Parse using our unified approach
       console.log('[useReplayParser] Calling parseReplayInBrowser with file:', file.name);
       
       const parsedData = await parseReplayInBrowser(file);
       
       if (!parsedData) {
         throw new Error('Parser hat keine Daten zurückgegeben');
-      }
-      
-      // Verify we have essential data
-      if (!parsedData.playerName) {
-        console.error('[useReplayParser] Missing essential data: playerName');
-        throw new Error('Unvollständige Analyse-Daten: playerName fehlt');
       }
       
       // Final progress update
@@ -156,18 +134,18 @@ export function useReplayParser(): ReplayParserResult {
       await new Promise(resolve => setTimeout(resolve, 300));
       
       setIsProcessing(false);
-      console.log('[useReplayParser] Successfully parsed replay file:', parsedData);
+      console.log('[useReplayParser] Successfully parsed replay file');
       
       return parsedData;
     } catch (err) {
       let errorMessage = err instanceof Error ? err.message : 'Fehler beim Parsen der Replay-Datei';
       
       // Special handling for WASM memory errors
-      if (errorMessage.includes('makeslice: len out of range') || 
-          errorMessage.includes('runtime error')) {
-        errorMessage = 'Fehler bei der Verarbeitung der Replay-Datei (Speicherproblem). Bitte versuche es mit einer anderen Datei.';
-        // Force WASM reset after memory errors
-        forceWasmReset();
+      if (typeof errorMessage === 'string' && (
+          errorMessage.includes('makeslice') || 
+          errorMessage.includes('runtime error') ||
+          errorMessage.includes('out of bounds'))) {
+        errorMessage = 'Browser-Kompatibilitätsproblem beim Parsen. Versuche es mit einem anderen Browser oder einer anderen Replay-Datei.';
       }
       
       setError(errorMessage);

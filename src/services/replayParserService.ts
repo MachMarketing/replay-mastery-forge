@@ -1,6 +1,7 @@
 
 import { ParsedReplayData } from './replayParser/types';
 import { parseReplayInBrowser } from './browserReplayParser';
+import { markBrowserAsHavingWasmIssues } from '@/utils/browserDetection';
 
 export interface ParsedReplayResult {
   playerName: string;
@@ -30,9 +31,6 @@ export interface AnalyzedReplayResult extends ParsedReplayResult {
 // Track active parsing process for potential abort
 let activeParsingAbortController: AbortController | null = null;
 
-// Flag to track major parsing failures to avoid repeated attempts
-let hadMajorParsingFailure = false;
-
 /**
  * Aborts any active parsing process
  */
@@ -49,13 +47,7 @@ export function abortActiveProcess(): void {
  */
 export async function initParser(): Promise<void> {
   console.log('[replayParserService] Initializing parser');
-  try {
-    // browserReplayParser initializes itself when needed
-    console.log('[replayParserService] Parser initialized successfully');
-  } catch (error) {
-    console.error('[replayParserService] Failed to initialize parser:', error);
-    throw new Error('Failed to initialize parser');
-  }
+  // Nothing to initialize, as browserReplayParser handles this internally
 }
 
 /**
@@ -112,18 +104,12 @@ function validateReplayFile(file: File): boolean {
 
 /**
  * Parse a replay file and return the parsed data
- * Uses the WASM-based parser via parseReplayInBrowser
+ * Now uses our unified browser parsing approach
  */
 export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult> {
-  console.log('[replayParserService] Starting to parse replay file using WASM parser');
+  console.log('[replayParserService] Starting to parse replay file');
   
   try {
-    // If we've had major parsing failures before, use fallback immediately
-    if (hadMajorParsingFailure) {
-      console.warn('[replayParserService] Using fallback due to previous major parsing failures');
-      return createEmergencyFallbackData(file);
-    }
-    
     // Additional validation before parsing
     if (!validateReplayFile(file)) {
       throw new Error('Ungültige oder fehlerhafte Datei');
@@ -145,7 +131,7 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
       });
     });
     
-    // Parse using the browser WASM parser with timeout
+    // Parse using our unified browser parsing approach
     const parsePromise = parseReplayInBrowser(file);
     
     let result: AnalyzedReplayResult;
@@ -158,14 +144,13 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
       const errorMessage = error instanceof Error ? error.message : String(error);
       
       if (errorMessage.includes('makeslice') || 
-          errorMessage.includes('len out of range') ||
           errorMessage.includes('runtime error')) {
-        console.warn('[replayParserService] Critical WASM error detected, using fallback');
-        hadMajorParsingFailure = true; // Mark as having major failures
+        console.warn('[replayParserService] WASM error detected, marking browser as having issues');
+        markBrowserAsHavingWasmIssues();
         return createEmergencyFallbackData(file);
       }
       
-      throw error; // Re-throw other types of errors
+      throw error;
     } finally {
       activeParsingAbortController = null;
     }
@@ -181,12 +166,11 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     console.error('[replayParserService] Error:', error);
     const errorMessage = error instanceof Error ? error.message : String(error);
     
-    // For specific WASM errors, mark as having major failures
-    if (errorMessage.includes('len out of range') || 
-        errorMessage.includes('makeslice') ||
+    // For specific WASM errors, mark as having issues
+    if (errorMessage.includes('makeslice') || 
         errorMessage.includes('runtime error')) {
-      console.warn('[replayParserService] WASM error detected, using fallback');
-      hadMajorParsingFailure = true;
+      console.warn('[replayParserService] WASM error detected, marking browser as having issues');
+      markBrowserAsHavingWasmIssues();
       
       // Return minimal fallback data
       return createEmergencyFallbackData(file);
