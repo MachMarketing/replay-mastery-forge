@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { parseReplayFile, AnalyzedReplayResult } from '@/services/replayParserService';
 import { useToast } from '@/hooks/use-toast';
-import { initParserWasm, isWasmInitialized, forceWasmReset } from '@/services/wasmLoader';
 import { abortLongRunningProcess } from '@/services/replayParser';
 
 interface ReplayParserResult {
@@ -15,45 +15,22 @@ interface ReplayParserResult {
 export function useReplayParser(): ReplayParserResult {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [wasmReady, setWasmReady] = useState(isWasmInitialized());
   const [progress, setProgress] = useState(0);
   const { toast } = useToast();
+  const progressIntervalRef = useRef<number | null>(null);
+  const processingTimeoutRef = useRef<number | null>(null);
 
-  // Pre-initialize WASM on hook mount
+  // Clean up intervals and timeouts on unmount
   useEffect(() => {
-    console.log('[useReplayParser] Pre-initializing WASM module');
-    
-    let isMounted = true;
-    
-    const initWasm = async () => {
-      try {
-        // Force reset WASM status to ensure clean initialization
-        forceWasmReset();
-        await initParserWasm();
-        if (isMounted) {
-          console.log('[useReplayParser] WASM pre-initialized successfully');
-          setWasmReady(true);
-        }
-      } catch (err) {
-        if (isMounted) {
-          console.warn('[useReplayParser] Failed to pre-initialize WASM:', err);
-          setWasmReady(false);
-          // We'll retry later when needed
-        }
+    return () => {
+      if (progressIntervalRef.current) {
+        window.clearInterval(progressIntervalRef.current);
+      }
+      if (processingTimeoutRef.current) {
+        window.clearTimeout(processingTimeoutRef.current);
       }
     };
-    
-    // Only attempt to initialize if not already initialized
-    if (!isWasmInitialized()) {
-      initWasm();
-    } else {
-      setWasmReady(true);
-    }
-      
-    return () => {
-      isMounted = false;
-    };
-  }, []); 
+  }, []);
 
   const clearError = useCallback(() => {
     setError(null);
@@ -76,31 +53,36 @@ export function useReplayParser(): ReplayParserResult {
     setError(null);
     setProgress(0);
     
-    // Kontinuierlicher Fortschritt mit konstanter Geschwindigkeit
-    // Keine Probleme bei bestimmten Prozentwerten (z.B. 65%)
-    let progressUpdateInterval: number | null = null;
-    progressUpdateInterval = window.setInterval(() => {
+    // Show continuous progress with steady speed
+    if (progressIntervalRef.current) {
+      window.clearInterval(progressIntervalRef.current);
+    }
+    
+    progressIntervalRef.current = window.setInterval(() => {
       setProgress(prev => {
-        // Den Fortschritt kontinuierlich bis 98% erhöhen
-        // Dann übernimmt die eigentliche Fertigstellung
+        // Increase progress continuously up to 98%
         if (prev >= 98) return 98;
-        
-        // Lineare Erhöhung mit gleichmäßiger Geschwindigkeit
-        return Math.min(prev + 0.8, 98); // Speed up progress a bit
+        return Math.min(prev + 0.8, 98);
       });
     }, 100);
     
-    // Timeout für die gesamte Verarbeitung (30 Sekunden)
-    let processingTimeout: number | null = null;
-    processingTimeout = window.setTimeout(() => {
+    // Timeout for the entire processing (30 seconds)
+    if (processingTimeoutRef.current) {
+      window.clearTimeout(processingTimeoutRef.current);
+    }
+    
+    processingTimeoutRef.current = window.setTimeout(() => {
       if (isProcessing) {
         console.error('[useReplayParser] Processing timed out after 30 seconds');
         setError('Zeitüberschreitung bei der Verarbeitung');
         setIsProcessing(false);
         
-        if (progressUpdateInterval) clearInterval(progressUpdateInterval);
+        if (progressIntervalRef.current) {
+          window.clearInterval(progressIntervalRef.current);
+          progressIntervalRef.current = null;
+        }
         
-        // Abbruch des laufenden Prozesses
+        // Abort the running process
         abortLongRunningProcess();
         
         toast({
@@ -115,19 +97,7 @@ export function useReplayParser(): ReplayParserResult {
       // Check file extension
       const fileExtension = file.name.split('.').pop()?.toLowerCase();
       if (fileExtension !== 'rep') {
-        const extensionError = 'Nur StarCraft Replay Dateien (.rep) sind erlaubt';
-        setError(extensionError);
-        
-        toast({
-          title: 'Ungültige Datei',
-          description: extensionError,
-          variant: 'destructive',
-        });
-        
-        if (processingTimeout) clearTimeout(processingTimeout);
-        if (progressUpdateInterval) clearInterval(progressUpdateInterval);
-        setIsProcessing(false);
-        return null;
+        throw new Error('Nur StarCraft Replay Dateien (.rep) sind erlaubt');
       }
       
       // Verify file is readable
@@ -135,22 +105,8 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error('Die Datei scheint leer oder beschädigt zu sein');
       }
       
-      // Reset WASM status to ensure a clean start
-      forceWasmReset();
-      
-      // Initialize WASM if needed
-      if (!wasmReady) {
-        try {
-          console.log('[useReplayParser] WASM not ready, initializing now...');
-          await initParserWasm();
-          setWasmReady(true);
-        } catch (wasmError) {
-          throw new Error(`WASM-Initialisierung fehlgeschlagen: ${wasmError instanceof Error ? wasmError.message : 'Unbekannter Fehler'}`);
-        }
-      }
-      
-      // Parse the file - jetzt mit verbessertem Progress
-      console.log('[useReplayParser] WASM ready, calling parseReplayFile with file:', file.name);
+      // Parse the file
+      console.log('[useReplayParser] Calling parseReplayFile with file:', file.name);
       
       const parsedData = await parseReplayFile(file);
       
@@ -175,10 +131,17 @@ export function useReplayParser(): ReplayParserResult {
       // Final progress update
       setProgress(100);
       
-      if (processingTimeout) clearTimeout(processingTimeout);
-      if (progressUpdateInterval) clearInterval(progressUpdateInterval);
+      // Clean up timeouts and intervals
+      if (processingTimeoutRef.current) {
+        window.clearTimeout(processingTimeoutRef.current);
+        processingTimeoutRef.current = null;
+      }
+      if (progressIntervalRef.current) {
+        window.clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
       
-      // Kurze Verzögerung vor dem Abschluss für UX
+      // Short delay before completing for UX
       await new Promise(resolve => setTimeout(resolve, 300));
       
       setIsProcessing(false);
@@ -197,13 +160,20 @@ export function useReplayParser(): ReplayParserResult {
         variant: 'destructive',
       });
       
-      return null;
-    } finally {
-      if (processingTimeout) clearTimeout(processingTimeout);
-      if (progressUpdateInterval) clearInterval(progressUpdateInterval);
+      // Clean up timeouts and intervals
+      if (processingTimeoutRef.current) {
+        window.clearTimeout(processingTimeoutRef.current);
+        processingTimeoutRef.current = null;
+      }
+      if (progressIntervalRef.current) {
+        window.clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+      
       setIsProcessing(false);
+      return null;
     }
-  }, [isProcessing, wasmReady, toast]);
+  }, [isProcessing, toast]);
 
   return {
     parseReplay,

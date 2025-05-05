@@ -62,6 +62,9 @@ func handleParseReplay(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
+	// Log the incoming request
+	log.Printf("Received file: %s, size: %d bytes", handler.Filename, handler.Size)
+
 	// Create a temporary file
 	tempFile, err := os.CreateTemp("", "replay-*.rep")
 	if err != nil {
@@ -82,8 +85,10 @@ func handleParseReplay(w http.ResponseWriter, r *http.Request) {
 	tempFile.Close() // Close to ensure all data is written
 
 	// Parse the replay using SCREP
+	log.Printf("Parsing replay: %s", tempFile.Name())
 	r, err := repparser.ParseFile(tempFile.Name())
 	if err != nil {
+		log.Printf("Error parsing replay: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: fmt.Sprintf("Failed to parse replay: %v", err)})
 		return
@@ -93,8 +98,10 @@ func handleParseReplay(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	
 	// Encode the replay data to JSON and send it back
+	log.Printf("Successfully parsed replay, returning data")
 	err = json.NewEncoder(w).Encode(r)
 	if err != nil {
+		log.Printf("Error encoding response: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to encode response"})
 	}
@@ -104,8 +111,17 @@ func main() {
 	// Get port from environment or use default
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8000" // Changed default port to 8000 to match Vite config
+		port = "8000" // Default port
 	}
+
+	// Register route handlers
+	http.Handle("/parse", enableCors(http.HandlerFunc(handleParseReplay)))
+	
+	// Add health check endpoint
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
 
 	fmt.Printf("SCREP parsing service starting on port %s...\n", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))

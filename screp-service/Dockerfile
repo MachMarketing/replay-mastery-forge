@@ -4,14 +4,24 @@ FROM golang:1.19-alpine as builder
 WORKDIR /app
 COPY . .
 
+# Install dependencies and build
 RUN go mod download
 RUN go build -o screp-server .
 
+# Create production image
 FROM alpine:latest
+
+# Install necessary runtime dependencies
+RUN apk add --no-cache ca-certificates
 
 WORKDIR /app
 COPY --from=builder /app/screp-server .
 
-EXPOSE 8080
+# Set proper permissions
+RUN chmod +x /app/screp-server
 
-CMD ["./screp-server"]
+# Expose the port the server listens on
+EXPOSE 8000
+
+# Command to run the server
+CMD ["/app/screp-server"]
