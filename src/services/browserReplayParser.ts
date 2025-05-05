@@ -103,7 +103,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     }
     
     if (!parsedReplay) {
-      console.error('❌ [browserReplayParser] Parser returned null or empty result');
+      console.error('��� [browserReplayParser] Parser returned null or empty result');
       throw new Error('Parser gab kein Ergebnis zurück');
     }
     
@@ -150,7 +150,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
         opponentRace: fallbackOpponentRace as any,
         map: fallbackMap,
         duration: '5:00',
-        durationMS: 300000, // Adding the required durationMS field 
+        durationMS: 300000, // Ensure durationMS exists
         date: new Date().toISOString().split('T')[0],
         result: 'win',
         apm: 0,
