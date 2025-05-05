@@ -1,4 +1,3 @@
-
 /**
  * Maps raw parser output to our application's format
  */
@@ -15,7 +14,7 @@ function isAlreadyParsed(obj: any): obj is ParsedReplayResult {
       && typeof obj.opponentName === 'string'
       && typeof obj.playerRace === 'string'
       && typeof obj.matchup === 'string'
-      && typeof obj.eapm === 'number'; // Make sure eapm is present and a number
+      && typeof obj.apm === 'number';
 }
 
 export function mapRawToParsed(rawData: any): ParsedReplayResult {
@@ -23,7 +22,7 @@ export function mapRawToParsed(rawData: any): ParsedReplayResult {
 
   // Guard: if data is already in ParsedReplayResult format, return it directly
   if (isAlreadyParsed(rawData)) {
-    console.log('🔄 [replayMapper] Data already in parsed format, skipping mapping');
+    console.log('🛑 [replayMapper] Data already parsed; skipping mapping');
     return rawData;
   }
   
