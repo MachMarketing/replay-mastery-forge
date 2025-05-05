@@ -1,10 +1,9 @@
-
 /**
  * This module provides browser-safe parsing for StarCraft: Brood War replay files.
  * It's designed to work without backend services or WebAssembly.
  */
 
-import { extractReplayHeaderInfo, extractPlayerInfo } from './utils';
+import { extractReplayHeaderInfo, extractPlayerInfo, mapRace } from './utils';
 import { ParsedReplayData } from './types';
 import { transformJSSUHData } from './transformer';
 
@@ -146,14 +145,18 @@ function extractInfoFromReplayHeader(fileData: Uint8Array): ParsedReplayData {
     const seconds = Math.floor((durationMs % 60000) / 1000);
     const durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
     
+    // Map race codes to full race names using the mapRace utility
+    const playerRace = mapRace(playerInfo.playerRace);
+    const opponentRace = mapRace(playerInfo.opponentRace);
+    
     // Guess matchup from detected races
-    const matchup = `${playerInfo.playerRace[0]}v${playerInfo.opponentRace[0]}`;
+    const matchup = `${playerRace[0]}v${opponentRace[0]}`;
     
     return {
       playerName: playerInfo.playerName,
       opponentName: playerInfo.opponentName,
-      playerRace: playerInfo.playerRace,
-      opponentRace: playerInfo.opponentRace,
+      playerRace: playerRace,
+      opponentRace: opponentRace,
       map: header.mapName,
       matchup: matchup,
       duration: durationStr,
