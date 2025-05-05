@@ -8,12 +8,14 @@
 import { initParserWasm, parseReplayWasm, isWasmInitialized, forceWasmReset } from './wasmLoader';
 import { mapRawToParsed } from './replayMapper';
 import { ParsedReplayResult } from './replayParserService';
+import { parseReplayWithBrowserSafeParser } from './replayParser/browserSafeParser';
 
 // Flags to track parser state
 let wasmInitializeAttempted = false;
 let wasmInitializeFailed = false;
 let lastErrorTime = 0;
 let consecutiveErrorCount = 0;
+let hasUsedFallbackParser = false;
 
 /**
  * Main function for parsing replay files
@@ -57,6 +59,19 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     console.log('[browserReplayParser] File data loaded, size:', fileData.length, 'bytes');
     console.log('[browserReplayParser] First 20 bytes:', Array.from(fileData.slice(0, 20)));
     
+    // If we've had too many consecutive errors with WASM, try the fallback parser first
+    if (consecutiveErrorCount >= 2 || hasUsedFallbackParser) {
+      console.log('[browserReplayParser] Using browser-safe parser due to previous errors');
+      try {
+        const parsedData = await parseReplayWithBrowserSafeParser(fileData);
+        console.log('[browserReplayParser] Successfully parsed with browser-safe parser');
+        return parsedData;
+      } catch (fallbackError) {
+        console.error('[browserReplayParser] Browser-safe parser failed:', fallbackError);
+        // Continue to WASM parser as a last resort
+      }
+    }
+    
     // Initialize WASM parser if needed
     if (!wasmInitializeAttempted || wasmInitializeFailed) {
       wasmInitializeAttempted = true;
@@ -72,7 +87,18 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       } catch (error) {
         console.error('[browserReplayParser] WASM initialization error:', error);
         wasmInitializeFailed = true;
-        throw new Error('WASM parser initialization failed: ' + (error instanceof Error ? error.message : String(error)));
+        
+        // If WASM init fails, immediately try browser-safe parser
+        console.log('[browserReplayParser] Falling back to browser-safe parser after WASM init failure');
+        try {
+          const parsedData = await parseReplayWithBrowserSafeParser(fileData);
+          console.log('[browserReplayParser] Successfully parsed with browser-safe parser');
+          hasUsedFallbackParser = true;
+          return parsedData;
+        } catch (fallbackError) {
+          console.error('[browserReplayParser] Browser-safe parser also failed:', fallbackError);
+          throw new Error('All parsing methods failed: ' + (error instanceof Error ? error.message : String(error)));
+        }
       }
     }
     
@@ -89,8 +115,15 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       defensiveData.set(fileData);
       
       try {
+        // Add extra padding to the buffer as a protection against buffer overflows
+        const paddedData = new Uint8Array(defensiveData.length + 2048);
+        paddedData.set(defensiveData);
+        
+        // Use the defensive copy that will be processed by WASM
+        const dataToUse = attempts === 2 ? paddedData : defensiveData;
+        
         // Call WASM parser
-        const rawData = await parseReplayWasm(defensiveData);
+        const rawData = await parseReplayWasm(dataToUse);
         
         // Log the raw data structure for debugging
         console.log('[browserReplayParser] WASM parsing raw result - keys:', Object.keys(rawData));
@@ -100,9 +133,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
           playerRace: rawData.playerRace,
           opponentRace: rawData.opponentRace,
           map: rawData.map,
-          matchup: rawData.matchup,
-          apm: rawData.apm,
-          eapm: rawData.eapm
+          matchup: rawData.matchup
         });
         
         // Success - map and return the data
@@ -111,13 +142,17 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
         
         // Reset error tracking on success
         consecutiveErrorCount = 0;
+        hasUsedFallbackParser = false;
         return parsedData;
       } catch (wasmError) {
         console.error(`[browserReplayParser] WASM parser error on attempt ${attempts}:`, wasmError);
         
         // Special handling for makeslice errors
-        if (wasmError.message && wasmError.message.includes('makeslice: len out of range')) {
-          console.log('[browserReplayParser] Detected makeslice error, resetting WASM');
+        if (wasmError.message && (
+           wasmError.message.includes('makeslice: len out of range') || 
+           wasmError.message.includes('runtime error')
+        )) {
+          console.log('[browserReplayParser] Detected WASM memory error, resetting WASM');
           
           // Force reset between attempts
           forceWasmReset();
@@ -132,6 +167,20 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
             // Continue to next attempt even with initialization failure
           }
           
+          // If this is the last WASM attempt, try the browser-safe parser
+          if (attempts >= maxAttempts - 1) {
+            console.log('[browserReplayParser] WASM parsing failed repeatedly, trying browser-safe parser');
+            try {
+              const parsedData = await parseReplayWithBrowserSafeParser(fileData);
+              console.log('[browserReplayParser] Successfully parsed with browser-safe parser');
+              hasUsedFallbackParser = true;
+              return parsedData;
+            } catch (fallbackError) {
+              console.error('[browserReplayParser] Browser-safe parser also failed:', fallbackError);
+              // Continue with the error flow
+            }
+          }
+          
           // Continue to next attempt
           continue;
         }
@@ -144,19 +193,30 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
           continue;
         }
         
-        // If all attempts failed, track the error and throw
-        lastErrorTime = Date.now();
-        consecutiveErrorCount++;
-        
-        // If we've had too many errors in a row, force a complete reset
-        if (consecutiveErrorCount >= 3) {
-          console.log('[browserReplayParser] Multiple consecutive errors, forcing complete reset');
-          forceWasmReset();
-          wasmInitializeAttempted = false;
-          wasmInitializeFailed = false;
+        // If all attempts failed, try the browser-safe parser as a last resort
+        console.log('[browserReplayParser] All WASM parsing attempts failed, trying browser-safe parser');
+        try {
+          const parsedData = await parseReplayWithBrowserSafeParser(fileData);
+          console.log('[browserReplayParser] Successfully parsed with browser-safe parser');
+          hasUsedFallbackParser = true;
+          return parsedData;
+        } catch (fallbackError) {
+          console.error('[browserReplayParser] Browser-safe parser also failed:', fallbackError);
+          
+          // If everything failed, track the error and throw
+          lastErrorTime = Date.now();
+          consecutiveErrorCount++;
+          
+          // If we've had too many errors in a row, force a complete reset
+          if (consecutiveErrorCount >= 3) {
+            console.log('[browserReplayParser] Multiple consecutive errors, forcing complete reset');
+            forceWasmReset();
+            wasmInitializeAttempted = false;
+            wasmInitializeFailed = false;
+          }
+          
+          throw wasmError;
         }
-        
-        throw wasmError;
       }
     }
     

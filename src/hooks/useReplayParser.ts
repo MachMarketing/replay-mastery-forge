@@ -4,6 +4,7 @@ import { ParsedReplayResult } from '@/services/replayParserService';
 import { useToast } from '@/hooks/use-toast';
 import { parseReplayInBrowser } from '@/services/browserReplayParser';
 import { abortActiveProcess } from '@/services/replayParser';
+import { initParserWasm, forceWasmReset } from '@/services/wasmLoader';
 
 interface ReplayParserResult {
   parseReplay: (file: File) => Promise<ParsedReplayResult | null>;
@@ -20,9 +21,25 @@ export function useReplayParser(): ReplayParserResult {
   const { toast } = useToast();
   const progressIntervalRef = useRef<number | null>(null);
   const processingTimeoutRef = useRef<number | null>(null);
+  const [parserInitialized, setParserInitialized] = useState(false);
 
-  // Clean up intervals and timeouts on unmount
+  // Try to initialize the parser on mount
   useEffect(() => {
+    if (!parserInitialized) {
+      console.log('[useReplayParser] Pre-initializing parser');
+      // Initialize parser in the background
+      initParserWasm()
+        .then(() => {
+          console.log('[useReplayParser] Parser pre-initialization successful');
+          setParserInitialized(true);
+        })
+        .catch(err => {
+          console.error('[useReplayParser] Parser pre-initialization failed:', err);
+          // This is not critical, we'll try again when needed
+        });
+    }
+    
+    // Clean up intervals and timeouts on unmount
     return () => {
       if (progressIntervalRef.current) {
         window.clearInterval(progressIntervalRef.current);
@@ -31,7 +48,7 @@ export function useReplayParser(): ReplayParserResult {
         window.clearTimeout(processingTimeoutRef.current);
       }
     };
-  }, []);
+  }, [parserInitialized]);
 
   const clearError = useCallback(() => {
     setError(null);
@@ -83,8 +100,9 @@ export function useReplayParser(): ReplayParserResult {
           progressIntervalRef.current = null;
         }
         
-        // Abort the running process
+        // Abort the running process and reset WASM state
         abortActiveProcess();
+        forceWasmReset();
         
         toast({
           title: 'Verarbeitung abgebrochen',
@@ -142,7 +160,16 @@ export function useReplayParser(): ReplayParserResult {
       
       return parsedData;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Fehler beim Parsen der Replay-Datei';
+      let errorMessage = err instanceof Error ? err.message : 'Fehler beim Parsen der Replay-Datei';
+      
+      // Special handling for WASM memory errors
+      if (errorMessage.includes('makeslice: len out of range') || 
+          errorMessage.includes('runtime error')) {
+        errorMessage = 'Fehler bei der Verarbeitung der Replay-Datei (Speicherproblem). Bitte versuche es mit einer anderen Datei.';
+        // Force WASM reset after memory errors
+        forceWasmReset();
+      }
+      
       setError(errorMessage);
       
       console.error('[useReplayParser] Replay parsing error:', err);
