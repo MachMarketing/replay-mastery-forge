@@ -1,6 +1,7 @@
 
 import { ParsedReplayData } from './replayParser/types';
 import { parseReplayWasm, initParserWasm } from './wasmLoader';
+import { mapRawToParsed } from './replayMapper';
 
 export interface ParsedReplayResult {
   playerName: string;
@@ -47,6 +48,9 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
   console.log('[replayParserService] Starting to parse replay file');
   
   try {
+    // Ensure parser is initialized
+    await initParserWasm();
+    
     // Ensure we have the file as ArrayBuffer
     const fileBuffer = await file.arrayBuffer();
     const fileData = new Uint8Array(fileBuffer);
@@ -54,22 +58,25 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     console.log('[replayParserService] File loaded as ArrayBuffer, size:', fileData.byteLength);
     
     // Parse the replay using our WASM parser
-    const parsedData = await parseReplayWasm(fileData);
+    const parsedRaw = await parseReplayWasm(fileData);
     
-    if (!parsedData) {
+    if (!parsedRaw) {
       throw new Error('Failed to parse replay file');
     }
     
-    console.log('[replayParserService] Parsed data:', parsedData);
+    console.log('[replayParserService] Raw parsed data:', parsedRaw);
     
-    // Add dummy analysis data (this would be replaced with real analysis)
+    // Transform the raw data using our mapper function
+    const parsed = mapRawToParsed(parsedRaw);
+    console.log('[replayParserService] Mapped parsed data:', parsed);
+    
+    // Return the analyzed data
     const analyzedData: AnalyzedReplayResult = {
-      ...parsedData,
-      // Default empty arrays if not present
-      strengths: parsedData.strengths || [],
-      weaknesses: parsedData.weaknesses || [],
-      recommendations: parsedData.recommendations || [],
-      buildOrder: parsedData.buildOrder || []
+      ...parsed,
+      // Use actual data from parsed result instead of empty arrays
+      strengths: parsed.strengths || [],
+      weaknesses: parsed.weaknesses || [],
+      recommendations: parsed.recommendations || []
     };
     
     return analyzedData;
