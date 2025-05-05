@@ -1,5 +1,3 @@
-
-
 import { ParsedReplayData } from './types';
 import { standardizeRaceName, formatPlayerName, debugLogReplayData } from '@/lib/replayUtils';
 
@@ -79,7 +77,6 @@ export function transformJSSUHData(jssuhData: any): ParsedReplayData {
       eapm: Math.floor((apm || 150) * 0.85), // Estimated EAPM
       matchup,
       buildOrder,
-      actionList: [],
       resourcesGraph: [],
       strengths: ['Effektive Einheitenkontrolle', 'Gutes Makromanagement'],
       weaknesses: ['Könnte Scouting verbessern', 'Build Order Optimierung'],
@@ -108,7 +105,6 @@ export function transformJSSUHData(jssuhData: any): ParsedReplayData {
       apm: 150,
       eapm: 120,
       buildOrder: [],
-      actionList: [],
       resourcesGraph: [],
       strengths: ['Effektive Einheitenkontrolle', 'Gutes Makromanagement'],
       weaknesses: ['Könnte Scouting verbessern', 'Build Order Optimierung'],
@@ -206,4 +202,3 @@ function extractBuildOrder(actions: any[]): { time: string; supply: number; acti
     };
   });
 }
-

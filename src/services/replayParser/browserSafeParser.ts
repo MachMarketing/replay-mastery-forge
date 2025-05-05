@@ -323,8 +323,8 @@ export async function parseReplayWithBrowserSafeParser(fileData: Uint8Array): Pr
   } catch (error) {
     console.error('[browserSafeParser] Error during browser-safe parsing:', error);
     
-    // Create fallback data in case of error
-    const fallbackData = {
+    // Create fallback data in case of error - now including all required fields
+    const fallbackData: ParsedReplayData = {
       playerName: 'Player',
       opponentName: 'Opponent',
       playerRace: 'Terran',
@@ -338,10 +338,13 @@ export async function parseReplayWithBrowserSafeParser(fileData: Uint8Array): Pr
       apm: 150,
       eapm: 120,
       buildOrder: [],
-      actionList: [],
-      resourcesGraph: []
+      resourcesGraph: [],
+      // Add these required fields that were missing
+      strengths: ['Effektive Einheitenkontrolle', 'Gutes Makromanagement'],
+      weaknesses: ['Könnte Scouting verbessern', 'Build Order Optimierung'],
+      recommendations: ['Fokussiere auf Map-Kontrolle', 'Optimiere frühe Wirtschaft']
     };
     
-    return fallbackData as ParsedReplayData;
+    return fallbackData;
   }
 }
