@@ -1,6 +1,7 @@
 
 import { ParsedReplayResult } from '../services/replayParserService';
 import { parseReplayInBrowser } from '../services/browserReplayParser';
+import { mapRawToParsed } from '../services/replayMapper';
 
 // Sample test data with corrected type structure
 export const sampleReplayData: ParsedReplayResult = {
@@ -161,6 +162,7 @@ export function runAllTests() {
 /**
  * This function is specifically for testing the browser-based replay parser
  * It's used by the ParserTestPage component to test parsing functionality
+ * It now uses the unified parseReplayInBrowser function
  * 
  * @param file The replay file to parse
  * @returns Parsed replay data
@@ -169,7 +171,7 @@ export async function runBrowserParserTest(file: File): Promise<ParsedReplayResu
   console.log("Running browser parser test with file:", file.name, file.size, "bytes");
   
   try {
-    // Try to parse the replay using the browser parser
+    // Use the unified parseReplayInBrowser function
     const result = await parseReplayInBrowser(file);
     console.log("Parser test completed successfully:", result);
     return result;

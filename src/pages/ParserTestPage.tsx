@@ -6,16 +6,19 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { runBrowserParserTest } from '@/test/parserTest';
+import { runE2EParserTest } from '@/test/e2eParserTest';
 import { Badge } from '@/components/ui/badge';
 import { createMockFileFromUint8Array } from '@/services/fileReader';
-import { Loader2, CheckCircle, AlertCircle, FileUp } from 'lucide-react';
+import { Loader2, CheckCircle, AlertCircle, FileUp, RefreshCcw } from 'lucide-react';
 
 const ParserTestPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [testResults, setTestResults] = useState<any | null>(null);
+  const [e2eResults, setE2eResults] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  const [isE2eTestRunning, setIsE2eTestRunning] = useState(false);
 
   // Create mock test data to test the parser without a real file
   const createMockReplayData = () => {
@@ -59,6 +62,7 @@ const ParserTestPage = () => {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {
       setSelectedFile(event.target.files[0]);
+      setE2eResults(null); // Reset E2E results when file changes
     }
   };
   
@@ -69,7 +73,7 @@ const ParserTestPage = () => {
     setLogs([]);
     
     try {
-      console.log(`Running JSSUH browser-based parser test with file: ${file.name} (${file.size} bytes)`);
+      console.log(`Running unified browser parser test with file: ${file.name} (${file.size} bytes)`);
       const results = await runBrowserParserTest(file);
       setTestResults(results);
       console.log('Test completed successfully!');
@@ -90,6 +94,38 @@ const ParserTestPage = () => {
       runTest(mockFile);
     }
   };
+  
+  // Add E2E test function
+  const handleRunE2ETest = async () => {
+    if (!selectedFile) {
+      console.error('No file selected for E2E test');
+      return;
+    }
+    
+    setIsE2eTestRunning(true);
+    setE2eResults(null);
+    
+    try {
+      console.log('Running E2E parser flow comparison test...');
+      const results = await runE2EParserTest(selectedFile);
+      setE2eResults(results);
+      console.log('E2E test results:', results);
+      
+      if (results.success) {
+        console.log('✅ E2E test successful - parser flows produce identical results');
+      } else {
+        console.error('❌ E2E test failed - parser flows produce different results:', results.differences);
+      }
+    } catch (err) {
+      console.error('E2E test error:', err);
+      setE2eResults({
+        success: false,
+        message: `Test fehgeschlagen: ${err instanceof Error ? err.message : String(err)}`
+      });
+    } finally {
+      setIsE2eTestRunning(false);
+    }
+  };
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -98,7 +134,7 @@ const ParserTestPage = () => {
       <main className="flex-1 py-16 mt-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center mb-6">
-            <h1 className="text-3xl font-bold">JSSUH Parser Test Page</h1>
+            <h1 className="text-3xl font-bold">Unified Parser Test Page</h1>
           </div>
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -106,7 +142,7 @@ const ParserTestPage = () => {
               <CardHeader>
                 <CardTitle>Replay Parser Test</CardTitle>
                 <CardDescription>
-                  Test the JSSUH StarCraft replay parser directly in your browser
+                  Test the unified StarCraft replay parser directly in your browser
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -130,27 +166,82 @@ const ParserTestPage = () => {
                     </Badge>
                   </div>
                   
-                  <Button 
-                    onClick={handleRunTest}
-                    disabled={isLoading}
-                    className="w-full"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <FileUp className="mr-2 h-4 w-4" />
-                        Run Parser Test
-                      </>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button 
+                      onClick={handleRunTest}
+                      disabled={isLoading}
+                      className="flex-1"
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <FileUp className="mr-2 h-4 w-4" />
+                          Run Parser Test
+                        </>
+                      )}
+                    </Button>
+                    
+                    {selectedFile && testResults && (
+                      <Button 
+                        onClick={handleRunE2ETest}
+                        disabled={isE2eTestRunning || !selectedFile}
+                        variant="outline"
+                        className="flex-1"
+                      >
+                        {isE2eTestRunning ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Running E2E Test...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCcw className="mr-2 h-4 w-4" />
+                            Run E2E Parser Flow Test
+                          </>
+                        )}
+                      </Button>
                     )}
-                  </Button>
+                  </div>
+                  
+                  {/* E2E Test Results */}
+                  {e2eResults && (
+                    <div className={`mt-4 p-3 rounded-md border ${e2eResults.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                      <div className="flex items-start">
+                        {e2eResults.success ? (
+                          <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 mr-2" />
+                        ) : (
+                          <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 mr-2" />
+                        )}
+                        <div>
+                          <p className={`text-sm font-medium ${e2eResults.success ? 'text-green-700' : 'text-red-700'}`}>
+                            {e2eResults.message}
+                          </p>
+                          
+                          {e2eResults.differences && Object.keys(e2eResults.differences).length > 0 && (
+                            <details className="mt-2">
+                              <summary className="text-xs font-medium cursor-pointer">
+                                Unterschiede anzeigen
+                              </summary>
+                              <div className="mt-2 text-xs bg-black/5 p-2 rounded overflow-auto max-h-40">
+                                <pre>
+                                  {JSON.stringify(e2eResults.differences, null, 2)}
+                                </pre>
+                              </div>
+                            </details>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
             
+            {/* Test Results card */}
             <Card>
               <CardHeader>
                 <CardTitle>Parser Status</CardTitle>

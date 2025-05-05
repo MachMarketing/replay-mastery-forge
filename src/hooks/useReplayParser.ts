@@ -1,11 +1,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { parseReplayFile, AnalyzedReplayResult } from '@/services/replayParserService';
+import { ParsedReplayResult } from '@/services/replayParserService';
 import { useToast } from '@/hooks/use-toast';
+import { parseReplayInBrowser } from '@/services/browserReplayParser';
 import { abortActiveProcess } from '@/services/replayParser';
 
 interface ReplayParserResult {
-  parseReplay: (file: File) => Promise<AnalyzedReplayResult | null>;
+  parseReplay: (file: File) => Promise<ParsedReplayResult | null>;
   isProcessing: boolean;
   error: string | null;
   clearError: () => void;
@@ -37,7 +38,7 @@ export function useReplayParser(): ReplayParserResult {
     setProgress(0);
   }, []);
 
-  const parseReplay = useCallback(async (file: File): Promise<AnalyzedReplayResult | null> => {
+  const parseReplay = useCallback(async (file: File): Promise<ParsedReplayResult | null> => {
     if (isProcessing) {
       console.log('[useReplayParser] Already processing a file, aborting');
       toast({
@@ -105,10 +106,10 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error('Die Datei scheint leer oder beschädigt zu sein');
       }
       
-      // Parse the file with real parsing, not mock data
-      console.log('[useReplayParser] Calling parseReplayFile with file:', file.name);
+      // Now use parseReplayInBrowser directly for a unified approach
+      console.log('[useReplayParser] Calling parseReplayInBrowser with file:', file.name);
       
-      const parsedData = await parseReplayFile(file);
+      const parsedData = await parseReplayInBrowser(file);
       
       if (!parsedData) {
         throw new Error('Parser hat keine Daten zurückgegeben');

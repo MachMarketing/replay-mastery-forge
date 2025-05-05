@@ -1,6 +1,6 @@
 
 import { ParsedReplayData } from './replayParser/types';
-import { parseReplayWasm, initParserWasm } from './wasmLoader';
+import { parseReplayInBrowser } from './browserReplayParser';
 import { mapRawToParsed } from './replayMapper';
 
 export interface ParsedReplayResult {
@@ -34,7 +34,7 @@ export interface AnalyzedReplayResult extends ParsedReplayResult {
 export async function initParser(): Promise<void> {
   console.log('[replayParserService] Initializing parser');
   try {
-    await initParserWasm();
+    // browserReplayParser initializes itself when needed
     console.log('[replayParserService] Parser initialized successfully');
   } catch (error) {
     console.error('[replayParserService] Failed to initialize parser:', error);
@@ -44,23 +44,14 @@ export async function initParser(): Promise<void> {
 
 /**
  * Parse a replay file and return the parsed data
- * IMPORTANT: This function must use mapRawToParsed to match browserReplayParser behavior
+ * Now uses parseReplayInBrowser consistently across the application
  */
 export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult> {
-  console.log('[replayParserService] Starting to parse replay file');
+  console.log('[replayParserService] Starting to parse replay file using unified browser parser');
   
   try {
-    // Ensure parser is initialized
-    await initParserWasm();
-    
-    // Ensure we have the file as ArrayBuffer
-    const fileBuffer = await file.arrayBuffer();
-    const fileData = new Uint8Array(fileBuffer);
-    
-    console.log('[replayParserService] File loaded as ArrayBuffer, size:', fileData.byteLength);
-    
-    // Parse the replay using our WASM parser
-    const parsedRaw = await parseReplayWasm(fileData);
+    // Parse using the browser parser
+    const parsedRaw = await parseReplayInBrowser(file);
     
     if (!parsedRaw) {
       throw new Error('Failed to parse replay file');
@@ -68,18 +59,10 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     
     console.log('[replayParserService] Raw parsed data:', parsedRaw);
     
-    // CRITICAL: Transform the raw data using our mapper function to match browser parser
-    const parsed = mapRawToParsed(parsedRaw);
-    console.log('[replayParserService] Mapped parsed data:', parsed);
-    
-    // Return the analyzed data using the actual parsed data from the mapper
-    // WITHOUT any mock/dummy data
+    // No need to map again as browserReplayParser already uses mapRawToParsed
+    // Just return the analyzed data
     const analyzedData: AnalyzedReplayResult = {
-      ...parsed,
-      // Use actual data from parsed result, no mock data
-      strengths: parsed.strengths || [],
-      weaknesses: parsed.weaknesses || [],
-      recommendations: parsed.recommendations || []
+      ...parsedRaw
     };
     
     return analyzedData;

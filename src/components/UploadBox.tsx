@@ -122,12 +122,13 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     setFile(file);
     setErrorDetails(null);
     setUploadStatus('parsing');
-    setStatusMessage('Verbinde mit SCREP-Parser...');
+    setStatusMessage('Verbinde mit Browser-Parser...');
     resetProgress();
     clearTimeouts();
     
     try {
-      console.log('[UploadBox] Starting parsing with SCREP API:', file.name);
+      console.log('[UploadBox] Starting parsing with unified browser parser:', file.name);
+      // Use the useReplayParser hook which now uses our unified approach
       const parsedData = await parseReplay(file);
       
       if (!parsedData) {
@@ -135,7 +136,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       }
       
       // Log parsed data for debugging
-      console.log('[UploadBox] Raw parsed data:', parsedData);
+      console.log('[UploadBox] Parsed data from unified parser:', parsedData);
       
       // Validate that the returned data contains required fields
       if (!parsedData.playerName) {
@@ -235,13 +236,13 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     return null;
   };
 
-  // Update the parser status indicator
+  // Update the parser status indicator to show it's using the unified parser
   const renderParserStatus = () => {
     return (
       <div className="mt-4 flex items-center">
         <div className="h-2 w-2 rounded-full mr-2 bg-green-500 animate-pulse" />
         <p className="text-xs text-muted-foreground">
-          SCREP-Parser bereit
+          Unified Parser bereit
         </p>
       </div>
     );

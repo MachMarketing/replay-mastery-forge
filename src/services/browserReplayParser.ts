@@ -9,6 +9,11 @@ import { initParserWasm, parseReplayWasm, forceWasmReset } from './wasmLoader';
 import { mapRawToParsed } from './replayMapper';
 import { ParsedReplayResult } from './replayParserService';
 import { readFileAsUint8Array } from './fileReader';
+import { initBrowserSafeParser, parseReplayWithBrowserSafeParser } from './replayParser/browserSafeParser';
+
+// Flag to track if we're already initializing
+let isInitializing = false;
+let isInitialized = false;
 
 /**
  * Parse a StarCraft: Brood War replay file in the browser using WASM
@@ -26,26 +31,42 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       throw new Error('Datei ist leer oder ungültig');
     }
     
-    // Bei wiederholten Fehlern WASM zurücksetzen
-    const resetWasm = Math.random() > 0.9; // 10% Chance für Reset bei jedem Versuch
-    if (resetWasm) {
-      console.log('📊 [browserReplayParser] Performing preventative WASM reset');
-      forceWasmReset();
-    }
-    
-    // Ensure WASM is initialized with proper error handling
-    try {
-      console.log('📊 [browserReplayParser] Initializing WASM...');
-      const wasmInitPromise = initParserWasm();
-      const wasmTimeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('WASM-Initialisierung dauerte zu lange')), 10000);
-      });
+    // Prevent multiple simultaneous initializations
+    if (!isInitialized && !isInitializing) {
+      isInitializing = true;
       
-      await Promise.race([wasmInitPromise, wasmTimeoutPromise]);
-      console.log('📊 [browserReplayParser] WASM initialized successfully');
-    } catch (wasmError) {
-      console.error('❌ [browserReplayParser] WASM initialization failed:', wasmError);
-      throw new Error('Parser-Initialisierung fehlgeschlagen. Bitte versuchen Sie es erneut oder laden Sie die Seite neu.');
+      // Bei wiederholten Fehlern WASM zurücksetzen
+      const resetWasm = Math.random() > 0.9; // 10% Chance für Reset bei jedem Versuch
+      if (resetWasm) {
+        console.log('📊 [browserReplayParser] Performing preventative WASM reset');
+        forceWasmReset();
+      }
+      
+      // Ensure all parsers are initialized with proper error handling
+      try {
+        console.log('📊 [browserReplayParser] Initializing WASM and browser-safe parsers...');
+        
+        // Initialize both parsers in parallel
+        const wasmInitPromise = initParserWasm();
+        const browserSafeInitPromise = initBrowserSafeParser();
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Parser-Initialisierung dauerte zu lange')), 10000);
+        });
+        
+        await Promise.race([
+          Promise.all([wasmInitPromise, browserSafeInitPromise]), 
+          timeoutPromise
+        ]);
+        
+        isInitialized = true;
+        console.log('📊 [browserReplayParser] All parsers initialized successfully');
+      } catch (wasmError) {
+        console.error('❌ [browserReplayParser] Parser initialization failed:', wasmError);
+        isInitialized = false; // Force re-initialization on next attempt
+        throw new Error('Parser-Initialisierung fehlgeschlagen. Bitte versuchen Sie es erneut oder laden Sie die Seite neu.');
+      } finally {
+        isInitializing = false;
+      }
     }
     
     // Read file data with a timeout
@@ -70,27 +91,53 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     
     console.log('📊 [browserReplayParser] File read successfully, size:', fileData.byteLength);
     
-    // Parse the replay with WASM parser and a timeout
-    console.log('📊 [browserReplayParser] Parsing replay with WASM parser...');
+    // Try primary WASM parser first
     let parsedReplay;
+    let parsingSuccessful = false;
     
     try {
+      console.log('📊 [browserReplayParser] Trying primary WASM parser first...');
       // Use Promise.race to enforce a timeout
       const parsePromise = parseReplayWasm(fileData);
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Parsing hat das Zeitlimit überschritten')), 20000);
+        setTimeout(() => reject(new Error('WASM-Parsing hat das Zeitlimit überschritten')), 15000);
       });
       
       parsedReplay = await Promise.race([parsePromise, timeoutPromise]);
-      console.log('📊 [browserReplayParser] WASM parser returned data:', parsedReplay);
       
-      // Verify we have player data
-      if (!parsedReplay.players || !Array.isArray(parsedReplay.players) || parsedReplay.players.length === 0) {
-        throw new Error('Keine Spielerdaten im Replay gefunden');
+      // Verify basic data structure
+      if (parsedReplay && (parsedReplay.players || parsedReplay.header?.players)) {
+        console.log('📊 [browserReplayParser] Primary WASM parser successful');
+        parsingSuccessful = true;
+      } else {
+        console.warn('📊 [browserReplayParser] Primary parser returned incomplete data, trying fallback...');
+        parsingSuccessful = false;
       }
-    } catch (parseError) {
-      console.error('❌ [browserReplayParser] WASM parser error:', parseError);
-      throw new Error(`Parser-Fehler: ${parseError instanceof Error ? parseError.message : 'Unbekannter Fehler'}`);
+    } catch (primaryError) {
+      console.warn('📊 [browserReplayParser] Primary parser failed, using fallback parser:', primaryError);
+      parsingSuccessful = false;
+    }
+    
+    // If primary parser failed, try the browser-safe parser
+    if (!parsingSuccessful) {
+      try {
+        console.log('📊 [browserReplayParser] Using fallback browser-safe parser...');
+        const fallbackPromise = parseReplayWithBrowserSafeParser(fileData);
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Fallback-Parsing hat das Zeitlimit überschritten')), 10000);
+        });
+        
+        parsedReplay = await Promise.race([fallbackPromise, timeoutPromise]);
+        console.log('📊 [browserReplayParser] Fallback parser returned data:', parsedReplay);
+        
+        // Verify we have player data
+        if (!parsedReplay || (!parsedReplay.playerName && !parsedReplay.players)) {
+          throw new Error('Keine Spielerdaten im Replay gefunden');
+        }
+      } catch (fallbackError) {
+        console.error('❌ [browserReplayParser] All parsers failed:', fallbackError);
+        throw new Error(`Parser-Fehler: ${fallbackError instanceof Error ? fallbackError.message : 'Unbekannter Fehler'}`);
+      }
     }
     
     if (!parsedReplay) {
@@ -100,8 +147,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     
     console.log('📊 [browserReplayParser] Raw parser output:', parsedReplay);
     
-    // Map the raw parser output to our application's format ALWAYS using mapRawToParsed
-    // NEVER use mock data
+    // ALWAYS map the raw parser output to our application's format using mapRawToParsed
     let mappedData;
     try {
       mappedData = mapRawToParsed(parsedReplay);
