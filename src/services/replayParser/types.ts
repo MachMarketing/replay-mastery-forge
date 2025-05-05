@@ -22,3 +22,17 @@ export interface ParsedReplayData {
   weaknesses?: string[];
   recommendations?: string[];
 }
+
+/**
+ * Type for replay analysis results
+ */
+export interface ReplayAnalysis {
+  strengths: string[];
+  weaknesses: string[];
+  recommendations: string[];
+  trainingPlan?: {
+    day: number;
+    focus: string;
+    drill: string;
+  }[];
+}
