@@ -13,6 +13,7 @@ import NotFound from '@/pages/NotFound';
 import ParserTestPage from '@/pages/ParserTestPage';
 import ParserTest from '@/pages/ParserTest';
 import { AuthProvider } from './context/AuthContext';
+import { Toaster } from '@/components/ui/toaster';
 import './App.css';
 
 function LoadingFallback() {
@@ -53,6 +54,7 @@ function App() {
           </Routes>
         </Suspense>
       </BrowserRouter>
+      <Toaster />
     </AuthProvider>
   );
 }
