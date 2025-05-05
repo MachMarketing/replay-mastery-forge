@@ -1,8 +1,7 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { parseReplayFile, AnalyzedReplayResult } from '@/services/replayParserService';
 import { useToast } from '@/hooks/use-toast';
-import { initParserWasm, isWasmInitialized } from '@/services/wasmLoader';
+import { initParserWasm, isWasmInitialized, forceWasmReset } from '@/services/wasmLoader';
 import { abortLongRunningProcess } from '@/services/replayParser';
 
 interface ReplayParserResult {
@@ -28,6 +27,8 @@ export function useReplayParser(): ReplayParserResult {
     
     const initWasm = async () => {
       try {
+        // Force reset WASM status to ensure clean initialization
+        forceWasmReset();
         await initParserWasm();
         if (isMounted) {
           console.log('[useReplayParser] WASM pre-initialized successfully');
@@ -85,7 +86,7 @@ export function useReplayParser(): ReplayParserResult {
         if (prev >= 98) return 98;
         
         // Lineare Erhöhung mit gleichmäßiger Geschwindigkeit
-        return Math.min(prev + 0.6, 98);
+        return Math.min(prev + 0.8, 98); // Speed up progress a bit
       });
     }, 100);
     
@@ -133,6 +134,9 @@ export function useReplayParser(): ReplayParserResult {
       if (!file.size) {
         throw new Error('Die Datei scheint leer oder beschädigt zu sein');
       }
+      
+      // Reset WASM status to ensure a clean start
+      forceWasmReset();
       
       // Initialize WASM if needed
       if (!wasmReady) {

@@ -32,8 +32,14 @@ export function abortLongRunningProcess(): void {
     console.log('No active process to abort');
   }
   
-  // Reinigen globaler Status
-  console.log('Resetting global parser state');
+  // Import wasmLoader dynamically to avoid circular dependencies
+  import('../wasmLoader').then(wasmLoader => {
+    // Reset WASM status to ensure clean state for next parse
+    console.log('Resetting WASM initialization state');
+    wasmLoader.forceWasmReset();
+  }).catch(err => {
+    console.error('Failed to reset WASM state during abort:', err);
+  });
 }
 
 // Funktion zum Erstellen eines neuen Prozesses
