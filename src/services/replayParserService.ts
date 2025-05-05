@@ -43,13 +43,13 @@ export async function initParser(): Promise<void> {
 
 /**
  * Parse a replay file and return the parsed data
- * Now uses parseReplayInBrowser consistently across the application
+ * Uses the WASM-based parser via parseReplayInBrowser
  */
 export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult> {
-  console.log('[replayParserService] Starting to parse replay file using unified browser parser');
+  console.log('[replayParserService] Starting to parse replay file using WASM parser');
   
   try {
-    // Parse using the browser parser
+    // Parse using the browser WASM parser
     const parsedData = await parseReplayInBrowser(file);
     
     if (!parsedData) {
@@ -58,8 +58,7 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     
     console.log('[replayParserService] Raw parsed data:', parsedData);
     
-    // No need to map again as browserReplayParser already uses mapRawToParsed
-    // Just return the analyzed data
+    // Return the analyzed data directly
     return parsedData;
   } catch (error) {
     console.error('[replayParserService] Error parsing replay:', error);

@@ -21,7 +21,7 @@ export async function runE2EParserTest(file: File): Promise<{
   console.log("Running E2E parser test comparing upload and debug flows");
   
   try {
-    // Parse using the browser parser (debug flow)
+    // Parse using the browser parser directly (debug flow)
     console.log("Parsing with debug flow (browserReplayParser)...");
     const debugResult = await parseReplayInBrowser(file);
     
