@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
@@ -15,7 +16,7 @@ interface UploadBoxProps {
 const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 10 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [uploadStatus, setUploadStatus<'idle' | 'uploading' | 'parsing' | 'success' | 'error'>('idle');
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'parsing' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState('');
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const progressIntervalRef = useRef<number | null>(null);
@@ -342,6 +343,6 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       )}
     </div>
   );
-}
+};
 
 export default UploadBox;
