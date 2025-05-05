@@ -1,6 +1,9 @@
 
 /**
- * Client-side parser for StarCraft: Brood War replay files
+ * Client-side parser for StarCraft: Brood War replay files using JSSUH
+ * 
+ * This implementation uses the JSSUH (JavaScript StarCraft: Brood War Unit Handling) library
+ * for client-side parsing of .rep files directly in the browser.
  */
 import { initParserWasm, parseReplayWasm, forceWasmReset } from './wasmLoader';
 import { mapRawToParsed } from './replayMapper';

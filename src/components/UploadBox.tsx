@@ -272,7 +272,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
           <div className="mt-4 flex items-center">
             <div className="h-2 w-2 rounded-full mr-2 bg-green-500 animate-pulse" />
             <p className="text-xs text-muted-foreground">
-              Browser-Parser bereit
+              JSSUH-Parser bereit
             </p>
           </div>
         </div>

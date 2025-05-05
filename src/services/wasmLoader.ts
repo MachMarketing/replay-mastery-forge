@@ -1,6 +1,9 @@
 
 /**
- * Handles WASM module loading and initialization for replay parsing
+ * Handles WASM module loading and initialization for JSSUH replay parsing
+ * 
+ * This module initializes and manages the JSSUH (JavaScript StarCraft: Brood War Unit Handling) 
+ * WASM module for parsing StarCraft replay files in the browser.
  */
 import jssuh from 'jssuh';
 

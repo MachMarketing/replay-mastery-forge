@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -70,7 +69,7 @@ const ParserTestPage = () => {
     setLogs([]);
     
     try {
-      console.log(`Running parser test with file: ${file.name} (${file.size} bytes)`);
+      console.log(`Running JSSUH browser-based parser test with file: ${file.name} (${file.size} bytes)`);
       const results = await runBrowserParserTest(file);
       setTestResults(results);
       console.log('Test completed successfully!');
@@ -99,7 +98,7 @@ const ParserTestPage = () => {
       <main className="flex-1 py-16 mt-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center mb-6">
-            <h1 className="text-3xl font-bold">Parser Test Page</h1>
+            <h1 className="text-3xl font-bold">JSSUH Parser Test Page</h1>
           </div>
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -107,7 +106,7 @@ const ParserTestPage = () => {
               <CardHeader>
                 <CardTitle>Replay Parser Test</CardTitle>
                 <CardDescription>
-                  Test the StarCraft replay parser directly in your browser
+                  Test the JSSUH StarCraft replay parser directly in your browser
                 </CardDescription>
               </CardHeader>
               <CardContent>

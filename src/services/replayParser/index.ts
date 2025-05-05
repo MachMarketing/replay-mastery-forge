@@ -7,17 +7,17 @@ import type { ParsedReplayResult } from '../replayParserService';
 export { analyzeReplayData, transformJSSUHData };
 export type { ParsedReplayData, ReplayAnalysis, ParsedReplayResult };
 
-// Export default URL for backwards compatibility
-export const DEFAULT_SCREP_API_URL = 'https://api.replayanalyzer.com/parse';
+// The real parsing is now done with JSSUH library via browserReplayParser.ts
+// This file mainly serves as a coordinator for aborting long-running processes
 
-// Globale Variable zum Verfolgen von aktiven Prozessen
+// Global variable to track active processes
 let activeProcess: AbortController | null = null;
 
 // Export helper to support ending processes that get stuck
 export function abortLongRunningProcess(): void {
-  console.log('Aborting long running process');
+  console.log('Aborting long running JSSUH parsing process');
   
-  // Wenn ein aktiver Prozess existiert, diesen abbrechen
+  // If an active process exists, abort it
   if (activeProcess) {
     console.log('Active process found, aborting');
     try {
@@ -35,16 +35,16 @@ export function abortLongRunningProcess(): void {
   // Import wasmLoader dynamically to avoid circular dependencies
   import('../wasmLoader').then(wasmLoader => {
     // Reset WASM status to ensure clean state for next parse
-    console.log('Resetting WASM initialization state');
+    console.log('Resetting WASM initialization state for JSSUH parser');
     wasmLoader.forceWasmReset();
   }).catch(err => {
     console.error('Failed to reset WASM state during abort:', err);
   });
 }
 
-// Funktion zum Erstellen eines neuen Prozesses
+// Function to create a new process controller
 export function createProcessController(): AbortController {
-  // Alten Prozess abbrechen, falls einer existiert
+  // Cancel old process if one exists
   if (activeProcess) {
     console.log('Canceling previous process before starting new one');
     try {
@@ -54,8 +54,8 @@ export function createProcessController(): AbortController {
     }
   }
   
-  // Neuen Controller erstellen und speichern
-  console.log('Creating new process controller');
+  // Create and store new controller
+  console.log('Creating new process controller for JSSUH parser');
   activeProcess = new AbortController();
   return activeProcess;
 }
