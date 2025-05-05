@@ -1,4 +1,3 @@
-
 /**
  * Maps raw parser data to our application's format
  */
@@ -12,7 +11,38 @@ export function mapRawToParsed(rawData: any): ParsedReplayResult {
     throw new Error('Invalid parser data');
   }
   
+  console.log('🔄 mapRawToParsed keys:', Object.keys(rawData));
+  
   try {
+    // Flat SCREP-WASM output?
+    if (
+      typeof rawData.playerName === 'string' &&
+      typeof rawData.opponentName === 'string' &&
+      typeof rawData.playerRace === 'string'
+    ) {
+      return {
+        playerName: rawData.playerName,
+        opponentName: rawData.opponentName,
+        playerRace: standardizeRaceName(rawData.playerRace),
+        opponentRace: standardizeRaceName(rawData.opponentRace),
+        map: rawData.map,
+        matchup: rawData.matchup || `${rawData.playerRace[0]}v${rawData.opponentRace[0]}`,
+        duration: rawData.duration || '0:00',
+        durationMS: rawData.durationMS || 0,
+        date: rawData.date,
+        result: rawData.result || 'win',
+        apm: rawData.apm || 0,
+        eapm: rawData.eapm ?? rawData.apm,
+        buildOrder: rawData.buildOrder || [],
+        resourcesGraph: rawData.resourcesGraph || [],
+        strengths: rawData.strengths || ['Solid macro gameplay'],
+        weaknesses: rawData.weaknesses || ['Could improve build order efficiency'],
+        recommendations: rawData.recommendations || ['Focus on early game scouting'],
+        trainingPlan: rawData.trainingPlan
+      };
+    }
+    
+    // Legacy format handling (keeping the original implementation)
     // Extract basic info
     const playerName = rawData.playerName || 'Player';
     const opponentName = rawData.opponentName || 'Opponent';

@@ -45,6 +45,7 @@ export default defineConfig(({ mode }) => {
       }
     },
     optimizeDeps: {
+      include: ['buffer', 'screp-js'],
       esbuildOptions: {
         // Node.js global to browser globalThis
         define: {
