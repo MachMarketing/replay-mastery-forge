@@ -1,3 +1,4 @@
+
 import React, { useEffect } from 'react';
 import { Loader2, Upload } from 'lucide-react';
 import { AnalyzedReplayResult } from '@/services/replayParserService';
@@ -78,6 +79,9 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     
     if (rawParsedData) {
       console.log('💡 AnalysisDisplay - RawParsedData available with keys:', Object.keys(rawParsedData));
+      
+      // Log detailed content of rawParsedData for better debugging
+      console.log('💡 AnalysisDisplay - RawParsedData content:', JSON.stringify(rawParsedData).substring(0, 500) + '...');
       
       // Log race information from raw data with more detail
       console.log('💡 AnalysisDisplay - Raw player data:', {
@@ -169,21 +173,27 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     if (!displayData && rawParsedData) {
       console.log('💡 AnalysisDisplay - Using rawParsedData as fallback');
       
-      // Ensure all required fields have values with fallbacks
-      displayData = {
-        ...rawParsedData,
-        id: crypto.randomUUID(), // Add required id field if using rawParsedData
-        playerName: rawParsedData.playerName || 'Spieler',
-        opponentName: rawParsedData.opponentName || 'Gegner',
-        playerRace: standardizeRaceName(rawParsedData.playerRace),
-        opponentRace: standardizeRaceName(rawParsedData.opponentRace),
-        map: rawParsedData.map || 'Unbekannte Karte',
-        strengths: rawParsedData.strengths || ['Gute mechanische Fähigkeiten'],
-        weaknesses: rawParsedData.weaknesses || ['Könnte Scouting verbessern'],
-        recommendations: rawParsedData.recommendations || ['Übe Build-Order Timings'],
-        buildOrder: rawParsedData.buildOrder || [],
-        trainingPlan: [] // Empty array as fallback
-      };
+      // Create a structured deep copy to avoid reference issues
+      try {
+        // Ensure all required fields have values with fallbacks
+        displayData = {
+          ...JSON.parse(JSON.stringify(rawParsedData)),
+          id: crypto.randomUUID(), // Add required id field if using rawParsedData
+          playerName: rawParsedData.playerName || 'Spieler',
+          opponentName: rawParsedData.opponentName || 'Gegner',
+          playerRace: standardizeRaceName(rawParsedData.playerRace || 'Terran'),
+          opponentRace: standardizeRaceName(rawParsedData.opponentRace || 'Terran'),
+          map: rawParsedData.map || 'Unbekannte Karte',
+          strengths: rawParsedData.strengths || ['Gute mechanische Fähigkeiten'],
+          weaknesses: rawParsedData.weaknesses || ['Könnte Scouting verbessern'],
+          recommendations: rawParsedData.recommendations || ['Übe Build-Order Timings'],
+          buildOrder: Array.isArray(rawParsedData.buildOrder) ? [...rawParsedData.buildOrder] : [],
+          trainingPlan: [] // Empty array as fallback
+        };
+      } catch (error) {
+        console.error('💡 AnalysisDisplay - Error creating displayData:', error);
+      }
+      
       console.log('💡 AnalysisDisplay - Created displayData from rawParsedData:', displayData);
     }
     
@@ -191,17 +201,20 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     if (displayData) {
       // Ensure race information is properly normalized before displaying
       // Use our improved standardizeRaceName function for consistent results
-      const normalizedPlayerRace = standardizeRaceName(displayData.playerRace);
-      const normalizedOpponentRace = standardizeRaceName(displayData.opponentRace);
+      const normalizedPlayerRace = standardizeRaceName(displayData.playerRace || 'Terran');
+      const normalizedOpponentRace = standardizeRaceName(displayData.opponentRace || 'Terran');
       
       // Ensure player names are present
       const playerName = displayData.playerName || 'Spieler';
       const opponentName = displayData.opponentName || 'Gegner';
       
+      // Ensure buildOrder is always an array
+      const buildOrder = Array.isArray(displayData.buildOrder) ? displayData.buildOrder : [];
+      
       console.log('💡 AnalysisDisplay - Final display data:', {
         player: `${playerName} (${normalizedPlayerRace})`,
         opponent: `${opponentName} (${normalizedOpponentRace})`,
-        buildOrderItems: Array.isArray(displayData.buildOrder) ? displayData.buildOrder.length : 'None'
+        buildOrderItems: buildOrder.length
       });
       
       return (
@@ -223,11 +236,13 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
               opponentName,
               playerRace: normalizedPlayerRace,
               opponentRace: normalizedOpponentRace,
-              buildOrder: Array.isArray(displayData.buildOrder) ? displayData.buildOrder : []
+              buildOrder
             }} isPremium={isPremium} />
           </div>
         </>
       );
+    } else {
+      console.error('💡 AnalysisDisplay - No valid display data available despite analysisComplete=true');
     }
   }
   

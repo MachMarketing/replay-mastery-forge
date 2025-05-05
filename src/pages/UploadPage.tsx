@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -58,7 +59,7 @@ const UploadPage = () => {
     });
   }, [isAnalyzing, analysisComplete, rawParsedData, replayData]);
   
-  // Handler for when upload is complete
+  // Handler for when upload is complete - now with improved data handling
   const handleUploadComplete = async (uploadedFile: File, parsedReplayData: AnalyzedReplayResult) => {
     console.log("🚀 Upload complete with data:", parsedReplayData);
     
@@ -73,26 +74,34 @@ const UploadPage = () => {
     
     // First set state variables
     setFile(uploadedFile);
-    
-    // Make sure race information is properly standardized before setting state
-    const standardizedData = {
-      ...parsedReplayData,
-      playerRace: standardizeRaceName(parsedReplayData.playerRace),
-      opponentRace: standardizeRaceName(parsedReplayData.opponentRace),
-    };
-    
-    // Log race information after standardization
-    console.log("🚀 Upload - Race information after standardization:", {
-      playerRace: standardizedData.playerRace,
-      opponentRace: standardizedData.opponentRace
-    });
-    
-    setRawParsedData(standardizedData);
     setIsAnalyzing(true);
     
     try {
-      // Pass the data directly to handlePlayerSelection with standardized races
+      // Make sure race information is properly standardized before setting state
+      const standardizedData = {
+        ...parsedReplayData,
+        playerRace: standardizeRaceName(parsedReplayData.playerRace || 'Terran'),
+        opponentRace: standardizeRaceName(parsedReplayData.opponentRace || 'Terran'),
+        playerName: parsedReplayData.playerName || 'Spieler',
+        opponentName: parsedReplayData.opponentName || 'Gegner',
+        buildOrder: Array.isArray(parsedReplayData.buildOrder) ? parsedReplayData.buildOrder : [],
+      };
+      
+      // Set the raw parsed data first
+      setRawParsedData(standardizedData);
+      
+      // Log race information after standardization
+      console.log("🚀 Upload - Race information after standardization:", {
+        playerRace: standardizedData.playerRace,
+        opponentRace: standardizedData.opponentRace,
+        playerName: standardizedData.playerName,
+        opponentName: standardizedData.opponentName,
+        buildOrderItems: standardizedData.buildOrder?.length || 0
+      });
+      
+      // Pass the data directly to handlePlayerSelection with standardized races after small delay
       setTimeout(() => {
+        // This sets replayData and analysisComplete = true
         handlePlayerSelection(0, standardizedData);
       }, 1000); // Short delay for smoother UX
     } catch (error) {
@@ -107,7 +116,7 @@ const UploadPage = () => {
     }
   };
 
-  // Handle player perspective selection with enhanced race handling
+  // Handle player perspective selection with enhanced race handling and error prevention
   const handlePlayerSelection = (playerIndex: number, data: AnalyzedReplayResult = rawParsedData!) => {
     console.log("🎮 Processing player selection:", playerIndex);
     
@@ -125,45 +134,72 @@ const UploadPage = () => {
       opponentRace: data.opponentRace
     });
     
-    // Create adjusted data based on player selection
+    // Create adjusted data based on player selection with safer data handling
     let adjustedData: AnalyzedReplayResult;
     
-    if (playerIndex === 0) {
-      // First player is already correctly set up in data
-      adjustedData = { ...data };
-    } else {
-      // Swap player and opponent for second player perspective
+    try {
+      if (playerIndex === 0) {
+        // First player is already correctly set up in data - create a deep copy to avoid reference issues
+        adjustedData = JSON.parse(JSON.stringify(data));
+      } else {
+        // Swap player and opponent for second player perspective
+        adjustedData = {
+          ...JSON.parse(JSON.stringify(data)),
+          playerName: data.opponentName || 'Opponent',
+          opponentName: data.playerName || 'Player',
+          playerRace: data.opponentRace || 'Terran',
+          opponentRace: data.playerRace || 'Terran',
+          // Invert result
+          result: data.result === 'win' ? 'loss' : 'win',
+          // Swap strengths and weaknesses for more accurate coaching
+          strengths: data.recommendations || [],
+          weaknesses: data.weaknesses || [],
+          recommendations: data.strengths || []
+        };
+      }
+    } catch (error) {
+      console.error('⛔ Error creating adjusted data:', error);
+      // Create fallback data
       adjustedData = {
-        ...data,
-        playerName: data.opponentName || 'Opponent',
-        opponentName: data.playerName || 'Player',
-        playerRace: data.opponentRace || 'Terran',
-        opponentRace: data.playerRace || 'Terran',
-        // Invert result
-        result: data.result === 'win' ? 'loss' : 'win',
-        // Swap strengths and weaknesses for more accurate coaching
-        strengths: data.recommendations || [],
-        weaknesses: data.weaknesses || [],
-        recommendations: data.strengths || []
+        playerName: data.playerName || 'Player',
+        opponentName: data.opponentName || 'Opponent',
+        playerRace: data.playerRace || 'Terran',
+        opponentRace: data.opponentRace || 'Terran',
+        map: data.map || 'Unknown Map',
+        duration: data.duration || '5:00',
+        durationMS: data.durationMS || 300000,
+        date: data.date || new Date().toISOString().split('T')[0],
+        result: data.result || 'win',
+        apm: data.apm || 150,
+        eapm: data.eapm || 120,
+        buildOrder: data.buildOrder || [],
+        resourcesGraph: data.resourcesGraph || [],
+        strengths: data.strengths || ['Defensive Spielweise'],
+        weaknesses: data.weaknesses || ['Könnte Multitasking verbessern'],
+        recommendations: data.recommendations || ['Fokussiere auf Build-Order Timing']
       };
     }
     
-    // Normalize data with enhanced race detection
+    // Normalize data with enhanced race detection and ensure all required fields exist
     const normalizedData: AnalyzedReplayResult = {
       ...adjustedData,
       playerRace: standardizeRaceName(adjustedData.playerRace || 'Terran'),
       opponentRace: standardizeRaceName(adjustedData.opponentRace || 'Terran'),
       result: normalizeResult(adjustedData.result || 'win'),
-      strengths: adjustedData.strengths || [],
-      weaknesses: adjustedData.weaknesses || [],
-      recommendations: adjustedData.recommendations || [],
-      // Ensure buildOrder exists
-      buildOrder: adjustedData.buildOrder || []
+      // Ensure these arrays exist
+      buildOrder: Array.isArray(adjustedData.buildOrder) ? adjustedData.buildOrder : [],
+      resourcesGraph: Array.isArray(adjustedData.resourcesGraph) ? adjustedData.resourcesGraph : [],
+      strengths: Array.isArray(adjustedData.strengths) ? adjustedData.strengths : ['Effektive Einheitenkontrolle'],
+      weaknesses: Array.isArray(adjustedData.weaknesses) ? adjustedData.weaknesses : ['Könnte Scouting verbessern'],
+      recommendations: Array.isArray(adjustedData.recommendations) ? adjustedData.recommendations : ['Fokussiere auf Map-Kontrolle']
     };
     
     console.log("🎮 Final normalized data with races:", {
       playerRace: normalizedData.playerRace,
-      opponentRace: normalizedData.opponentRace
+      opponentRace: normalizedData.opponentRace,
+      playerName: normalizedData.playerName,
+      opponentName: normalizedData.opponentName,
+      buildOrderItems: normalizedData.buildOrder?.length || 0
     });
     
     // Extend the parsedReplayData with ID for AnalysisResult

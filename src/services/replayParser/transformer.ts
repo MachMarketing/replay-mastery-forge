@@ -1,3 +1,4 @@
+
 import { ParsedReplayData } from './types';
 import { standardizeRaceName, formatPlayerName, debugLogReplayData } from '@/lib/replayUtils';
 
@@ -59,15 +60,21 @@ export function transformJSSUHData(jssuhData: any): ParsedReplayData {
     // Determine matchup
     const matchup = `${playerRace.charAt(0)}v${opponentRace.charAt(0)}`;
     
-    // Extract build order with more detailed logging
-    const buildOrder = extractBuildOrder(jssuhData.actions || []);
-    console.log(`[transformer] Extracted build order items: ${buildOrder.length}`);
+    // Extract build order with improved validation and logging
+    let buildOrder = [];
+    try {
+      buildOrder = extractBuildOrder(jssuhData.actions || []);
+      console.log(`[transformer] Extracted build order items: ${buildOrder.length}`);
+    } catch (error) {
+      console.error('[transformer] Error extracting build order:', error);
+      buildOrder = [];
+    }
     
     const result: ParsedReplayData = {
-      playerName: playerName,
-      opponentName: opponentName,
-      playerRace,
-      opponentRace,
+      playerName: playerName || 'Player',
+      opponentName: opponentName || 'Opponent',
+      playerRace: playerRace || 'Terran',
+      opponentRace: opponentRace || 'Zerg',
       map: jssuhData.mapName || 'Unknown Map',
       duration,
       durationMS: ms,
@@ -185,19 +192,19 @@ function extractBuildOrder(actions: any[]): { time: string; supply: number; acti
   
   console.log('[transformer] Filtered build actions:', buildActions.length);
   
-  return buildActions.map(cmd => {
+  return buildActions.map((cmd, index) => {
     // Convert frames to ms (StarCraft runs at 24fps)
     const timeMs = (cmd.frame || 0) * (1000 / 24);
     const minutes = Math.floor(timeMs / 60000);
     const seconds = Math.floor((timeMs % 60000) / 1000);
     
-    // Extract unit/building name with fallbacks
+    // Extract unit/building name with multiple fallbacks
     const action = cmd.unit || cmd.building || cmd.upgrade || 
-                  cmd.name || cmd.unitType || 'Unknown Action';
+                  cmd.name || cmd.unitType || `Item ${index + 1}`;
     
     return {
       time: `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`,
-      supply: cmd.supply || 0,
+      supply: cmd.supply || index + 5, // Provide estimate if supply is missing
       action: action
     };
   });
