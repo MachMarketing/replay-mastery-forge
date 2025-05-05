@@ -1,3 +1,4 @@
+
 /**
  * This file contains functionality for parsing StarCraft: Brood War replay files
  * using the SCREP parser API.
@@ -38,12 +39,18 @@ export async function parseReplayFile(file: File): Promise<ParsedReplayData | nu
     // Check for HTTP errors
     if (!response.ok) {
       const errorText = await response.text();
+      console.error('❌ [parser.ts] API error response:', errorText);
       throw new Error(`SCREP API error (${response.status}): ${errorText}`);
     }
     
     // Parse the JSON response
     const data = await response.json();
-    console.log('🔍 [parser.ts] SCREP API returned data successfully');
+    console.log('🔍 [parser.ts] SCREP API returned data:', data);
+    
+    // If the API returns an error field, throw it
+    if (data.error) {
+      throw new Error(`API error: ${data.error}`);
+    }
     
     return data;
   } catch (error) {

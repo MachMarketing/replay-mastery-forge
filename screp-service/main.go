@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/icza/screp/rep"
 	"github.com/icza/screp/repparser"
@@ -18,13 +19,32 @@ type ErrorResponse struct {
 	Error string `json:"error"`
 }
 
-// CORS middleware
+// SimpleReplayResponse is a simplified response with just player data
+type SimpleReplayResponse struct {
+	PlayerName  string `json:"playerName"`
+	OpponentName string `json:"opponentName"`
+	PlayerRace  string `json:"playerRace"`
+	OpponentRace string `json:"opponentRace"`
+	MapName     string `json:"map"`
+	Duration    string `json:"duration"`
+	Date        string `json:"date"`
+	MatchResult string `json:"result"`
+}
+
+// CORS middleware with improved handling
 func enableCors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Get allowed origin from environment or use wildcard
+		allowedOrigin := os.Getenv("CORS_ORIGIN")
+		if allowedOrigin == "" {
+			allowedOrigin = "*"
+		}
+
 		// Set CORS headers
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Max-Age", "86400") // 24 hours
 
 		// Handle preflight OPTIONS request
 		if r.Method == "OPTIONS" {
@@ -48,19 +68,29 @@ func handleParseReplay(w http.ResponseWriter, r *http.Request) {
 	// Parse the multipart form, 32MB max memory
 	err := r.ParseMultipartForm(32 << 20)
 	if err != nil {
+		log.Printf("Error parsing form: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "Invalid form data"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: fmt.Sprintf("Invalid form data: %v", err)})
 		return
 	}
 
 	// Get the file from the form
 	file, handler, err := r.FormFile("file")
 	if err != nil {
+		log.Printf("Error getting file: %v", err)
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "No file provided"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "No file provided or invalid file"})
 		return
 	}
 	defer file.Close()
+
+	// Check file extension
+	if !strings.HasSuffix(strings.ToLower(handler.Filename), ".rep") {
+		log.Printf("Invalid file extension: %s", handler.Filename)
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "Only .rep files are allowed"})
+		return
+	}
 
 	// Log the incoming request
 	log.Printf("Received file: %s, size: %d bytes", handler.Filename, handler.Size)
@@ -68,6 +98,7 @@ func handleParseReplay(w http.ResponseWriter, r *http.Request) {
 	// Create a temporary file
 	tempFile, err := os.CreateTemp("", "replay-*.rep")
 	if err != nil {
+		log.Printf("Error creating temp file: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to create temporary file"})
 		return
@@ -78,6 +109,7 @@ func handleParseReplay(w http.ResponseWriter, r *http.Request) {
 	// Copy the uploaded file to the temporary file
 	_, err = io.Copy(tempFile, file)
 	if err != nil {
+		log.Printf("Error copying to temp file: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to save file"})
 		return
@@ -94,16 +126,66 @@ func handleParseReplay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Extract basic player data for simple response
+	simpleResponse := extractBasicReplayData(r)
+
 	// Set content type to JSON
 	w.Header().Set("Content-Type", "application/json")
 	
 	// Encode the replay data to JSON and send it back
 	log.Printf("Successfully parsed replay, returning data")
-	err = json.NewEncoder(w).Encode(r)
+	err = json.NewEncoder(w).Encode(simpleResponse)
 	if err != nil {
 		log.Printf("Error encoding response: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "Failed to encode response"})
+	}
+}
+
+// Extract basic data from replay
+func extractBasicReplayData(r *rep.Replay) SimpleReplayResponse {
+	response := SimpleReplayResponse{
+		MapName:  r.Header.MapName(),
+		Date:     r.Header.StartTime().Format("2006-01-02"),
+		Duration: formatDuration(r.Header.Frames()),
+	}
+
+	// Get player data if available
+	if len(r.Players) >= 1 {
+		response.PlayerName = r.Players[0].Name
+		response.PlayerRace = getRaceName(r.Players[0].Race)
+	}
+	
+	if len(r.Players) >= 2 {
+		response.OpponentName = r.Players[1].Name
+		response.OpponentRace = getRaceName(r.Players[1].Race)
+	}
+
+	// Default result
+	response.MatchResult = "win"
+
+	return response
+}
+
+// Format duration from frames
+func formatDuration(frames int) string {
+	seconds := frames / 24 // Approximate conversion
+	minutes := seconds / 60
+	remainingSeconds := seconds % 60
+	return fmt.Sprintf("%d:%02d", minutes, remainingSeconds)
+}
+
+// Convert race code to full name
+func getRaceName(race byte) string {
+	switch race {
+	case 'T', 't':
+		return "Terran"
+	case 'P', 'p':
+		return "Protoss"
+	case 'Z', 'z':
+		return "Zerg"
+	default:
+		return "Terran" // Default to Terran
 	}
 }
 

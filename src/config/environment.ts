@@ -6,7 +6,7 @@
 
 // API configuration
 export const API_CONFIG = {
-  SCREP_API_URL: getEnvVariable('SCREP_API_URL', 'http://localhost:8000/parse')
+  SCREP_API_URL: getEnvVariable('SCREP_API_URL', '/api/parse')
 };
 
 /**

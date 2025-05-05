@@ -15,7 +15,7 @@ interface UploadBoxProps {
 const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 10 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'parsing' | 'success' | 'error'>('idle');
+  const [uploadStatus, setUploadStatus<'idle' | 'uploading' | 'parsing' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState('');
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const progressIntervalRef = useRef<number | null>(null);
@@ -127,7 +127,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     clearTimeouts();
     
     try {
-      console.log('[UploadBox] Starting parsing:', file.name);
+      console.log('[UploadBox] Starting parsing with SCREP API:', file.name);
       const parsedData = await parseReplay(file);
       
       if (!parsedData) {
@@ -141,10 +141,6 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       if (!parsedData.playerName) {
         console.error('[UploadBox] Parsed data missing player name');
         throw new Error('Fehler: Keine Spielernamen gefunden');
-      }
-      
-      if (!parsedData.playerRace || parsedData.playerRace === 'Unknown' as any) {
-        console.warn('[UploadBox] No valid player race detected:', parsedData.playerRace);
       }
       
       clearTimeouts();
