@@ -26,16 +26,16 @@ export async function initParserWasm(): Promise<void> {
   }
   lastInitTime = now;
   
+  // If already initialized, return immediately
+  if (parserInitialized) {
+    console.log('[wasmLoader] Parser module already initialized');
+    return Promise.resolve();
+  }
+  
   // Don't start multiple initializations
   if (initializationInProgress) {
     console.log('[wasmLoader] Parser initialization already in progress, waiting...');
     return initializationPromise as Promise<void>;
-  }
-
-  // Return immediately if already initialized
-  if (parserInitialized) {
-    console.log('[wasmLoader] Parser module already initialized');
-    return Promise.resolve();
   }
 
   console.log('[wasmLoader] Starting parser module initialization...');
@@ -55,12 +55,15 @@ export async function initParserWasm(): Promise<void> {
     } catch (error) {
       console.error('[wasmLoader] Error initializing parser module:', error);
       
-      if (initializationAttempts <= MAX_INIT_ATTEMPTS) {
+      if (initializationAttempts < MAX_INIT_ATTEMPTS) {
         console.log(`[wasmLoader] Retrying initialization (attempt ${initializationAttempts}/${MAX_INIT_ATTEMPTS})`);
         initializationInProgress = false;
-        resolve(initParserWasm()); // Try again
+        // Try again with a slight delay
+        setTimeout(() => {
+          resolve(initParserWasm());
+        }, 1000);
       } else {
-        console.log('[wasmLoader] Maximum initialization attempts reached, using fallback');
+        console.log('[wasmLoader] Maximum initialization attempts reached, marking as initialized anyway');
         // Even if initialization fails, we'll mark as initialized
         // since our browser-safe implementation doesn't really need initialization
         parserInitialized = true;
@@ -106,7 +109,13 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
     });
     
     // Race the parsing against the timeout
-    const parsedData = await Promise.race([parsePromise, timeoutPromise]);
+    let parsedData;
+    try {
+      parsedData = await Promise.race([parsePromise, timeoutPromise]);
+    } catch (error) {
+      console.error('[wasmLoader] Error during parsing race:', error);
+      throw error;
+    }
     
     // Verify we have data
     if (!parsedData) {
@@ -119,7 +128,8 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
   } catch (error) {
     console.error('[wasmLoader] Error during parsing:', error);
     
-    // Create fallback data
+    // Create fallback data with more clear error information
+    const errorMessage = error instanceof Error ? error.message : String(error);
     const fallbackData = {
       playerName: 'Player',
       opponentName: 'Opponent',
@@ -135,11 +145,18 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
       strengths: ['Gute mechanische Fähigkeiten', 'Effektives Makromanagement'],
       weaknesses: ['Könnte Scouting verbessern', 'Unregelmäßige Produktion'],
       recommendations: ['Übe Build-Order Timings', 'Fokussiere dich auf Map-Kontrolle'],
-      buildOrder: []
+      buildOrder: [],
+      _error: errorMessage, // Include error for debugging
+      _fallback: true // Mark as fallback data
     };
     
-    // Throw error with informative message
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    // For development builds, return fallback data
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[wasmLoader] Using fallback data in development mode');
+      return fallbackData;
+    }
+    
+    // In production, throw the error
     throw new Error(`Parsing failed: ${errorMessage}`);
   }
 }
