@@ -29,13 +29,48 @@ export async function runE2EParserTest(file: File): Promise<{
       };
     }
     
+    // Validate file extension
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+    if (fileExtension !== 'rep') {
+      return {
+        success: false,
+        message: "❌ E2E Test fehlgeschlagen: Ungültiger Dateityp, nur .rep Dateien werden unterstützt"
+      };
+    }
+    
     // Parse using the browser parser directly (debug flow)
     console.log("Parsing with debug flow (browserReplayParser)...");
-    const debugResult = await parseReplayInBrowser(file);
+    let debugResult;
+    try {
+      debugResult = await parseReplayInBrowser(file);
+    } catch (error) {
+      // Handle the specific makeslice error
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage.includes('len out of range') || errorMessage.includes('makeslice')) {
+        return {
+          success: false,
+          message: "❌ E2E Test fehlgeschlagen: Die Replay-Datei scheint beschädigt zu sein. Der Parser kann die Dateistruktur nicht korrekt lesen."
+        };
+      }
+      
+      return {
+        success: false,
+        message: `❌ E2E Test fehlgeschlagen (debug flow): ${errorMessage}`
+      };
+    }
     
     // Parse using the upload service (upload flow)
     console.log("Parsing with upload flow (replayParserService)...");
-    const uploadResult = await parseReplayFile(file);
+    let uploadResult;
+    try {
+      uploadResult = await parseReplayFile(file);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      return {
+        success: false,
+        message: `❌ E2E Test fehlgeschlagen (upload flow): ${errorMessage}`
+      };
+    }
     
     // Compare results
     const differences: Record<string, { uploadFlow: any; debugFlow: any; }> = {};

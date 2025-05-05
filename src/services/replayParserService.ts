@@ -72,20 +72,47 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
       throw new Error('Parsing was aborted');
     }
     
-    // Parse using the browser WASM parser
-    const parsedData = await parseReplayInBrowser(file);
-    
-    if (!parsedData) {
-      throw new Error('Failed to parse replay file');
+    // Additional file validation
+    if (!file || file.size === 0) {
+      throw new Error('Ungültige oder leere Datei');
     }
     
-    console.log('[replayParserService] Raw parsed data:', parsedData);
+    const fileExtension = file.name.split('.').pop()?.toLowerCase();
+    if (fileExtension !== 'rep') {
+      throw new Error('Ungültiges Dateiformat. Nur .rep Dateien werden unterstützt.');
+    }
     
-    // Clear the abort controller since we're done
-    activeParsingAbortController = null;
+    // Set a timeout to abort very long parsing operations
+    const timeoutId = setTimeout(() => {
+      if (activeParsingAbortController) {
+        console.log('[replayParserService] Parsing timeout reached, aborting');
+        activeParsingAbortController.abort();
+      }
+    }, 25000); // 25 second timeout
     
-    // Return the analyzed data directly
-    return parsedData;
+    try {
+      // Parse using the browser WASM parser
+      const parsedData = await parseReplayInBrowser(file);
+      
+      // Clear the timeout since parsing completed
+      clearTimeout(timeoutId);
+      
+      if (!parsedData) {
+        throw new Error('Failed to parse replay file');
+      }
+      
+      console.log('[replayParserService] Raw parsed data:', parsedData);
+      
+      // Clear the abort controller since we're done
+      activeParsingAbortController = null;
+      
+      // Return the analyzed data directly
+      return parsedData;
+    } catch (error) {
+      // Clear the timeout in case of error
+      clearTimeout(timeoutId);
+      throw error;
+    }
   } catch (error) {
     console.error('[replayParserService] Error parsing replay:', error);
     

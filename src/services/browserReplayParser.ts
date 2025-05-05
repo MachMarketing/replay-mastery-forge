@@ -91,6 +91,17 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       throw new Error(`Fehler beim Lesen der Datei: ${readError instanceof Error ? readError.message : 'Unbekannter Fehler'}`);
     }
     
+    // Add additional validation for replay file signatures
+    if (fileData.length > 8) {
+      const signature = String.fromCharCode(...fileData.slice(0, 4));
+      console.log('📊 [browserReplayParser] Replay signature:', signature);
+      
+      if (signature !== "(B)w" && signature !== "(B)W") {
+        console.warn('❌ [browserReplayParser] Invalid replay file signature:', signature);
+        throw new Error('Ungültige oder beschädigte Replay-Datei. Die Datei hat nicht das erwartete StarCraft-Replay-Format.');
+      }
+    }
+    
     // Parse using WASM parser
     let parsedReplay;
     try {
@@ -99,7 +110,14 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       console.log('📊 [browserReplayParser] WASM parsing successful');
     } catch (parseError) {
       console.error('❌ [browserReplayParser] Parser error:', parseError);
-      throw new Error(`Parser-Fehler: ${parseError instanceof Error ? parseError.message : 'Unbekannter Fehler'}`);
+      
+      // Check for the specific WASM length error
+      const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+      if (errorMessage.includes('len out of range') || errorMessage.includes('makeslice')) {
+        throw new Error('Die Replay-Datei scheint beschädigt zu sein. Der WASM-Parser kann die Dateistruktur nicht korrekt lesen. Bitte versuche es mit einer anderen Replay-Datei.');
+      }
+      
+      throw new Error(`Parser-Fehler: ${errorMessage}`);
     }
     
     if (!parsedReplay) {
@@ -126,6 +144,13 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     return mappedData;
   } catch (error) {
     console.error('❌ [browserReplayParser] Parsing error:', error);
+    
+    // Check specifically for the makeslice error
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes('len out of range') || errorMessage.includes('makeslice')) {
+      throw new Error('Die Replay-Datei ist beschädigt oder in einem nicht unterstützten Format. Bitte versuche es mit einer anderen Datei.');
+    }
+    
     throw error; // Let the caller handle the error
   }
 }

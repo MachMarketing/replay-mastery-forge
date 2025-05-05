@@ -92,6 +92,27 @@ export function forceWasmReset(): void {
 }
 
 /**
+ * Enhanced file validation specifically for StarCraft replay files
+ * Checks common replay file signatures and validates structure
+ */
+function validateReplayData(data: Uint8Array): boolean {
+  if (!data || data.length < 12) {
+    return false;
+  }
+  
+  // Check for common replay file signatures
+  // Most StarCraft replays start with "(B)" followed by version info
+  const signature = String.fromCharCode(...data.slice(0, 4));
+  if (signature !== "(B)w" && signature !== "(B)W") {
+    console.warn('[wasmLoader] Invalid replay signature:', signature);
+    return false;
+  }
+  
+  // Additional structural checks could be added here
+  return true;
+}
+
+/**
  * Parse a replay file using the WASM parser with enhanced error handling
  */
 export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
@@ -110,6 +131,11 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
       throw new Error('Replay file too large, maximum size is 5MB');
     }
     
+    // Additional replay file validation
+    if (!validateReplayData(fileData)) {
+      throw new Error('Invalid replay file format or corrupted file');
+    }
+    
     // Ensure parser is initialized
     if (!parserInitialized) {
       console.log('[wasmLoader] WASM parser not initialized, initializing now...');
@@ -121,18 +147,39 @@ export async function parseReplayWasm(fileData: Uint8Array): Promise<any> {
     // Use screp-js WASM parser with explicit error handling
     const parsePromise = new Promise((resolve, reject) => {
       try {
-        // Wrap the WASM parsing in a try-catch block with timeout handling
+        // Wrap the WASM parsing in a try-catch block with detailed error handling
         const result = screp.parseReplay(fileData);
+        
+        // Additional validation on the result
+        if (!result || typeof result !== 'object') {
+          reject(new Error('Parser returned invalid or empty result'));
+          return;
+        }
+        
+        // Check for required fields to validate result
+        if (!result.header) {
+          reject(new Error('Parser result missing header information'));
+          return;
+        }
+        
         resolve(result);
       } catch (error) {
         console.error('[wasmLoader] WASM parsing exception:', error);
-        reject(new Error(`WASM parser exception: ${error instanceof Error ? error.message : String(error)}`));
+        
+        // Enhanced error reporting for specific WASM errors
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        
+        if (errorMessage.includes('len out of range') || errorMessage.includes('makeslice')) {
+          reject(new Error('Die Replay-Datei ist beschädigt oder in einem nicht unterstützten Format. Der WASM-Parser konnte die Datenstruktur nicht verarbeiten.'));
+        } else {
+          reject(new Error(`WASM parser exception: ${errorMessage}`));
+        }
       }
     });
     
     // Set a timeout for parsing to prevent browser hanging
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Parsing timed out after 30 seconds')), 30000);
+      setTimeout(() => reject(new Error('Parsing timed out after 20 seconds')), 20000);
     });
     
     // Race the parsing against the timeout
