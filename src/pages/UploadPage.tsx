@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -25,6 +24,7 @@ const UploadPage = () => {
   const [selectedPlayerIndex, setSelectedPlayerIndex] = useState<number>(0);
   const { replays, fetchReplays } = useReplays();
   const { toast } = useToast();
+  const { isLoading, error } = useReplays();
 
   // Reset states when component unmounts
   useEffect(() => {
@@ -38,7 +38,14 @@ const UploadPage = () => {
 
   // Pre-fetch replays when the component loads
   useEffect(() => {
-    fetchReplays();
+    fetchReplays().catch(err => {
+      console.error('Failed to fetch replays:', err);
+      toast({
+        title: 'Error loading replays',
+        description: 'Could not retrieve your previous replays. Please try refreshing the page.',
+        variant: 'destructive'
+      });
+    });
   }, [fetchReplays]);
   
   // For debugging - log state changes
@@ -191,8 +198,8 @@ const UploadPage = () => {
     return normalizedResult.includes('win') ? 'win' : 'loss';
   };
 
-  // Get recent uploads from replays list
-  const recentReplays = replays.slice(0, 3);
+  // Get recent uploads from replays list with proper error handling
+  const recentReplays = isLoading ? [] : replays.slice(0, 3);
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -236,7 +243,21 @@ const UploadPage = () => {
                   <div className="mt-6 pt-6 border-t border-border">
                     <h3 className="text-sm font-medium mb-3">Neueste Uploads</h3>
                     <div className="space-y-2">
-                      {recentReplays.length > 0 ? (
+                      {error ? (
+                        <div className="p-3 rounded bg-destructive/10 text-destructive text-sm">
+                          <p>Fehler beim Laden der Replays: {error}</p>
+                          <button 
+                            onClick={fetchReplays} 
+                            className="text-xs underline mt-1 hover:text-destructive/80"
+                          >
+                            Erneut versuchen
+                          </button>
+                        </div>
+                      ) : isLoading ? (
+                        <div className="flex justify-center p-4">
+                          <div className="h-5 w-5 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
+                        </div>
+                      ) : recentReplays.length > 0 ? (
                         recentReplays.map((replay: Replay) => (
                           <div key={replay.id} className="flex justify-between items-center p-2 rounded hover:bg-secondary/20 text-sm">
                             <span className="truncate mr-2 max-w-[160px]" title={replay.original_filename || `${replay.player_name || 'Unknown'} vs ${replay.opponent_name || 'Unknown'}`}>

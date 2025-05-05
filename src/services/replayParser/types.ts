@@ -17,6 +17,7 @@ export interface ParsedReplayData {
   opponentRace: 'Terran' | 'Protoss' | 'Zerg';
   map: string;
   duration: string;
+  durationMS: number; // Added this field to fix the type error
   date: string;
   result: 'win' | 'loss';
   apm: number;
@@ -32,6 +33,9 @@ export interface ParsedReplayData {
     minerals: number;
     gas: number;
   }[];
+  strengths: string[];
+  weaknesses: string[];
+  recommendations: string[];
 }
 
 // Analysis result structure
@@ -45,5 +49,3 @@ export interface ReplayAnalysis {
     drill: string;
   }[];
 }
-
-// No duplicate exports - these are already exported above via the interface declarations

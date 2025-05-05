@@ -32,21 +32,39 @@ export const useReplays = () => {
       setIsLoading(true);
       setError(null);
       
+      // First check if user is authenticated
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError) {
+        throw new Error(`Authentication error: ${authError.message}`);
+      }
+      
+      if (!user) {
+        // User is not authenticated, don't try to fetch replays
+        console.log('No authenticated user found, skipping replay fetch');
+        setReplays([]);
+        return;
+      }
+      
+      console.log('Fetching replays for user:', user.id);
       const { data, error } = await supabase
         .from('replays')
         .select('*')
         .order('created_at', { ascending: false });
       
       if (error) {
-        throw new Error(error.message);
+        throw new Error(`Database error: ${error.message}`);
       }
       
+      console.log('Fetched replays:', data?.length || 0);
       setReplays(data || []);
     } catch (err: any) {
-      setError(err.message);
+      const errorMessage = err.message || 'Unknown error occurred when fetching replays';
+      console.error('Error in fetchReplays:', errorMessage);
+      setError(errorMessage);
       toast({
         title: 'Error fetching replays',
-        description: err.message,
+        description: errorMessage,
         variant: 'destructive',
       });
     } finally {
