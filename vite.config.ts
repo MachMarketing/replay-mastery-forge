@@ -2,11 +2,10 @@
 import { defineConfig, ConfigEnv } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
-// import { componentTagger } from 'lovable-tagger'; // Auskommentieren, falls nicht benötigt
 import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill';
-import rollupNodePolyFill from 'rollup-plugin-node-polyfills';
-// import wasm from '@rollup/plugin-wasm'; // Auskommentieren, falls WASM/screp-js nicht mehr genutzt wird
+import nodePolyfills from 'rollup-plugin-node-polyfills';
 
+// Define proper module format type
 export default defineConfig(({ command }: ConfigEnv) => ({
   server: {
     host: '::',
@@ -14,23 +13,20 @@ export default defineConfig(({ command }: ConfigEnv) => ({
   },
   plugins: [
     react(),
-    // process.env.NODE_ENV !== 'production' && componentTagger(), // Auskommentieren, falls nicht benötigt
-    // wasm({ // Auskommentieren, falls WASM/screp-js nicht mehr genutzt wird
-    //   targetEnv: 'auto',
-    //   maxFileSize: 10000000,
-    // }),
-  ].filter(Boolean),
+  ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      // --- Node.js Polyfills für Browser ---
+      // Node.js polyfills for browser environments
       'process': 'rollup-plugin-node-polyfills/polyfills/process-es6',
       'stream': 'stream-browserify',
       'events': 'rollup-plugin-node-polyfills/polyfills/events',
-      'util': 'rollup-plugin-node-polyfills/polyfills/util',
+      'util': 'util/', // Fix: Use the correct path for util
       'buffer': 'rollup-plugin-node-polyfills/polyfills/buffer-es6',
       'zlib': 'browserify-zlib',
-      // ------------------------------------
+      'path': 'rollup-plugin-node-polyfills/polyfills/path',
+      'querystring': 'rollup-plugin-node-polyfills/polyfills/querystring',
+      // Add any other Node.js builtins that JSSUH might need
     },
   },
   optimizeDeps: {
@@ -44,25 +40,41 @@ export default defineConfig(({ command }: ConfigEnv) => ({
         'process.platform': '"browser"',
       },
       plugins: [
-        // Globale Node.js Variablen polyfillen
+        // Polyfill global Node.js variables
         NodeGlobalsPolyfillPlugin({
           process: true,
           buffer: true,
         }) as any,
       ],
     },
-    // JSSUH und seine Abhängigkeiten in die Optimierung einschließen
-    include: ['jssuh', 'buffer', 'stream-browserify', 'events', 'util', 'browserify-zlib'],
+    // Include JSSUH and its dependencies in the optimization
+    include: [
+      'jssuh', 
+      'buffer', 
+      'stream-browserify', 
+      'events', 
+      'util', 
+      'browserify-zlib',
+      'process'
+    ],
   },
   build: {
     rollupOptions: {
       plugins: [
-        rollupNodePolyFill() as any,
+        nodePolyfills() as any,
       ],
       output: {
-        format: 'es',
+        // Fix: Use proper type for format
+        format: 'es' as const, // Use const assertion to make TypeScript happy
         manualChunks: {
-          vendor: ['jssuh', 'buffer', 'stream-browserify', 'events', 'util', 'browserify-zlib']
+          vendor: [
+            'jssuh', 
+            'buffer', 
+            'stream-browserify', 
+            'events', 
+            'util', 
+            'browserify-zlib'
+          ]
         }
       },
     },

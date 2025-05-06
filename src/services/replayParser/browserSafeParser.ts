@@ -141,56 +141,42 @@ export async function parseReplayWithBrowserSafeParser(replayData: Uint8Array): 
       });
       
       // Create a readable stream from the Uint8Array
-      const bufferChunk = Buffer.from(replayData);
+      const buffer = Buffer.from(replayData);
       
-      // Use a buffer stream to pipe the data to the parser
+      // Use a Readable stream that pushes our data
       try {
         console.log('[browserSafeParser] Creating source stream from replay data');
         
-        // Use a Readable stream that pushes our data
-        const source = new Readable({
-          read() {
-            this.push(bufferChunk);
-            this.push(null); // Signal end of stream
-          }
-        });
+        const source = new Readable();
+        source._read = function() {}; // Required implementation
         
-        // Set up error handling for the source stream
-        source.on('error', (error) => {
-          console.error('[browserSafeParser] Source stream error:', error);
-          clearTimeout(timeoutId);
-          reject(error);
-        });
+        // Push data to the stream
+        source.push(buffer);
+        source.push(null); // Signal end of stream
         
-        console.log('[browserSafeParser] Piping replay data to parser');
+        console.log('[browserSafeParser] Piping data to parser');
         
-        // Pipe the data through the parser
+        // Pipe the data to the parser
         source.pipe(parser);
         
         console.log('[browserSafeParser] Stream pipeline set up, waiting for events');
-      } catch (error) {
-        console.error('[browserSafeParser] Error setting up stream pipeline:', error);
+      } catch (streamError) {
+        console.error('[browserSafeParser] Stream error:', streamError);
+        clearTimeout(timeoutId);
         
-        // Fallback to simple write/end approach if piping fails
-        console.log('[browserSafeParser] Using fallback write/end approach');
+        // Attempt fallback to direct write if piping fails
         try {
-          parser.write(bufferChunk);
+          console.log('[browserSafeParser] Attempting fallback with direct write');
+          parser.write(buffer);
           parser.end();
         } catch (writeError) {
-          console.error('[browserSafeParser] Error writing to parser:', writeError);
-          clearTimeout(timeoutId);
-          
-          // If all stream approaches fail, try to extract basic information as fallback
-          const fallbackData = createFallbackData(replayData);
-          resolve(fallbackData);
+          console.error('[browserSafeParser] Write error:', writeError);
+          reject(writeError);
         }
       }
     } catch (error) {
-      console.error('[browserSafeParser] JSSUH parsing setup failed:', error);
-      
-      // Create minimal fallback data if the entire parsing approach fails
-      const fallbackData = createFallbackData(replayData);
-      resolve(fallbackData);
+      console.error('[browserSafeParser] Parse setup error:', error);
+      reject(error);
     }
   });
 }
