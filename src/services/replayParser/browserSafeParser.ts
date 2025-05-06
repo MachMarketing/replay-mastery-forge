@@ -52,10 +52,10 @@ export async function parseReplayWithBrowserSafeParser(fileData: Uint8Array): Pr
       await initBrowserSafeParser();
     }
     
-    // Always try to use JSSUH parser first if loaded, regardless of magic bytes validation
+    // WICHTIGE ÄNDERUNG: Entfernung der Datei-Validierung - wir versuchen immer mit JSSUH zu parsen
     if (jssuhModule && typeof jssuhModule.Parser === 'function') {
       try {
-        console.log('[browserSafeParser] Using JSSUH parser as primary parser...');
+        console.log('[browserSafeParser] Using JSSUH parser as primary parser, without validation...');
         const parsedData = await parseWithJSSUH(fileData);
         console.log('[browserSafeParser] Successfully parsed with JSSUH');
         return parsedData;
@@ -97,10 +97,18 @@ async function parseWithJSSUH(fileData: Uint8Array): Promise<ParsedReplayData> {
     const parser = new jssuhModule.Parser();
     console.log('[browserSafeParser] Parser instance created successfully');
     
-    // Parse the replay data
-    console.log('[browserSafeParser] Parsing replay data...');
-    parser.ParseReplay(fileData);
-    console.log('[browserSafeParser] Replay parsed successfully');
+    // Parse the replay data WITHOUT ANY VALIDATION
+    console.log('[browserSafeParser] Parsing replay data directly with JSSUH...');
+    try {
+      // Versuche die Replay-Datei zu parsen, ohne sie vorher zu validieren
+      parser.ParseReplay(fileData);
+      console.log('[browserSafeParser] Replay parsed successfully with JSSUH');
+    } catch (parseError) {
+      // Log den Fehler für Debugging-Zwecke
+      console.error('[browserSafeParser] JSSUH parser error:', parseError);
+      // Werfe den Fehler weiter, damit der Fallback-Parser verwendet wird
+      throw parseError;
+    }
     
     // Extract replay data
     const header = parser.ReplayHeader();
@@ -119,9 +127,27 @@ async function parseWithJSSUH(fileData: Uint8Array): Promise<ParsedReplayData> {
       gameSpeed
     });
     
-    // Log more detailed information about commands if available
+    // Detaillierte Logging der Commands für Debugging
     if (commands && commands.length > 0) {
-      console.log('[browserSafeParser] First 5 commands:', commands.slice(0, 5));
+      console.log('[browserSafeParser] First 10 commands:', 
+        commands.slice(0, 10).map((cmd: any, idx: number) => ({
+          index: idx,
+          frame: cmd.frame,
+          type: cmd.type,
+          name: cmd.name || 'unknown'
+        }))
+      );
+      
+      // Log command types für Verteilung
+      const cmdTypes = commands.reduce((acc: Record<string, number>, cmd: any) => {
+        const type = cmd.type || 'unknown';
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+      }, {});
+      
+      console.log('[browserSafeParser] Command type distribution:', cmdTypes);
+    } else {
+      console.warn('[browserSafeParser] No commands found in replay data');
     }
     
     // Build the parsed data object
@@ -135,7 +161,7 @@ async function parseWithJSSUH(fileData: Uint8Array): Promise<ParsedReplayData> {
         name: p.name,
         race: p.race,
         raceLetter: p.race ? p.race.charAt(0).toUpperCase() : 'U',
-        isComputer: false,
+        isComputer: p.isComputer || false,
         team: i % 2
       })),
       actions: actions.map((a: any) => ({

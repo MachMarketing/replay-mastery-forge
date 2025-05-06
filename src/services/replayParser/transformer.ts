@@ -31,6 +31,19 @@ export function transformJSSUHData(jssuhData: any): Partial<ParsedReplayData> {
       `Duration: ${durationMS}ms`
     );
     
+    // Log the full commands for debugging
+    if (commands && commands.length > 0) {
+      console.log('[transformer] Detailed commands sample:',
+        commands.slice(0, 20).map((cmd: any) => ({
+          frame: cmd.frame,
+          type: cmd.type,
+          name: cmd.name,
+          player: cmd.player,
+          // Include any other relevant command fields
+        }))
+      );
+    }
+    
     // Find main player and opponent (simple approach: player 0 vs player 1)
     const player = players && players.length > 0 ? players[0] : { name: 'Player', race: 'U' };
     const opponent = players && players.length > 1 ? players[1] : { name: 'Opponent', race: 'U' };
@@ -51,10 +64,13 @@ export function transformJSSUHData(jssuhData: any): Partial<ParsedReplayData> {
     const seconds = Math.floor((durationMS % 60000) / 1000);
     const durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
     
-    // Extract build order from commands if available
+    // Extract build order from commands if available with improved logging
     const buildOrder = extractBuildOrderFromCommands(commands);
     
     console.log('[transformer] Build order extracted:', buildOrder.length, 'entries');
+    if (buildOrder.length > 0) {
+      console.log('[transformer] Build order preview:', buildOrder.slice(0, 10));
+    }
     
     // Map race abbreviations to full names
     const mapRaceToFull = (race: string) => {
@@ -103,7 +119,7 @@ export function transformJSSUHData(jssuhData: any): Partial<ParsedReplayData> {
 }
 
 /**
- * Extract build order from commands array
+ * Extract build order from commands array with improved detection and logging
  */
 function extractBuildOrderFromCommands(commands: any[]): Array<{ time: string; supply: number; action: string }> {
   if (!commands || commands.length === 0) {
@@ -116,18 +132,56 @@ function extractBuildOrderFromCommands(commands: any[]): Array<{ time: string; s
   try {
     console.log('[transformer] Extracting build order from', commands.length, 'commands');
     
+    // Log all command types for better understanding
+    const commandTypes = new Set<string>();
+    commands.forEach((cmd: any) => {
+      if (cmd.type) commandTypes.add(cmd.type);
+    });
+    console.log('[transformer] Available command types:', Array.from(commandTypes));
+    
     // Sample some commands to see what we're working with
     console.log('[transformer] Command sample:', commands.slice(0, 3));
     
     // Filter out commands that represent unit construction, building construction, tech research
-    // This is a simplified approach, actual implementation would need more logic
+    // Erweiterte Filterung basierend auf JSSUH-Kommandotypen
     const buildCommands = commands.filter((cmd: any) => {
-      // Check if this command represents a build or research action
-      // This would need to be customized based on JSSUH's command structure
-      return cmd.type === 'train' || cmd.type === 'build' || cmd.type === 'research';
+      // Verbesserte Filterung für JSSUH-Befehle
+      const type = (cmd.type || '').toLowerCase();
+      const name = (cmd.name || '').toLowerCase();
+      
+      return (
+        // Gebäude und Einheiten
+        type.includes('train') || 
+        type.includes('build') || 
+        type.includes('unit') ||
+        // Technologien und Upgrades
+        type.includes('research') || 
+        type.includes('upgrade') || 
+        type.includes('tech') ||
+        // Spezifische Gebäudenamen in Kommando-Namen
+        name.includes('command') || 
+        name.includes('center') ||
+        name.includes('barracks') ||
+        name.includes('factory') ||
+        name.includes('starport') ||
+        name.includes('nexus') ||
+        name.includes('gateway') ||
+        name.includes('hatchery')
+      );
     });
     
     console.log('[transformer] Filtered', buildCommands.length, 'build-related commands');
+    
+    // Log the filtered build commands
+    if (buildCommands.length > 0) {
+      console.log('[transformer] Build commands sample:', 
+        buildCommands.slice(0, 5).map(cmd => ({
+          frame: cmd.frame,
+          type: cmd.type,
+          name: cmd.name
+        }))
+      );
+    }
     
     // Transform into our build order format
     buildCommands.forEach((cmd: any, index: number) => {
@@ -141,10 +195,27 @@ function extractBuildOrderFromCommands(commands: any[]): Array<{ time: string; s
       // In a real implementation, this would track supply changes based on all commands
       const supply = Math.min(200, 6 + Math.floor(seconds / 30));
       
+      // Verbesserte Aktionsbeschreibung
+      let actionName = 'Unknown Action';
+      
+      if (cmd.name) {
+        actionName = cmd.name;
+      } else if (cmd.type) {
+        if (cmd.type.toLowerCase() === 'train') {
+          actionName = `Train ${cmd.unit || 'Unit'}`;
+        } else if (cmd.type.toLowerCase() === 'build') {
+          actionName = `Build ${cmd.building || 'Structure'}`;
+        } else if (cmd.type.toLowerCase() === 'research') {
+          actionName = `Research ${cmd.tech || 'Technology'}`;
+        } else {
+          actionName = cmd.type;
+        }
+      }
+      
       buildOrder.push({
         time: timeStr,
         supply: supply,
-        action: cmd.name || cmd.type || `Unknown Command ${index + 1}`
+        action: actionName
       });
     });
     

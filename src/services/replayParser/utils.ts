@@ -1,3 +1,4 @@
+
 /**
  * Utility functions for extracting information from replay file bytes
  */
@@ -13,8 +14,8 @@ export function extractReplayHeaderInfo(data: Uint8Array): {
   const result: { frameCount?: number; mapName?: string } = {};
   
   try {
-    // Note: We no longer validate the magic bytes here
-    // Just try to extract useful data regardless of file format
+    // Alle Validierungen wurden entfernt, um jede Datei zu verarbeiten
+    // Einfach versuchen, nutzbaren Inhalt zu extrahieren
     
     // Try to find a map name (rough extraction based on known offset patterns)
     // This is a simplified approach and may not work for all replays
