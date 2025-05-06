@@ -41,18 +41,36 @@ export function getParserVersion(): string | null {
   if (!screpModule) return null;
   
   try {
+    console.log('[wasmLoader] Getting version, available methods:', Object.keys(screpModule));
+    
     if (typeof screpModule.getVersion === 'function') {
-      return screpModule.getVersion();
+      const version = screpModule.getVersion();
+      console.log('[wasmLoader] Version from getVersion():', version);
+      return version;
     }
     
     if (typeof screpModule.getVersionObject === 'function') {
       const versionObj = screpModule.getVersionObject();
+      console.log('[wasmLoader] Version object:', versionObj);
       return `${versionObj.Major}.${versionObj.Minor}.${versionObj.Patch}`;
+    }
+    
+    if (typeof screpModule.version === 'string') {
+      console.log('[wasmLoader] Version from version property:', screpModule.version);
+      return screpModule.version;
+    }
+    
+    // Try to get version from package info if available
+    if (screpModule.VERSION || screpModule.version || screpModule.__VERSION__) {
+      const version = screpModule.VERSION || screpModule.version || screpModule.__VERSION__;
+      console.log('[wasmLoader] Version from static property:', version);
+      return version;
     }
   } catch (e) {
     console.warn('[wasmLoader] Error getting parser version:', e);
   }
   
+  console.log('[wasmLoader] No version method found, returning unknown');
   return 'unknown';
 }
 
@@ -82,9 +100,12 @@ export async function initParserWasm(): Promise<boolean> {
   initializationAttempted = true;
   
   try {
-    // Log available exports for debugging
-    console.log('🔍 Screp module exports:', Object.keys(Screp));
-    console.log('🔍 Screp.default exports:', Object.keys(Screp.default || {}));
+    // Log screp-js package details
+    console.log('🔍 Screp package info:', {
+      hasDefault: !!Screp.default,
+      mainExports: Object.keys(Screp),
+      defaultExports: Object.keys(Screp.default || {})
+    });
     
     // Try to get the module, prioritizing default export
     screpModule = Screp.default || Screp;
@@ -96,7 +117,9 @@ export async function initParserWasm(): Promise<boolean> {
     
     // Wait for the module to be ready if it has a Promise-like ready property
     if (screpModule.ready && typeof screpModule.ready.then === 'function') {
+      console.log('[wasmLoader] Waiting for module to be ready...');
       await screpModule.ready;
+      console.log('[wasmLoader] Module is ready');
     }
     
     // Validate that the module has a parse function
@@ -158,11 +181,20 @@ export function isWasmInitialized(): boolean {
  * Helper function to check if the module has a valid parse function
  */
 function hasParseFunction(module: any): boolean {
-  return (
+  const hasParseFn = (
     (typeof module.parseBuffer === 'function') || 
     (typeof module.parseReplay === 'function') || 
     (typeof module.parse === 'function')
   );
+  
+  console.log('[wasmLoader] Parse function check:', {
+    hasParseBuffer: typeof module.parseBuffer === 'function',
+    hasParseReplay: typeof module.parseReplay === 'function',
+    hasParse: typeof module.parse === 'function',
+    result: hasParseFn
+  });
+  
+  return hasParseFn;
 }
 
 /**
@@ -194,6 +226,7 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
     
     console.log('[wasmLoader] Starting parsing with WASM, size:', data.byteLength);
     console.log('[wasmLoader] Available methods on screpModule:', Object.keys(screpModule));
+    console.log('[wasmLoader] Using screp-js version:', getParserVersion());
     
     // Create a copy of the data to avoid any potential memory issues
     const dataCopy = new Uint8Array(data);
