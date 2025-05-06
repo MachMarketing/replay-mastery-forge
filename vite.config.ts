@@ -1,4 +1,3 @@
-
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
@@ -74,8 +73,7 @@ export default defineConfig(({ mode }) => {
         define: {
           global: 'globalThis',
           'process.env': JSON.stringify({}),
-          // Convert boolean values to strings as required by the type
-          // Fix: Use string values instead of booleans and proper values for each property
+          // Fix: Convert boolean values to strings to satisfy type requirements
           'process.browser': '"true"',
           'process.nextTick': '"function"', 
           'process.title': '"browser"',
