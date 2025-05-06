@@ -9,23 +9,47 @@ import { mapRawToParsed } from './replayMapper';
 
 // Flag to track if the parser has been initialized
 let parserInitialized = false;
+let initializationPromise: Promise<void> | null = null;
 
 /**
  * Initialize the browser parser - should be called early in the app lifecycle
+ * With a timeout to prevent hanging
  */
 export async function initBrowserParser(): Promise<void> {
+  // If already initialized, just return
   if (parserInitialized) return;
   
-  console.log('[browserReplayParser] Initializing unified browser parser system');
-  try {
-    // Initialize the browser-safe parser (jssuh)
-    await initBrowserSafeParser();
-    parserInitialized = true;
-    console.log('[browserReplayParser] Browser parser initialized successfully');
-  } catch (error) {
-    console.error('[browserReplayParser] Error initializing browser parser:', error);
-    throw error;
+  // If initialization is in progress, wait for it
+  if (initializationPromise) {
+    console.log('[browserReplayParser] Parser initialization already in progress, waiting...');
+    return initializationPromise;
   }
+  
+  console.log('[browserReplayParser] Initializing unified browser parser system');
+  
+  // Set up initialization with timeout
+  initializationPromise = new Promise<void>(async (resolve, reject) => {
+    // Set a timeout for initialization
+    const timeoutId = setTimeout(() => {
+      console.error('[browserReplayParser] Parser initialization timed out after 10 seconds');
+      reject(new Error('Parser initialization timed out'));
+    }, 10000);
+    
+    try {
+      // Initialize the browser-safe parser (jssuh)
+      await initBrowserSafeParser();
+      parserInitialized = true;
+      console.log('[browserReplayParser] Browser parser initialized successfully');
+      clearTimeout(timeoutId);
+      resolve();
+    } catch (error) {
+      console.error('[browserReplayParser] Error initializing browser parser:', error);
+      clearTimeout(timeoutId);
+      reject(error);
+    }
+  });
+  
+  return initializationPromise;
 }
 
 /**
