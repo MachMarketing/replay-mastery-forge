@@ -139,19 +139,45 @@ function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
   let playerRace = 'Terran';
   let opponentRace = 'Protoss';
   
-  if (rawData.Header?.players && Array.isArray(rawData.Header.players)) {
-    // Extract player info
-    if (rawData.Header.players.length > 0) {
-      const player = rawData.Header.players[0];
-      playerName = formatPlayerName(player.name);
-      playerRace = standardizeRaceName(player.race);
+  if (rawData.Header?.Players && Array.isArray(rawData.Header.Players)) {
+    // SCREP-WASM uses uppercase "Players" field
+    const players = rawData.Header.Players;
+    
+    // Extract player info (first player in the array)
+    if (players.length > 0) {
+      const player = players[0];
+      playerName = formatPlayerName(player.Name || '');
+      playerRace = standardizeRaceName(player.Race?.Name || 'Unknown');
     }
     
-    // Extract opponent info
-    if (rawData.Header.players.length > 1) {
-      const opponent = rawData.Header.players[1];
-      opponentName = formatPlayerName(opponent.name);
-      opponentRace = standardizeRaceName(opponent.race);
+    // Extract opponent info (second player in the array)
+    if (players.length > 1) {
+      const opponent = players[1];
+      opponentName = formatPlayerName(opponent.Name || '');
+      opponentRace = standardizeRaceName(opponent.Race?.Name || 'Unknown');
+    }
+    
+    console.log(`🔄 Extracted players: ${playerName} (${playerRace}) vs ${opponentName} (${opponentRace})`);
+  } else if (rawData.Header?.players && Array.isArray(rawData.Header.players)) {
+    // Lowercase "players" field (alternative format)
+    const players = rawData.Header.players;
+    
+    // Extract player info (first player in the array)
+    if (players.length > 0) {
+      const player = players[0];
+      playerName = formatPlayerName(player.Name || player.name || '');
+      playerRace = standardizeRaceName(
+        player.Race?.Name || player.Race?.name || player.race || 'Unknown'
+      );
+    }
+    
+    // Extract opponent info (second player in the array)
+    if (players.length > 1) {
+      const opponent = players[1];
+      opponentName = formatPlayerName(opponent.Name || opponent.name || '');
+      opponentRace = standardizeRaceName(
+        opponent.Race?.Name || opponent.Race?.name || opponent.race || 'Unknown'
+      );
     }
     
     console.log(`🔄 Extracted players: ${playerName} (${playerRace}) vs ${opponentName} (${opponentRace})`);
@@ -159,10 +185,20 @@ function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
   
   // Extract map information
   let map = 'Unknown Map';
-  if (rawData.Header?.mapName) {
+  if (rawData.Header?.Map) {
+    map = rawData.Header.Map;
+  } else if (rawData.Header?.map) {
+    map = rawData.Header.map;
+  } else if (rawData.Header?.mapName) {
     map = rawData.Header.mapName;
   } else if (rawData.MapData?.name) {
     map = rawData.MapData.name;
+  }
+  
+  // Clean up map name by removing control characters
+  map = map.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+  if (!map || map === '') {
+    map = 'Unknown Map';
   }
   
   // Create matchup
@@ -172,8 +208,8 @@ function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
   let durationMs = 600000; // Default: 10 minutes
   let duration = '10:00';
   
-  if (rawData.Header?.durationFrames) {
-    const frames = rawData.Header.durationFrames;
+  if (rawData.Header?.Frames) {
+    const frames = rawData.Header.Frames;
     // Frames to MS (assuming 23.81 FPS for Brood War)
     durationMs = Math.round(frames / 23.81 * 1000);
     
@@ -182,11 +218,26 @@ function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
     duration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
     
     console.log(`🔄 Duration: ${duration} (${durationMs}ms from ${frames} frames)`);
+  } else if (rawData.Header?.durationFrames) {
+    const frames = rawData.Header.durationFrames;
+    // Frames to MS (assuming 23.81 FPS for Brood War)
+    durationMs = Math.round(frames / 23.81 * 1000);
+    
+    const minutes = Math.floor(durationMs / 60000);
+    const seconds = Math.floor((durationMs % 60000) / 1000);
+    duration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
   
   // Extract date
   let date = new Date().toISOString().split('T')[0];
-  if (rawData.Header?.startTime) {
+  if (rawData.Header?.StartTime) {
+    try {
+      const startDate = new Date(rawData.Header.StartTime);
+      date = startDate.toISOString().split('T')[0];
+    } catch {
+      console.warn('🔄 Could not parse StartTime:', rawData.Header.StartTime);
+    }
+  } else if (rawData.Header?.startTime) {
     try {
       const startDate = new Date(rawData.Header.startTime);
       date = startDate.toISOString().split('T')[0];
