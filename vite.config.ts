@@ -1,3 +1,4 @@
+
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
@@ -90,7 +91,7 @@ export default defineConfig(({ mode }) => {
         }
       }
     },
-    // Disable dependency optimization cache to force fresh builds
-    cacheDir: '.vite_fresh_cache',
+    // Use a completely fresh cache
+    cacheDir: '.vite_fresh_cache_' + Date.now(),
   };
 });
