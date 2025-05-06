@@ -1,4 +1,3 @@
-
 /**
  * Client-side parser for StarCraft: Brood War replay files
  * 
@@ -68,14 +67,17 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     // Add enhanced debugging for Commands array
     if (raw.Commands && Array.isArray(raw.Commands)) {
       console.log('📊 [browserReplayParser] Commands count:', raw.Commands.length);
-      // Log first few commands
+      // Log first few commands more descriptively
       if (raw.Commands.length > 0) {
+        console.log('📊 [browserReplayParser] First command full object:', raw.Commands[0]);
+        console.log('📊 [browserReplayParser] First command keys:', Object.keys(raw.Commands[0]));
         console.log('📊 [browserReplayParser] First 5 commands sample:', 
           raw.Commands.slice(0, 5).map(cmd => ({
             id: cmd.id,
             name: cmd.name,
             type: cmd.type,
-            frame: cmd.frame
+            frame: cmd.frame,
+            player: cmd.player
           }))
         );
         
@@ -93,6 +95,8 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
           console.log('📊 [browserReplayParser] No build commands found, will use synthetic data');
         }
       }
+    } else {
+      console.log('📊 [browserReplayParser] No Commands array found in raw data');
     }
     
     // Map to domain model

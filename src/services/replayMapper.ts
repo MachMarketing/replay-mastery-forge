@@ -269,6 +269,10 @@ function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
   if (rawData.Commands && Array.isArray(rawData.Commands)) {
     console.log('💡 Processing Commands for build order, commands count:', rawData.Commands.length);
     
+    // Add the requested debug logs
+    console.log('💡 First 5 Commands:', rawData.Commands.slice(0, 5));
+    console.log('💡 Sample Command keys (first command):', rawData.Commands.length > 0 ? Object.keys(rawData.Commands[0]) : 'No commands');
+    
     // Look for build-related commands - need to handle different possible command structures
     const buildRelatedCommands = rawData.Commands.filter((cmd: any) => {
       // Check various command properties that might indicate building or training
