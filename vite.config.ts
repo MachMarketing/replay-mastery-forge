@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => ({
       'process': 'rollup-plugin-node-polyfills/polyfills/process-es6',
       'stream': 'stream-browserify',
       'events': 'rollup-plugin-node-polyfills/polyfills/events',
-      'util': 'rollup-plugin-node-polyfills/polyfills/util', // Removed trailing slash
+      'util': 'rollup-plugin-node-polyfills/polyfills/util', // This is correct - no trailing slash!
       'buffer': 'rollup-plugin-node-polyfills/polyfills/buffer-es6',
       'zlib': 'browserify-zlib',
       'path': 'rollup-plugin-node-polyfills/polyfills/path',
@@ -54,8 +54,7 @@ export default defineConfig(({ mode }) => ({
       'buffer', 
       'stream-browserify', 
       'events', 
-      // The key fix: Use the correct path for util without trailing slash
-      'util', 
+      'util', // Note: no trailing slash!
       'browserify-zlib',
       'path',
       'querystring',
@@ -76,7 +75,7 @@ export default defineConfig(({ mode }) => ({
             'buffer', 
             'stream-browserify', 
             'events', 
-            'util', 
+            'util', // Note: no trailing slash
             'browserify-zlib',
             'path',
             'querystring',
