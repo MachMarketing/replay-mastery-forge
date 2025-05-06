@@ -24,13 +24,12 @@ export default defineConfig(({ command }: ConfigEnv) => ({
     alias: {
       '@': path.resolve(__dirname, './src'),
       // --- Node.js Polyfills für Browser ---
-      // Fix path problems by removing trailing slashes and using exact paths
       'process': 'rollup-plugin-node-polyfills/polyfills/process-es6',
       'stream': 'stream-browserify',
       'events': 'rollup-plugin-node-polyfills/polyfills/events',
       'util': 'rollup-plugin-node-polyfills/polyfills/util',
       'buffer': 'rollup-plugin-node-polyfills/polyfills/buffer-es6',
-      'zlib': 'browserify-zlib', // Add zlib polyfill for JSSUH
+      'zlib': 'browserify-zlib',
       // ------------------------------------
     },
   },
@@ -38,44 +37,36 @@ export default defineConfig(({ command }: ConfigEnv) => ({
     esbuildOptions: {
       define: {
         global: 'globalThis',
-        // Prozessumgebung definieren - use strings for all values
         'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
-        'process.browser': '"true"',
+        'process.browser': 'true',
         'process.version': '"v16.0.0"',
         'process.versions': '{}',
         'process.platform': '"browser"',
-        'process.nextTick': 'function() { return null; }',
       },
       plugins: [
-        // Globale Node.js Variablen polyfillen (process, buffer)
+        // Globale Node.js Variablen polyfillen
         NodeGlobalsPolyfillPlugin({
-          process: true, // Polyfill process
-          buffer: true,  // Polyfill buffer
+          process: true,
+          buffer: true,
         }) as any,
       ],
     },
     // JSSUH und seine Abhängigkeiten in die Optimierung einschließen
-    // Das stellt sicher, dass Polyfills angewendet werden
     include: ['jssuh', 'buffer', 'stream-browserify', 'events', 'util', 'browserify-zlib'],
-    // screp-js ausschließen, falls es nicht mehr verwendet wird
-    // exclude: ['screp-js'],
   },
   build: {
     rollupOptions: {
       plugins: [
-        // Node.js Polyfills während des Builds anwenden
         rollupNodePolyFill() as any,
       ],
       output: {
-        format: 'es' as const,
-        // JSSUH und Polyfills in einen Vendor-Chunk bündeln
+        format: 'es',
         manualChunks: {
           vendor: ['jssuh', 'buffer', 'stream-browserify', 'events', 'util', 'browserify-zlib']
         }
       },
     },
     commonjsOptions: {
-      // CommonJS Module in node_modules verarbeiten
       transformMixedEsModules: true,
       include: [/node_modules/],
     },

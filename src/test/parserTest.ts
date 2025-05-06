@@ -12,6 +12,11 @@ export async function runBrowserParserTest(file: File): Promise<any> {
   console.log(`[parserTest] Starting browser parser test with file: ${file.name}`);
   
   try {
+    // Read the file content directly
+    console.log('[parserTest] Reading file contents...');
+    const fileData = await readFileAsUint8Array(file);
+    console.log(`[parserTest] File read successfully, size: ${fileData.length} bytes`);
+    
     // Parse the replay using our unified browser parser
     console.log('[parserTest] Calling parseReplayInBrowser...');
     const parsedData = await parseReplayInBrowser(file);

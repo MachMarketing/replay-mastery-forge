@@ -5,9 +5,9 @@
  * with better error handling and retry logic.
  */
 
-// Import the JSSUH library
+// Import the JSSUH library and stream utilities
 import * as jssuh from 'jssuh';
-import { Writable } from 'stream';
+import { Readable, Writable } from 'stream';
 
 // Flag to track if the parser has been initialized
 let isInitialized = false;
@@ -24,23 +24,12 @@ export async function initBrowserSafeParser(): Promise<void> {
 
   try {
     console.log('[browserSafeParser] Initializing JSSUH parser');
-    console.log('[browserSafeParser] Attempting to import JSSUH module');
-    
-    // Check if the module is properly loaded
-    if (!jssuh) {
-      throw new Error('JSSUH module not loaded');
-    }
-    
-    // Check the structure of the JSSUH module
-    console.log('[browserSafeParser] JSSUH import successful, module structure:', Object.keys(jssuh).join(', '));
+    console.log('[browserSafeParser] JSSUH module keys:', Object.keys(jssuh).join(', '));
     
     // Find the ReplayParser constructor
     if (jssuh.ReplayParser) {
       ParserClass = jssuh.ReplayParser;
       console.log('[browserSafeParser] Found ReplayParser in module exports');
-    } else if (jssuh.default && typeof jssuh.default === 'function') {
-      ParserClass = jssuh.default;
-      console.log('[browserSafeParser] Found ReplayParser as default export (function)');
     } else if (jssuh.default && jssuh.default.ReplayParser) {
       ParserClass = jssuh.default.ReplayParser;
       console.log('[browserSafeParser] Found ReplayParser in default export object');
@@ -53,7 +42,13 @@ export async function initBrowserSafeParser(): Promise<void> {
     if (!testParser) {
       throw new Error('Failed to create ReplayParser instance');
     }
-    console.log('[browserSafeParser] Successfully created ReplayParser instance');
+    
+    // Check for required event methods
+    if (typeof testParser.on !== 'function') {
+      throw new Error('ReplayParser instance does not have event methods');
+    }
+    
+    console.log('[browserSafeParser] Successfully created ReplayParser instance with event methods');
     
     // Mark as initialized
     isInitialized = true;
@@ -86,9 +81,7 @@ export async function parseReplayWithBrowserSafeParser(replayData: Uint8Array): 
       }, 15000);
       
       // Create a new parser instance
-      console.log('[browserSafeParser] Using JSSUH ReplayParser...');
       console.log('[browserSafeParser] Creating new ReplayParser instance');
-      
       const parser = new ParserClass();
       if (!parser) {
         throw new Error('Failed to create parser instance');
@@ -147,69 +140,59 @@ export async function parseReplayWithBrowserSafeParser(replayData: Uint8Array): 
         resolve(results);
       });
       
-      // Use a writeable stream to pipe the replay data to the parser
-      const bufferStream = new Writable({
-        write(chunk, encoding, callback) {
-          // Process the chunk
-          parser.write(chunk);
-          callback();
-        }
-      });
+      // Create a readable stream from the Uint8Array
+      const bufferChunk = Buffer.from(replayData);
       
-      bufferStream.on('finish', () => {
-        parser.end();
-      });
-      
-      bufferStream.on('error', (error) => {
-        console.error('[browserSafeParser] Stream error:', error);
-        clearTimeout(timeoutId);
-        reject(error);
-      });
-      
-      // Try to write data to the stream
+      // Use a buffer stream to pipe the data to the parser
       try {
-        bufferStream.write(replayData);
-        bufferStream.end();
+        console.log('[browserSafeParser] Creating source stream from replay data');
+        
+        // Use a Readable stream that pushes our data
+        const source = new Readable({
+          read() {
+            this.push(bufferChunk);
+            this.push(null); // Signal end of stream
+          }
+        });
+        
+        // Set up error handling for the source stream
+        source.on('error', (error) => {
+          console.error('[browserSafeParser] Source stream error:', error);
+          clearTimeout(timeoutId);
+          reject(error);
+        });
+        
+        console.log('[browserSafeParser] Piping replay data to parser');
+        
+        // Pipe the data through the parser
+        source.pipe(parser);
+        
+        console.log('[browserSafeParser] Stream pipeline set up, waiting for events');
       } catch (error) {
-        console.error('[browserSafeParser] Error writing to stream:', error);
+        console.error('[browserSafeParser] Error setting up stream pipeline:', error);
         
-        // If streaming fails, try to extract basic information as fallback
-        console.log('[browserSafeParser] Using fallback header extraction method');
-        
-        // Extract very basic information from the replay as fallback
-        const headerInfo = extractBasicInfoFromReplay(replayData);
-        clearTimeout(timeoutId);
-        resolve(headerInfo);
+        // Fallback to simple write/end approach if piping fails
+        console.log('[browserSafeParser] Using fallback write/end approach');
+        try {
+          parser.write(bufferChunk);
+          parser.end();
+        } catch (writeError) {
+          console.error('[browserSafeParser] Error writing to parser:', writeError);
+          clearTimeout(timeoutId);
+          
+          // If all stream approaches fail, try to extract basic information as fallback
+          const fallbackData = createFallbackData(replayData);
+          resolve(fallbackData);
+        }
       }
     } catch (error) {
-      console.error('[browserSafeParser] JSSUH parsing failed:', error);
+      console.error('[browserSafeParser] JSSUH parsing setup failed:', error);
       
-      // Create minimal fallback data
+      // Create minimal fallback data if the entire parsing approach fails
       const fallbackData = createFallbackData(replayData);
       resolve(fallbackData);
     }
   });
-}
-
-/**
- * Fallback method to extract very basic information from replay data
- * when full parsing fails
- */
-function extractBasicInfoFromReplay(data: Uint8Array): any {
-  console.log('[browserSafeParser] Extracted header info: {}');
-  
-  // Try to detect player race from replay data patterns (very basic)
-  // This is not reliable, just a fallback
-  const playerInfo = {
-    playerName: "Player",
-    opponentName: "Opponent", 
-    playerRace: "T",
-    opponentRace: "P"
-  };
-  
-  console.log('[browserSafeParser] Extracted player info:', playerInfo);
-  
-  return createFallbackData(data, playerInfo);
 }
 
 /**
