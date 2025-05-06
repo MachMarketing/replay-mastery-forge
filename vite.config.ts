@@ -24,7 +24,7 @@ export default defineConfig(({ command }: ConfigEnv) => ({
     alias: {
       '@': path.resolve(__dirname, './src'),
       // --- Node.js Polyfills für Browser ---
-      // Use proper paths for the polyfills, without trailing slashes
+      // Fix path problems by removing trailing slashes and using exact paths
       'process': 'rollup-plugin-node-polyfills/polyfills/process-es6',
       'stream': 'stream-browserify',
       'events': 'rollup-plugin-node-polyfills/polyfills/events',
