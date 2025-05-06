@@ -1,3 +1,4 @@
+
 /**
  * Handles replay parsing with WASM in a browser-compatible way
  * 
@@ -27,6 +28,35 @@ let initializationFailed = false;
 let parserVersion: string | null = null;
 
 /**
+ * Deep inspect an object and return a string representation
+ * This helps us identify what's actually in the module
+ */
+function deepInspect(obj: any, maxDepth = 2, depth = 0): string {
+  if (depth > maxDepth) return '...';
+  if (!obj) return String(obj);
+  if (typeof obj !== 'object') return String(obj);
+  
+  const indent = '  '.repeat(depth);
+  const entries = Object.entries(obj)
+    .filter(([key]) => !key.startsWith('_') && key !== 'buffer')
+    .map(([key, value]) => {
+      if (typeof value === 'function') {
+        return `${indent}${key}: [Function]`;
+      } else if (typeof value === 'object' && value !== null) {
+        if (Array.isArray(value)) {
+          return `${indent}${key}: Array(${value.length})`;
+        }
+        return `${indent}${key}: {\n${deepInspect(value, maxDepth, depth + 1)}\n${indent}}`;
+      } else {
+        return `${indent}${key}: ${value}`;
+      }
+    })
+    .join(',\n');
+  
+  return entries;
+}
+
+/**
  * Check if browser is likely to support WASM properly
  */
 export function canUseWasm(): boolean {
@@ -34,47 +64,66 @@ export function canUseWasm(): boolean {
 }
 
 /**
- * Get the version of the WASM parser if available
+ * Attempt to extract version information from any available source
  */
 export function getParserVersion(): string | null {
   if (!screpModule) return null;
   
   try {
-    // Log ALL available properties for debugging
-    console.log('[wasmLoader] ScrepModule full inspection:', {
-      properties: Object.keys(screpModule),
-      version: screpModule.version,
-      VERSION: screpModule.VERSION,
-      __VERSION__: screpModule.__VERSION__,
-      hasGetVersion: typeof screpModule.getVersion === 'function',
-      hasGetVersionObject: typeof screpModule.getVersionObject === 'function',
-      hasParseBuffer: typeof screpModule.parseBuffer === 'function',
-      moduleType: typeof screpModule,
-      prototype: Object.getPrototypeOf(screpModule)
-    });
+    // Much more detailed logging of the module structure
+    console.log('[wasmLoader] ScrepModule full inspection:');
+    console.log(deepInspect(screpModule));
     
+    // Log all properties and methods to help debug
+    console.log('[wasmLoader] Available properties:', Object.keys(screpModule));
+    console.log('[wasmLoader] Available methods:', 
+      Object.getOwnPropertyNames(screpModule)
+        .filter(prop => typeof screpModule[prop] === 'function')
+    );
+    
+    // Try to get version from package info if available
+    if (typeof Screp.version === 'string') {
+      console.log('[wasmLoader] Screp.version found:', Screp.version);
+      return Screp.version;
+    }
+    
+    // Try the getVersion function if it exists
     if (typeof screpModule.getVersion === 'function') {
       const version = screpModule.getVersion();
       console.log('[wasmLoader] Version from getVersion():', version);
       return version;
     }
     
+    // Try the getVersionObject function if it exists
     if (typeof screpModule.getVersionObject === 'function') {
       const versionObj = screpModule.getVersionObject();
       console.log('[wasmLoader] Version object:', versionObj);
       return `${versionObj.Major}.${versionObj.Minor}.${versionObj.Patch}`;
     }
     
-    if (typeof screpModule.version === 'string') {
-      console.log('[wasmLoader] Version from version property:', screpModule.version);
-      return screpModule.version;
+    // Try static version properties with various casing
+    const versionProps = ['VERSION', 'version', '__VERSION__', '_VERSION', 'Version'];
+    for (const prop of versionProps) {
+      if (screpModule[prop]) {
+        console.log(`[wasmLoader] Version from ${prop}:`, screpModule[prop]);
+        return String(screpModule[prop]);
+      }
     }
     
-    // Try to get version from package info if available
-    if (screpModule.VERSION || screpModule.version || screpModule.__VERSION__) {
-      const version = screpModule.VERSION || screpModule.version || screpModule.__VERSION__;
-      console.log('[wasmLoader] Version from static property:', version);
-      return version;
+    // Try to get window.screpjs if it exists (sometimes modules expose globals)
+    if (typeof window !== 'undefined' && (window as any).screpjs) {
+      console.log('[wasmLoader] Found global screpjs:', (window as any).screpjs);
+      const globalVersion = (window as any).screpjs.version || (window as any).screpjs.VERSION;
+      if (globalVersion) {
+        console.log('[wasmLoader] Global version:', globalVersion);
+        return String(globalVersion);
+      }
+    }
+    
+    // Check for webpack/vite injected version
+    if (typeof process !== 'undefined' && process.env && process.env.npm_package_dependencies_screp_js) {
+      console.log('[wasmLoader] npm_package_dependencies_screp_js:', process.env.npm_package_dependencies_screp_js);
+      return process.env.npm_package_dependencies_screp_js;
     }
   } catch (e) {
     console.warn('[wasmLoader] Error getting parser version:', e);
@@ -114,7 +163,7 @@ export async function initParserWasm(): Promise<boolean> {
     console.log('🔍 Screp package info:', {
       hasDefault: !!Screp.default,
       mainExports: Object.keys(Screp),
-      defaultExports: Object.keys(Screp.default || {})
+      defaultExports: Screp.default ? Object.keys(Screp.default) : 'No default export'
     });
     
     // Try to get the module, prioritizing default export
@@ -259,6 +308,19 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
           resultType: typeof result
         });
         
+        // Deep inspect the first few commands if they exist
+        if (result && result.Commands && result.Commands.length > 0) {
+          console.log('[wasmLoader] First 3 commands:', 
+            result.Commands.slice(0, 3).map((cmd: any) => ({
+              frame: cmd.Frame,
+              type: cmd.Type,
+              player: cmd.Player
+            }))
+          );
+        } else {
+          console.warn('[wasmLoader] No commands found in parse result');
+        }
+        
         // Initialize Commands as empty array if null/undefined
         if (result && !result.Commands) {
           console.log('[wasmLoader] Initializing null Commands as empty array');
@@ -268,6 +330,7 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
         return result;
       } catch (err) {
         console.error('[wasmLoader] Error in parseBuffer:', err);
+        // Continue to next method
       }
     }
     
@@ -281,6 +344,16 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
         // Log commands for this method too
         if (result && result.Commands) {
           console.log(`[wasmLoader] parseReplay - Commands found: ${Array.isArray(result.Commands) ? result.Commands.length : 'not an array'}`);
+          
+          if (result.Commands.length > 0) {
+            console.log('[wasmLoader] First 3 commands from parseReplay:', 
+              result.Commands.slice(0, 3).map((cmd: any) => ({
+                frame: cmd.Frame,
+                type: cmd.Type,
+                player: cmd.Player
+              }))
+            );
+          }
         }
         
         // Initialize Commands as empty array if null/undefined
@@ -292,6 +365,7 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
         return result;
       } catch (err) {
         console.error('[wasmLoader] Error in parseReplay:', err);
+        // Continue to next method
       }
     }
     
@@ -305,6 +379,16 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
         // Log commands for this method too
         if (result && result.Commands) {
           console.log(`[wasmLoader] parse - Commands found: ${Array.isArray(result.Commands) ? result.Commands.length : 'not an array'}`);
+          
+          if (result.Commands.length > 0) {
+            console.log('[wasmLoader] First 3 commands from parse:', 
+              result.Commands.slice(0, 3).map((cmd: any) => ({
+                frame: cmd.Frame,
+                type: cmd.Type,
+                player: cmd.Player
+              }))
+            );
+          }
         }
         
         // Initialize Commands as empty array if null/undefined

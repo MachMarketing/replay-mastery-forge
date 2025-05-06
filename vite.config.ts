@@ -1,4 +1,3 @@
-
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
@@ -35,6 +34,10 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 8080,
       host: "::",
+      hmr: {
+        // Ensure HMR works correctly with WebAssembly modules
+        overlay: true,
+      },
       proxy: {
         // Proxy API requests to the SCREP service
         '/api/parse': {
@@ -42,9 +45,13 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/parse/, ''),
         }
-      }
+      },
+      // Force the server to invalidate the module cache on restart
+      force: true,
     },
     optimizeDeps: {
+      // Force Vite to reoptimize dependencies on server restart
+      force: true,
       include: ['buffer', 'screp-js'],
       exclude: [], // Don't exclude WASM modules
       esbuildOptions: {
@@ -66,6 +73,14 @@ export default defineConfig(({ mode }) => {
       assetsInlineLimit: 0,
       // Clear the cache on each build
       emptyOutDir: true,
+      // Use terser for better WASM compatibility
+      minify: 'terser',
+      terserOptions: {
+        compress: {
+          // Keep console.logs for debugging
+          drop_console: false,
+        },
+      },
       rollupOptions: {
         // Ensure WASM is properly handled
         output: {
@@ -74,6 +89,8 @@ export default defineConfig(({ mode }) => {
           }
         }
       }
-    }
+    },
+    // Disable dependency optimization cache to force fresh builds
+    cacheDir: '.vite_fresh_cache',
   };
 });
