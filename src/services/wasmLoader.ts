@@ -12,16 +12,48 @@ import { markBrowserAsHavingWasmIssues, hasBrowserWasmIssues } from '@/utils/bro
 const WASM_MEMORY_ERROR_KEYWORDS = ['makeslice', 'runtime error', 'out of bounds', 'memory access'];
 const MIN_VALID_REPLAY_SIZE = 1024; // Minimum size (bytes) for a valid replay file
 
+// Parser options to ensure commands are included
+const PARSER_OPTIONS = {
+  includeCommands: true,
+  verboseCommands: true,
+  calculateAPM: true,
+  parseActions: true,
+  parseChat: true
+};
+
 // State management for WASM initialization
 let screpModule: any = null;
 let initializationAttempted = false;
 let initializationFailed = false;
+let parserVersion: string | null = null;
 
 /**
  * Check if browser is likely to support WASM properly
  */
 export function canUseWasm(): boolean {
   return !hasBrowserWasmIssues() && typeof WebAssembly === 'object';
+}
+
+/**
+ * Get the version of the WASM parser if available
+ */
+export function getParserVersion(): string | null {
+  if (!screpModule) return null;
+  
+  try {
+    if (typeof screpModule.getVersion === 'function') {
+      return screpModule.getVersion();
+    }
+    
+    if (typeof screpModule.getVersionObject === 'function') {
+      const versionObj = screpModule.getVersionObject();
+      return `${versionObj.Major}.${versionObj.Minor}.${versionObj.Patch}`;
+    }
+  } catch (e) {
+    console.warn('[wasmLoader] Error getting parser version:', e);
+  }
+  
+  return 'unknown';
 }
 
 /**
@@ -72,7 +104,20 @@ export async function initParserWasm(): Promise<boolean> {
       throw new Error('No valid parse function found in screp-js module');
     }
     
-    console.log('[wasmLoader] WASM parser initialized successfully');
+    // Get and log the parser version
+    parserVersion = getParserVersion();
+    console.log(`[wasmLoader] WASM parser initialized successfully (version: ${parserVersion})`);
+    
+    // Pre-configure options if possible
+    if (typeof screpModule.resolveOptions === 'function') {
+      try {
+        console.log('[wasmLoader] Configuring parser options:', PARSER_OPTIONS);
+        screpModule.resolveOptions(PARSER_OPTIONS);
+      } catch (e) {
+        console.warn('[wasmLoader] Failed to set parser options:', e);
+      }
+    }
+    
     initializationFailed = false;
     return true;
   } catch (error) {
@@ -99,6 +144,7 @@ export function forceWasmReset(): void {
   screpModule = null;
   initializationAttempted = false;
   initializationFailed = false;
+  parserVersion = null;
 }
 
 /**
@@ -152,24 +198,42 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
     // Create a copy of the data to avoid any potential memory issues
     const dataCopy = new Uint8Array(data);
     
-    // Try all available parsing methods until one works
-    let result = null;
-    let hasValidCommands = false;
-    
-    // Try parseBuffer first (most common in newer versions)
+    // Try parseBuffer first with options
     if (typeof screpModule.parseBuffer === 'function') {
       try {
-        console.log('[wasmLoader] Trying parseBuffer function');
-        result = await screpModule.parseBuffer(dataCopy);
-        console.log('[wasmLoader] parseBuffer result:', JSON.stringify(result).substring(0, 200) + '...');
+        console.log('[wasmLoader] Trying parseBuffer function with options');
+        const parseOptions = { ...PARSER_OPTIONS };
         
-        // Check if Commands array is valid
-        if (result && Array.isArray(result.Commands) && result.Commands.length > 0) {
-          hasValidCommands = true;
-          console.log(`[wasmLoader] parseBuffer returned ${result.Commands.length} valid commands`);
-        } else if (result) {
-          console.warn('[wasmLoader] parseBuffer returned result without valid Commands array');
+        // Try to pass options if method signature supports it
+        let result;
+        if (screpModule.parseBuffer.length >= 2) {
+          console.log('[wasmLoader] Calling parseBuffer with options:', parseOptions);
+          result = await screpModule.parseBuffer(dataCopy, parseOptions);
+        } else {
+          // Fall back to calling without options
+          console.log('[wasmLoader] Calling parseBuffer without options');
+          result = await screpModule.parseBuffer(dataCopy);
         }
+        
+        console.log('[wasmLoader] parseBuffer result structure:', Object.keys(result || {}));
+        
+        // Log commands status
+        if (result && result.Commands) {
+          console.log(`[wasmLoader] Commands found: ${Array.isArray(result.Commands) ? result.Commands.length : 'not an array'}`);
+          if (Array.isArray(result.Commands) && result.Commands.length > 0) {
+            console.log('[wasmLoader] First command sample:', result.Commands[0]);
+          }
+        } else {
+          console.warn('[wasmLoader] No Commands array in result');
+        }
+        
+        // Initialize Commands as empty array if null/undefined
+        if (result && (result.Commands === null || result.Commands === undefined)) {
+          console.log('[wasmLoader] Initializing null Commands as empty array');
+          result.Commands = [];
+        }
+        
+        return result;
       } catch (err) {
         console.error('[wasmLoader] Error in parseBuffer:', err);
         // Continue to next method
@@ -177,20 +241,18 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
     }
     
     // If parseBuffer didn't work, try parseReplay
-    if (!hasValidCommands && typeof screpModule.parseReplay === 'function') {
+    if (typeof screpModule.parseReplay === 'function') {
       try {
         console.log('[wasmLoader] Trying parseReplay function');
-        const replayResult = await screpModule.parseReplay(dataCopy);
-        console.log('[wasmLoader] parseReplay result:', JSON.stringify(replayResult).substring(0, 200) + '...');
+        const result = await screpModule.parseReplay(dataCopy);
         
-        if (replayResult && Array.isArray(replayResult.Commands) && replayResult.Commands.length > 0) {
-          result = replayResult;
-          hasValidCommands = true;
-          console.log(`[wasmLoader] parseReplay returned ${replayResult.Commands.length} valid commands`);
-        } else if (!result) {
-          // Only use this result if we don't have any previous result
-          result = replayResult;
+        // Initialize Commands as empty array if null/undefined
+        if (result && (result.Commands === null || result.Commands === undefined)) {
+          console.log('[wasmLoader] Initializing null Commands as empty array');
+          result.Commands = [];
         }
+        
+        return result;
       } catch (err) {
         console.error('[wasmLoader] Error in parseReplay:', err);
         // Continue to next method
@@ -198,41 +260,24 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
     }
     
     // If neither worked, try parse function
-    if (!hasValidCommands && typeof screpModule.parse === 'function') {
+    if (typeof screpModule.parse === 'function') {
       try {
         console.log('[wasmLoader] Trying parse function');
-        const parseResult = await screpModule.parse(dataCopy);
-        console.log('[wasmLoader] parse result:', JSON.stringify(parseResult).substring(0, 200) + '...');
+        const result = await screpModule.parse(dataCopy);
         
-        if (parseResult && Array.isArray(parseResult.Commands) && parseResult.Commands.length > 0) {
-          result = parseResult;
-          hasValidCommands = true;
-          console.log(`[wasmLoader] parse returned ${parseResult.Commands.length} valid commands`);
-        } else if (!result) {
-          // Only use this result if we don't have any previous result
-          result = parseResult;
+        // Initialize Commands as empty array if null/undefined
+        if (result && (result.Commands === null || result.Commands === undefined)) {
+          console.log('[wasmLoader] Initializing null Commands as empty array');
+          result.Commands = [];
         }
+        
+        return result;
       } catch (err) {
         console.error('[wasmLoader] Error in parse:', err);
       }
     }
     
-    // Check if we have a meaningful result
-    if (!result) {
-      throw new Error('All WASM parsing methods failed');
-    }
-    
-    // If we have header but no commands, try to fix the data structure
-    if (result.Header && !hasValidCommands) {
-      console.warn('[wasmLoader] Using partial replay data (header only)');
-      
-      // Make sure Commands exists as an empty array rather than null
-      if (result.Commands === null || result.Commands === undefined) {
-        result.Commands = [];
-      }
-    }
-    
-    return result;
+    throw new Error('All WASM parsing methods failed');
   } catch (error) {
     console.error('[wasmLoader] Error in WASM parsing:', error);
     

@@ -1,4 +1,3 @@
-
 /**
  * This module transforms data from the JSSUH parser to our application's format
  */
@@ -31,8 +30,11 @@ export function transformJSSUHData(jssuhData: any): ParsedReplayData {
   const apm = Math.round(actions / gameMinutes) || 150;
   const eapm = Math.round(apm * 0.8) || 120; // Calculate eapm as 80% of APM
   
-  // Enhanced build order extraction
+  // Enhanced build order extraction with better error handling
   const buildOrder = extractBuildOrder(jssuhData);
+  
+  // Add logging for build order extraction result
+  console.log(`🔄 [transformer] Extracted ${buildOrder.length} build order items from raw data`);
   
   // Extract resources graph if available
   const resourcesGraph = extractResourcesGraph(jssuhData);
@@ -68,7 +70,7 @@ function extractBuildOrder(data: any): Array<{time: string; supply: number; acti
     data.units ? `Found ${data.units.length} units` : 'No units array',
     data.events ? `Found ${data.events.length} events` : 'No events array',
     data.actions ? `Found ${data.actions.length} actions` : 'No actions array',
-    data.commands ? `Found ${data.commands.length} commands` : 'No commands array',
+    data.commands ? `Found ${data.commands?.length} commands` : 'No commands array',
     data.Commands ? `Found ${data.Commands?.length} Commands` : 'No Commands array'
   );
   
@@ -77,12 +79,16 @@ function extractBuildOrder(data: any): Array<{time: string; supply: number; acti
   
   // Try to extract from Commands (SCREP-WASM format)
   if (data.Commands && Array.isArray(data.Commands)) {
+    console.log('🔍 [transformer] Found Commands array with', data.Commands.length, 'items');
+    
     const buildCommands = data.Commands.filter((cmd: any) => {
       return (cmd.type === 'build' || cmd.type === 'train' || 
               (cmd.id && [0x0c, 0x1c, 0x1f, 0x23, 0x30, 0x32].includes(cmd.id)));
     });
     
     if (buildCommands.length > 0) {
+      console.log('🔍 [transformer] Filtered', buildCommands.length, 'build-related commands');
+      
       buildOrder = buildCommands.map((cmd: any, index: number) => {
         const frameTime = cmd.frame || 0;
         const seconds = Math.floor(frameTime / 23.81);
@@ -96,6 +102,8 @@ function extractBuildOrder(data: any): Array<{time: string; supply: number; acti
           action: cmd.name || cmd.action || `${cmd.type || 'Build'} ${cmd.unit || ''}`
         };
       });
+    } else {
+      console.log('🔍 [transformer] No build commands found in Commands array');
     }
   }
   
@@ -145,22 +153,36 @@ function extractBuildOrder(data: any): Array<{time: string; supply: number; acti
     }
   }
   
-  // Fallback: Generate synthetic build order based on race
+  // Fallback: Generate synthetic build order based on race if we have player data
   if (buildOrder.length === 0) {
-    console.log('🔍 [transformer] No build order data found, generating synthetic data');
-    const race = data.players?.[0]?.race || 'T';
+    console.log('🔍 [transformer] No build order data found, generating race-appropriate placeholder');
+    // Find player race from Header or other sources
+    let race = 'T'; // Default to Terran
+    
+    if (data.Header && data.Header.Players && Array.isArray(data.Header.Players) && data.Header.Players.length > 0) {
+      race = data.Header.Players[0].Race || 'T';
+      console.log('🔍 [transformer] Found race in Header.Players:', race);
+    } else if (data.players && Array.isArray(data.players) && data.players.length > 0) {
+      race = data.players[0].race || data.players[0].raceLetter || 'T';
+      console.log('🔍 [transformer] Found race in players array:', race);
+    }
+    
     buildOrder = generateSyntheticBuildOrder(race);
+    console.log('🔍 [transformer] Generated synthetic build order with', buildOrder.length, 'items for race', race);
   }
   
-  console.log(`🔍 [transformer] Extracted ${buildOrder.length} build order items`);
+  console.log(`🔍 [transformer] Final build order has ${buildOrder.length} items`);
   return buildOrder.slice(0, 30); // Limit to 30 items
 }
 
 /**
  * Generate synthetic build order for demo purposes when no data is available
+ * This provides race-appropriate build orders that make sense
  */
 function generateSyntheticBuildOrder(race: string): Array<{time: string; supply: number; action: string}> {
-  if (race.toUpperCase() === 'T' || race.includes('Terr')) {
+  const raceChar = typeof race === 'string' ? race.charAt(0).toUpperCase() : 'T';
+  
+  if (raceChar === 'T' || race.includes('Terr')) {
     return [
       { time: '0:00', supply: 4, action: 'SCV' },
       { time: '0:20', supply: 5, action: 'SCV' },
@@ -177,7 +199,7 @@ function generateSyntheticBuildOrder(race: string): Array<{time: string; supply:
       { time: '4:30', supply: 13, action: 'Factory' },
       { time: '5:00', supply: 14, action: 'Supply Depot' },
     ];
-  } else if (race.toUpperCase() === 'P' || race.includes('Prot')) {
+  } else if (raceChar === 'P' || race.includes('Prot')) {
     return [
       { time: '0:00', supply: 4, action: 'Probe' },
       { time: '0:20', supply: 5, action: 'Probe' },

@@ -1,10 +1,10 @@
-
 import React, { useEffect } from 'react';
-import { Loader2, Upload } from 'lucide-react';
+import { Loader2, Upload, AlertCircle } from 'lucide-react';
 import { AnalyzedReplayResult } from '@/services/replayParserService';
 import AnalysisResult from '@/components/AnalysisResult';
 import PlayerSelector from '@/components/PlayerSelector';
 import { standardizeRaceName } from '@/lib/replayUtils';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface AnalysisDisplayProps {
   isAnalyzing: boolean;
@@ -217,6 +217,10 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
         buildOrderItems: buildOrder.length
       });
       
+      // Check if build order is missing
+      const hasBuildOrder = Array.isArray(displayData.buildOrder) && displayData.buildOrder.length > 0;
+      console.log('💡 AnalysisDisplay - Build order status:', hasBuildOrder ? 'Available' : 'Missing');
+      
       return (
         <>
           {/* Player Selector */}
@@ -228,6 +232,16 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
             selectedPlayerIndex={selectedPlayerIndex}
             onSelectPlayer={onPlayerSelect}
           />
+          
+          {/* Build Order Warning */}
+          {!hasBuildOrder && (
+            <Alert variant="warning" className="mt-4 bg-amber-50 border-amber-200">
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-amber-700">
+                Build Order konnte nicht aus dem Replay extrahiert werden. Dies kann bei sehr kurzen Spielen oder bei bestimmten Replay-Formaten vorkommen.
+              </AlertDescription>
+            </Alert>
+          )}
           
           <div className="mt-4">
             <AnalysisResult data={{
