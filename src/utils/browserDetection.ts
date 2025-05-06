@@ -12,6 +12,15 @@ const WASM_ISSUES_STORAGE_KEY = 'has_wasm_issues';
 // Flag to track if we've detected WASM issues in this browser
 let hasDetectedWasmIssues = false;
 
+// Extend the Performance interface for browsers (like Chrome) that support memory info
+interface ExtendedPerformance extends Performance {
+  memory?: {
+    jsHeapSizeLimit: number;
+    totalJSHeapSize: number;
+    usedJSHeapSize: number;
+  };
+}
+
 /**
  * Check if the current browser is likely to have issues with WASM
  * This is a heuristic based on common problematic configurations
@@ -49,10 +58,12 @@ export function detectWasmCompatibilityIssues(): boolean {
     const hasWebAssembly = typeof WebAssembly === 'object' && 
                          typeof WebAssembly.instantiate === 'function';
     
-    // Check for low memory conditions
-    const hasLimitedMemory = typeof performance !== 'undefined' && 
-                           typeof performance.memory !== 'undefined' && 
-                           performance.memory.jsHeapSizeLimit < 500000000; // ~500MB
+    // Check for low memory conditions - only in browsers that support memory API
+    const performance = window.performance as ExtendedPerformance;
+    const hasLimitedMemory = 
+      typeof performance !== 'undefined' && 
+      performance.memory !== undefined && 
+      performance.memory.jsHeapSizeLimit < 500000000; // ~500MB
                         
     // Mark as having issues if any check fails
     hasDetectedWasmIssues = isOldBrowser || !hasWebAssembly || (isMobileBrowser && hasLimitedMemory);
