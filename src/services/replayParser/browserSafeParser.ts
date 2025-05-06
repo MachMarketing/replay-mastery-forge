@@ -7,7 +7,7 @@
 
 // Import the JSSUH library and stream utilities
 import * as jssuh from 'jssuh';
-import { Readable, Writable } from 'stream';
+import { Readable } from 'stream';
 
 // Flag to track if the parser has been initialized
 let isInitialized = false;
@@ -141,14 +141,16 @@ export async function parseReplayWithBrowserSafeParser(replayData: Uint8Array): 
       });
       
       // Create a readable stream from the Uint8Array
-      const buffer = Buffer.from(replayData);
-      
-      // Use a Readable stream that pushes our data
       try {
         console.log('[browserSafeParser] Creating source stream from replay data');
         
-        const source = new Readable();
-        source._read = function() {}; // Required implementation
+        // Create a buffer from the Uint8Array
+        const buffer = Buffer.from(replayData);
+        
+        // Use a Readable stream that pushes our data
+        const source = new Readable({
+          read() {/* This is intentionally empty as we'll push data manually */} 
+        });
         
         // Push data to the stream
         source.push(buffer);
@@ -167,6 +169,8 @@ export async function parseReplayWithBrowserSafeParser(replayData: Uint8Array): 
         // Attempt fallback to direct write if piping fails
         try {
           console.log('[browserSafeParser] Attempting fallback with direct write');
+          // Create a buffer from the Uint8Array
+          const buffer = Buffer.from(replayData);
           parser.write(buffer);
           parser.end();
         } catch (writeError) {
