@@ -52,24 +52,21 @@ export async function parseReplayWithBrowserSafeParser(fileData: Uint8Array): Pr
       await initBrowserSafeParser();
     }
     
-    // WICHTIGE ÄNDERUNG: Entfernung der Datei-Validierung - wir versuchen immer mit JSSUH zu parsen
-    if (jssuhModule && typeof jssuhModule.Parser === 'function') {
-      try {
-        console.log('[browserSafeParser] Using JSSUH parser as primary parser, without validation...');
-        const parsedData = await parseWithJSSUH(fileData);
-        console.log('[browserSafeParser] Successfully parsed with JSSUH');
-        return parsedData;
-      } catch (jssuhError) {
-        console.error('[browserSafeParser] JSSUH parsing failed, using fallback:', jssuhError);
-        // Fall through to fallback
-      }
-    } else {
-      console.log('[browserSafeParser] JSSUH not available, using fallback parser');
-    }
+    // WICHTIGE ÄNDERUNG: Wir entfernen alle Validierungsprüfungen und verwenden immer JSSUH
+    console.log('[browserSafeParser] Attempting to parse with JSSUH parser regardless of file validation...');
     
-    // Fallback to header extraction
-    console.log('[browserSafeParser] Using fallback header extraction method');
-    return extractInfoFromReplayHeader(fileData);
+    try {
+      // Wir versuchen immer zuerst mit JSSUH zu parsen, unabhängig von der Verfügbarkeit oder Validierung
+      console.log('[browserSafeParser] Using JSSUH parser as primary parser, without validation...');
+      const parsedData = await parseWithJSSUH(fileData);
+      console.log('[browserSafeParser] Successfully parsed with JSSUH');
+      return parsedData;
+    } catch (jssuhError) {
+      // Nur wenn JSSUH völlig fehlschlägt, verwenden wir den Fallback
+      console.error('[browserSafeParser] JSSUH parsing failed completely:', jssuhError);
+      console.log('[browserSafeParser] Using fallback header extraction method');
+      return extractInfoFromReplayHeader(fileData);
+    }
   } catch (error) {
     console.error('[browserSafeParser] Error in browser-safe parsing:', error);
     // Immer einen Fallback bereitstellen
@@ -86,8 +83,16 @@ export async function parseReplayWithBrowserSafeParser(fileData: Uint8Array): Pr
  * Parse replay using JSSUH library
  */
 async function parseWithJSSUH(fileData: Uint8Array): Promise<ParsedReplayData> {
-  if (!jssuhModule || typeof jssuhModule.Parser !== 'function') {
-    throw new Error('JSSUH parser not initialized');
+  // WICHTIGE ÄNDERUNG: Wir versuchen jetzt immer, mit JSSUH zu parsen, auch wenn das Modul
+  // nicht verfügbar erscheint - dies zwingt den Code, den Import erneut zu versuchen
+  if (!jssuhModule) {
+    console.log('[browserSafeParser] JSSUH not initialized, attempting to load it now...');
+    await initBrowserSafeParser();
+    
+    // Wenn es immer noch nicht geladen werden konnte, werfen wir einen Fehler
+    if (!jssuhModule) {
+      throw new Error('Failed to load JSSUH module');
+    }
   }
   
   try {
