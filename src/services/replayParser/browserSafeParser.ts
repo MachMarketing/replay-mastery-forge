@@ -1,3 +1,4 @@
+
 /**
  * This module provides browser-safe parsing for StarCraft: Brood War replay files.
  * It's designed to work without backend services or WebAssembly.
@@ -32,14 +33,14 @@ export async function initBrowserSafeParser(): Promise<void> {
         if (importedModule.ReplayParser) {
           ReplayParser = importedModule.ReplayParser;
           console.log('[browserSafeParser] Found ReplayParser class in direct exports');
-        } else if (importedModule.default && importedModule.default.ReplayParser) {
-          ReplayParser = importedModule.default.ReplayParser;
-          console.log('[browserSafeParser] Found ReplayParser class in default export');
+        } else if (importedModule.default && typeof importedModule.default === 'function') {
+          ReplayParser = importedModule.default;
+          console.log('[browserSafeParser] Using default export as ReplayParser constructor');
         } else {
           console.warn('[browserSafeParser] ReplayParser class not found, logging available exports:');
           console.log(Object.keys(importedModule).join(', '));
           if (importedModule.default) {
-            console.log('Default export contains:', Object.keys(importedModule.default).join(', '));
+            console.log('Default export contains:', typeof importedModule.default);
           }
         }
         
