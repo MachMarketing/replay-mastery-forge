@@ -1,3 +1,4 @@
+
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
@@ -75,6 +76,10 @@ export default defineConfig(({ mode }) => {
           'process.env': JSON.stringify({}),
           // Convert boolean values to strings as required by the type
           'process.browser': 'true',
+          'process.nextTick': 'true',
+          'process.title': 'true',
+          'process.version': 'true',
+          'process.versions': 'true'
         },
         // Enable WASM support
         supported: {
