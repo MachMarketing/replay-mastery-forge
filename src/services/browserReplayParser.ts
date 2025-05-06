@@ -65,6 +65,36 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     
     console.log('📊 [browserReplayParser] Raw keys →', Object.keys(raw));
     
+    // Add enhanced debugging for Commands array
+    if (raw.Commands && Array.isArray(raw.Commands)) {
+      console.log('📊 [browserReplayParser] Commands count:', raw.Commands.length);
+      // Log first few commands
+      if (raw.Commands.length > 0) {
+        console.log('📊 [browserReplayParser] First 5 commands sample:', 
+          raw.Commands.slice(0, 5).map(cmd => ({
+            id: cmd.id,
+            name: cmd.name,
+            type: cmd.type,
+            frame: cmd.frame
+          }))
+        );
+        
+        // Find build-related commands
+        const buildCommands = raw.Commands.filter((cmd: any) => 
+          cmd.type === 'build' || 
+          cmd.type === 'train' || 
+          (cmd.id && [0x0c, 0x1c, 0x1f, 0x23, 0x30, 0x32].includes(cmd.id))
+        );
+        
+        if (buildCommands.length > 0) {
+          console.log('📊 [browserReplayParser] Found', buildCommands.length, 'build-related commands');
+          console.log('📊 [browserReplayParser] First 3 build commands:', buildCommands.slice(0, 3));
+        } else {
+          console.log('📊 [browserReplayParser] No build commands found, will use synthetic data');
+        }
+      }
+    }
+    
     // Map to domain model
     const mapped = mapRawToParsed(raw);
     console.log('📊 [browserReplayParser] Mapped result →', mapped);
