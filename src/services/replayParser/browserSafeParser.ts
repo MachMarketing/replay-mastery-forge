@@ -309,4 +309,3 @@ function createFallbackData(data: Uint8Array, playerInfo?: any, durationMS = 600
     events: []
   };
 }
-

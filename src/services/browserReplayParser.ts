@@ -29,11 +29,11 @@ export async function initBrowserParser(): Promise<void> {
   
   // Set up initialization with timeout
   initializationPromise = new Promise<void>(async (resolve, reject) => {
-    // Set a timeout for initialization
+    // Set a timeout for initialization - increased to 60 seconds to match other timeouts
     const timeoutId = setTimeout(() => {
-      console.error('[browserReplayParser] Parser initialization timed out after 10 seconds');
+      console.error('[browserReplayParser] Parser initialization timed out after 60 seconds');
       reject(new Error('Parser initialization timed out'));
-    }, 10000);
+    }, 60000); // Increased from 10000 to 60000 ms
     
     try {
       // Initialize the browser-safe parser (jssuh)
