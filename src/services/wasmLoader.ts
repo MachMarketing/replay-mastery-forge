@@ -1,4 +1,3 @@
-
 /**
  * Handles replay parsing with WASM in a browser-compatible way
  * 
@@ -149,8 +148,7 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
     console.log('[wasmLoader] Starting parsing with WASM, size:', data.byteLength);
     console.log('[wasmLoader] Available methods on screpModule:', Object.keys(screpModule));
     
-    // Direct parsing with the WASM module, no header validation
-    // Prioritize parseBuffer as the correct function
+    // Direct parsing with the WASM module, no header validation at all
     if (typeof screpModule.parseBuffer === 'function') {
       console.log('[wasmLoader] Using parseBuffer function');
       return await screpModule.parseBuffer(data);
