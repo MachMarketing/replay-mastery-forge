@@ -1,3 +1,4 @@
+
 /**
  * Browser-safe parser using JSSUH
  * This module wraps the JSSUH library for use in the browser
@@ -49,12 +50,16 @@ export async function initBrowserSafeParser(): Promise<void> {
     }
     
     // Test creating a parser instance
-    const testParser = new ParserClass();
-    if (!testParser) {
-      throw new Error('Failed to create ReplayParser instance');
+    try {
+      const testParser = new ParserClass();
+      if (!testParser) {
+        throw new Error('Failed to create ReplayParser instance');
+      }
+      console.log('[browserSafeParser] Successfully created ReplayParser instance');
+    } catch (instanceError) {
+      console.error('[browserSafeParser] Error creating parser instance:', instanceError);
+      throw new Error('Failed to instantiate parser: ' + (instanceError instanceof Error ? instanceError.message : String(instanceError)));
     }
-    
-    console.log('[browserSafeParser] Successfully created ReplayParser instance');
     
     // Mark as initialized
     isInitialized = true;
@@ -144,28 +149,28 @@ export async function parseReplayWithBrowserSafeParser(replayData: Uint8Array): 
         resolve(results);
       });
       
-      // Try direct parsing method first
+      // First try direct parsing method
       try {
         console.log('[browserSafeParser] Attempting to parse binary data directly without streaming');
         if (typeof parser.parse === 'function') {
           parser.parse(replayData);
           return; // If direct parsing works, we're done
         } else {
-          console.error('[browserSafeParser] JSSUH parsing failed: Parser does not have a direct parse method');
+          console.log('[browserSafeParser] Parser does not have a direct parse method, trying stream approach');
         }
       } catch (directParseError) {
-        console.error('[browserSafeParser] JSSUH parsing failed:', directParseError);
+        console.error('[browserSafeParser] JSSUH direct parsing failed:', directParseError);
       }
       
       // Fall back to stream-based approach if direct parsing fails
       try {
+        console.log('[browserSafeParser] Trying stream-based approach...');
         // Create a buffer from the Uint8Array
         const buffer = Buffer.from(replayData);
         
-        // Create a readable stream
-        const source = new Readable({
-          read() {} // Required but no-op implementation
-        });
+        // Create a readable stream with proper handling
+        const source = new Readable();
+        source._read = function() {}; // Required implementation for older stream versions
         
         // Push data and end of stream
         source.push(buffer);
