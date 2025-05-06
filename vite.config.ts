@@ -75,11 +75,12 @@ export default defineConfig(({ mode }) => {
           global: 'globalThis',
           'process.env': JSON.stringify({}),
           // Convert boolean values to strings as required by the type
-          'process.browser': 'true',
-          'process.nextTick': 'true',
-          'process.title': 'true',
-          'process.version': 'true',
-          'process.versions': 'true'
+          // Fix: Use string values instead of booleans
+          'process.browser': '"true"',
+          'process.nextTick': '"function"',
+          'process.title': '"browser"',
+          'process.version': '"0.0.0"',
+          'process.versions': '"{}"'
         },
         // Enable WASM support
         supported: {
