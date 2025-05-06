@@ -11,11 +11,19 @@ import { mapRawToParsed } from './replayMapper';
 if (typeof globalThis.process === 'undefined') {
   console.log('[browserReplayParser] Polyfilling global.process');
   (globalThis as any).process = {
-    ...globalThis.process,
-    env: { ...((globalThis as any).process?.env || {}) },
+    env: {},
     browser: true,
     nextTick: (fn: Function) => setTimeout(fn, 0),
   };
+} else {
+  // Make sure process.env exists
+  if (!(globalThis as any).process.env) {
+    (globalThis as any).process.env = {};
+  }
+  // Ensure nextTick is available
+  if (typeof (globalThis as any).process.nextTick !== 'function') {
+    (globalThis as any).process.nextTick = (fn: Function) => setTimeout(fn, 0);
+  }
 }
 
 // Flag to track if the parser has been initialized

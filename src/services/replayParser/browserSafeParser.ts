@@ -7,6 +7,26 @@
  */
 import type { ParsedReplayResult } from '../replayParserService';
 
+// Polyfill globals that might be needed
+const polyfillGlobals = () => {
+  // setTimeout and clearTimeout
+  if (typeof globalThis.setTimeout === 'undefined' && typeof setTimeout === 'function') {
+    (globalThis as any).setTimeout = setTimeout;
+    console.log('[browserSafeParser] Polyfilled global.setTimeout');
+  }
+
+  if (typeof globalThis.clearTimeout === 'undefined' && typeof clearTimeout === 'function') {
+    (globalThis as any).clearTimeout = clearTimeout;
+    console.log('[browserSafeParser] Polyfilled global.clearTimeout');
+  }
+  
+  // requestAnimationFrame
+  if (typeof globalThis.requestAnimationFrame === 'undefined' && typeof requestAnimationFrame === 'function') {
+    (globalThis as any).requestAnimationFrame = requestAnimationFrame;
+    console.log('[browserSafeParser] Polyfilled global.requestAnimationFrame');
+  }
+};
+
 // Flag to track parser initialization
 let parserInitialized = false;
 
@@ -28,16 +48,8 @@ export async function initBrowserSafeParser(): Promise<void> {
   console.log('[browserSafeParser] Initializing browser-safe parser');
   
   try {
-    // Ensure global.setTimeout is defined for Node.js compatibility
-    if (typeof globalThis.setTimeout === 'undefined' && typeof setTimeout === 'function') {
-      (globalThis as any).setTimeout = setTimeout;
-      console.log('[browserSafeParser] Polyfilled global.setTimeout');
-    }
-
-    if (typeof globalThis.clearTimeout === 'undefined' && typeof clearTimeout === 'function') {
-      (globalThis as any).clearTimeout = clearTimeout;
-      console.log('[browserSafeParser] Polyfilled global.clearTimeout');
-    }
+    // Apply all global polyfills
+    polyfillGlobals();
     
     // Dynamically import jssuh
     console.log('[browserSafeParser] Attempting to import JSSUH module');

@@ -30,6 +30,11 @@ export default defineConfig(({ mode }) => ({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  define: {
+    // Define process.env for compatibility
+    'process.env': {},
+    'global': 'globalThis',
+  },
   optimizeDeps: {
     esbuildOptions: {
       define: {

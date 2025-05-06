@@ -8,9 +8,30 @@ if (typeof globalThis.WebAssembly === 'undefined') {
   console.warn('WebAssembly is not supported in this browser. Some features may not work.');
 }
 
+// Polyfill setTimeout/clearTimeout globally if needed (should not normally be necessary, but just in case)
+if (typeof globalThis.setTimeout === 'undefined' && typeof setTimeout === 'function') {
+  (globalThis as any).setTimeout = setTimeout;
+  console.log('Polyfilled global.setTimeout');
+}
+
+if (typeof globalThis.clearTimeout === 'undefined' && typeof clearTimeout === 'function') {
+  (globalThis as any).clearTimeout = clearTimeout;
+  console.log('Polyfilled global.clearTimeout');
+}
+
 // Provide global window access to Buffer for WebAssembly modules that need it
 import { Buffer } from 'buffer';
 window.Buffer = Buffer;
+
+// Make sure process is defined globally 
+if (typeof globalThis.process === 'undefined') {
+  console.log('Polyfilling global.process');
+  (globalThis as any).process = {
+    env: {},
+    browser: true,
+    nextTick: (fn: Function) => setTimeout(fn, 0),
+  };
+}
 
 // Make sure there's an element with id "root" in the DOM
 const rootElement = document.getElementById("root");
