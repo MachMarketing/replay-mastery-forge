@@ -120,17 +120,6 @@ function hasParseFunction(module: any): boolean {
 }
 
 /**
- * Validate replay data before parsing
- */
-function validateReplayData(data: Uint8Array): boolean {
-  if (!data || data.length < MIN_VALID_REPLAY_SIZE) {
-    return false;
-  }
-  
-  return true;
-}
-
-/**
  * Parse a replay file using the WASM parser with enhanced error handling
  */
 export async function parseReplayWasm(data: Uint8Array): Promise<any> {
@@ -138,9 +127,9 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
     throw new Error('Empty replay data provided');
   }
   
-  // Validate basic replay file structure
-  if (!validateReplayData(data)) {
-    throw new Error('Invalid replay data format');
+  // Basic size check (very minimal validation)
+  if (data.length < MIN_VALID_REPLAY_SIZE) {
+    throw new Error('Replay file too small to be valid');
   }
   
   // Check for known browser issues before attempting parse
@@ -160,7 +149,8 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
     console.log('[wasmLoader] Starting parsing with WASM, size:', data.byteLength);
     console.log('[wasmLoader] Available methods on screpModule:', Object.keys(screpModule));
     
-    // Prioritize using parseBuffer as the correct function
+    // Direct parsing with the WASM module, no header validation
+    // Prioritize parseBuffer as the correct function
     if (typeof screpModule.parseBuffer === 'function') {
       console.log('[wasmLoader] Using parseBuffer function');
       return await screpModule.parseBuffer(data);
