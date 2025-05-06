@@ -19,8 +19,8 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      // Fix process polyfill issue - ensure all paths are correct without trailing slashes
-      'process': 'process/browser',
+      // Fix process polyfill issue - ensure correct paths without trailing slashes
+      'process': 'rollup-plugin-node-polyfills/polyfills/process-es6',
       'stream': 'stream-browserify',
       'events': 'rollup-plugin-node-polyfills/polyfills/events',
       'util': 'util', 
@@ -50,7 +50,7 @@ export default defineConfig(({ mode }) => ({
     },
     // Include JSSUH and its dependencies in the optimization
     include: [
-      'process/browser', // Fix path to process
+      'rollup-plugin-node-polyfills/polyfills/process-es6', // Updated path
       'jssuh', 
       'buffer', 
       'stream-browserify', 
@@ -69,7 +69,7 @@ export default defineConfig(({ mode }) => ({
         format: 'es' as const,
         manualChunks: {
           vendor: [
-            'process/browser', // Fix path to process
+            'rollup-plugin-node-polyfills/polyfills/process-es6', // Updated path
             'jssuh', 
             'buffer', 
             'stream-browserify', 

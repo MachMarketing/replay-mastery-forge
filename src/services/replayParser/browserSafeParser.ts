@@ -1,4 +1,3 @@
-
 /**
  * Browser-safe parser using JSSUH
  * This module wraps the JSSUH library for use in the browser
@@ -25,6 +24,14 @@ export async function initBrowserSafeParser(): Promise<void> {
   try {
     console.log('[browserSafeParser] Initializing browser-safe parser');
     console.log('[browserSafeParser] Attempting to import JSSUH module');
+    
+    // Check if JSSUH module is available
+    if (typeof jssuh === 'undefined') {
+      throw new Error('JSSUH module is undefined or not properly loaded');
+    }
+    
+    console.log('[browserSafeParser] JSSUH import successful, module structure:', 
+      Object.keys(jssuh).length === 0 && jssuh.default ? 'default' : 'named exports');
     
     // Find the ReplayParser constructor
     if (jssuh.ReplayParser) {
@@ -150,14 +157,15 @@ export async function parseReplayWithBrowserSafeParser(replayData: Uint8Array): 
         console.error('[browserSafeParser] JSSUH parsing failed:', directParseError);
       }
       
-      // Fall back to stream-based approach
+      // Fall back to stream-based approach if direct parsing fails
       try {
         // Create a buffer from the Uint8Array
         const buffer = Buffer.from(replayData);
         
-        // Create a readable stream properly
-        const source = new Readable();
-        source._read = function() {}; // Required implementation
+        // Create a readable stream
+        const source = new Readable({
+          read() {} // Required but no-op implementation
+        });
         
         // Push data and end of stream
         source.push(buffer);
