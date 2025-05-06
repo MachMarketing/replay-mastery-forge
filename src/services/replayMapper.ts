@@ -94,27 +94,7 @@ export function mapRawToParsed(rawData: any): ParsedReplayResult {
     };
   } catch (error) {
     console.error('[replayMapper] Error mapping data:', error);
-    
-    // Return minimal data if mapping fails
-    return {
-      playerName: 'Player',
-      opponentName: 'Opponent',
-      playerRace: 'Terran',
-      opponentRace: 'Protoss',
-      map: 'Unknown Map',
-      matchup: 'TvP',
-      duration: '10:00',
-      durationMS: 600000,
-      date: new Date().toISOString().split('T')[0],
-      result: 'win',
-      apm: 150,
-      eapm: 120,
-      buildOrder: [],
-      resourcesGraph: [],
-      strengths: ['Solid macro gameplay'],
-      weaknesses: ['Could improve build order efficiency'],
-      recommendations: ['Focus on early game scouting']
-    };
+    throw error;
   }
 }
 
@@ -271,7 +251,7 @@ function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
   
   // Enhanced build order extraction
   let buildOrder: Array<{time: string; supply: number; action: string}> = [];
-  if (rawData.Commands && Array.isArray(rawData.Commands)) {
+  if (rawData.Commands && Array.isArray(rawData.Commands) && rawData.Commands.length > 0) {
     console.log('💡 Processing Commands for build order, commands count:', rawData.Commands.length);
     
     // Add the requested debug logs

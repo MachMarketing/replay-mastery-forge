@@ -1,3 +1,4 @@
+
 /**
  * Handles replay parsing with WASM in a browser-compatible way
  * 
@@ -66,7 +67,7 @@ export async function initParserWasm(): Promise<boolean> {
       await screpModule.ready;
     }
     
-    // Validate that the module has a parseBuffer function
+    // Validate that the module has a parse function
     if (!hasParseFunction(screpModule)) {
       throw new Error('No valid parse function found in screp-js module');
     }
@@ -148,54 +149,90 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
     console.log('[wasmLoader] Starting parsing with WASM, size:', data.byteLength);
     console.log('[wasmLoader] Available methods on screpModule:', Object.keys(screpModule));
     
-    // Direct parsing with the WASM module, no header validation at all
+    // Create a copy of the data to avoid any potential memory issues
+    const dataCopy = new Uint8Array(data);
+    
+    // Try all available parsing methods until one works
+    let result = null;
+    let hasValidCommands = false;
+    
+    // Try parseBuffer first (most common in newer versions)
     if (typeof screpModule.parseBuffer === 'function') {
-      console.log('[wasmLoader] Using parseBuffer function');
-      console.log('💡 Calling screpModule.parseBuffer with data size:', data.byteLength);
       try {
-        const result = await screpModule.parseBuffer(data);
-        console.log('💡 screpModule.parseBuffer returned:', result);
-        if (!result || !result.Commands) {
-          console.warn('⚠️ screpModule.parseBuffer returned null/incomplete data, especially Commands', result);
-          
-          // Try calling parseReplay if available - some versions use different method names
-          if (typeof screpModule.parseReplay === 'function') {
-            console.log('💡 Falling back to parseReplay function');
-            const replayResult = await screpModule.parseReplay(data);
-            console.log('💡 parseReplay returned:', replayResult);
-            if (replayResult && replayResult.Commands) {
-              return replayResult;
-            }
-          }
-          
-          // Try parse if available
-          if (typeof screpModule.parse === 'function') {
-            console.log('💡 Falling back to parse function');
-            const parseResult = await screpModule.parse(data);
-            console.log('💡 parse returned:', parseResult);
-            if (parseResult && parseResult.Commands) {
-              return parseResult;
-            }
-          }
+        console.log('[wasmLoader] Trying parseBuffer function');
+        result = await screpModule.parseBuffer(dataCopy);
+        console.log('[wasmLoader] parseBuffer result:', JSON.stringify(result).substring(0, 200) + '...');
+        
+        // Check if Commands array is valid
+        if (result && Array.isArray(result.Commands) && result.Commands.length > 0) {
+          hasValidCommands = true;
+          console.log(`[wasmLoader] parseBuffer returned ${result.Commands.length} valid commands`);
+        } else if (result) {
+          console.warn('[wasmLoader] parseBuffer returned result without valid Commands array');
         }
-        return result;
       } catch (err) {
-        console.error('❌ Error during screpModule.parseBuffer execution:', err);
-        throw new Error(`WASM parseBuffer execution failed: ${err instanceof Error ? err.message : String(err)}`);
+        console.error('[wasmLoader] Error in parseBuffer:', err);
+        // Continue to next method
       }
-    } 
-    // Fallbacks for backward compatibility, but less likely to work
-    else if (typeof screpModule.parseReplay === 'function') {
-      console.log('[wasmLoader] Falling back to parseReplay function');
-      return screpModule.parseReplay(data);
-    } 
-    else if (typeof screpModule.parse === 'function') {
-      console.log('[wasmLoader] Falling back to parse function');
-      return screpModule.parse(data);
-    } 
-    else {
-      throw new Error('No valid parse function found in screp-js module');
     }
+    
+    // If parseBuffer didn't work, try parseReplay
+    if (!hasValidCommands && typeof screpModule.parseReplay === 'function') {
+      try {
+        console.log('[wasmLoader] Trying parseReplay function');
+        const replayResult = await screpModule.parseReplay(dataCopy);
+        console.log('[wasmLoader] parseReplay result:', JSON.stringify(replayResult).substring(0, 200) + '...');
+        
+        if (replayResult && Array.isArray(replayResult.Commands) && replayResult.Commands.length > 0) {
+          result = replayResult;
+          hasValidCommands = true;
+          console.log(`[wasmLoader] parseReplay returned ${replayResult.Commands.length} valid commands`);
+        } else if (!result) {
+          // Only use this result if we don't have any previous result
+          result = replayResult;
+        }
+      } catch (err) {
+        console.error('[wasmLoader] Error in parseReplay:', err);
+        // Continue to next method
+      }
+    }
+    
+    // If neither worked, try parse function
+    if (!hasValidCommands && typeof screpModule.parse === 'function') {
+      try {
+        console.log('[wasmLoader] Trying parse function');
+        const parseResult = await screpModule.parse(dataCopy);
+        console.log('[wasmLoader] parse result:', JSON.stringify(parseResult).substring(0, 200) + '...');
+        
+        if (parseResult && Array.isArray(parseResult.Commands) && parseResult.Commands.length > 0) {
+          result = parseResult;
+          hasValidCommands = true;
+          console.log(`[wasmLoader] parse returned ${parseResult.Commands.length} valid commands`);
+        } else if (!result) {
+          // Only use this result if we don't have any previous result
+          result = parseResult;
+        }
+      } catch (err) {
+        console.error('[wasmLoader] Error in parse:', err);
+      }
+    }
+    
+    // Check if we have a meaningful result
+    if (!result) {
+      throw new Error('All WASM parsing methods failed');
+    }
+    
+    // If we have header but no commands, try to fix the data structure
+    if (result.Header && !hasValidCommands) {
+      console.warn('[wasmLoader] Using partial replay data (header only)');
+      
+      // Make sure Commands exists as an empty array rather than null
+      if (result.Commands === null || result.Commands === undefined) {
+        result.Commands = [];
+      }
+    }
+    
+    return result;
   } catch (error) {
     console.error('[wasmLoader] Error in WASM parsing:', error);
     
