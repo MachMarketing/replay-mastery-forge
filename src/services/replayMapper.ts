@@ -1,4 +1,3 @@
-
 /**
  * Maps raw parser data to our application's format
  */
@@ -303,23 +302,3 @@ function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
   
   return result;
 }
-
-/**
- * Standardize race names to ensure consistent formatting
- */
-function standardizeRaceName(race: string): string {
-  if (!race) return 'Terran';
-  
-  const normalized = race.toLowerCase().trim();
-  
-  if (normalized.startsWith('t') || normalized.includes('terran')) {
-    return 'Terran';
-  } else if (normalized.startsWith('p') || normalized.includes('protoss')) {
-    return 'Protoss';
-  } else if (normalized.startsWith('z') || normalized.includes('zerg')) {
-    return 'Zerg';
-  }
-  
-  return 'Terran'; // Default
-}
-
