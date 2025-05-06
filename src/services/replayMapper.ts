@@ -124,6 +124,11 @@ export function mapRawToParsed(rawData: any): ParsedReplayResult {
 function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
   // Debug the raw WASM data structure
   console.log('🔄 SCREP-WASM Header:', rawData.Header ? Object.keys(rawData.Header) : 'missing');
+  
+  // Add detailed logging of the Header structure
+  console.log('💡 Full Header object:', rawData.Header);
+  console.log('💡 Header.players array:', rawData.Header.players);
+  
   console.log('🔄 SCREP-WASM MapData:', rawData.MapData ? Object.keys(rawData.MapData) : 'missing');
   console.log('🔄 SCREP-WASM Computed:', rawData.Computed ? Object.keys(rawData.Computed) : 'missing');
   console.log('🔄 SCREP-WASM Commands count:', rawData.Commands ? rawData.Commands.length : 'missing');
