@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
 import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill';
-import nodePolyfills from 'rollup-plugin-node-polyfills';
+import nodePolyfills from 'vite-plugin-node-polyfills';
 import { componentTagger } from "lovable-tagger";
 
 // Define proper module format type
@@ -14,20 +14,20 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [
     react(),
+    nodePolyfills({
+      // Whether to polyfill `node:` protocol imports.
+      protocolImports: true,
+      globals: {
+        Buffer: true,
+        global: true,
+        process: true,
+      },
+    }),
     mode === 'development' && componentTagger(),
   ].filter(Boolean),
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      // Fix polyfill paths to use proper modules
-      'stream-browserify': 'rollup-plugin-node-polyfills/polyfills/stream-browserify',
-      'process': 'rollup-plugin-node-polyfills/polyfills/process-es6',
-      'events': 'rollup-plugin-node-polyfills/polyfills/events',
-      'util': 'rollup-plugin-node-polyfills/polyfills/util',
-      'buffer': 'rollup-plugin-node-polyfills/polyfills/buffer-es6',
-      'zlib': 'rollup-plugin-node-polyfills/polyfills/zlib',
-      'path': 'rollup-plugin-node-polyfills/polyfills/path',
-      'querystring': 'rollup-plugin-node-polyfills/polyfills/querystring',
     },
   },
   optimizeDeps: {
@@ -37,7 +37,6 @@ export default defineConfig(({ mode }) => ({
         'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
         'process.browser': 'true',
         'process.version': '"v16.0.0"',
-        'process.versions': '{}',
         'process.platform': '"browser"',
       },
       plugins: [
@@ -49,41 +48,9 @@ export default defineConfig(({ mode }) => ({
       ],
     },
     // Include JSSUH and its dependencies in the optimization
-    include: [
-      'jssuh', 
-      'rollup-plugin-node-polyfills/polyfills/buffer-es6', 
-      'rollup-plugin-node-polyfills/polyfills/stream-browserify', 
-      'rollup-plugin-node-polyfills/polyfills/events', 
-      'rollup-plugin-node-polyfills/polyfills/util',
-      'rollup-plugin-node-polyfills/polyfills/zlib',
-      'rollup-plugin-node-polyfills/polyfills/path',
-      'rollup-plugin-node-polyfills/polyfills/querystring',
-      'rollup-plugin-node-polyfills/polyfills/process-es6',
-    ],
+    include: ['jssuh'],
   },
   build: {
-    rollupOptions: {
-      plugins: [
-        // Need to add 'as any' to avoid TypeScript errors with the plugin
-        nodePolyfills() as any,
-      ],
-      output: {
-        format: 'es' as const,
-        manualChunks: {
-          vendor: [
-            'jssuh', 
-            'rollup-plugin-node-polyfills/polyfills/buffer-es6', 
-            'rollup-plugin-node-polyfills/polyfills/stream-browserify', 
-            'rollup-plugin-node-polyfills/polyfills/events', 
-            'rollup-plugin-node-polyfills/polyfills/util',
-            'rollup-plugin-node-polyfills/polyfills/zlib',
-            'rollup-plugin-node-polyfills/polyfills/path',
-            'rollup-plugin-node-polyfills/polyfills/querystring',
-            'rollup-plugin-node-polyfills/polyfills/process-es6',
-          ]
-        }
-      },
-    },
     commonjsOptions: {
       transformMixedEsModules: true,
       include: [/node_modules/],

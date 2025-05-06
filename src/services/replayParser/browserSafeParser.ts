@@ -1,4 +1,3 @@
-
 /**
  * Browser-Safe Parser implementation
  * 
@@ -6,9 +5,6 @@
  * with appropriate error handling and timeouts.
  */
 import type { ParsedReplayResult } from '../replayParserService';
-
-// Import type definitions but not actual implementations
-type ReplayParserType = any;
 
 // Flag to track parser initialization
 let parserInitialized = false;
@@ -196,9 +192,6 @@ async function parseWithDirectDataAndTimeout(data: Uint8Array, timeoutMs: number
         console.log('[browserSafeParser] Player count:', result.players.length);
         resolve(result);
       });
-      
-      // Skip using pipe() completely and use direct write method
-      console.log('[browserSafeParser] Writing data directly to parser in chunks (no pipe)');
       
       // Check write method exists
       if (typeof parser.write !== 'function') {
