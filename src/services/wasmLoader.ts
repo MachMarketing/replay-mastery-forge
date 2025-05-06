@@ -1,4 +1,3 @@
-
 /**
  * Handles replay parsing with WASM in a browser-compatible way
  * 
@@ -41,7 +40,18 @@ export function getParserVersion(): string | null {
   if (!screpModule) return null;
   
   try {
-    console.log('[wasmLoader] Getting version, available methods:', Object.keys(screpModule));
+    // Log ALL available properties for debugging
+    console.log('[wasmLoader] ScrepModule full inspection:', {
+      properties: Object.keys(screpModule),
+      version: screpModule.version,
+      VERSION: screpModule.VERSION,
+      __VERSION__: screpModule.__VERSION__,
+      hasGetVersion: typeof screpModule.getVersion === 'function',
+      hasGetVersionObject: typeof screpModule.getVersionObject === 'function',
+      hasParseBuffer: typeof screpModule.parseBuffer === 'function',
+      moduleType: typeof screpModule,
+      prototype: Object.getPrototypeOf(screpModule)
+    });
     
     if (typeof screpModule.getVersion === 'function') {
       const version = screpModule.getVersion();
@@ -224,9 +234,12 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
       }
     }
     
-    console.log('[wasmLoader] Starting parsing with WASM, size:', data.byteLength);
-    console.log('[wasmLoader] Available methods on screpModule:', Object.keys(screpModule));
-    console.log('[wasmLoader] Using screp-js version:', getParserVersion());
+    console.log('[wasmLoader] Starting parsing with WASM');
+    console.log('[wasmLoader] Module info:', {
+      version: getParserVersion(),
+      availableMethods: Object.keys(screpModule),
+      parserOptions: PARSER_OPTIONS
+    });
     
     // Create a copy of the data to avoid any potential memory issues
     const dataCopy = new Uint8Array(data);
@@ -234,43 +247,20 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
     // Try parseBuffer first with options
     if (typeof screpModule.parseBuffer === 'function') {
       try {
-        console.log('[wasmLoader] Trying parseBuffer function with options');
-        const parseOptions = { ...PARSER_OPTIONS };
+        console.log('[wasmLoader] Calling parseBuffer with options:', PARSER_OPTIONS);
+        const result = await screpModule.parseBuffer(dataCopy, PARSER_OPTIONS);
         
-        // Always pass options as second argument to parseBuffer
-        console.log('[wasmLoader] Calling parseBuffer with options:', parseOptions);
-        const result = await screpModule.parseBuffer(dataCopy, parseOptions);
-        
-        console.log('[wasmLoader] parseBuffer result structure:', Object.keys(result || {}));
-        
-        // Log commands status with enhanced information
-        if (result && result.Commands) {
-          console.log(`[wasmLoader] Commands found: ${Array.isArray(result.Commands) ? result.Commands.length : 'not an array'}`);
-          if (Array.isArray(result.Commands) && result.Commands.length > 0) {
-            console.log('[wasmLoader] First command sample:', result.Commands[0]);
-            console.log('[wasmLoader] First 3 command types:', result.Commands.slice(0, 3).map(cmd => cmd.type || 'unknown'));
-          } else {
-            console.log('[wasmLoader] Commands array is empty or not properly initialized');
-          }
-        } else {
-          console.warn('[wasmLoader] No Commands array in result');
-          
-          // Additional deep inspection of the result structure
-          console.log('[wasmLoader] Deep inspection of result structure:');
-          for (const key in result) {
-            if (typeof result[key] === 'object' && result[key] !== null) {
-              console.log(`[wasmLoader] Property ${key}:`, Object.keys(result[key]));
-              
-              // Check if commands might be under a different property name with a similar structure
-              if (Array.isArray(result[key]) && result[key].length > 0) {
-                console.log(`[wasmLoader] First item in ${key}:`, result[key][0]);
-              }
-            }
-          }
-        }
+        // Enhanced result inspection
+        console.log('[wasmLoader] Parse result structure:', {
+          keys: Object.keys(result || {}),
+          hasCommands: !!(result && result.Commands),
+          commandsLength: result?.Commands?.length,
+          firstCommand: result?.Commands?.[0],
+          resultType: typeof result
+        });
         
         // Initialize Commands as empty array if null/undefined
-        if (result && (result.Commands === null || result.Commands === undefined)) {
+        if (result && !result.Commands) {
           console.log('[wasmLoader] Initializing null Commands as empty array');
           result.Commands = [];
         }
@@ -278,7 +268,6 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
         return result;
       } catch (err) {
         console.error('[wasmLoader] Error in parseBuffer:', err);
-        // Continue to next method
       }
     }
     
@@ -303,7 +292,6 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
         return result;
       } catch (err) {
         console.error('[wasmLoader] Error in parseReplay:', err);
-        // Continue to next method
       }
     }
     

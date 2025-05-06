@@ -46,12 +46,13 @@ export default defineConfig(({ mode }) => {
     },
     optimizeDeps: {
       include: ['buffer', 'screp-js'],
+      exclude: [], // Don't exclude WASM modules
       esbuildOptions: {
         // Node.js global to browser globalThis
         define: {
           global: 'globalThis',
         },
-        // Configure WASM support
+        // Enable WASM support
         supported: {
           'wasm': true
         }
@@ -61,8 +62,18 @@ export default defineConfig(({ mode }) => {
       // Improve build settings for WASM support
       target: 'esnext',
       sourcemap: true,
-      // Ensure WASM files are included in the build
+      // Don't inline WASM files
       assetsInlineLimit: 0,
+      // Clear the cache on each build
+      emptyOutDir: true,
+      rollupOptions: {
+        // Ensure WASM is properly handled
+        output: {
+          manualChunks: {
+            'screp-js': ['screp-js']
+          }
+        }
+      }
     }
   };
 });
