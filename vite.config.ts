@@ -19,15 +19,15 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      // Fix polyfills to point directly to the proper node-polyfill modules
-      'process': 'process/browser',
-      'stream': 'stream-browserify',
-      'events': 'events',
-      'util': 'util',
-      'buffer': 'buffer',
-      'zlib': 'browserify-zlib',
-      'path': 'path-browserify',
-      'querystring': 'querystring-es3',
+      // Fix polyfill paths to use proper modules
+      'stream-browserify': 'rollup-plugin-node-polyfills/polyfills/stream-browserify',
+      'process': 'rollup-plugin-node-polyfills/polyfills/process-es6',
+      'events': 'rollup-plugin-node-polyfills/polyfills/events',
+      'util': 'rollup-plugin-node-polyfills/polyfills/util',
+      'buffer': 'rollup-plugin-node-polyfills/polyfills/buffer-es6',
+      'zlib': 'rollup-plugin-node-polyfills/polyfills/zlib',
+      'path': 'rollup-plugin-node-polyfills/polyfills/path',
+      'querystring': 'rollup-plugin-node-polyfills/polyfills/querystring',
     },
   },
   optimizeDeps: {
@@ -51,14 +51,14 @@ export default defineConfig(({ mode }) => ({
     // Include JSSUH and its dependencies in the optimization
     include: [
       'jssuh', 
-      'buffer', 
-      'stream-browserify', 
-      'events', 
-      'util',
-      'browserify-zlib',
-      'path-browserify',
-      'querystring-es3',
-      'process',
+      'rollup-plugin-node-polyfills/polyfills/buffer-es6', 
+      'rollup-plugin-node-polyfills/polyfills/stream-browserify', 
+      'rollup-plugin-node-polyfills/polyfills/events', 
+      'rollup-plugin-node-polyfills/polyfills/util',
+      'rollup-plugin-node-polyfills/polyfills/zlib',
+      'rollup-plugin-node-polyfills/polyfills/path',
+      'rollup-plugin-node-polyfills/polyfills/querystring',
+      'rollup-plugin-node-polyfills/polyfills/process-es6',
     ],
   },
   build: {
@@ -72,14 +72,14 @@ export default defineConfig(({ mode }) => ({
         manualChunks: {
           vendor: [
             'jssuh', 
-            'buffer', 
-            'stream-browserify', 
-            'events', 
-            'util',
-            'browserify-zlib',
-            'path-browserify',
-            'querystring-es3',
-            'process',
+            'rollup-plugin-node-polyfills/polyfills/buffer-es6', 
+            'rollup-plugin-node-polyfills/polyfills/stream-browserify', 
+            'rollup-plugin-node-polyfills/polyfills/events', 
+            'rollup-plugin-node-polyfills/polyfills/util',
+            'rollup-plugin-node-polyfills/polyfills/zlib',
+            'rollup-plugin-node-polyfills/polyfills/path',
+            'rollup-plugin-node-polyfills/polyfills/querystring',
+            'rollup-plugin-node-polyfills/polyfills/process-es6',
           ]
         }
       },
