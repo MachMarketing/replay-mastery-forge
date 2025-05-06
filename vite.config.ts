@@ -20,10 +20,10 @@ export default defineConfig(({ mode }) => ({
     alias: {
       '@': path.resolve(__dirname, './src'),
       // Fix polyfill paths to use browser-compatible versions
-      'process': 'process',
+      'process': 'rollup-plugin-node-polyfills/polyfills/process-es6',
       'stream': 'stream-browserify',
       'events': 'rollup-plugin-node-polyfills/polyfills/events',
-      'util': 'util', 
+      'util': 'rollup-plugin-node-polyfills/polyfills/util', 
       'buffer': 'rollup-plugin-node-polyfills/polyfills/buffer-es6',
       'zlib': 'browserify-zlib',
       'path': 'rollup-plugin-node-polyfills/polyfills/path',
@@ -57,6 +57,7 @@ export default defineConfig(({ mode }) => ({
       'events', 
       'util', 
       'browserify-zlib',
+      'rollup-plugin-node-polyfills/polyfills/process-es6',
     ],
   },
   build: {
@@ -75,7 +76,8 @@ export default defineConfig(({ mode }) => ({
             'stream-browserify', 
             'events', 
             'util', 
-            'browserify-zlib'
+            'browserify-zlib',
+            'rollup-plugin-node-polyfills/polyfills/process-es6',
           ]
         }
       },
