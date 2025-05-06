@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => ({
       'process': 'rollup-plugin-node-polyfills/polyfills/process-es6',
       'stream': 'stream-browserify',
       'events': 'rollup-plugin-node-polyfills/polyfills/events',
-      'util': 'rollup-plugin-node-polyfills/polyfills/util', 
+      'util': 'rollup-plugin-node-polyfills/polyfills/util', // Removing trailing slash
       'buffer': 'rollup-plugin-node-polyfills/polyfills/buffer-es6',
       'zlib': 'browserify-zlib',
       'path': 'rollup-plugin-node-polyfills/polyfills/path',
