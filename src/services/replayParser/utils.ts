@@ -1,4 +1,3 @@
-
 /**
  * Utility functions for extracting information from replay file bytes
  */
@@ -14,12 +13,8 @@ export function extractReplayHeaderInfo(data: Uint8Array): {
   const result: { frameCount?: number; mapName?: string } = {};
   
   try {
-    // Verify this is a StarCraft replay file
-    const magicBytes = data.slice(0, 8);
-    const magicString = String.fromCharCode(...magicBytes);
-    if (!magicString.startsWith('(B)')) {
-      console.warn('File does not appear to be a StarCraft replay file');
-    }
+    // Note: We no longer validate the magic bytes here
+    // Just try to extract useful data regardless of file format
     
     // Try to find a map name (rough extraction based on known offset patterns)
     // This is a simplified approach and may not work for all replays
@@ -29,7 +24,7 @@ export function extractReplayHeaderInfo(data: Uint8Array): {
     for (let offset of [0x61, 0x65, 0x69, 0x6D]) {
       let mapBytes = [];
       for (let i = offset; i < offset + 32; i++) {
-        if (data[i] === 0) break;
+        if (i >= data.length || data[i] === 0) break;
         mapBytes.push(data[i]);
       }
       

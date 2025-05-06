@@ -52,10 +52,10 @@ export async function parseReplayWithBrowserSafeParser(fileData: Uint8Array): Pr
       await initBrowserSafeParser();
     }
     
-    // Try to use JSSUH parser if loaded
+    // Always try to use JSSUH parser first if loaded, regardless of magic bytes validation
     if (jssuhModule && typeof jssuhModule.Parser === 'function') {
       try {
-        console.log('[browserSafeParser] Using JSSUH parser...');
+        console.log('[browserSafeParser] Using JSSUH parser as primary parser...');
         const parsedData = await parseWithJSSUH(fileData);
         console.log('[browserSafeParser] Successfully parsed with JSSUH');
         return parsedData;
@@ -106,16 +106,23 @@ async function parseWithJSSUH(fileData: Uint8Array): Promise<ParsedReplayData> {
     const header = parser.ReplayHeader();
     const players = parser.Players();
     const actions = parser.Actions();
+    const commands = parser.Commands(); // Explicitly extract commands
     const gameSpeed = parser.GameSpeed();
-    const mapName = header.map.name;
+    const mapName = header.map?.name || 'Unknown Map';
     const gameType = header.gameType;
     
     console.log('[browserSafeParser] JSSUH parsed data summary:', {
       mapName, 
       players: players.length,
       actions: actions.length,
+      commands: commands?.length || 0, // Log commands count
       gameSpeed
     });
+    
+    // Log more detailed information about commands if available
+    if (commands && commands.length > 0) {
+      console.log('[browserSafeParser] First 5 commands:', commands.slice(0, 5));
+    }
     
     // Build the parsed data object
     const jssuhData = {
@@ -138,11 +145,21 @@ async function parseWithJSSUH(fileData: Uint8Array): Promise<ParsedReplayData> {
         action: a.type,
         // Add more action details if needed
       })),
+      commands: commands || [], // Include commands in parsed data
       gameStartDate: new Date().toISOString()
     };
     
     // Transform the data to our application format using the transformer
     const transformedData = transformJSSUHData(jssuhData);
+    
+    // Log transformed data summary
+    console.log('[browserSafeParser] Transformed data summary:',
+      Object.keys(transformedData).map(key => `${key}: ${
+        Array.isArray(transformedData[key as keyof typeof transformedData]) 
+          ? `Array(${(transformedData[key as keyof typeof transformedData] as any[]).length})` 
+          : typeof transformedData[key as keyof typeof transformedData]
+      }`).join(', ')
+    );
     
     // Ensure required fields are always present
     return ensureRequiredFields(transformedData);
@@ -166,6 +183,8 @@ function extractInfoFromReplayHeader(fileData: Uint8Array): ParsedReplayData {
     
     console.log('[browserSafeParser] Extracted header info:', header);
     console.log('[browserSafeParser] Extracted player info:', playerInfo);
+    
+    // We don't validate magic bytes here anymore, we just extract what we can
     
     // Convert frameCount to ms (assuming 24fps in StarCraft)
     const durationMs: number = typeof header.frameCount === 'number' 
@@ -208,6 +227,7 @@ function extractInfoFromReplayHeader(fileData: Uint8Array): ParsedReplayData {
       recommendations: ['Focus on early game scouting', 'Tighten build order timing']
     };
     
+    console.log('[browserSafeParser] Created fallback parsed data');
     return result;
   } catch (error) {
     console.error('[browserSafeParser] Error in header extraction:', error);
