@@ -127,11 +127,16 @@ function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
   
   // Add detailed logging of the Header structure
   console.log('💡 Full Header object:', rawData.Header);
-  console.log('💡 Header.players array:', rawData.Header.players);
+  console.log('💡 Header.players array:', rawData.Header.Players || rawData.Header.players);
   
   console.log('🔄 SCREP-WASM MapData:', rawData.MapData ? Object.keys(rawData.MapData) : 'missing');
   console.log('🔄 SCREP-WASM Computed:', rawData.Computed ? Object.keys(rawData.Computed) : 'missing');
   console.log('🔄 SCREP-WASM Commands count:', rawData.Commands ? rawData.Commands.length : 'missing');
+  
+  // Log the first few commands to understand their structure
+  if (rawData.Commands && rawData.Commands.length > 0) {
+    console.log('💡 First 3 commands sample:', rawData.Commands.slice(0, 3));
+  }
   
   // Extract players
   let playerName = 'Player';
@@ -259,27 +264,73 @@ function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
     eapm = Math.round(apm * 0.8); // Estimate EAPM as 80% of APM
   }
   
-  // Extract build order
+  // Enhanced build order extraction
   let buildOrder: Array<{time: string; supply: number; action: string}> = [];
   if (rawData.Commands && Array.isArray(rawData.Commands)) {
-    // Filter for build commands
-    buildOrder = rawData.Commands
-      .filter((cmd: any) => cmd.type === 'build' || cmd.type === 'train' || cmd.name?.includes('build'))
-      .map((cmd: any) => {
-        // Convert frame to time display
-        const frameTime = cmd.frame || 0;
-        const seconds = Math.floor(frameTime / 23.81);
-        const minutes = Math.floor(seconds / 60);
-        const remainingSeconds = seconds % 60;
-        const timeString = `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-        
-        return {
-          time: timeString,
-          supply: cmd.supply || 0,
-          action: cmd.name || 'Unknown Structure'
-        };
-      })
-      .slice(0, 30); // Limit to first 30 build actions
+    console.log('💡 Processing Commands for build order, commands count:', rawData.Commands.length);
+    
+    // Look for build-related commands - need to handle different possible command structures
+    const buildRelatedCommands = rawData.Commands.filter((cmd: any) => {
+      // Check various command properties that might indicate building or training
+      const isTrainOrBuild = cmd.type === 'build' || 
+                            cmd.type === 'train' || 
+                            cmd.name?.toLowerCase().includes('build') ||
+                            cmd.name?.toLowerCase().includes('train') ||
+                            cmd.action?.toLowerCase().includes('build') ||
+                            cmd.action?.toLowerCase().includes('train') ||
+                            // Building-specific commands
+                            cmd.name?.includes('Gateway') ||
+                            cmd.name?.includes('Nexus') ||
+                            cmd.name?.includes('Pylon') ||
+                            cmd.name?.includes('Barracks') ||
+                            cmd.name?.includes('Factory') ||
+                            cmd.name?.includes('Command Center') ||
+                            cmd.name?.includes('Supply Depot') ||
+                            cmd.name?.includes('Hatchery') ||
+                            cmd.name?.includes('Spawning Pool') ||
+                            cmd.name?.includes('Evolution Chamber') ||
+                            // Check for explicit command IDs
+                            cmd.id === 0xc || // Build (Protoss/Terran)
+                            cmd.id === 0x0c || // Build (Protoss/Terran)
+                            cmd.id === 0x1c || // Train unit
+                            cmd.id === 0x1f || // Zerg build/morph
+                            cmd.id === 0x23 || // Upgrade
+                            cmd.id === 0x30 || // Technology research
+                            cmd.id === 0x32;  // Build/morph structure
+                            
+      if (isTrainOrBuild) {
+        console.log('💡 Found build command:', cmd);
+      }
+      
+      return isTrainOrBuild;
+    });
+    
+    console.log(`💡 Found ${buildRelatedCommands.length} build-related commands`);
+    
+    // Extract build info from the filtered commands
+    buildOrder = buildRelatedCommands.map((cmd: any, index: number) => {
+      // Convert frame to time display
+      const frameTime = cmd.frame || cmd.Frame || 0;
+      const seconds = Math.floor(frameTime / 23.81);
+      const minutes = Math.floor(seconds / 60);
+      const remainingSeconds = seconds % 60;
+      const timeString = `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+      
+      // Get the supply value
+      const supply = cmd.supply || cmd.Supply || index * 2 + 8; // Fallback to an estimated supply count
+      
+      // Extract the action name with fallbacks for different property names
+      const action = cmd.name || cmd.Name || cmd.action || cmd.Action || 
+                    (cmd.type ? `${cmd.type} ${cmd.unit || ''}` : 'Unknown Build Action');
+      
+      return {
+        time: timeString,
+        supply: typeof supply === 'number' ? supply : parseInt(supply, 10) || 0,
+        action: action 
+      };
+    })
+    .filter((item: any) => item.action && item.action !== 'Unknown Build Action')
+    .slice(0, 30); // Limit to first 30 build actions
   }
   
   console.log(`🔄 Extracted build order items: ${buildOrder.length}`);
@@ -287,26 +338,37 @@ function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
   // Create a basic resources graph from commands if available
   let resourcesGraph: Array<{time: string; minerals: number; gas: number}> = [];
   if (rawData.Commands && Array.isArray(rawData.Commands)) {
-    // Sample resource points at regular intervals
+    // Try to find resource-related commands
     const resourceCommands = rawData.Commands.filter((cmd: any) => 
-      cmd.minerals !== undefined || cmd.gas !== undefined);
+      cmd.minerals !== undefined || 
+      cmd.Minerals !== undefined || 
+      cmd.gas !== undefined || 
+      cmd.Gas !== undefined ||
+      cmd.Resources?.minerals !== undefined ||
+      cmd.Resources?.gas !== undefined);
     
     if (resourceCommands.length > 0) {
+      console.log(`💡 Found ${resourceCommands.length} resource-related commands`);
+      
       // Sample at intervals
       const interval = Math.max(Math.floor(resourceCommands.length / 20), 1);
       resourcesGraph = resourceCommands
         .filter((_: any, i: number) => i % interval === 0)
         .map((cmd: any) => {
-          const frameTime = cmd.frame || 0;
+          const frameTime = cmd.frame || cmd.Frame || 0;
           const seconds = Math.floor(frameTime / 23.81);
           const minutes = Math.floor(seconds / 60);
           const remainingSeconds = seconds % 60;
           const timeString = `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
           
+          // Handle different resource property structures
+          const minerals = cmd.minerals || cmd.Minerals || cmd.Resources?.minerals || 0;
+          const gas = cmd.gas || cmd.Gas || cmd.Resources?.gas || 0;
+          
           return {
             time: timeString,
-            minerals: cmd.minerals || 0,
-            gas: cmd.gas || 0
+            minerals: typeof minerals === 'number' ? minerals : parseInt(minerals, 10) || 0,
+            gas: typeof gas === 'number' ? gas : parseInt(gas, 10) || 0
           };
         });
     }
