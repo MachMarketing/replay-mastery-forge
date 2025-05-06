@@ -73,7 +73,8 @@ export default defineConfig(({ mode }) => {
         define: {
           global: 'globalThis',
           'process.env': JSON.stringify({}),
-          'process.browser': true,
+          // Convert boolean values to strings as required by the type
+          'process.browser': 'true',
         },
         // Enable WASM support
         supported: {
