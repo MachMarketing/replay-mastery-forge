@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => ({
       // Whether to polyfill `node:` protocol imports.
       protocolImports: true,
       globals: {
-        Buffer: true,
+        Buffer: true, 
         global: true,
         process: true,
       },
@@ -34,13 +34,8 @@ export default defineConfig(({ mode }) => ({
     esbuildOptions: {
       define: {
         global: 'globalThis',
-        'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
-        'process.browser': 'true',
-        'process.version': '"v16.0.0"',
-        'process.platform': '"browser"',
       },
       plugins: [
-        // Need to add 'as any' to avoid TypeScript errors with the plugin
         NodeGlobalsPolyfillPlugin({
           process: true,
           buffer: true,

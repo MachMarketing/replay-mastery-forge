@@ -7,6 +7,17 @@ import { ParsedReplayResult } from './replayParserService';
 import { initBrowserSafeParser, parseReplayWithBrowserSafeParser } from './replayParser/browserSafeParser';
 import { mapRawToParsed } from './replayMapper';
 
+// Ensure global.process is available
+if (typeof globalThis.process === 'undefined') {
+  console.log('[browserReplayParser] Polyfilling global.process');
+  (globalThis as any).process = {
+    ...globalThis.process,
+    env: { ...((globalThis as any).process?.env || {}) },
+    browser: true,
+    nextTick: (fn: Function) => setTimeout(fn, 0),
+  };
+}
+
 // Flag to track if the parser has been initialized
 let parserInitialized = false;
 let initializationPromise: Promise<void> | null = null;
