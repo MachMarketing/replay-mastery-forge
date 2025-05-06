@@ -11,6 +11,9 @@ import { mapRawToParsed } from './replayMapper';
 let parserInitialized = false;
 let initializationPromise: Promise<void> | null = null;
 
+// Define consistent timeout duration - 60 seconds
+const PARSER_TIMEOUT_MS = 60000;
+
 /**
  * Initialize the browser parser - should be called early in the app lifecycle
  * With a timeout to prevent hanging
@@ -29,11 +32,11 @@ export async function initBrowserParser(): Promise<void> {
   
   // Set up initialization with timeout
   initializationPromise = new Promise<void>(async (resolve, reject) => {
-    // Set a timeout for initialization - 60 seconds to match other timeouts
+    // Set a timeout for initialization - 60 seconds
     const timeoutId = setTimeout(() => {
       console.error('[browserReplayParser] Parser initialization timed out after 60 seconds');
       reject(new Error('Parser initialization timed out'));
-    }, 60000); // 60000 ms = 60 seconds
+    }, PARSER_TIMEOUT_MS);
     
     try {
       // Initialize the browser-safe parser (jssuh)

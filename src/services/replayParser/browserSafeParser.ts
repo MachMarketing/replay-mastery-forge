@@ -5,7 +5,7 @@
  * This module provides a browser-compatible wrapper around the JSSUH parser
  * with appropriate error handling and timeouts.
  */
-import { RawParsedReplayData } from '../replayParserService';
+import type { ParsedReplayResult } from '../replayParserService';
 
 // Import type definitions but not actual implementations
 type ReplayParserType = any;
@@ -16,7 +16,7 @@ let parserInitialized = false;
 // Store the parser instance once initialized
 let replayParserInstance: any = null;
 
-// Define the timeout duration for parser operations
+// Define the timeout duration for parser operations - 60 seconds as standard
 const PARSER_TIMEOUT_MS = 60000; // 60 seconds timeout
 
 /**
@@ -72,7 +72,7 @@ export async function initBrowserSafeParser(): Promise<void> {
 /**
  * Parse replay data with the browser-safe parser
  */
-export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promise<RawParsedReplayData> {
+export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promise<any> {
   console.log('[browserSafeParser] Starting to parse with browser-safe parser');
   
   if (!parserInitialized || !replayParserInstance) {
@@ -89,9 +89,8 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
 /**
  * Parse with a timeout wrapper
  */
-async function parseWithTimeout(data: Uint8Array, timeoutMs: number): Promise<RawParsedReplayData> {
+async function parseWithTimeout(data: Uint8Array, timeoutMs: number): Promise<any> {
   console.log('[browserSafeParser] Using JSSUH ReplayParser...');
-  console.log('[browserSafeParser] Creating new ReplayParser instance');
   
   return new Promise((resolve, reject) => {
     // Set a timeout

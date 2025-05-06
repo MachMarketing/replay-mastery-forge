@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => ({
       'process': 'rollup-plugin-node-polyfills/polyfills/process-es6',
       'stream': 'stream-browserify',
       'events': 'rollup-plugin-node-polyfills/polyfills/events',
-      'util': 'rollup-plugin-node-polyfills/polyfills/util', // Removing trailing slash
+      'util': 'rollup-plugin-node-polyfills/polyfills/util', // Fixed: removed trailing slash
       'buffer': 'rollup-plugin-node-polyfills/polyfills/buffer-es6',
       'zlib': 'browserify-zlib',
       'path': 'rollup-plugin-node-polyfills/polyfills/path',
@@ -50,13 +50,14 @@ export default defineConfig(({ mode }) => ({
     },
     // Include JSSUH and its dependencies in the optimization
     include: [
-      'process',
       'jssuh', 
       'buffer', 
       'stream-browserify', 
       'events', 
       'util', 
       'browserify-zlib',
+      'path',
+      'querystring',
       'rollup-plugin-node-polyfills/polyfills/process-es6',
     ],
   },
@@ -70,13 +71,14 @@ export default defineConfig(({ mode }) => ({
         format: 'es' as const,
         manualChunks: {
           vendor: [
-            'process',
             'jssuh', 
             'buffer', 
             'stream-browserify', 
             'events', 
             'util', 
             'browserify-zlib',
+            'path',
+            'querystring',
             'rollup-plugin-node-polyfills/polyfills/process-es6',
           ]
         }
