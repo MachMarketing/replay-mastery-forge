@@ -243,14 +243,15 @@ function transformDirectJSSUHResult(result: any): ParsedReplayData {
     duration: formatDuration(result.durationMS || 600000),
     durationMS: result.durationMS || 600000,
     date: result.date || new Date().toISOString().split('T')[0],
-    result: 'win',
+    result: result.result === 'loss' ? 'loss' : 'win',
     apm: result.apm || 150,
     eapm: result.eapm || 120,
     buildOrder: result.buildOrder || [],
     resourcesGraph: result.resourcesGraph || [],
     strengths: result.strengths || ['Solid macro gameplay'],
     weaknesses: result.weaknesses || ['Build order efficiency'],
-    recommendations: result.recommendations || ['Focus on early game scouting']
+    recommendations: result.recommendations || ['Focus on early game scouting'],
+    trainingPlan: result.trainingPlan || undefined
   };
   
   return transformedData;
@@ -352,7 +353,8 @@ function extractDataFromReplayParser(parser: any): ParsedReplayData {
   };
   
   // Transform the data
-  return transformJSSUHData(jssuhData);
+  const transformedData = transformJSSUHData(jssuhData);
+  return ensureRequiredFields(transformedData);
 }
 
 /**
@@ -402,7 +404,10 @@ function extractInfoFromReplayHeader(fileData: Uint8Array): ParsedReplayData {
     const estimatedApm = Math.floor(Math.random() * 100) + 100;
     const estimatedEapm = Math.floor(estimatedApm * 0.8);
     
-    const result: ParsedReplayData = {
+    // Make sure the result is a valid enum value: 'win' or 'loss'
+    const result: 'win' | 'loss' = 'win';
+    
+    const parsedData: ParsedReplayData = {
       playerName: playerInfo.playerName || 'Player',
       opponentName: playerInfo.opponentName || 'Opponent',
       playerRace: playerRace,
@@ -412,18 +417,19 @@ function extractInfoFromReplayHeader(fileData: Uint8Array): ParsedReplayData {
       duration: durationStr,
       durationMS: durationMs,
       date: new Date().toISOString().split('T')[0],
-      result: 'win',
+      result: result, // Fixed to use the valid enum value
       apm: estimatedApm,
       eapm: estimatedEapm,
       buildOrder: [],
       resourcesGraph: [],
       strengths: ['Solid macro gameplay', 'Good unit control'],
       weaknesses: ['Could improve scouting', 'Build order efficiency'],
-      recommendations: ['Focus on early game scouting', 'Tighten build order timing']
+      recommendations: ['Focus on early game scouting', 'Tighten build order timing'],
+      trainingPlan: undefined
     };
     
     console.log('[browserSafeParser] Created fallback parsed data');
-    return result;
+    return parsedData;
   } catch (error) {
     console.error('[browserSafeParser] Error in header extraction:', error);
     
@@ -438,14 +444,15 @@ function extractInfoFromReplayHeader(fileData: Uint8Array): ParsedReplayData {
       duration: '10:00',
       durationMS: 600000,
       date: new Date().toISOString().split('T')[0],
-      result: 'win',
+      result: 'win', // Fixed to use a valid enum value
       apm: 150,
       eapm: 120,
       buildOrder: [],
       resourcesGraph: [],
       strengths: ['Solid macro gameplay'],
       weaknesses: ['Build order efficiency'],
-      recommendations: ['Focus on early game scouting']
+      recommendations: ['Focus on early game scouting'],
+      trainingPlan: undefined
     };
   }
 }
@@ -455,6 +462,9 @@ function extractInfoFromReplayHeader(fileData: Uint8Array): ParsedReplayData {
  */
 function ensureRequiredFields(data: Partial<ParsedReplayData>): ParsedReplayData {
   // Fill in any missing required fields with default values
+  // Make sure result is a valid enum value
+  const result: 'win' | 'loss' = data.result === 'loss' ? 'loss' : 'win';
+  
   return {
     playerName: data.playerName || 'Player',
     opponentName: data.opponentName || 'Opponent',
@@ -465,13 +475,14 @@ function ensureRequiredFields(data: Partial<ParsedReplayData>): ParsedReplayData
     duration: data.duration || '10:00',
     durationMS: data.durationMS || 600000,
     date: data.date || new Date().toISOString().split('T')[0],
-    result: data.result || 'win',
+    result: result,
     apm: data.apm || 150,
     eapm: data.eapm || 120,
     buildOrder: data.buildOrder || [],
     resourcesGraph: data.resourcesGraph || [],
     strengths: data.strengths || ['Solid macro gameplay'],
     weaknesses: data.weaknesses || ['Build order efficiency'],
-    recommendations: data.recommendations || ['Focus on early game scouting']
+    recommendations: data.recommendations || ['Focus on early game scouting'],
+    trainingPlan: data.trainingPlan
   };
 }
