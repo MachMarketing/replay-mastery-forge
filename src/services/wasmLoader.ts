@@ -67,7 +67,7 @@ export async function initParserWasm(): Promise<boolean> {
       await screpModule.ready;
     }
     
-    // Validate that the module has a parse function
+    // Validate that the module has a parseBuffer function
     if (!hasParseFunction(screpModule)) {
       throw new Error('No valid parse function found in screp-js module');
     }
@@ -113,6 +113,7 @@ export function isWasmInitialized(): boolean {
  */
 function hasParseFunction(module: any): boolean {
   return (
+    (typeof module.parseBuffer === 'function') || 
     (typeof module.parseReplay === 'function') || 
     (typeof module.parse === 'function')
   );
@@ -159,23 +160,23 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
     console.log('[wasmLoader] Starting parsing with WASM, size:', data.byteLength);
     console.log('[wasmLoader] Available methods on screpModule:', Object.keys(screpModule));
     
-    // Direkt parsen ohne Header-Check und Versionsvalidierung
-    let result;
-    
-    if (typeof screpModule.parseReplay === 'function') {
-      result = screpModule.parseReplay(data);
-    } else if (typeof screpModule.parse === 'function') {
-      result = screpModule.parse(data);
-    } else {
+    // Prioritize using parseBuffer as the correct function
+    if (typeof screpModule.parseBuffer === 'function') {
+      console.log('[wasmLoader] Using parseBuffer function');
+      return await screpModule.parseBuffer(data);
+    } 
+    // Fallbacks for backward compatibility, but less likely to work
+    else if (typeof screpModule.parseReplay === 'function') {
+      console.log('[wasmLoader] Falling back to parseReplay function');
+      return screpModule.parseReplay(data);
+    } 
+    else if (typeof screpModule.parse === 'function') {
+      console.log('[wasmLoader] Falling back to parse function');
+      return screpModule.parse(data);
+    } 
+    else {
       throw new Error('No valid parse function found in screp-js module');
     }
-    
-    // Validate that we got a result
-    if (!result) {
-      throw new Error('Parser returned empty result');
-    }
-    
-    return result;
   } catch (error) {
     console.error('[wasmLoader] Error in WASM parsing:', error);
     
