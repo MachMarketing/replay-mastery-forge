@@ -23,35 +23,38 @@ export async function initBrowserSafeParser(): Promise<void> {
     if (typeof window !== 'undefined' && !jssuhModule) {
       try {
         // Import the JSSUH module
+        console.log('[browserSafeParser] Attempting to import JSSUH module');
         const importedModule = await import('jssuh');
-        console.log('[browserSafeParser] JSSUH import successful');
+        console.log('[browserSafeParser] JSSUH import successful, module structure:', 
+          Object.keys(importedModule).join(', '));
         
         // Store the module globally
         jssuhModule = importedModule;
         
-        // Get the ReplayParser class
-        if (importedModule.ReplayParser) {
-          ReplayParser = importedModule.ReplayParser;
-          console.log('[browserSafeParser] Found ReplayParser class in direct exports');
-        } else if (importedModule.default && typeof importedModule.default === 'function') {
+        // Get the ReplayParser class - JSSUH exports ReplayParser as the default export
+        if (typeof importedModule.default === 'function') {
           ReplayParser = importedModule.default;
-          console.log('[browserSafeParser] Using default export as ReplayParser constructor');
-        } else {
-          console.warn('[browserSafeParser] ReplayParser class not found, logging available exports:');
-          console.log(Object.keys(importedModule).join(', '));
-          if (importedModule.default) {
-            console.log('Default export contains:', typeof importedModule.default);
-          }
-        }
-        
-        // Test creating a parser instance to verify it works
-        if (ReplayParser) {
+          console.log('[browserSafeParser] Found ReplayParser as default export (function)');
+          
+          // Test if we can instantiate it
           try {
             const testParser = new ReplayParser();
             console.log('[browserSafeParser] Successfully created ReplayParser instance');
           } catch (instanceError) {
             console.error('[browserSafeParser] Failed to create ReplayParser instance:', instanceError);
             ReplayParser = null;
+          }
+        } else {
+          console.warn('[browserSafeParser] ReplayParser not found in default export, logging available exports:');
+          for (const key of Object.keys(importedModule)) {
+            console.log(`- ${key}: ${typeof importedModule[key]}`);
+          }
+          
+          if (importedModule.default) {
+            console.log('Default export type:', typeof importedModule.default);
+            if (typeof importedModule.default === 'object') {
+              console.log('Default export contents:', Object.keys(importedModule.default).join(', '));
+            }
           }
         }
       } catch (e) {
