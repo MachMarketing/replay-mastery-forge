@@ -5,7 +5,6 @@
  * with appropriate error handling and timeouts.
  */
 import type { ParsedReplayResult } from '../replayParserService';
-import { Readable } from 'stream';
 
 // Import type definitions but not actual implementations
 type ReplayParserType = any;
@@ -95,8 +94,9 @@ async function parseWithStreamAndTimeout(data: Uint8Array, timeoutMs: number): P
       
       const parser = new ReplayParser();
       
-      // Create a readable stream from the Uint8Array
-      const readableStream = Readable.from(Buffer.from(data));
+      // Create a browser-compatible stream implementation
+      // Instead of using Readable.from which is Node-specific,
+      // we'll create our own stream-like implementation
       
       // Collected data
       const result: any = {
@@ -146,9 +146,41 @@ async function parseWithStreamAndTimeout(data: Uint8Array, timeoutMs: number): P
         resolve(result);
       });
       
-      // Pipe the stream to the parser
-      readableStream.pipe(parser);
-      console.log('[browserSafeParser] Stream piped to parser');
+      // Instead of using Node.js streams, use the write method directly
+      // JSSUH parser expects a stream but also accepts direct writes
+      console.log('[browserSafeParser] Writing data directly to parser');
+      
+      // Write the data chunk by chunk to avoid memory issues
+      const CHUNK_SIZE = 8192; // 8KB chunks
+      let offset = 0;
+      
+      function writeNextChunk() {
+        if (offset >= data.length) {
+          // End the stream when all data has been written
+          console.log('[browserSafeParser] All data written, ending parser stream');
+          parser.end();
+          return;
+        }
+        
+        const end = Math.min(offset + CHUNK_SIZE, data.length);
+        const chunk = data.slice(offset, end);
+        
+        try {
+          parser.write(chunk);
+          offset = end;
+          
+          // Continue writing chunks asynchronously to avoid blocking the main thread
+          setTimeout(writeNextChunk, 0);
+        } catch (err) {
+          console.error('[browserSafeParser] Error writing chunk to parser:', err);
+          clearTimeout(timeoutId);
+          reject(new Error(`Error writing data: ${err instanceof Error ? err.message : 'Unknown error'}`));
+        }
+      }
+      
+      // Start the writing process
+      writeNextChunk();
+      
     } catch (error) {
       // Clear the timeout
       clearTimeout(timeoutId);
