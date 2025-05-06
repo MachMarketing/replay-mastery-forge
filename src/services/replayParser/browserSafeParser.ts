@@ -165,19 +165,50 @@ export async function parseReplayWithBrowserSafeParser(replayData: Uint8Array): 
       // Fall back to stream-based approach if direct parsing fails
       try {
         console.log('[browserSafeParser] Trying stream-based approach...');
-        // Create a buffer from the Uint8Array
-        const buffer = Buffer.from(replayData);
         
-        // Create a readable stream with proper handling
-        const source = new Readable();
-        source._read = function() {}; // Required implementation for older stream versions
+        // Handle Buffer creation more safely
+        let buffer;
+        try {
+          buffer = Buffer.from(replayData);
+        } catch (bufferError) {
+          console.error('[browserSafeParser] Error creating buffer:', bufferError);
+          throw new Error('Failed to create buffer from replay data');
+        }
         
-        // Push data and end of stream
-        source.push(buffer);
-        source.push(null); // Signal end of stream
+        // Create a readable stream with proper handling for browser environment
+        let source;
+        try {
+          source = new Readable({
+            read() {} // For newer Node.js versions
+          });
+          
+          // Add _read method for older versions
+          if (typeof source._read !== 'function') {
+            source._read = function() {};
+          }
+        } catch (streamError) {
+          console.error('[browserSafeParser] Error creating readable stream:', streamError);
+          throw new Error('Failed to create readable stream');
+        }
+        
+        // Push data and end of stream with error handling
+        try {
+          source.push(buffer);
+          source.push(null); // Signal end of stream
+        } catch (pushError) {
+          console.error('[browserSafeParser] Error pushing data to stream:', pushError);
+          throw new Error('Failed to push data to stream');
+        }
         
         console.log('[browserSafeParser] Piping data to parser');
-        source.pipe(parser);
+        
+        // Handle piping with error catching
+        try {
+          source.pipe(parser);
+        } catch (pipeError) {
+          console.error('[browserSafeParser] Error piping data:', pipeError);
+          throw new Error('Failed to pipe data to parser');
+        }
       } catch (streamError) {
         console.error('[browserSafeParser] Stream error:', streamError);
         clearTimeout(timeoutId);
