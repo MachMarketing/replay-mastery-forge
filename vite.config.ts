@@ -20,7 +20,7 @@ export default defineConfig(({ mode }) => ({
     alias: {
       '@': path.resolve(__dirname, './src'),
       // Fix polyfill paths to use browser-compatible versions
-      'process': 'rollup-plugin-node-polyfills/polyfills/process',
+      'process': 'process/browser',
       'stream': 'stream-browserify',
       'events': 'rollup-plugin-node-polyfills/polyfills/events',
       'util': 'util', 
@@ -50,7 +50,7 @@ export default defineConfig(({ mode }) => ({
     },
     // Include JSSUH and its dependencies in the optimization
     include: [
-      'rollup-plugin-node-polyfills/polyfills/process',
+      'process/browser',
       'jssuh', 
       'buffer', 
       'stream-browserify', 
@@ -69,7 +69,7 @@ export default defineConfig(({ mode }) => ({
         format: 'es' as const,
         manualChunks: {
           vendor: [
-            'rollup-plugin-node-polyfills/polyfills/process',
+            'process/browser',
             'jssuh', 
             'buffer', 
             'stream-browserify', 
