@@ -57,8 +57,16 @@ export async function parseReplayWithBrowserSafeParser(replayData: Uint8Array): 
         reject(new Error('Parsing timed out after 15 seconds'));
       }, 15000);
       
-      // Parse the replay data using JSSUH
-      const result = jssuh.parse(replayData);
+      // Parse the replay data using JSSUH with properly formatted options
+      // Avoid passing boolean values directly to prevent "true" file lookup
+      const options = {
+        includeCmds: "true",     // String instead of boolean
+        includeHeader: "true",   // String instead of boolean
+        verbose: "true"          // String instead of boolean
+      };
+      
+      // Use the parse function with options to prevent file lookup issues
+      const result = jssuh.parse(replayData, options);
       clearTimeout(timeoutId);
       
       console.log('[browserSafeParser] JSSUH parser completed successfully');
