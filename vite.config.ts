@@ -4,20 +4,22 @@ import react from '@vitejs/plugin-react-swc';
 import path from 'path';
 import { NodeGlobalsPolyfillPlugin } from '@esbuild-plugins/node-globals-polyfill';
 import nodePolyfills from 'rollup-plugin-node-polyfills';
+import { componentTagger } from "lovable-tagger";
 
 // Define proper module format type
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   server: {
     host: '::',
     port: 8080,
   },
   plugins: [
     react(),
-  ],
+    mode === 'development' && componentTagger(),
+  ].filter(Boolean),
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      // Node.js polyfills for browser environments - fixed paths
+      // Node.js polyfills for browser environments
       'process': 'rollup-plugin-node-polyfills/polyfills/process-es6',
       'stream': 'stream-browserify',
       'events': 'rollup-plugin-node-polyfills/polyfills/events',
@@ -39,11 +41,11 @@ export default defineConfig({
         'process.platform': '"browser"',
       },
       plugins: [
-        // Polyfill global Node.js variables
+        // Need to add 'as any' to avoid TypeScript errors with the plugin
         NodeGlobalsPolyfillPlugin({
           process: true,
           buffer: true,
-        }),
+        }) as any,
       ],
     },
     // Include JSSUH and its dependencies in the optimization
@@ -60,10 +62,11 @@ export default defineConfig({
   build: {
     rollupOptions: {
       plugins: [
-        nodePolyfills(),
+        // Need to add 'as any' to avoid TypeScript errors with the plugin
+        nodePolyfills() as any,
       ],
       output: {
-        format: 'es',
+        format: 'es' as const,
         manualChunks: {
           vendor: [
             'jssuh', 
@@ -81,4 +84,4 @@ export default defineConfig({
       include: [/node_modules/],
     },
   },
-});
+}));
