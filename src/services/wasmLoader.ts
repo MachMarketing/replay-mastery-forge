@@ -221,6 +221,19 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
           }
         } else {
           console.warn('[wasmLoader] No Commands array in result');
+          
+          // Additional deep inspection of the result structure
+          console.log('[wasmLoader] Deep inspection of result structure:');
+          for (const key in result) {
+            if (typeof result[key] === 'object' && result[key] !== null) {
+              console.log(`[wasmLoader] Property ${key}:`, Object.keys(result[key]));
+              
+              // Check if commands might be under a different property name with a similar structure
+              if (Array.isArray(result[key]) && result[key].length > 0) {
+                console.log(`[wasmLoader] First item in ${key}:`, result[key][0]);
+              }
+            }
+          }
         }
         
         // Initialize Commands as empty array if null/undefined
@@ -243,6 +256,11 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
         // Also pass options to parseReplay if it accepts them
         const result = await screpModule.parseReplay(dataCopy, PARSER_OPTIONS);
         
+        // Log commands for this method too
+        if (result && result.Commands) {
+          console.log(`[wasmLoader] parseReplay - Commands found: ${Array.isArray(result.Commands) ? result.Commands.length : 'not an array'}`);
+        }
+        
         // Initialize Commands as empty array if null/undefined
         if (result && (result.Commands === null || result.Commands === undefined)) {
           console.log('[wasmLoader] Initializing null Commands as empty array');
@@ -262,6 +280,11 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
         console.log('[wasmLoader] Trying parse function');
         // Also try to pass options to parse
         const result = await screpModule.parse(dataCopy, PARSER_OPTIONS);
+        
+        // Log commands for this method too
+        if (result && result.Commands) {
+          console.log(`[wasmLoader] parse - Commands found: ${Array.isArray(result.Commands) ? result.Commands.length : 'not an array'}`);
+        }
         
         // Initialize Commands as empty array if null/undefined
         if (result && (result.Commands === null || result.Commands === undefined)) {
