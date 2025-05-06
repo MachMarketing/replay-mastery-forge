@@ -149,97 +149,106 @@ export async function parseReplayWithBrowserSafeParser(replayData: Uint8Array): 
         resolve(results);
       });
       
-      // First try direct parsing method
-      try {
-        console.log('[browserSafeParser] Attempting to parse binary data directly without streaming');
-        if (typeof parser.parse === 'function') {
+      // Try multiple parsing approaches
+      let parseSuccessful = false;
+      
+      // 1. First try direct parsing method
+      if (!parseSuccessful && typeof parser.parse === 'function') {
+        try {
+          console.log('[browserSafeParser] Attempting direct parse method');
           parser.parse(replayData);
-          return; // If direct parsing works, we're done
-        } else {
-          console.log('[browserSafeParser] Parser does not have a direct parse method, trying stream approach');
+          parseSuccessful = true;
+          return;
+        } catch (directParseError) {
+          console.error('[browserSafeParser] Direct parsing failed:', directParseError);
         }
-      } catch (directParseError) {
-        console.error('[browserSafeParser] JSSUH direct parsing failed:', directParseError);
       }
       
-      // Fall back to stream-based approach if direct parsing fails
-      try {
-        console.log('[browserSafeParser] Trying stream-based approach...');
-        
-        // Handle Buffer creation more safely
-        let buffer;
+      // 2. Try async parse method if available
+      if (!parseSuccessful && typeof parser.parseAsync === 'function') {
         try {
-          buffer = Buffer.from(replayData);
-        } catch (bufferError) {
-          console.error('[browserSafeParser] Error creating buffer:', bufferError);
-          throw new Error('Failed to create buffer from replay data');
+          console.log('[browserSafeParser] Attempting async parse method');
+          parser.parseAsync(replayData);
+          parseSuccessful = true;
+          return;
+        } catch (asyncParseError) {
+          console.error('[browserSafeParser] Async parsing failed:', asyncParseError);
         }
-        
-        // Create a readable stream with proper handling for browser environment
-        let source;
+      }
+      
+      // 3. Fall back to stream-based approach
+      if (!parseSuccessful) {
         try {
-          source = new Readable({
-            read() {} // For newer Node.js versions
-          });
+          console.log('[browserSafeParser] Trying stream-based approach...');
           
-          // Add _read method for older versions
-          if (typeof source._read !== 'function') {
-            source._read = function() {};
+          // Create a buffer safely
+          let buffer: Buffer;
+          try {
+            if (typeof Buffer !== 'undefined') {
+              buffer = Buffer.from(replayData);
+            } else {
+              throw new Error('Buffer is not defined in this environment');
+            }
+          } catch (bufferError) {
+            console.error('[browserSafeParser] Error creating buffer:', bufferError);
+            throw new Error('Failed to create buffer from replay data');
+          }
+          
+          // Create a readable stream safely
+          let stream: Readable;
+          try {
+            stream = new Readable();
+            
+            // Ensure stream has required methods
+            if (typeof stream._read !== 'function') {
+              stream._read = () => {};
+            }
+          } catch (streamError) {
+            console.error('[browserSafeParser] Error creating stream:', streamError);
+            throw new Error('Failed to create stream for parser');
+          }
+          
+          // Push data and end the stream
+          try {
+            stream.push(buffer);
+            stream.push(null);
+          } catch (pushError) {
+            console.error('[browserSafeParser] Error pushing data to stream:', pushError);
+            throw new Error('Failed to push data to stream');
+          }
+          
+          // Pipe to parser
+          try {
+            stream.pipe(parser);
+            parseSuccessful = true;
+          } catch (pipeError) {
+            console.error('[browserSafeParser] Error piping data to parser:', pipeError);
+            throw new Error('Failed to pipe data to parser');
           }
         } catch (streamError) {
-          console.error('[browserSafeParser] Error creating readable stream:', streamError);
-          throw new Error('Failed to create readable stream');
+          console.error('[browserSafeParser] Stream approach failed:', streamError);
+          
+          // Move to final fallback
+          parseSuccessful = false;
         }
-        
-        // Push data and end of stream with error handling
-        try {
-          source.push(buffer);
-          source.push(null); // Signal end of stream
-        } catch (pushError) {
-          console.error('[browserSafeParser] Error pushing data to stream:', pushError);
-          throw new Error('Failed to push data to stream');
-        }
-        
-        console.log('[browserSafeParser] Piping data to parser');
-        
-        // Handle piping with error catching
-        try {
-          source.pipe(parser);
-        } catch (pipeError) {
-          console.error('[browserSafeParser] Error piping data:', pipeError);
-          throw new Error('Failed to pipe data to parser');
-        }
-      } catch (streamError) {
-        console.error('[browserSafeParser] Stream error:', streamError);
+      }
+      
+      // 4. If all parsing approaches failed, use fallback data extraction
+      if (!parseSuccessful) {
+        console.warn('[browserSafeParser] All parsing attempts failed, using fallback extraction');
         clearTimeout(timeoutId);
         
-        // If streaming fails, fall back to creating header information directly
-        console.log('[browserSafeParser] Using fallback header extraction method');
         try {
-          // Extract minimal header info from binary data if possible
-          const headerInfo = extractMinimalHeaderInfo(replayData);
-          console.log('[browserSafeParser] Extracted header info:', headerInfo);
-          
-          // Extract player info
-          const playerInfo = {
-            playerName: "Player", 
-            opponentName: "Opponent",
-            playerRace: "T",
-            opponentRace: "P"
-          };
-          console.log('[browserSafeParser] Extracted player info:', playerInfo);
-          
-          // Create fallback data with replay duration estimate
-          const durationMS = estimateReplayDuration(replayData);
-          const result = createFallbackData(replayData, playerInfo, durationMS);
-          resolve(result);
+          // Extract basic info from binary data
+          const fallbackData = createFallbackData(replayData);
+          resolve(fallbackData);
         } catch (fallbackError) {
-          console.error('[browserSafeParser] Fallback extraction error:', fallbackError);
-          reject(fallbackError);
+          console.error('[browserSafeParser] Fallback extraction failed:', fallbackError);
+          reject(new Error('All parsing approaches failed'));
         }
       }
     } catch (error) {
-      console.error('[browserSafeParser] Parse setup error:', error);
+      console.error('[browserSafeParser] Critical error in parser setup:', error);
       reject(error);
     }
   });
@@ -322,4 +331,27 @@ function createFallbackData(data: Uint8Array, playerInfo?: any, durationMS = 600
     // Add empty events array
     events: []
   };
+}
+
+/**
+ * Extract minimal header information from raw replay data
+ */
+function extractMinimalHeaderInfo(data: Uint8Array): any {
+  // Try to extract replay header information from binary data
+  // This is a simplified approach and won't work for all replays
+  const headerInfo = {};
+  
+  // In a real implementation, we would try to parse the replay header format here
+  
+  return headerInfo;
+}
+
+/**
+ * Estimate replay duration from file size and other factors
+ */
+function estimateReplayDuration(data: Uint8Array): number {
+  // Rough estimate: 1KB ≈ 20 seconds of gameplay
+  // This is very approximate and varies greatly by replay
+  const sizeKB = data.length / 1024;
+  return Math.max(60000, Math.min(3600000, sizeKB * 20000));
 }
