@@ -51,7 +51,18 @@ export default defineConfig(({ mode }) => {
         define: {
           global: 'globalThis',
         },
+        // Configure WASM support
+        supported: {
+          'wasm': true
+        }
       },
     },
+    build: {
+      // Improve build settings for WASM support
+      target: 'esnext',
+      sourcemap: true,
+      // Ensure WASM files are included in the build
+      assetsInlineLimit: 0,
+    }
   };
 });
