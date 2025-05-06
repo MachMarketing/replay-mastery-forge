@@ -1,3 +1,4 @@
+
 /**
  * Maps raw parser data to our application's format
  */
@@ -418,8 +419,8 @@ function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
     recommendations
   };
   
-  // Debug log the result
-  debugLogReplayData(result, 'SCREP-WASM mapper');
+  // Debug log the result - fix: remove the second argument
+  debugLogReplayData(result);
   
   return result;
 }
