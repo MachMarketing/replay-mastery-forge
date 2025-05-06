@@ -1,4 +1,3 @@
-
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
@@ -14,8 +13,9 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       mode === 'development' && componentTagger(),
+      // Configure node polyfills more extensively to support JSSUH
       nodePolyfills({
-        // Minimum polyfills needed for browser compatibility
+        // Fully polyfill Node.js global environment
         globals: {
           Buffer: true,
           global: true,
@@ -23,6 +23,17 @@ export default defineConfig(({ mode }) => {
         },
         // Whether to polyfill specific modules
         protocolImports: true,
+        // Explicitly enable full process polyfill with nextTick
+        exclude: [],
+        // Overrides for specific polyfills
+        overrides: {
+          // Make sure process.nextTick is available
+          process: true,
+          events: true,
+          stream: true,
+          util: true,
+          buffer: true,
+        },
       }),
     ].filter(Boolean),
     resolve: {
@@ -30,6 +41,8 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, './src'),
         stream: 'stream-browserify',
         path: 'path-browserify',
+        process: 'process/browser',
+        util: 'util',
       },
     },
     server: {
@@ -53,12 +66,14 @@ export default defineConfig(({ mode }) => {
     optimizeDeps: {
       // Force Vite to reoptimize dependencies on server restart
       force: true,
-      include: ['buffer', 'screp-js'],
+      include: ['buffer', 'screp-js', 'jssuh'],
       exclude: [], // Don't exclude WASM modules
       esbuildOptions: {
         // Node.js global to browser globalThis
         define: {
           global: 'globalThis',
+          'process.env': JSON.stringify({}),
+          'process.browser': true,
         },
         // Enable WASM support
         supported: {
@@ -86,7 +101,8 @@ export default defineConfig(({ mode }) => {
         // Ensure WASM is properly handled
         output: {
           manualChunks: {
-            'screp-js': ['screp-js']
+            'screp-js': ['screp-js'],
+            'jssuh': ['jssuh']
           }
         }
       }

@@ -30,30 +30,17 @@ export async function initBrowserSafeParser(): Promise<void> {
         jssuhModule = importedModule;
         
         // Get the ReplayParser class - JSSUH exports ReplayParser as the default export
-        if (typeof importedModule.default === 'function') {
-          ReplayParser = importedModule.default;
-          console.log('[browserSafeParser] Found ReplayParser as default export (function)');
-          
-          // Test if we can instantiate it
-          try {
-            const testParser = new ReplayParser();
-            console.log('[browserSafeParser] Successfully created ReplayParser instance');
-          } catch (instanceError) {
-            console.error('[browserSafeParser] Failed to create ReplayParser instance:', instanceError);
-            ReplayParser = null;
-          }
-        } else {
-          console.warn('[browserSafeParser] ReplayParser not found in default export, logging available exports:');
-          for (const key of Object.keys(importedModule)) {
-            console.log(`- ${key}: ${typeof importedModule[key]}`);
-          }
-          
-          if (importedModule.default) {
-            console.log('Default export type:', typeof importedModule.default);
-            if (typeof importedModule.default === 'object') {
-              console.log('Default export contents:', Object.keys(importedModule.default).join(', '));
-            }
-          }
+        ReplayParser = importedModule.default;
+        console.log('[browserSafeParser] Found ReplayParser as default export', 
+          typeof ReplayParser === 'function' ? '(function)' : '(unknown)');
+        
+        // Test if we can instantiate it
+        try {
+          const testParser = new ReplayParser();
+          console.log('[browserSafeParser] Successfully created ReplayParser instance');
+        } catch (instanceError) {
+          console.error('[browserSafeParser] Failed to create ReplayParser instance:', instanceError);
+          ReplayParser = null;
         }
       } catch (e) {
         console.error('[browserSafeParser] Failed to load JSSUH parser:', e);
@@ -87,7 +74,9 @@ export async function parseReplayWithBrowserSafeParser(fileData: Uint8Array): Pr
     if (ReplayParser) {
       try {
         console.log('[browserSafeParser] Using JSSUH ReplayParser...');
-        const parsedData = await parseWithJSSUHDirectly(fileData);
+        
+        // Use direct parsing method which avoids streams
+        const parsedData = await parseWithJSSUHDirectlyUsingBuffer(fileData);
         console.log('[browserSafeParser] Successfully parsed with JSSUH');
         return parsedData;
       } catch (jssuhError) {
@@ -112,10 +101,10 @@ export async function parseReplayWithBrowserSafeParser(fileData: Uint8Array): Pr
 }
 
 /**
- * Parse replay directly with JSSUH using a non-stream approach
- * This avoids the Node.js stream compatibility issues in browsers
+ * Parse replay directly with JSSUH using buffer approach that avoids Node.js stream APIs
+ * This method uses the parser's built-in methods without requiring stream APIs
  */
-async function parseWithJSSUHDirectly(fileData: Uint8Array): Promise<ParsedReplayData> {
+async function parseWithJSSUHDirectlyUsingBuffer(fileData: Uint8Array): Promise<ParsedReplayData> {
   return new Promise((resolve, reject) => {
     if (!ReplayParser) {
       return reject(new Error('ReplayParser is not available'));
@@ -238,33 +227,30 @@ async function parseWithJSSUHDirectly(fileData: Uint8Array): Promise<ParsedRepla
         }
       });
       
-      // Instead of using streaming, which causes compatibility issues,
-      // directly process the file data using the parser's parse method if available
       try {
-        console.log('[browserSafeParser] Attempting to parse binary data directly without streaming');
+        console.log('[browserSafeParser] Attempting to parse binary data directly');
         
-        // Check if parse method exists on parser
+        // This approach avoids Node.js stream APIs entirely
+        // We use the parser's parse method with our binary data
         if (typeof parser.parse === 'function') {
-          // This approach avoids using Node.js streams which are problematic in browsers
-          parser.parse(fileData);
+          // Convert Uint8Array to Buffer if needed
+          const buffer = typeof Buffer !== 'undefined' ? Buffer.from(fileData) : fileData;
+          console.log('[browserSafeParser] Feeding buffer to parser.parse()');
+          parser.parse(buffer);
           
-          // If the parser doesn't emit an 'end' event, we'll manually trigger
-          // completion after a reasonable timeout (needed for some implementations)
+          // If parse method doesn't trigger 'end' event automatically, we'll help it
           setTimeout(() => {
-            if (parsingResult.header) {
-              console.log('[browserSafeParser] Manual completion after timeout');
+            if (parsingResult.header && !parser.ended) {
+              console.log('[browserSafeParser] Manually triggering end event');
               parser.emit('end');
-            } else if (!parsingResult.header) {
-              reject(new Error('Failed to parse replay header within timeout'));
             }
           }, 5000);
         } else {
-          // If the parser doesn't have a parse method, try a different approach
-          // Use browser-compatible buffer/array handling to feed data to parser
-          reject(new Error('Parser does not have a direct parse method'));
+          reject(new Error('Parser does not have a parse method'));
         }
       } catch (parseError) {
         console.error('[browserSafeParser] Error in direct parse method:', parseError);
+        clearTimeout(parsingTimeout);
         reject(parseError);
       }
     } catch (error) {
@@ -374,9 +360,9 @@ function extractInfoFromReplayHeader(fileData: Uint8Array): ParsedReplayData {
       eapm: estimatedEapm,
       buildOrder: [],
       resourcesGraph: [],
-      strengths: ['Solid macro gameplay', 'Good unit control'],
-      weaknesses: ['Could improve scouting', 'Build order efficiency'],
-      recommendations: ['Focus on early game scouting', 'Tighten build order timing'],
+      strengths: ['Solid macro gameplay'],
+      weaknesses: ['Build order efficiency'],
+      recommendations: ['Focus on early game scouting'],
       trainingPlan: undefined
     };
     
