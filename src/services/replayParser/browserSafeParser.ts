@@ -1,3 +1,4 @@
+
 /**
  * Browser-Safe Parser implementation
  * 
@@ -85,18 +86,34 @@ async function parseWithStreamAndTimeout(data: Uint8Array, timeoutMs: number): P
     
     try {
       // Create a new ReplayParser instance from JSSUH
-      const ReplayParser = JSSUHModule.default || JSSUHModule.ReplayParser;
-      if (!ReplayParser) {
+      // Check for both default export and named exports
+      let ReplayParser;
+      if (JSSUHModule.default) {
+        ReplayParser = JSSUHModule.default;
+        console.log('[browserSafeParser] Using default export for ReplayParser');
+      } else if (JSSUHModule.ReplayParser) {
+        ReplayParser = JSSUHModule.ReplayParser;
+        console.log('[browserSafeParser] Using named export for ReplayParser');
+      } else {
+        console.log('[browserSafeParser] Available exports:', Object.keys(JSSUHModule));
         clearTimeout(timeoutId);
         reject(new Error('ReplayParser not found in JSSUH module'));
         return;
       }
       
+      // Create a parser instance and verify it's valid
       const parser = new ReplayParser();
       
-      // Create a browser-compatible stream implementation
-      // Instead of using Readable.from which is Node-specific,
-      // we'll create our own stream-like implementation
+      if (!parser) {
+        console.error('[browserSafeParser] Failed to create parser instance');
+        clearTimeout(timeoutId);
+        reject(new Error('Failed to create parser instance'));
+        return;
+      }
+      
+      console.log('[browserSafeParser] Parser instance created successfully');
+      console.log('[browserSafeParser] Parser methods:', 
+                 Object.getOwnPropertyNames(Object.getPrototypeOf(parser)));
       
       // Collected data
       const result: any = {
@@ -146,8 +163,7 @@ async function parseWithStreamAndTimeout(data: Uint8Array, timeoutMs: number): P
         resolve(result);
       });
       
-      // Instead of using Node.js streams, use the write method directly
-      // JSSUH parser expects a stream but also accepts direct writes
+      // Write data directly to parser in chunks instead of using pipe
       console.log('[browserSafeParser] Writing data directly to parser');
       
       // Write the data chunk by chunk to avoid memory issues
@@ -158,7 +174,19 @@ async function parseWithStreamAndTimeout(data: Uint8Array, timeoutMs: number): P
         if (offset >= data.length) {
           // End the stream when all data has been written
           console.log('[browserSafeParser] All data written, ending parser stream');
-          parser.end();
+          
+          // Check if parser.end exists before calling it
+          if (typeof parser.end === 'function') {
+            parser.end();
+          } else {
+            console.warn('[browserSafeParser] parser.end is not a function, using alternate approach');
+            // Try to signal end of data in an alternate way if end() doesn't exist
+            try {
+              parser.emit('end');
+            } catch (err) {
+              console.error('[browserSafeParser] Error emitting end event:', err);
+            }
+          }
           return;
         }
         
@@ -166,7 +194,17 @@ async function parseWithStreamAndTimeout(data: Uint8Array, timeoutMs: number): P
         const chunk = data.slice(offset, end);
         
         try {
-          parser.write(chunk);
+          // Check if parser.write exists before calling it
+          if (typeof parser.write === 'function') {
+            parser.write(chunk);
+            console.log(`[browserSafeParser] Chunk written: bytes ${offset} to ${end}`);
+          } else {
+            console.error('[browserSafeParser] parser.write is not a function');
+            clearTimeout(timeoutId);
+            reject(new Error('Parser does not support write method'));
+            return;
+          }
+          
           offset = end;
           
           // Continue writing chunks asynchronously to avoid blocking the main thread

@@ -19,15 +19,15 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      // Fix polyfill paths to use browser-compatible versions directly
-      'process': 'rollup-plugin-node-polyfills/polyfills/process-es6',
-      'stream': 'rollup-plugin-node-polyfills/polyfills/stream-browserify',
-      'events': 'rollup-plugin-node-polyfills/polyfills/events',
-      'util': 'rollup-plugin-node-polyfills/polyfills/util',
-      'buffer': 'rollup-plugin-node-polyfills/polyfills/buffer-es6',
-      'zlib': 'rollup-plugin-node-polyfills/polyfills/zlib',
-      'path': 'rollup-plugin-node-polyfills/polyfills/path',
-      'querystring': 'rollup-plugin-node-polyfills/polyfills/querystring',
+      // Fix polyfills to point directly to the proper node-polyfill modules
+      'process': 'process/browser',
+      'stream': 'stream-browserify',
+      'events': 'events',
+      'util': 'util',
+      'buffer': 'buffer',
+      'zlib': 'browserify-zlib',
+      'path': 'path-browserify',
+      'querystring': 'querystring-es3',
     },
   },
   optimizeDeps: {
