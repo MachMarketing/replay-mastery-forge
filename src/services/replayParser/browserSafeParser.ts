@@ -86,10 +86,10 @@ export async function parseReplayWithBrowserSafeParser(replayData: Uint8Array): 
   
   return new Promise((resolve, reject) => {
     try {
-      // Set a timeout for parsing
+      // Set a timeout for parsing - TIMEOUT ERHÖHT VON 15 AUF 60 SEKUNDEN
       const timeoutId = setTimeout(() => {
-        reject(new Error('Parsing timed out after 15 seconds'));
-      }, 15000);
+        reject(new Error('Parsing timed out after 60 seconds'));
+      }, 60000); // Timeout auf 60 Sekunden erhöht (vorher 15000)
       
       // Create a new parser instance
       console.log('[browserSafeParser] Using JSSUH ReplayParser...');
@@ -309,3 +309,4 @@ function createFallbackData(data: Uint8Array, playerInfo?: any, durationMS = 600
     events: []
   };
 }
+

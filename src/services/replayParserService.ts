@@ -118,12 +118,12 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     // Create abort controller for this parsing operation
     activeParsingAbortController = new AbortController();
     
-    // Set a timeout for the entire parsing operation
+    // Set a timeout for the entire parsing operation - erhöht auf 60 Sekunden
     const timeoutPromise = new Promise<never>((_, reject) => {
       const timeoutId = setTimeout(() => {
         reject(new Error('Zeitüberschreitung beim Parsen'));
         activeParsingAbortController = null;
-      }, 15000);
+      }, 60000); // Erhöht von 15000 auf 60000 ms
       
       // Clean up timeout if aborted
       activeParsingAbortController?.signal.addEventListener('abort', () => {

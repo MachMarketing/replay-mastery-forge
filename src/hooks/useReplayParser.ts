@@ -69,18 +69,18 @@ export function useReplayParser(): ReplayParserResult {
       setProgress(prev => {
         // Increase progress continuously up to 95%
         if (prev >= 95) return 95;
-        return Math.min(prev + 0.6, 95);
+        return Math.min(prev + 0.3, 95); // Verlangsamte Geschwindigkeit, da jetzt 60 statt 20 Sekunden
       });
     }, 100);
     
-    // Set timeout for the entire processing (20 seconds)
+    // Set timeout for the entire processing (60 Sekunden - erhöht von 20)
     if (processingTimeoutRef.current) {
       window.clearTimeout(processingTimeoutRef.current);
     }
     
     processingTimeoutRef.current = window.setTimeout(() => {
       if (isProcessing) {
-        console.error('[useReplayParser] Processing timed out after 20 seconds');
+        console.error('[useReplayParser] Processing timed out after 60 seconds');
         setError('Zeitüberschreitung bei der Verarbeitung');
         setIsProcessing(false);
         
@@ -95,7 +95,7 @@ export function useReplayParser(): ReplayParserResult {
           variant: 'destructive',
         });
       }
-    }, 20000);
+    }, 60000); // Erhöht von 20000 auf 60000 ms
     
     try {
       // Validate file
