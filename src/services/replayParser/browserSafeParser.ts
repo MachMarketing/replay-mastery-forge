@@ -1,4 +1,3 @@
-
 /**
  * This module provides browser-safe parsing for StarCraft: Brood War replay files.
  * It's designed to work without backend services or WebAssembly.
@@ -7,9 +6,11 @@
 import { extractReplayHeaderInfo, extractPlayerInfo, mapRace } from './utils';
 import { ParsedReplayData } from './types';
 import { transformJSSUHData } from './transformer';
+import { Readable } from 'stream-browserify';
 
-// Global reference to the parser module
+// Flag to track if the jssuh module has been loaded
 let jssuhModule: any = null;
+let ReplayParser: any = null;
 
 /**
  * Initialize the browser-safe parser
@@ -22,56 +23,34 @@ export async function initBrowserSafeParser(): Promise<void> {
       try {
         // Import the JSSUH module
         const importedModule = await import('jssuh');
-        console.log('[browserSafeParser] JSSUH import result:', 
-          typeof importedModule === 'object' ? 'Object successfully imported' : 'Import failed');
-        
-        // Examine the raw module for debugging
-        console.log('[browserSafeParser] Raw imported module structure:', 
-          Object.keys(importedModule).join(', '));
+        console.log('[browserSafeParser] JSSUH import successful');
         
         // Store the module globally
         jssuhModule = importedModule;
         
-        // Examine the JSSUH module structure to help debugging
-        if (jssuhModule) {
-          console.log('[browserSafeParser] JSSUH module available methods:');
-          
-          // Log all available properties and their types
-          for (const key of Object.keys(jssuhModule)) {
-            const valueType = typeof jssuhModule[key];
-            console.log(`- ${key}: ${valueType}`);
-            
-            // For objects and functions, look deeper
-            if (valueType === 'object' && jssuhModule[key] !== null) {
-              console.log(`  Sub-properties of ${key}:`, 
-                Object.keys(jssuhModule[key]).join(', '));
-            } else if (valueType === 'function') {
-              console.log(`  Function: ${jssuhModule[key].toString().substring(0, 100)}...`);
-              
-              // Check if this is potentially a constructor by testing its prototype
-              const hasPrototype = jssuhModule[key].prototype && 
-                Object.keys(jssuhModule[key].prototype).length > 0;
-              
-              if (hasPrototype) {
-                console.log(`  Potential constructor: ${key} has prototype methods:`, 
-                  Object.keys(jssuhModule[key].prototype).join(', '));
-              }
-            }
+        // Get the ReplayParser class
+        if (importedModule.ReplayParser) {
+          ReplayParser = importedModule.ReplayParser;
+          console.log('[browserSafeParser] Found ReplayParser class in direct exports');
+        } else if (importedModule.default && importedModule.default.ReplayParser) {
+          ReplayParser = importedModule.default.ReplayParser;
+          console.log('[browserSafeParser] Found ReplayParser class in default export');
+        } else {
+          console.warn('[browserSafeParser] ReplayParser class not found, logging available exports:');
+          console.log(Object.keys(importedModule).join(', '));
+          if (importedModule.default) {
+            console.log('Default export contains:', Object.keys(importedModule.default).join(', '));
           }
-          
-          // Look for default export specifically
-          if ('default' in jssuhModule) {
-            console.log('[browserSafeParser] Default export found, contents:',
-              typeof jssuhModule.default === 'object'
-                ? Object.keys(jssuhModule.default).join(', ')
-                : typeof jssuhModule.default);
-            
-            // If default export is an object, examine it too
-            if (typeof jssuhModule.default === 'object' && jssuhModule.default !== null) {
-              for (const key of Object.keys(jssuhModule.default)) {
-                console.log(`- default.${key}: ${typeof jssuhModule.default[key]}`);
-              }
-            }
+        }
+        
+        // Test creating a parser instance to verify it works
+        if (ReplayParser) {
+          try {
+            const testParser = new ReplayParser();
+            console.log('[browserSafeParser] Successfully created ReplayParser instance');
+          } catch (instanceError) {
+            console.error('[browserSafeParser] Failed to create ReplayParser instance:', instanceError);
+            ReplayParser = null;
           }
         }
       } catch (e) {
@@ -97,23 +76,25 @@ export async function parseReplayWithBrowserSafeParser(fileData: Uint8Array): Pr
   
   try {
     // Try to initialize the parser if necessary
-    if (!jssuhModule) {
+    if (!jssuhModule || !ReplayParser) {
       console.log('[browserSafeParser] Parser not initialized, attempting to initialize...');
       await initBrowserSafeParser();
     }
     
-    // Always attempt to parse with JSSUH regardless of validation
-    console.log('[browserSafeParser] Attempting to parse with JSSUH parser regardless of file validation...');
-    
-    try {
-      console.log('[browserSafeParser] Using JSSUH parser as primary parser, without validation...');
-      const parsedData = await parseWithJSSUH(fileData);
-      console.log('[browserSafeParser] Successfully parsed with JSSUH');
-      return parsedData;
-    } catch (jssuhError) {
-      // Only if JSSUH completely fails, we use the fallback
-      console.error('[browserSafeParser] JSSUH parsing failed completely:', jssuhError);
-      console.log('[browserSafeParser] Using fallback header extraction method');
+    // If we have the JSSUH parser, use it
+    if (ReplayParser) {
+      try {
+        console.log('[browserSafeParser] Using JSSUH ReplayParser...');
+        const parsedData = await parseWithJSSUHStream(fileData);
+        console.log('[browserSafeParser] Successfully parsed with JSSUH');
+        return parsedData;
+      } catch (jssuhError) {
+        console.error('[browserSafeParser] JSSUH parsing failed:', jssuhError);
+        console.log('[browserSafeParser] Using fallback header extraction method');
+        return extractInfoFromReplayHeader(fileData);
+      }
+    } else {
+      console.warn('[browserSafeParser] JSSUH parser not available, using fallback method');
       return extractInfoFromReplayHeader(fileData);
     }
   } catch (error) {
@@ -129,297 +110,149 @@ export async function parseReplayWithBrowserSafeParser(fileData: Uint8Array): Pr
 }
 
 /**
- * Parse replay using JSSUH library
+ * Parse replay using JSSUH ReplayParser with stream processing
  */
-async function parseWithJSSUH(fileData: Uint8Array): Promise<ParsedReplayData> {
-  // Try to load JSSUH if not already loaded
-  if (!jssuhModule) {
-    console.log('[browserSafeParser] JSSUH not initialized, attempting to load it now...');
-    await initBrowserSafeParser();
-    
-    // If it still couldn't be loaded, throw an error
-    if (!jssuhModule) {
-      throw new Error('Failed to load JSSUH module');
+function parseWithJSSUHStream(fileData: Uint8Array): Promise<ParsedReplayData> {
+  return new Promise((resolve, reject) => {
+    if (!ReplayParser) {
+      return reject(new Error('ReplayParser is not available'));
     }
-  }
-  
-  try {
-    console.log('[browserSafeParser] Starting JSSUH parsing process...');
     
-    // Debug the JSSUH module structure again, just to be sure we have the latest
-    console.log('[browserSafeParser] JSSUH module structure:', 
-      Object.keys(jssuhModule).join(', '));
-    
-    // Attempt to parse using direct parseReplay function if available
-    if (typeof jssuhModule.parseReplay === 'function') {
-      console.log('[browserSafeParser] Found direct parseReplay function, attempting to use it...');
+    console.log('[browserSafeParser] Creating new ReplayParser instance');
+    try {
+      // Create a new parser instance
+      const parser = new ReplayParser();
       
-      try {
-        const result = jssuhModule.parseReplay(fileData);
-        console.log('[browserSafeParser] Direct parsing with parseReplay successful:', 
-          result ? 'result available' : 'no result');
+      // Data structures to collect parsing results
+      const parsingResult: any = {
+        header: null,
+        players: [],
+        commands: [],
+        actions: []
+      };
+      
+      // Set timeout to prevent hanging on corrupt files
+      const parsingTimeout = setTimeout(() => {
+        reject(new Error('Parsing timeout - took too long to process'));
+      }, 15000);
+      
+      // Handle replay header event
+      parser.on('replayHeader', (header: any) => {
+        console.log('[browserSafeParser] Received replayHeader event');
+        parsingResult.header = header;
         
-        if (result) {
-          // Transform the direct result
-          return transformDirectJSSUHResult(result);
+        // Log header fields
+        if (header) {
+          console.log('[browserSafeParser] Header fields:', Object.keys(header).join(', '));
+          if (header.players) {
+            console.log('[browserSafeParser] Player count:', header.players.length);
+            parsingResult.players = header.players;
+          }
+          if (header.map) {
+            console.log('[browserSafeParser] Map:', header.map.name || 'Unknown');
+          }
         }
-      } catch (directError) {
-        console.error('[browserSafeParser] Direct parsing with parseReplay failed:', directError);
-        // Continue to try other methods
-      }
-    }
-    
-    // Try different strategies to find a working parser constructor
-    let parser = null;
-    let parserMethod = '';
-    
-    // Strategy 1: Try to use the actual Parser property from the module
-    const parserCandidates = [
-      // Check various possible locations for the parser constructor
-      { name: 'Parser', path: jssuhModule.Parser },
-      { name: 'ReplayParser', path: jssuhModule.ReplayParser },
-      { name: 'default.Parser', path: jssuhModule.default?.Parser },
-      { name: 'default.ReplayParser', path: jssuhModule.default?.ReplayParser },
-      // Check also for lowercase variations
-      { name: 'parser', path: jssuhModule.parser },
-      { name: 'replayParser', path: jssuhModule.replayParser },
-      { name: 'default.parser', path: jssuhModule.default?.parser },
-      { name: 'default.replayParser', path: jssuhModule.default?.replayParser }
-    ];
-    
-    // Test each candidate to see if it's a usable constructor
-    for (const candidate of parserCandidates) {
-      if (candidate.path && typeof candidate.path === 'function') {
-        try {
-          console.log(`[browserSafeParser] Trying to create parser with: ${candidate.name}`);
-          
-          // Check if this is a constructor function
-          const constructorTest = new candidate.path();
-          
-          console.log(`[browserSafeParser] Successfully created parser with: ${candidate.name}`);
-          parser = constructorTest;
-          parserMethod = candidate.name;
-          break;
-        } catch (e) {
-          console.log(`[browserSafeParser] Failed to instantiate ${candidate.name}:`, e);
-        }
-      }
-    }
-    
-    // If we still don't have a parser, try one more approach - use the module itself
-    if (!parser && typeof jssuhModule === 'function') {
-      try {
-        console.log('[browserSafeParser] Trying to use the module itself as constructor');
-        parser = new jssuhModule();
-        parserMethod = 'moduleAsConstructor';
-      } catch (e) {
-        console.log('[browserSafeParser] Failed to use module as constructor:', e);
-      }
-    }
-    
-    // If we still don't have a parser, try one more approach - use the default export
-    if (!parser && jssuhModule.default && typeof jssuhModule.default === 'function') {
-      try {
-        console.log('[browserSafeParser] Trying to use the default export as constructor');
-        parser = new jssuhModule.default();
-        parserMethod = 'defaultExportAsConstructor';
-      } catch (e) {
-        console.log('[browserSafeParser] Failed to use default export as constructor:', e);
-      }
-    }
-    
-    // If no parser constructor was found, try direct function calls
-    if (!parser) {
-      console.log('[browserSafeParser] No valid parser constructor found, trying direct function calls');
+      });
       
-      // Try using parseReplay function directly again (in case we missed it earlier)
-      if (jssuhModule.parseReplay && typeof jssuhModule.parseReplay === 'function') {
-        try {
-          const result = jssuhModule.parseReplay(fileData);
-          return transformDirectJSSUHResult(result);
-        } catch (e) {
-          console.error('[browserSafeParser] Direct function call to parseReplay failed:', e);
+      // Handle command data events
+      parser.on('command', (command: any) => {
+        // Store command for later processing
+        parsingResult.commands.push(command);
+        
+        // Log periodically to avoid flooding console
+        if (parsingResult.commands.length % 100 === 0) {
+          console.log(`[browserSafeParser] Processed ${parsingResult.commands.length} commands`);
         }
-      }
+      });
       
-      // If we get here, we've exhausted all options
-      throw new Error('No valid parser constructor or parsing function found in JSSUH module');
-    }
-    
-    // Now we have a parser instance, try to parse the replay
-    console.log(`[browserSafeParser] Parsing replay with ${parserMethod} instance`);
-    
-    // Try different parsing methods based on what's available
-    let parseResult = null;
-    let parsingSuccessful = false;
-    
-    // Try all possible parsing method names with different casing
-    const parsingMethods = [
-      'ParseReplay', 'parseReplay', 'parse', 'Parse'
-    ];
-    
-    for (const method of parsingMethods) {
-      if (typeof parser[method] === 'function') {
-        try {
-          console.log(`[browserSafeParser] Trying parsing method: ${method}`);
-          parseResult = parser[method](fileData);
-          parsingSuccessful = true;
-          console.log(`[browserSafeParser] Parsing successful with method: ${method}`);
-          break;
-        } catch (e) {
-          console.error(`[browserSafeParser] Parsing with method ${method} failed:`, e);
+      // Handle player action events
+      parser.on('playerAction', (action: any) => {
+        parsingResult.actions.push(action);
+        
+        // Log periodically
+        if (parsingResult.actions.length % 100 === 0) {
+          console.log(`[browserSafeParser] Processed ${parsingResult.actions.length} player actions`);
         }
-      }
-    }
-    
-    if (!parsingSuccessful) {
-      throw new Error('None of the parsing methods succeeded');
-    }
-    
-    console.log('[browserSafeParser] Replay parsing completed, extracting data...');
-    
-    // Extract replay data using different accessor methods based on casing
-    const headerAccessors = ['ReplayHeader', 'replayHeader', 'header', 'Header', 'getHeader', 'GetHeader'];
-    const playersAccessors = ['Players', 'players', 'getPlayers', 'GetPlayers'];
-    const actionsAccessors = ['Actions', 'actions', 'getActions', 'GetActions'];
-    const commandsAccessors = ['Commands', 'commands', 'getCommands', 'GetCommands'];
-    
-    // Try to get header
-    let header: any = {};
-    for (const accessor of headerAccessors) {
-      if (typeof parser[accessor] === 'function') {
-        try {
-          header = parser[accessor]();
-          console.log(`[browserSafeParser] Got header using ${accessor}:`, 
-            header ? 'header available' : 'no header');
-          if (header) break;
-        } catch (e) {
-          console.log(`[browserSafeParser] Failed to get header with ${accessor}:`, e);
+      });
+      
+      // Handle errors during parsing
+      parser.on('error', (error: any) => {
+        console.error('[browserSafeParser] Error during parsing:', error);
+        clearTimeout(parsingTimeout);
+        reject(error);
+      });
+      
+      // Handle completion of parsing
+      parser.on('end', () => {
+        console.log('[browserSafeParser] Parsing completed');
+        clearTimeout(parsingTimeout);
+        
+        // Log summary of parsed data
+        console.log('[browserSafeParser] Parsing result summary:');
+        console.log(`- Header: ${parsingResult.header ? 'Available' : 'Not available'}`);
+        console.log(`- Players: ${parsingResult.players.length}`);
+        console.log(`- Commands: ${parsingResult.commands.length}`);
+        console.log(`- Actions: ${parsingResult.actions.length}`);
+        
+        // If we have at least header data, transform and return the result
+        if (parsingResult.header) {
+          try {
+            // Transform the JSSUH data to our application format
+            const transformedData = transformJSSUHData({
+              mapName: parsingResult.header.map?.name || 'Unknown Map',
+              gameType: parsingResult.header.gameType || 'Unknown',
+              gameSpeed: parsingResult.header.gameSpeed || 0,
+              durationMS: parsingResult.header.durationFrames 
+                ? parsingResult.header.durationFrames * (1000 / 24) 
+                : 600000,
+              players: (parsingResult.players || []).map((p: any, i: number) => ({
+                id: String(i),
+                name: p.name || `Player ${i+1}`,
+                race: p.race || 'Unknown',
+                raceLetter: p.race ? p.race.charAt(0).toUpperCase() : 'U',
+                isComputer: p.isComputer || false,
+                team: i % 2
+              })),
+              actions: parsingResult.actions.map((a: any) => ({
+                frame: a.frame,
+                player: a.player,
+                type: a.type,
+                action: a.type,
+              })),
+              commands: parsingResult.commands,
+              gameStartDate: new Date().toISOString()
+            });
+            
+            // Ensure required fields are present
+            const result = ensureRequiredFields(transformedData);
+            resolve(result);
+          } catch (transformError) {
+            console.error('[browserSafeParser] Error transforming data:', transformError);
+            reject(transformError);
+          }
+        } else {
+          reject(new Error('No replay header data available after parsing'));
         }
-      }
-    }
-    
-    // Try to get players
-    let players: any[] = [];
-    for (const accessor of playersAccessors) {
-      if (typeof parser[accessor] === 'function') {
-        try {
-          players = parser[accessor]();
-          console.log(`[browserSafeParser] Got players using ${accessor}:`, 
-            players && players.length ? `${players.length} players` : 'no players');
-          if (players && players.length) break;
-        } catch (e) {
-          console.log(`[browserSafeParser] Failed to get players with ${accessor}:`, e);
+      });
+      
+      // Create a readable stream from the Uint8Array
+      console.log('[browserSafeParser] Creating readable stream from file data');
+      const fileStream = new Readable({
+        read() {
+          this.push(Buffer.from(fileData));
+          this.push(null); // Indicate end of stream
         }
-      }
+      });
+      
+      // Pipe the file data through the parser
+      console.log('[browserSafeParser] Piping data to parser');
+      fileStream.pipe(parser);
+      
+    } catch (error) {
+      console.error('[browserSafeParser] Error setting up parser:', error);
+      reject(error);
     }
-    
-    // Try to get actions
-    let actions: any[] = [];
-    for (const accessor of actionsAccessors) {
-      if (typeof parser[accessor] === 'function') {
-        try {
-          actions = parser[accessor]();
-          console.log(`[browserSafeParser] Got actions using ${accessor}:`, 
-            actions && actions.length ? `${actions.length} actions` : 'no actions');
-          if (actions && actions.length) break;
-        } catch (e) {
-          console.log(`[browserSafeParser] Failed to get actions with ${accessor}:`, e);
-        }
-      }
-    }
-    
-    // Try to get commands
-    let commands: any[] = [];
-    for (const accessor of commandsAccessors) {
-      if (typeof parser[accessor] === 'function') {
-        try {
-          commands = parser[accessor]();
-          console.log(`[browserSafeParser] Got commands using ${accessor}:`, 
-            commands && commands.length ? `${commands.length} commands` : 'no commands');
-          if (commands && commands.length) break;
-        } catch (e) {
-          console.log(`[browserSafeParser] Failed to get commands with ${accessor}:`, e);
-        }
-      }
-    }
-    
-    // Try to extract metadata using accessor methods
-    let gameSpeed = 0;
-    if (typeof parser.GameSpeed === 'function') {
-      try { gameSpeed = parser.GameSpeed(); } catch (e) {}
-    } else if (typeof parser.gameSpeed === 'function') {
-      try { gameSpeed = parser.gameSpeed(); } catch (e) {}
-    }
-    
-    // Get map name from header if possible
-    const mapName = header?.map?.name || 'Unknown Map';
-    const gameType = header?.gameType || 'Unknown';
-    
-    console.log('[browserSafeParser] JSSUH parser results summary:', {
-      mapName,
-      playersCount: players.length,
-      actionsCount: actions.length,
-      commandsCount: commands?.length || 0,
-      gameSpeed
-    });
-    
-    // Detailed logging of commands for debugging
-    if (commands && commands.length > 0) {
-      console.log('[browserSafeParser] First 5 commands:', 
-        commands.slice(0, 5).map((cmd: any, idx: number) => ({
-          index: idx,
-          frame: cmd.frame,
-          type: cmd.type,
-          name: cmd.name || 'unknown'
-        }))
-      );
-    } else {
-      console.warn('[browserSafeParser] No commands found in replay data');
-    }
-    
-    // Build the parsed data object
-    const jssuhData = {
-      mapName,
-      gameType,
-      gameSpeed,
-      durationMS: header.durationFrames ? header.durationFrames * (1000 / 24) : 600000, // Convert frames to ms
-      players: players.map((p: any, i: number) => ({
-        id: String(i),
-        name: p.name || `Player ${i+1}`,
-        race: p.race || 'Unknown',
-        raceLetter: p.race ? p.race.charAt(0).toUpperCase() : 'U',
-        isComputer: p.isComputer || false,
-        team: i % 2
-      })),
-      actions: actions.map((a: any) => ({
-        frame: a.frame,
-        player: a.player,
-        type: a.type,
-        action: a.type,
-      })),
-      commands: commands || [],
-      gameStartDate: new Date().toISOString()
-    };
-    
-    // Transform the data to our application format using the transformer
-    const transformedData = transformJSSUHData(jssuhData);
-    
-    // Log transformed data summary
-    console.log('[browserSafeParser] Transformed data summary:',
-      Object.keys(transformedData).map(key => `${key}: ${
-        Array.isArray(transformedData[key as keyof typeof transformedData]) 
-          ? `Array(${(transformedData[key as keyof typeof transformedData] as any[]).length})` 
-          : typeof transformedData[key as keyof typeof transformedData]
-      }`).join(', ')
-    );
-    
-    // Ensure required fields are always present
-    return ensureRequiredFields(transformedData);
-  } catch (error) {
-    console.error('[browserSafeParser] Error parsing with JSSUH:', error);
-    throw error;
-  }
+  });
 }
 
 /**
@@ -468,7 +301,7 @@ function formatDuration(ms: number): string {
 
 /**
  * Extract basic info by examining the replay header bytes
- * This is a fallback when WebAssembly parsing is not available
+ * This is a fallback when parsing fails
  */
 function extractInfoFromReplayHeader(fileData: Uint8Array): ParsedReplayData {
   try {
