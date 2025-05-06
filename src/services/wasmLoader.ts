@@ -204,16 +204,9 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
         console.log('[wasmLoader] Trying parseBuffer function with options');
         const parseOptions = { ...PARSER_OPTIONS };
         
-        // Try to pass options if method signature supports it
-        let result;
-        if (screpModule.parseBuffer.length >= 2) {
-          console.log('[wasmLoader] Calling parseBuffer with options:', parseOptions);
-          result = await screpModule.parseBuffer(dataCopy, parseOptions);
-        } else {
-          // Fall back to calling without options
-          console.log('[wasmLoader] Calling parseBuffer without options');
-          result = await screpModule.parseBuffer(dataCopy);
-        }
+        // Always pass options as second argument to parseBuffer
+        console.log('[wasmLoader] Calling parseBuffer with options:', parseOptions);
+        const result = await screpModule.parseBuffer(dataCopy, parseOptions);
         
         console.log('[wasmLoader] parseBuffer result structure:', Object.keys(result || {}));
         
@@ -244,7 +237,8 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
     if (typeof screpModule.parseReplay === 'function') {
       try {
         console.log('[wasmLoader] Trying parseReplay function');
-        const result = await screpModule.parseReplay(dataCopy);
+        // Also pass options to parseReplay if it accepts them
+        const result = await screpModule.parseReplay(dataCopy, PARSER_OPTIONS);
         
         // Initialize Commands as empty array if null/undefined
         if (result && (result.Commands === null || result.Commands === undefined)) {
@@ -263,7 +257,8 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
     if (typeof screpModule.parse === 'function') {
       try {
         console.log('[wasmLoader] Trying parse function');
-        const result = await screpModule.parse(dataCopy);
+        // Also try to pass options to parse
+        const result = await screpModule.parse(dataCopy, PARSER_OPTIONS);
         
         // Initialize Commands as empty array if null/undefined
         if (result && (result.Commands === null || result.Commands === undefined)) {
