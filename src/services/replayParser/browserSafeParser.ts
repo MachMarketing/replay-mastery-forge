@@ -58,14 +58,18 @@ export async function parseReplayWithBrowserSafeParser(replayData: Uint8Array): 
       }, 15000);
       
       // Parse the replay data using JSSUH with properly formatted options
-      // Avoid passing boolean values directly to prevent "true" file lookup
+      // Using string values instead of booleans to avoid file lookup issues
       const options = {
-        includeCmds: "true",     // String instead of boolean
-        includeHeader: "true",   // String instead of boolean
-        verbose: "true"          // String instead of boolean
+        includeCmds: "true",
+        includeHeader: "true",
+        verbose: "true",
+        // Adding cache option to avoid file system access
+        cache: "memory"
       };
       
-      // Use the parse function with options to prevent file lookup issues
+      console.log('[browserSafeParser] Calling JSSUH.parse with options:', options);
+      
+      // Use the parse function with options
       const result = jssuh.parse(replayData, options);
       clearTimeout(timeoutId);
       

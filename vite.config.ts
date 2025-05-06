@@ -24,11 +24,13 @@ export default defineConfig(({ command }: ConfigEnv) => ({
     alias: {
       '@': path.resolve(__dirname, './src'),
       // --- Node.js Polyfills für Browser ---
-      process: 'rollup-plugin-node-polyfills/polyfills/process-es6', // Wichtig für process.nextTick
-      stream: 'stream-browserify',
-      events: 'rollup-plugin-node-polyfills/polyfills/events',
-      util: 'rollup-plugin-node-polyfills/polyfills/util',
-      buffer: 'rollup-plugin-node-polyfills/polyfills/buffer-es6',
+      // Use proper paths for the polyfills, without trailing slashes
+      'process': 'rollup-plugin-node-polyfills/polyfills/process-es6',
+      'stream': 'stream-browserify',
+      'events': 'rollup-plugin-node-polyfills/polyfills/events',
+      'util': 'rollup-plugin-node-polyfills/polyfills/util',
+      'buffer': 'rollup-plugin-node-polyfills/polyfills/buffer-es6',
+      'zlib': 'browserify-zlib', // Add zlib polyfill for JSSUH
       // ------------------------------------
     },
   },
@@ -36,11 +38,13 @@ export default defineConfig(({ command }: ConfigEnv) => ({
     esbuildOptions: {
       define: {
         global: 'globalThis',
-        // Prozessumgebung definieren
+        // Prozessumgebung definieren - use strings for all values
         'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
-        // Weitere Prozess-Definitionen, falls nötig (oft durch Polyfill abgedeckt)
-        // 'process.browser': 'true',
-        // 'process.nextTick': 'globalThis.process.nextTick', // Oder eine Polyfill-Funktion
+        'process.browser': '"true"',
+        'process.version': '"v16.0.0"',
+        'process.versions': '{}',
+        'process.platform': '"browser"',
+        'process.nextTick': 'function() { return null; }',
       },
       plugins: [
         // Globale Node.js Variablen polyfillen (process, buffer)
@@ -52,7 +56,7 @@ export default defineConfig(({ command }: ConfigEnv) => ({
     },
     // JSSUH und seine Abhängigkeiten in die Optimierung einschließen
     // Das stellt sicher, dass Polyfills angewendet werden
-    include: ['jssuh', 'buffer', 'stream-browserify', 'events', 'util'],
+    include: ['jssuh', 'buffer', 'stream-browserify', 'events', 'util', 'browserify-zlib'],
     // screp-js ausschließen, falls es nicht mehr verwendet wird
     // exclude: ['screp-js'],
   },
@@ -66,7 +70,7 @@ export default defineConfig(({ command }: ConfigEnv) => ({
         format: 'es' as const,
         // JSSUH und Polyfills in einen Vendor-Chunk bündeln
         manualChunks: {
-          vendor: ['jssuh', 'buffer', 'stream-browserify', 'events', 'util']
+          vendor: ['jssuh', 'buffer', 'stream-browserify', 'events', 'util', 'browserify-zlib']
         }
       },
     },
