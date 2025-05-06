@@ -255,29 +255,6 @@ export async function parseReplayWithBrowserSafeParser(replayData: Uint8Array): 
 }
 
 /**
- * Extract minimal header information from raw replay data
- */
-function extractMinimalHeaderInfo(data: Uint8Array): any {
-  // Try to extract replay header information from binary data
-  // This is a simplified approach and won't work for all replays
-  const headerInfo = {};
-  
-  // In a real implementation, we would try to parse the replay header format here
-  
-  return headerInfo;
-}
-
-/**
- * Estimate replay duration from file size and other factors
- */
-function estimateReplayDuration(data: Uint8Array): number {
-  // Rough estimate: 1KB ≈ 20 seconds of gameplay
-  // This is very approximate and varies greatly by replay
-  const sizeKB = data.length / 1024;
-  return Math.max(60000, Math.min(3600000, sizeKB * 20000));
-}
-
-/**
  * Create fallback data when parsing fails
  */
 function createFallbackData(data: Uint8Array, playerInfo?: any, durationMS = 600000): any {
