@@ -210,11 +210,14 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
         
         console.log('[wasmLoader] parseBuffer result structure:', Object.keys(result || {}));
         
-        // Log commands status
+        // Log commands status with enhanced information
         if (result && result.Commands) {
           console.log(`[wasmLoader] Commands found: ${Array.isArray(result.Commands) ? result.Commands.length : 'not an array'}`);
           if (Array.isArray(result.Commands) && result.Commands.length > 0) {
             console.log('[wasmLoader] First command sample:', result.Commands[0]);
+            console.log('[wasmLoader] First 3 command types:', result.Commands.slice(0, 3).map(cmd => cmd.type || 'unknown'));
+          } else {
+            console.log('[wasmLoader] Commands array is empty or not properly initialized');
           }
         } else {
           console.warn('[wasmLoader] No Commands array in result');
