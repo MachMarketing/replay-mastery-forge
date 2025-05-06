@@ -3,6 +3,7 @@
  * Type definitions for the replay parser
  */
 
+// The parsed replay data structure we use in our application
 export interface ParsedReplayData {
   playerName: string;
   opponentName: string;
@@ -16,28 +17,18 @@ export interface ParsedReplayData {
   result: 'win' | 'loss';
   apm: number;
   eapm: number;
-  buildOrder: { time: string; supply: number; action: string }[];
-  resourcesGraph?: { time: string; minerals: number; gas: number }[];
-  strengths: string[]; // Changed from optional to required
-  weaknesses: string[]; // Changed from optional to required
-  recommendations: string[]; // Changed from optional to required
-  trainingPlan?: {
-    day: number;
-    focus: string;
-    drill: string;
-  }[];
+  buildOrder: Array<{ time: string; supply: number; action: string }>;
+  resourcesGraph?: Array<{ time: string; minerals: number; gas: number }>;
+  strengths: string[];
+  weaknesses: string[];
+  recommendations: string[];
+  trainingPlan?: Array<{ day: number; focus: string; drill: string }>;
 }
 
-/**
- * Type for replay analysis results
- */
+// The analyzed replay data
 export interface ReplayAnalysis {
   strengths: string[];
   weaknesses: string[];
   recommendations: string[];
-  trainingPlan?: {
-    day: number;
-    focus: string;
-    drill: string;
-  }[];
+  trainingPlan?: Array<{ day: number; focus: string; drill: string }>;
 }

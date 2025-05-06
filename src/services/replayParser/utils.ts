@@ -1,176 +1,188 @@
 
 /**
- * Determine the game result for the player
+ * Utility functions for extracting information from replay file bytes
  */
-export function determineResult(screpData: any, playerId: string): 'win' | 'loss' {
-  // Extract winner information from SCREP data
-  const winner = screpData.header.winner;
-  
-  // If there's explicit winner information
-  if (winner !== undefined) {
-    return winner === playerId ? 'win' : 'loss';
-  }
-  
-  // If there's no explicit winner, check if any player left
-  const leftGame = screpData.commands.find((cmd: any) => 
-    cmd.type === 'LeaveGame' && cmd.player.id !== playerId
-  );
-  
-  return leftGame ? 'win' : 'loss';
-}
 
 /**
- * Extract build order from commands
+ * Extracts header information from a replay file
+ * @param data Uint8Array of the replay file
  */
-export function extractBuildOrder(commands: any[]): { time: string; supply: number; action: string }[] {
-  const buildOrderCommands = commands.filter((cmd: any) => 
-    cmd.type === 'BuildOrder' || 
-    cmd.type === 'TrainUnit' || 
-    cmd.type === 'Research'
-  );
-  
-  return buildOrderCommands.slice(0, 20).map((cmd: any) => {
-    const timeMs = cmd.time;
-    const minutes = Math.floor(timeMs / 60000);
-    const seconds = Math.floor((timeMs % 60000) / 1000);
-    
-    return {
-      time: `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`,
-      supply: cmd.supply || 0,
-      action: cmd.action || cmd.unitType || 'Unknown Action'
-    };
-  });
-}
-
-/**
- * Extract resource graph data
- */
-export function extractResourceGraph(resources: any[]): { time: string; minerals: number; gas: number }[] {
-  // Get sample points every 2 minutes of game time
-  const result = [];
-  const snapshots = resources.filter((r: any) => r.type === 'ResourceSnapshot');
-  
-  for (let i = 0; i < snapshots.length; i += 5) {
-    const snapshot = snapshots[i];
-    const timeMs = snapshot.time;
-    const minutes = Math.floor(timeMs / 60000);
-    
-    result.push({
-      time: `${minutes}:00`,
-      minerals: snapshot.minerals,
-      gas: snapshot.gas
-    });
-  }
-  
-  return result;
-}
-
-/**
- * Map SCREP race codes to our format
- */
-export function mapRace(race: string): 'Terran' | 'Protoss' | 'Zerg' {
-  const raceMap: Record<string, 'Terran' | 'Protoss' | 'Zerg'> = {
-    'T': 'Terran',
-    'P': 'Protoss',
-    'Z': 'Zerg'
-  };
-  return raceMap[race] || 'Terran';
-}
-
-/**
- * Extract basic header information from a replay file
- */
-export function extractReplayHeaderInfo(fileData: Uint8Array): { 
-  mapName: string; 
-  frameCount: number; 
-  gameType: string;
+export function extractReplayHeaderInfo(data: Uint8Array): {
+  frameCount?: number;
+  mapName?: string;
 } {
-  // Simple extraction of map name from the binary data
-  // Note: This is a very basic implementation
-  let mapName = 'Unknown Map';
-  let frameCount = 0;
-  let gameType = 'Unknown';
+  const result: { frameCount?: number; mapName?: string } = {};
   
   try {
-    // Try to find map name in the header (often after a specific byte pattern)
-    // This is a simplified approach and might not work for all replay formats
-    const headerBytes = fileData.slice(0, 2000);
-    const headerText = new TextDecoder().decode(headerBytes);
-    
-    // Extract map name (simplified approach)
-    const mapMatch = headerText.match(/\((\w+)\)/);
-    if (mapMatch && mapMatch[1]) {
-      mapName = mapMatch[1];
+    // Verify this is a StarCraft replay file
+    const magicBytes = data.slice(0, 8);
+    const magicString = String.fromCharCode(...magicBytes);
+    if (!magicString.startsWith('(B)')) {
+      console.warn('File does not appear to be a StarCraft replay file');
     }
     
-    // Estimate frame count from file size
-    // This is just a rough estimate, not accurate
-    frameCount = Math.floor(fileData.length / 100);
+    // Try to find a map name (rough extraction based on known offset patterns)
+    // This is a simplified approach and may not work for all replays
+    let mapNameCandidate = '';
     
-    // Try to determine game type
-    if (headerText.includes('melee')) {
-      gameType = 'Melee';
-    } else if (headerText.includes('UMS')) {
-      gameType = 'UMS';
+    // Common offsets where map name can be found
+    for (let offset of [0x61, 0x65, 0x69, 0x6D]) {
+      let mapBytes = [];
+      for (let i = offset; i < offset + 32; i++) {
+        if (data[i] === 0) break;
+        mapBytes.push(data[i]);
+      }
+      
+      if (mapBytes.length > 2) {
+        const mapName = String.fromCharCode(...mapBytes).trim();
+        if (mapName.length > 3 && /^[\x20-\x7E]+$/.test(mapName)) {
+          mapNameCandidate = mapName;
+          break;
+        }
+      }
     }
-  } catch (e) {
-    console.error('Error extracting header info:', e);
+    
+    if (mapNameCandidate) {
+      result.mapName = mapNameCandidate;
+    }
+    
+    // Try to extract frame count (game duration)
+    // Frame count is often stored around offset 0x0C for 4 bytes
+    if (data.length > 16) {
+      const frameBytes = data.slice(0x0C, 0x10);
+      const frameCount = frameBytes[0] + (frameBytes[1] << 8) + (frameBytes[2] << 16) + (frameBytes[3] << 24);
+      if (frameCount > 0 && frameCount < 1000000) { // Sanity check
+        result.frameCount = frameCount;
+      }
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('Error extracting replay header info:', error);
+    return result;
   }
-  
-  return {
-    mapName,
-    frameCount,
-    gameType
-  };
 }
 
 /**
- * Extract player information from a replay file
+ * Extracts player information from a replay file
+ * @param data Uint8Array of the replay file
  */
-export function extractPlayerInfo(fileData: Uint8Array): {
+export function extractPlayerInfo(data: Uint8Array): {
   playerName: string;
   opponentName: string;
   playerRace: string;
   opponentRace: string;
 } {
-  // Default values
-  let playerName = 'Player';
-  let opponentName = 'Opponent';
-  let playerRace = 'T';
-  let opponentRace = 'Z';
+  const result = {
+    playerName: 'Player',
+    opponentName: 'Opponent',
+    playerRace: 'T',
+    opponentRace: 'P',
+  };
   
   try {
-    // In a real implementation, we would parse the replay file
-    // to extract player information. This is a simplified approach.
-    const headerBytes = fileData.slice(0, 5000);
-    const headerText = new TextDecoder().decode(headerBytes);
+    // Look for player names - usually found after the string "OwnerName"
+    const ownerBytes = [0x4F, 0x77, 0x6E, 0x65, 0x72, 0x4E, 0x61, 0x6D, 0x65]; // "OwnerName"
     
-    // Try to find player names (very simplified approach)
-    const nameMatches = headerText.match(/name\s*=\s*"([^"]+)"/g);
-    if (nameMatches && nameMatches.length >= 2) {
-      playerName = nameMatches[0].replace(/name\s*=\s*"/, '').replace(/"$/, '');
-      opponentName = nameMatches[1].replace(/name\s*=\s*"/, '').replace(/"$/, '');
+    let playerNamesStart = -1;
+    for (let i = 0; i < data.length - ownerBytes.length; i++) {
+      let match = true;
+      for (let j = 0; j < ownerBytes.length; j++) {
+        if (data[i + j] !== ownerBytes[j]) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        playerNamesStart = i + ownerBytes.length + 2; // Skip "OwnerName" and a few bytes
+        break;
+      }
     }
     
-    // Try to find race information (very simplified approach)
-    if (headerText.includes('Terran') && headerText.includes('Zerg')) {
-      playerRace = 'T';
-      opponentRace = 'Z';
-    } else if (headerText.includes('Protoss') && headerText.includes('Terran')) {
-      playerRace = 'P';
-      opponentRace = 'T';
-    } else if (headerText.includes('Zerg') && headerText.includes('Protoss')) {
-      playerRace = 'Z';
-      opponentRace = 'P';
+    if (playerNamesStart > 0) {
+      // Extract first player name
+      let nameBytes = [];
+      for (let i = playerNamesStart; i < playerNamesStart + 32; i++) {
+        if (i >= data.length || data[i] === 0) break;
+        nameBytes.push(data[i]);
+      }
+      
+      if (nameBytes.length > 0) {
+        result.playerName = String.fromCharCode(...nameBytes).trim();
+      }
+      
+      // Try to find second player name after the first
+      const nextNameOffset = playerNamesStart + nameBytes.length + 8;
+      if (nextNameOffset < data.length) {
+        nameBytes = [];
+        for (let i = nextNameOffset; i < nextNameOffset + 32; i++) {
+          if (i >= data.length || data[i] === 0) break;
+          nameBytes.push(data[i]);
+        }
+        
+        if (nameBytes.length > 0) {
+          result.opponentName = String.fromCharCode(...nameBytes).trim();
+        }
+      }
     }
-  } catch (e) {
-    console.error('Error extracting player info:', e);
+    
+    // Look for race information - a simple approach is to look for race letter sequences
+    // This is not reliable for all replays but works for many
+    // Race markers can be 'T', 'P', 'Z' for Terran, Protoss, Zerg
+    const raceMarkers = [
+      { race: 'T', bytes: [0x54, 0x65, 0x72, 0x72, 0x61, 0x6E] }, // "Terran"
+      { race: 'P', bytes: [0x50, 0x72, 0x6F, 0x74, 0x6F, 0x73, 0x73] }, // "Protoss"
+      { race: 'Z', bytes: [0x5A, 0x65, 0x72, 0x67] }, // "Zerg"
+    ];
+    
+    let races = [];
+    for (const marker of raceMarkers) {
+      for (let i = 0; i < data.length - marker.bytes.length; i++) {
+        let match = true;
+        for (let j = 0; j < marker.bytes.length; j++) {
+          if (data[i + j] !== marker.bytes[j]) {
+            match = false;
+            break;
+          }
+        }
+        if (match) {
+          races.push({ offset: i, race: marker.race });
+        }
+      }
+    }
+    
+    // Sort by offset to get races in order
+    races.sort((a, b) => a.offset - b.offset);
+    
+    if (races.length > 0) {
+      result.playerRace = races[0].race;
+    }
+    
+    if (races.length > 1) {
+      result.opponentRace = races[1].race;
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('Error extracting player info:', error);
+    return result;
   }
+}
+
+/**
+ * Maps a race letter/abbreviation to the full race name
+ */
+export function mapRace(race: string): string {
+  if (!race) return 'Unknown';
   
-  return {
-    playerName,
-    opponentName,
-    playerRace,
-    opponentRace
-  };
+  switch (race.toUpperCase()) {
+    case 'T':
+      return 'Terran';
+    case 'P':
+      return 'Protoss';
+    case 'Z':
+      return 'Zerg';
+    default:
+      return race;
+  }
 }

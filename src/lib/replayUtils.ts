@@ -4,106 +4,51 @@
  */
 
 /**
- * Standardize race names into a consistent format
- * Converts different race identifiers to standard "Terran", "Protoss", "Zerg" format
+ * Standardize race names to consistent format
  */
-export function standardizeRaceName(race: string | undefined): 'Terran' | 'Protoss' | 'Zerg' {
-  if (!race) return 'Terran';
+export function standardizeRaceName(race: string | undefined): string {
+  if (!race) return 'Unknown';
   
-  // Convert to string in case we get a number or other type
-  const normalizedRace = String(race).trim().toLowerCase();
+  const lowerRace = race.toLowerCase();
   
-  console.log('🏁 [replayUtils] Standardizing race:', race, 'normalized to:', normalizedRace);
-  
-  // Check for common race identifiers with more patterns
-  if (
-    normalizedRace === 't' || 
-    normalizedRace === 'terran' || 
-    normalizedRace === '0' || 
-    normalizedRace.includes('terr') ||
-    normalizedRace.includes('human')
-  ) {
+  if (lowerRace.includes('terr') || lowerRace === 't') {
     return 'Terran';
-  }
-  
-  if (
-    normalizedRace === 'p' || 
-    normalizedRace === 'protoss' || 
-    normalizedRace === '1' || 
-    normalizedRace.includes('prot') ||
-    normalizedRace.includes('toss')
-  ) {
+  } else if (lowerRace.includes('prot') || lowerRace === 'p') {
     return 'Protoss';
-  }
-  
-  if (
-    normalizedRace === 'z' || 
-    normalizedRace === 'zerg' || 
-    normalizedRace === '2' || 
-    normalizedRace.includes('zerg')
-  ) {
+  } else if (lowerRace.includes('zerg') || lowerRace === 'z') {
     return 'Zerg';
-  }
-  
-  // Handle numeric race codes
-  if (normalizedRace === '0' || normalizedRace === 'race0') return 'Terran';
-  if (normalizedRace === '1' || normalizedRace === 'race1') return 'Protoss';
-  if (normalizedRace === '2' || normalizedRace === 'race2') return 'Zerg';
-  
-  console.warn('🔄 [replayUtils] Unknown race identifier:', race, 'defaulting to Terran');
-  return 'Terran';
-}
-
-/**
- * Format player name to ensure it's displayed correctly
- */
-export function formatPlayerName(name: string | undefined): string {
-  if (!name) return 'Unknown';
-  
-  // Trim whitespace and ensure it's a string
-  const formattedName = String(name).trim();
-  
-  // Return default if empty
-  if (!formattedName || formattedName.length === 0) {
+  } else {
     return 'Unknown';
   }
-  
-  // Handle special characters and encoding issues
-  return formattedName
-    .replace(/[^\x20-\x7E]/g, '') // Remove non-printable chars
-    .replace(/\\u[\dA-Fa-f]{4}/g, '') // Remove unicode escapes
-    .trim();
 }
 
 /**
- * Ensures build order items are properly formatted
+ * Format player name by trimming whitespace and empty characters
  */
-export function formatBuildOrder(buildOrder: any[] | undefined): { time: string; supply: number; action: string }[] {
-  if (!buildOrder || !Array.isArray(buildOrder) || buildOrder.length === 0) {
-    return [];
+export function formatPlayerName(name: string): string {
+  if (!name) return 'Unknown';
+  
+  // Remove non-printable characters
+  const cleanName = name.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+  
+  return cleanName || 'Unknown';
+}
+
+/**
+ * Debug log for replay data structure
+ */
+export function debugLogReplayData(data: any): void {
+  if (!data) {
+    console.log('🔍 Replay data is null or undefined');
+    return;
   }
   
-  return buildOrder.map(item => {
-    // Ensure each item has the proper structure
-    return {
-      time: typeof item.time === 'string' ? item.time : '00:00',
-      supply: typeof item.supply === 'number' ? item.supply : 0,
-      action: typeof item.action === 'string' ? item.action : 'Unknown Action'
-    };
+  console.log('🔍 Replay data structure:', {
+    hasHeader: !!data.Header,
+    headerKeys: data.Header ? Object.keys(data.Header) : [],
+    hasCommands: Array.isArray(data.Commands),
+    commandsCount: Array.isArray(data.Commands) ? data.Commands.length : 0,
+    hasPlayers: data.Header?.Players ? data.Header.Players.length : 0,
+    topLevelKeys: Object.keys(data)
   });
 }
-
-/**
- * Debug utility to log parsed replay data
- */
-export function debugLogReplayData(data: any, source: string): void {
-  console.log(`🔍 [${source}] Replay data debug:`, {
-    playerName: data.playerName || 'Missing',
-    opponentName: data.opponentName || 'Missing',
-    playerRace: data.playerRace || 'Missing', 
-    opponentRace: data.opponentRace || 'Missing',
-    hasBuildOrder: Array.isArray(data.buildOrder) ? data.buildOrder.length : 'No',
-    hasStrengths: Array.isArray(data.strengths) ? data.strengths.length : 'No'
-  });
-}
-
