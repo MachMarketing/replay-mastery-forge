@@ -1,4 +1,3 @@
-
 /**
  * Handles replay parsing with WASM in a browser-compatible way
  * 
@@ -158,6 +157,26 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
         console.log('💡 screpModule.parseBuffer returned:', result);
         if (!result || !result.Commands) {
           console.warn('⚠️ screpModule.parseBuffer returned null/incomplete data, especially Commands', result);
+          
+          // Try calling parseReplay if available - some versions use different method names
+          if (typeof screpModule.parseReplay === 'function') {
+            console.log('💡 Falling back to parseReplay function');
+            const replayResult = await screpModule.parseReplay(data);
+            console.log('💡 parseReplay returned:', replayResult);
+            if (replayResult && replayResult.Commands) {
+              return replayResult;
+            }
+          }
+          
+          // Try parse if available
+          if (typeof screpModule.parse === 'function') {
+            console.log('💡 Falling back to parse function');
+            const parseResult = await screpModule.parse(data);
+            console.log('💡 parse returned:', parseResult);
+            if (parseResult && parseResult.Commands) {
+              return parseResult;
+            }
+          }
         }
         return result;
       } catch (err) {
