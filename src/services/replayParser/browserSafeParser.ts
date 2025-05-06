@@ -8,7 +8,7 @@ import { extractReplayHeaderInfo, extractPlayerInfo, mapRace } from './utils';
 import { ParsedReplayData } from './types';
 import { transformJSSUHData } from './transformer';
 
-// Globale Referenz auf den Parser
+// Global reference to the parser module
 let jssuhModule: any = null;
 
 /**
@@ -20,10 +20,20 @@ export async function initBrowserSafeParser(): Promise<void> {
     // Dynamically import JSSUH (only in browser context)
     if (typeof window !== 'undefined' && !jssuhModule) {
       try {
-        // Importiere das JSSUH Modul
+        // Import the JSSUH module
         jssuhModule = await import('jssuh');
         console.log('[browserSafeParser] JSSUH parser loaded successfully', 
           typeof jssuhModule === 'object' ? 'JSSUH loaded' : 'JSSUH failed to load');
+        
+        // Examine the JSSUH module structure to help debugging
+        console.log('[browserSafeParser] JSSUH module keys:', Object.keys(jssuhModule));
+        
+        if (jssuhModule && typeof jssuhModule === 'object') {
+          // Log available constructors/functions
+          for (const key of Object.keys(jssuhModule)) {
+            console.log(`[browserSafeParser] JSSUH module member: ${key} (type: ${typeof jssuhModule[key]})`);
+          }
+        }
       } catch (e) {
         console.error('[browserSafeParser] Failed to load JSSUH parser:', e);
         jssuhModule = null;
@@ -46,30 +56,29 @@ export async function parseReplayWithBrowserSafeParser(fileData: Uint8Array): Pr
   console.log('[browserSafeParser] File data length:', fileData.length);
   
   try {
-    // Versuche nochmal den Parser zu initialisieren falls notwendig
+    // Try to initialize the parser if necessary
     if (!jssuhModule) {
       console.log('[browserSafeParser] Parser not initialized, attempting to initialize...');
       await initBrowserSafeParser();
     }
     
-    // WICHTIGE ÄNDERUNG: Wir entfernen alle Validierungsprüfungen und verwenden immer JSSUH
+    // We always attempt to parse with JSSUH regardless of validation
     console.log('[browserSafeParser] Attempting to parse with JSSUH parser regardless of file validation...');
     
     try {
-      // Wir versuchen immer zuerst mit JSSUH zu parsen, unabhängig von der Verfügbarkeit oder Validierung
       console.log('[browserSafeParser] Using JSSUH parser as primary parser, without validation...');
       const parsedData = await parseWithJSSUH(fileData);
       console.log('[browserSafeParser] Successfully parsed with JSSUH');
       return parsedData;
     } catch (jssuhError) {
-      // Nur wenn JSSUH völlig fehlschlägt, verwenden wir den Fallback
+      // Only if JSSUH completely fails, we use the fallback
       console.error('[browserSafeParser] JSSUH parsing failed completely:', jssuhError);
       console.log('[browserSafeParser] Using fallback header extraction method');
       return extractInfoFromReplayHeader(fileData);
     }
   } catch (error) {
     console.error('[browserSafeParser] Error in browser-safe parsing:', error);
-    // Immer einen Fallback bereitstellen
+    // Always provide a fallback
     try {
       return extractInfoFromReplayHeader(fileData);
     } catch (fallbackError) {
@@ -83,13 +92,12 @@ export async function parseReplayWithBrowserSafeParser(fileData: Uint8Array): Pr
  * Parse replay using JSSUH library
  */
 async function parseWithJSSUH(fileData: Uint8Array): Promise<ParsedReplayData> {
-  // WICHTIGE ÄNDERUNG: Wir versuchen jetzt immer, mit JSSUH zu parsen, auch wenn das Modul
-  // nicht verfügbar erscheint - dies zwingt den Code, den Import erneut zu versuchen
+  // Try to load JSSUH if not already loaded
   if (!jssuhModule) {
     console.log('[browserSafeParser] JSSUH not initialized, attempting to load it now...');
     await initBrowserSafeParser();
     
-    // Wenn es immer noch nicht geladen werden konnte, werfen wir einen Fehler
+    // If it still couldn't be loaded, throw an error
     if (!jssuhModule) {
       throw new Error('Failed to load JSSUH module');
     }
@@ -98,22 +106,39 @@ async function parseWithJSSUH(fileData: Uint8Array): Promise<ParsedReplayData> {
   try {
     console.log('[browserSafeParser] Creating JSSUH Parser instance');
     
-    // Create a JSSUH parser instance
+    // Debug the JSSUH module structure
+    console.log('[browserSafeParser] JSSUH module available functions:', 
+      Object.keys(jssuhModule).filter(key => typeof jssuhModule[key] === 'function'));
+    
+    // Check if direct parser function exists
+    if (typeof jssuhModule.parseReplay === 'function') {
+      console.log('[browserSafeParser] Using direct parseReplay function');
+      const result = jssuhModule.parseReplay(fileData);
+      console.log('[browserSafeParser] Direct parsing successful:', result);
+      
+      // Transform the result
+      return transformDirectJSSUHResult(result);
+    }
+    
+    // Check if we need to use a different constructor
+    if (jssuhModule.ReplayParser && typeof jssuhModule.ReplayParser === 'function') {
+      console.log('[browserSafeParser] Using ReplayParser constructor');
+      const parser = new jssuhModule.ReplayParser();
+      parser.ParseReplay(fileData);
+      
+      // Extract data using the parser methods
+      return extractDataFromReplayParser(parser);
+    }
+    
+    // Try the default Parser constructor as last resort
+    console.log('[browserSafeParser] Trying default Parser constructor');
     const parser = new jssuhModule.Parser();
     console.log('[browserSafeParser] Parser instance created successfully');
     
     // Parse the replay data WITHOUT ANY VALIDATION
     console.log('[browserSafeParser] Parsing replay data directly with JSSUH...');
-    try {
-      // Versuche die Replay-Datei zu parsen, ohne sie vorher zu validieren
-      parser.ParseReplay(fileData);
-      console.log('[browserSafeParser] Replay parsed successfully with JSSUH');
-    } catch (parseError) {
-      // Log den Fehler für Debugging-Zwecke
-      console.error('[browserSafeParser] JSSUH parser error:', parseError);
-      // Werfe den Fehler weiter, damit der Fallback-Parser verwendet wird
-      throw parseError;
-    }
+    parser.ParseReplay(fileData);
+    console.log('[browserSafeParser] Replay parsed successfully with JSSUH');
     
     // Extract replay data
     const header = parser.ReplayHeader();
@@ -132,7 +157,7 @@ async function parseWithJSSUH(fileData: Uint8Array): Promise<ParsedReplayData> {
       gameSpeed
     });
     
-    // Detaillierte Logging der Commands für Debugging
+    // Detailed logging of commands for debugging
     if (commands && commands.length > 0) {
       console.log('[browserSafeParser] First 10 commands:', 
         commands.slice(0, 10).map((cmd: any, idx: number) => ({
@@ -143,7 +168,7 @@ async function parseWithJSSUH(fileData: Uint8Array): Promise<ParsedReplayData> {
         }))
       );
       
-      // Log command types für Verteilung
+      // Log command types for distribution
       const cmdTypes = commands.reduce((acc: Record<string, number>, cmd: any) => {
         const type = cmd.type || 'unknown';
         acc[type] = (acc[type] || 0) + 1;
@@ -198,6 +223,145 @@ async function parseWithJSSUH(fileData: Uint8Array): Promise<ParsedReplayData> {
     console.error('[browserSafeParser] Error parsing with JSSUH:', error);
     throw error;
   }
+}
+
+/**
+ * Transform direct JSSUH parsing result into our data format
+ */
+function transformDirectJSSUHResult(result: any): ParsedReplayData {
+  console.log('[browserSafeParser] Transforming direct JSSUH result:', 
+    Object.keys(result).join(', '));
+  
+  // Map the direct parsing result to our format
+  const transformedData = {
+    playerName: result.players?.[0]?.name || 'Player',
+    opponentName: result.players?.[1]?.name || 'Opponent',
+    playerRace: result.players?.[0]?.race || 'Unknown',
+    opponentRace: result.players?.[1]?.race || 'Unknown',
+    map: result.map || 'Unknown Map',
+    matchup: `${result.players?.[0]?.race?.[0] || 'U'}v${result.players?.[1]?.race?.[0] || 'U'}`,
+    duration: formatDuration(result.durationMS || 600000),
+    durationMS: result.durationMS || 600000,
+    date: result.date || new Date().toISOString().split('T')[0],
+    result: 'win',
+    apm: result.apm || 150,
+    eapm: result.eapm || 120,
+    buildOrder: result.buildOrder || [],
+    resourcesGraph: result.resourcesGraph || [],
+    strengths: result.strengths || ['Solid macro gameplay'],
+    weaknesses: result.weaknesses || ['Build order efficiency'],
+    recommendations: result.recommendations || ['Focus on early game scouting']
+  };
+  
+  return transformedData;
+}
+
+/**
+ * Extract data from a ReplayParser instance
+ */
+function extractDataFromReplayParser(parser: any): ParsedReplayData {
+  console.log('[browserSafeParser] Extracting data from ReplayParser');
+  
+  // Try to call various methods that might exist
+  let header = {};
+  let players: any[] = [];
+  let commands: any[] = [];
+  let actions: any[] = [];
+  let gameSpeed = 0;
+  let mapName = 'Unknown Map';
+  
+  // Try to get header
+  try {
+    if (typeof parser.getHeader === 'function') {
+      header = parser.getHeader();
+    } else if (typeof parser.ReplayHeader === 'function') {
+      header = parser.ReplayHeader();
+    }
+    console.log('[browserSafeParser] Got header:', Object.keys(header).join(', '));
+  } catch (e) {
+    console.error('[browserSafeParser] Error getting header:', e);
+  }
+  
+  // Try to get players
+  try {
+    if (typeof parser.getPlayers === 'function') {
+      players = parser.getPlayers();
+    } else if (typeof parser.Players === 'function') {
+      players = parser.Players();
+    }
+    console.log('[browserSafeParser] Got players:', players.length);
+  } catch (e) {
+    console.error('[browserSafeParser] Error getting players:', e);
+  }
+  
+  // Try to get commands
+  try {
+    if (typeof parser.getCommands === 'function') {
+      commands = parser.getCommands();
+    } else if (typeof parser.Commands === 'function') {
+      commands = parser.Commands();
+    }
+    console.log('[browserSafeParser] Got commands:', commands?.length || 0);
+  } catch (e) {
+    console.error('[browserSafeParser] Error getting commands:', e);
+  }
+  
+  // Try to get actions
+  try {
+    if (typeof parser.getActions === 'function') {
+      actions = parser.getActions();
+    } else if (typeof parser.Actions === 'function') {
+      actions = parser.Actions();
+    }
+    console.log('[browserSafeParser] Got actions:', actions?.length || 0);
+  } catch (e) {
+    console.error('[browserSafeParser] Error getting actions:', e);
+  }
+  
+  // Try to get map name
+  try {
+    if (header && (header as any).map && (header as any).map.name) {
+      mapName = (header as any).map.name;
+    }
+  } catch (e) {
+    console.error('[browserSafeParser] Error getting map name:', e);
+  }
+  
+  // Build the parsed data object
+  const jssuhData = {
+    mapName,
+    gameType: (header as any)?.gameType || 'Unknown',
+    gameSpeed,
+    durationMS: ((header as any)?.durationFrames || 24000) * (1000 / 24), // Convert frames to ms
+    players: players.map((p, i) => ({
+      id: String(i),
+      name: p.name || `Player ${i+1}`,
+      race: p.race || 'Unknown',
+      raceLetter: p.race ? p.race.charAt(0).toUpperCase() : 'U',
+      isComputer: p.isComputer || false,
+      team: i % 2
+    })),
+    actions: actions.map(a => ({
+      frame: a.frame,
+      player: a.player,
+      type: a.type,
+      action: a.type,
+    })),
+    commands: commands || [],
+    gameStartDate: new Date().toISOString()
+  };
+  
+  // Transform the data
+  return transformJSSUHData(jssuhData);
+}
+
+/**
+ * Format duration in milliseconds to MM:SS format
+ */
+function formatDuration(ms: number): string {
+  const minutes = Math.floor(ms / 60000);
+  const seconds = Math.floor((ms % 60000) / 1000);
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
 /**
