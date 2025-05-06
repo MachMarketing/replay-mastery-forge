@@ -147,14 +147,14 @@ export async function parseReplayWithBrowserSafeParser(replayData: Uint8Array): 
         // Create a buffer from the Uint8Array
         const buffer = Buffer.from(replayData);
         
-        // Use a Readable stream that pushes our data
+        // IMPORTANT: Create a proper Readable stream with push method
         const source = new Readable({
-          read() {/* This is intentionally empty as we'll push data manually */} 
+          read() {} // No-op read method
         });
         
-        // Push data to the stream
+        // Push data to the stream and signal the end
         source.push(buffer);
-        source.push(null); // Signal end of stream
+        source.push(null);
         
         console.log('[browserSafeParser] Piping data to parser');
         

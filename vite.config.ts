@@ -19,8 +19,8 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-      // Node.js polyfills for browser environments
-      'process': 'rollup-plugin-node-polyfills/polyfills/process-es6',
+      // Node.js polyfills for browser environments - use direct paths
+      'process': 'process/browser',
       'stream': 'stream-browserify',
       'events': 'rollup-plugin-node-polyfills/polyfills/events',
       'util': 'util', 
