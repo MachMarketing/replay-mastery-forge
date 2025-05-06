@@ -125,6 +125,11 @@ function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
   // Debug the raw WASM data structure
   console.log('🔄 SCREP-WASM Header:', rawData.Header ? Object.keys(rawData.Header) : 'missing');
   
+  // Add detailed debugging logs
+  console.log('🔄 mapScrepWasmFormat received rawData keys:', Object.keys(rawData));
+  console.log('🔄 mapScrepWasmFormat rawData.Commands:', rawData.Commands);
+  console.log('🔄 mapScrepWasmFormat rawData.Commands is Array:', Array.isArray(rawData.Commands));
+  
   // Add detailed logging of the Header structure
   console.log('💡 Full Header object:', rawData.Header);
   console.log('💡 Header.players array:', rawData.Header.Players || rawData.Header.players);
@@ -272,6 +277,20 @@ function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
     // Add the requested debug logs
     console.log('💡 First 5 Commands:', rawData.Commands.slice(0, 5));
     console.log('💡 Sample Command keys (first command):', rawData.Commands.length > 0 ? Object.keys(rawData.Commands[0]) : 'No commands');
+    
+    // Enhanced debug for Commands array structure
+    if (rawData.Commands.length > 0) {
+      const sampleCmd = rawData.Commands[0];
+      console.log('💡 Detailed command structure of first command:', JSON.stringify(sampleCmd, null, 2));
+      console.log('💡 Command properties:', {
+        id: sampleCmd.id,
+        type: sampleCmd.type,
+        name: sampleCmd.name,
+        action: sampleCmd.action,
+        frame: sampleCmd.frame,
+        player: sampleCmd.player
+      });
+    }
     
     // Look for build-related commands - need to handle different possible command structures
     const buildRelatedCommands = rawData.Commands.filter((cmd: any) => {

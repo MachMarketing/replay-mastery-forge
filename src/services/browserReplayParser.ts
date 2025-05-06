@@ -95,9 +95,10 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
           console.log('📊 [browserReplayParser] No build commands found, will use synthetic data');
         }
       }
-    } else {
-      console.log('📊 [browserReplayParser] No Commands array found in raw data');
     }
+    
+    // IMPORTANT: Pass the raw object completely unchanged to the mapper
+    console.log('📊 [browserReplayParser] Passing raw data to mapper with keys:', Object.keys(raw));
     
     // Map to domain model
     const mapped = mapRawToParsed(raw);
