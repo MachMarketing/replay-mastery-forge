@@ -126,15 +126,7 @@ function validateReplayData(data: Uint8Array): boolean {
     return false;
   }
   
-  // Basic header check for StarCraft replays - they often start with specific bytes
-  // This is a simplified check and might need refinement
-  const header = data.slice(0, 12);
-  const isLikelyReplay = header.some((byte, index) => {
-    if (index < 4 && (byte === 0x28 || byte === 0x53 || byte === 0x52)) return true;
-    return false;
-  });
-  
-  return isLikelyReplay;
+  return true;
 }
 
 /**
@@ -167,7 +159,7 @@ export async function parseReplayWasm(data: Uint8Array): Promise<any> {
     console.log('[wasmLoader] Starting parsing with WASM, size:', data.byteLength);
     console.log('[wasmLoader] Available methods on screpModule:', Object.keys(screpModule));
     
-    // Use whatever parse function is available with timeout protection
+    // Direkt parsen ohne Header-Check und Versionsvalidierung
     let result;
     
     if (typeof screpModule.parseReplay === 'function') {
