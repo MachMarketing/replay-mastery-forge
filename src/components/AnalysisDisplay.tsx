@@ -5,6 +5,7 @@ import AnalysisResult from '@/components/AnalysisResult';
 import PlayerSelector from '@/components/PlayerSelector';
 import { standardizeRaceName } from '@/lib/replayUtils';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { toast } from '@/hooks/use-toast';
 
 interface AnalysisDisplayProps {
   isAnalyzing: boolean;
@@ -33,6 +34,24 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       console.log('💡 AnalysisDisplay - Component unmounted');
     };
   }, []);
+  
+  // Effect to show toast when player changes for better user feedback
+  useEffect(() => {
+    if (analysisComplete && (replayData || rawParsedData)) {
+      const playerData = replayData || rawParsedData;
+      const viewingPlayerName = selectedPlayerIndex === 0 ? playerData?.playerName : playerData?.opponentName;
+      const viewingRace = selectedPlayerIndex === 0 ? playerData?.playerRace : playerData?.opponentRace;
+      
+      if (viewingPlayerName && viewingRace) {
+        console.log(`💡 AnalysisDisplay - Switched perspective to: ${viewingPlayerName} (${viewingRace})`);
+        
+        toast({
+          title: `Switched to ${viewingPlayerName}'s perspective`,
+          description: `Now viewing the game from ${viewingRace} player's view`,
+        });
+      }
+    }
+  }, [selectedPlayerIndex]);
   
   // Log data for debugging purposes with better visibility
   useEffect(() => {
@@ -221,6 +240,37 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       const hasBuildOrder = Array.isArray(displayData.buildOrder) && displayData.buildOrder.length > 0;
       console.log('💡 AnalysisDisplay - Build order status:', hasBuildOrder ? 'Available' : 'Missing');
       
+      // NEW: When user switches players, we need to create an adjusted version of the data
+      // that reflects the perspective of the selected player
+      let viewData = { ...displayData };
+      
+      if (selectedPlayerIndex === 1) {
+        // Create inverted view for opponent perspective
+        viewData = {
+          ...displayData,
+          id: displayData.id,
+          // Swap names and races for display
+          playerName: opponentName,
+          opponentName: playerName,
+          playerRace: normalizedOpponentRace,
+          opponentRace: normalizedPlayerRace,
+          // Swap result
+          result: displayData.result === 'win' ? 'loss' : 'win',
+          // Customize analysis for opponent
+          strengths: displayData.weaknesses || [], // What was weakness for player is strength for opponent
+          weaknesses: displayData.strengths || [], // What was strength for player is weakness for opponent
+          recommendations: [
+            'Focus on countering opponent\'s build',
+            'Improve army composition against this strategy',
+            'Consider earlier scouting'
+          ],
+          // Keep buildOrder the same as it's a timeline of the game
+          buildOrder: buildOrder
+        };
+        
+        console.log('💡 AnalysisDisplay - Created opponent perspective data');
+      }
+      
       return (
         <>
           {/* Player Selector */}
@@ -244,14 +294,10 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
           )}
           
           <div className="mt-4">
-            <AnalysisResult data={{
-              ...displayData,
-              playerName,
-              opponentName,
-              playerRace: normalizedPlayerRace,
-              opponentRace: normalizedOpponentRace,
-              buildOrder
-            }} isPremium={isPremium} />
+            <AnalysisResult 
+              data={viewData} 
+              isPremium={isPremium} 
+            />
           </div>
         </>
       );
