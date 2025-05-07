@@ -50,7 +50,24 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
         const result = await parser.parse();
         
         // Add the debugging log to see the exact structure
-        console.log('🛠 full parsed object →', result);
+        console.log('🛠 Full parsed object structure:', result);
+        
+        // Dump the raw data structure to help with debugging
+        console.log('🛠 Game info structure:', result._gameInfo ? Object.keys(result._gameInfo) : 'none');
+        console.log('🛠 Players structure:', result.players ? 
+          result.players.map((p: any) => Object.keys(p)) : 'none');
+        
+        // Detailed player info
+        if (result.players && result.players.length > 0) {
+          console.log('🛠 First player details:', {
+            name: result.players[0].name,
+            race: result.players[0].race,
+            apm: result.players[0].apm,
+            commands: Array.isArray(result.players[0].commands) ? 
+              result.players[0].commands.length : 'none',
+            // Log more player properties as needed
+          });
+        }
         
         // Clear the timeout since parsing completed
         clearTimeout(timeoutId);
@@ -76,10 +93,10 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
         // Format the data based on what we see in the result object
         // We'll use a more adaptive approach instead of assuming specific properties
         const parsedData = {
-          header: result.gameInfo || {},
-          commands: [], // screparsed doesn't emit individual commands
+          header: result._gameInfo || result.gameInfo || {},
           players: result.players || [],
-          mapName: result.gameInfo?.map || 'Unknown',
+          commands: result.commands || [], // Add commands if available
+          mapName: result._gameInfo?.map || result.gameInfo?.map || 'Unknown',
           chat: result.chatMessages || []
         };
         
