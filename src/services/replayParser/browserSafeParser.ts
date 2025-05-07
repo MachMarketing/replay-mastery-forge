@@ -3,7 +3,8 @@
  * This module provides a browser-safe implementation of the replay parser
  * using JSSUH library that works in the browser environment
  */
-import { ReplayData } from '../replayParserService';
+// Import the correct type definition
+import { ParsedReplayResult } from '../replayParserService';
 // Import JSSUH statically instead of dynamically
 import { ReplayParser } from 'jssuh';
 
@@ -99,7 +100,7 @@ function applyGlobalPolyfills(): void {
 /**
  * Parse replay data using the browser-safe parser
  */
-export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promise<ReplayData> {
+export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promise<any> {
   console.log(`[browserSafeParser] Parsing replay data (${data.length} bytes)`);
   
   if (!parserInitialized) {
