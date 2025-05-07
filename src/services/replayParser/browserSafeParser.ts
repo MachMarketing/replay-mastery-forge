@@ -132,7 +132,8 @@ export async function initBrowserSafeParser(): Promise<void> {
 }
 
 /**
- * Parse replay data with the browser-safe parser using direct data processing
+ * Parse replay data with the browser-safe parser using manual chunk processing
+ * instead of stream piping to avoid TypeError: Cannot read properties of undefined (reading 'reading')
  */
 export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promise<any> {
   console.log('[browserSafeParser] Starting to parse with browser-safe parser');
@@ -301,43 +302,41 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
           resolve(result);
         });
         
-        // Instead of using pipe which causes the TypeError, we'll manually feed the data to the parser
-        console.log('[browserSafeParser] Using manual data feeding instead of pipe to avoid stream compatibility issues');
+        // Define chunk size for processing
+        const CHUNK_SIZE = 8192; // 8KB chunks
+        console.log(`[browserSafeParser] Processing data in chunks of ${CHUNK_SIZE} bytes`);
         
         try {
-          // Directly write data to the parser instance
-          if (typeof parserInstance.write === 'function') {
-            const writeSuccess = parserInstance.write(data);
-            console.log('[browserSafeParser] Data written to parser successfully:', writeSuccess);
-            
-            // Signal the end of data
-            if (typeof parserInstance.end === 'function') {
-              parserInstance.end();
-              console.log('[browserSafeParser] End signal sent to parser');
-            } else {
-              console.warn('[browserSafeParser] Parser does not have an end method');
-            }
-          } else {
-            throw new Error('Parser instance does not have a write method');
-          }
-        } catch (writeError) {
-          console.error('[browserSafeParser] Error writing data to parser:', writeError);
-          
-          // Try alternative approach - chunk the data into smaller pieces
-          console.log('[browserSafeParser] Attempting alternative approach with chunked data');
-          
-          const CHUNK_SIZE = 8192; // 8KB chunks
+          // Process the data in chunks
           for (let i = 0; i < data.length; i += CHUNK_SIZE) {
             const chunk = data.slice(i, Math.min(i + CHUNK_SIZE, data.length));
-            const chunkWriteSuccess = parserInstance.write(chunk);
-            console.log(`[browserSafeParser] Chunk ${i/CHUNK_SIZE + 1} written:`, chunkWriteSuccess);
+            const chunkNumber = Math.floor(i / CHUNK_SIZE) + 1;
+            const totalChunks = Math.ceil(data.length / CHUNK_SIZE);
+            
+            console.log(`[browserSafeParser] Writing chunk ${chunkNumber}/${totalChunks} (${chunk.length} bytes)`);
+            
+            // Write chunk to parser
+            const writeSuccess = parserInstance.write(chunk);
+            console.log(`[browserSafeParser] Chunk ${chunkNumber} write result:`, writeSuccess);
+            
+            // Small delay between chunks to allow event processing
+            if (i + CHUNK_SIZE < data.length && totalChunks > 10) {
+              await new Promise(resolve => setTimeout(resolve, 0));
+            }
           }
           
-          // Signal the end of data
-          if (typeof parserInstance.end === 'function') {
-            parserInstance.end();
-            console.log('[browserSafeParser] End signal sent after chunked writing');
-          }
+          // Signal end of data
+          console.log('[browserSafeParser] All chunks written, sending end signal');
+          parserInstance.end();
+          console.log('[browserSafeParser] End signal sent successfully');
+        } catch (writeError) {
+          console.error('[browserSafeParser] Error during chunk processing:', writeError);
+          
+          // Try alternative approach with a single write
+          console.log('[browserSafeParser] Attempting fallback with single write operation');
+          parserInstance.write(data);
+          parserInstance.end();
+          console.log('[browserSafeParser] Fallback completed');
         }
       } catch (error) {
         console.error('[browserSafeParser] Error in parser setup:', error);
