@@ -5,8 +5,8 @@
  */
 // Import the correct type definition
 import { ParsedReplayResult } from '../replayParserService';
-// Import JSSUH statically instead of dynamically
-import { ReplayParser } from 'jssuh';
+// Import JSSUH correctly
+import * as JSSUH from 'jssuh';
 
 // Define timeout for parser operations
 const PARSER_TIMEOUT_MS = 60000; // 60 seconds
@@ -30,7 +30,15 @@ export async function initBrowserSafeParser(): Promise<void> {
 
     // Verify JSSUH module by creating a test parser instance
     console.log('[browserSafeParser] Verifying JSSUH module');
-    const testParser = new ReplayParser();
+    console.log('[browserSafeParser] JSSUH module:', JSSUH);
+    
+    // Check if ReplayParser exists in the imported module
+    if (!JSSUH.ReplayParser) {
+      console.error('[browserSafeParser] JSSUH.ReplayParser is not defined:', JSSUH);
+      throw new Error('JSSUH.ReplayParser is not defined in the imported module');
+    }
+    
+    const testParser = new JSSUH.ReplayParser();
     
     if (!testParser) {
       throw new Error('Failed to create ReplayParser instance');
@@ -119,7 +127,14 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
       
       try {
         console.log('[browserSafeParser] Creating parser instance');
-        const parser = new ReplayParser();
+        // Ensure we're using the correct way to access the ReplayParser
+        if (!JSSUH.ReplayParser) {
+          console.error('[browserSafeParser] JSSUH.ReplayParser is not defined:', JSSUH);
+          reject(new Error('JSSUH.ReplayParser is not defined'));
+          return;
+        }
+        
+        const parser = new JSSUH.ReplayParser();
         
         // Collected data
         let header: any = null;
