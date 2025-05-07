@@ -1,149 +1,111 @@
 
 /**
- * Browser-Safe Parser implementation
- * 
- * This module provides a browser-compatible wrapper around the JSSUH parser
- * with appropriate error handling and timeouts.
+ * This module provides a browser-safe implementation of the replay parser
+ * using JSSUH library that works in the browser environment
  */
-import type { ParsedReplayResult } from '../replayParserService';
+import { ReplayData } from '../replayParserService';
+// Import JSSUH statically instead of dynamically
+import { ReplayParser } from 'jssuh';
 
-// Polyfill globals that might be needed
-const polyfillGlobals = () => {
-  console.log('[browserSafeParser] Starting global polyfills');
-  
-  // Ensure global process exists
-  if (typeof globalThis.process === 'undefined') {
-    console.log('[browserSafeParser] Creating global.process object');
-    (globalThis as any).process = {
-      env: {},
-      browser: true,
-    };
-  } else {
-    console.log('[browserSafeParser] global.process exists:', typeof globalThis.process);
-  }
+// Define timeout for parser operations
+const PARSER_TIMEOUT_MS = 60000; // 60 seconds
 
-  // Ensure process.env exists
-  if (!(globalThis as any).process.env) {
-    console.log('[browserSafeParser] Creating process.env object');
-    (globalThis as any).process.env = {};
-  } else {
-    console.log('[browserSafeParser] process.env exists:', typeof (globalThis as any).process.env);
-  }
-  
-  // CRITICAL: Explicitly ensure process.nextTick is available
-  if (typeof (globalThis as any).process.nextTick !== 'function') {
-    console.log('[browserSafeParser] Adding nextTick implementation to process');
-    (globalThis as any).process.nextTick = function(callback: Function, ...args: any[]) {
-      return setTimeout(() => callback(...args), 0);
-    };
-    console.log('[browserSafeParser] ✅ process.nextTick polyfilled successfully');
-  } else {
-    console.log('[browserSafeParser] process.nextTick already exists:', 
-                typeof (globalThis as any).process.nextTick);
-  }
-  
-  // Mirror to window object for libraries that directly access it
-  if (typeof window !== 'undefined') {
-    if (!window.process) {
-      console.log('[browserSafeParser] Mirroring process to window.process');
-      (window as any).process = (globalThis as any).process;
-    }
-    console.log('[browserSafeParser] window.process check:', 
-                window.process ? 'exists' : 'missing',
-                'nextTick:', typeof (window as any).process?.nextTick);
-  }
+// Set chunk size for manual data writing (8KB)
+const CHUNK_SIZE = 8 * 1024;
 
-  // setTimeout and clearTimeout
-  if (typeof globalThis.setTimeout === 'undefined' && typeof setTimeout === 'function') {
-    (globalThis as any).setTimeout = setTimeout;
-    console.log('[browserSafeParser] Polyfilled global.setTimeout');
-  }
-
-  if (typeof globalThis.clearTimeout === 'undefined' && typeof clearTimeout === 'function') {
-    (globalThis as any).clearTimeout = clearTimeout;
-    console.log('[browserSafeParser] Polyfilled global.clearTimeout');
-  }
-};
-
-// Flag to track parser initialization
+// Flag to track if parser has been initialized
 let parserInitialized = false;
-
-// Store the parser instance once initialized
-let JSSUHModule: any = null;
-
-// Define the timeout duration for parser operations - 60 seconds as standard
-const PARSER_TIMEOUT_MS = 60000; // 60 seconds timeout
 
 /**
  * Initialize the browser-safe parser
  */
 export async function initBrowserSafeParser(): Promise<void> {
-  if (parserInitialized) {
-    console.log('[browserSafeParser] Parser already initialized');
-    return;
-  }
-  
   console.log('[browserSafeParser] Initializing browser-safe parser');
   
   try {
-    // Apply all global polyfills - CRITICAL for stream functionality
-    polyfillGlobals();
+    // Apply global polyfills
+    console.log('[browserSafeParser] Starting global polyfills');
+    applyGlobalPolyfills();
+
+    // Verify JSSUH module by creating a test parser instance
+    console.log('[browserSafeParser] Verifying JSSUH module');
+    const testParser = new ReplayParser();
     
-    // Additional safety check for process.nextTick
-    if (typeof (globalThis as any).process.nextTick !== 'function') {
-      console.error('[browserSafeParser] ⚠️ process.nextTick still not available after polyfill!');
-      throw new Error('Critical polyfill failure: process.nextTick unavailable');
-    } else {
-      console.log('[browserSafeParser] process.nextTick verification:', typeof (globalThis as any).process.nextTick);
-      
-      // Test the nextTick function
-      let nextTickWorked = false;
-      (globalThis as any).process.nextTick(() => {
-        nextTickWorked = true;
-        console.log('[browserSafeParser] ✅ process.nextTick test successful');
-      });
-      
-      // If nextTick is properly polyfilled but not actually working, we'll see this message
-      console.log('[browserSafeParser] process.nextTick test initiated, waiting for callback');
+    if (!testParser) {
+      throw new Error('Failed to create ReplayParser instance');
     }
     
-    // Dynamically import jssuh
-    console.log('[browserSafeParser] Attempting to import JSSUH module');
-    const jssuhModule = await import('jssuh');
+    // Mark as initialized if everything worked
+    parserInitialized = true;
+    console.log('[browserSafeParser] Browser-safe parser initialized successfully');
     
-    // Check the module structure
-    if (jssuhModule && typeof jssuhModule === 'object') {
-      console.log('[browserSafeParser] JSSUH import successful, module structure:', 
-                  Object.keys(jssuhModule).length > 0 ? 'named exports' : 'default export');
-      console.log('[browserSafeParser] Available exports:', Object.keys(jssuhModule));
-      
-      // Store the JSSUH module for later use
-      JSSUHModule = jssuhModule;
-      parserInitialized = true;
-      console.log('[browserSafeParser] JSSUH parser initialized successfully');
-    } else {
-      console.error('[browserSafeParser] Invalid JSSUH module structure');
-      throw new Error('Invalid JSSUH module structure');
-    }
   } catch (error) {
     console.error('[browserSafeParser] Error initializing browser-safe parser:', error);
-    throw new Error(`Failed to initialize browser-safe parser: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(`Failed to initialize browser-safe parser: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
 /**
- * Parse replay data with the browser-safe parser using manual chunk processing
- * instead of stream piping to avoid TypeError: Cannot read properties of undefined (reading 'reading')
+ * Apply necessary global polyfills for JSSUH
  */
-export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promise<any> {
-  console.log('[browserSafeParser] Starting to parse with browser-safe parser');
-  
-  if (!parserInitialized || !JSSUHModule) {
-    console.error('[browserSafeParser] Parser not initialized');
-    throw new Error('Browser-safe parser not initialized. Call initBrowserSafeParser() first.');
+function applyGlobalPolyfills(): void {
+  // Check global process
+  if (typeof globalThis.process !== 'undefined') {
+    console.log('[browserSafeParser] global.process exists:', typeof globalThis.process);
+  } else {
+    console.log('[browserSafeParser] global.process not found, creating it');
+    (globalThis as any).process = { env: {} };
   }
   
-  console.log('[browserSafeParser] File data length:', data.length);
+  // Check process.env
+  if ((globalThis as any).process.env) {
+    console.log('[browserSafeParser] process.env exists:', typeof (globalThis as any).process.env);
+  } else {
+    console.log('[browserSafeParser] process.env not found, creating it');
+    (globalThis as any).process.env = {};
+  }
+  
+  // Check process.nextTick
+  if (typeof (globalThis as any).process.nextTick === 'function') {
+    console.log('[browserSafeParser] process.nextTick already exists:', typeof (globalThis as any).process.nextTick);
+  } else {
+    console.log('[browserSafeParser] process.nextTick not found, creating it');
+    (globalThis as any).process.nextTick = (callback: Function, ...args: any[]) => {
+      setTimeout(() => callback(...args), 0);
+    };
+  }
+  
+  // Check window.process
+  if (typeof window !== 'undefined') {
+    if (typeof window.process !== 'undefined') {
+      console.log('[browserSafeParser] window.process check: exists',
+        typeof window.process.nextTick === 'function' ? 'nextTick: function' : 'nextTick: missing');
+    } else {
+      console.log('[browserSafeParser] window.process not found, mirroring from global');
+      (window as any).process = (globalThis as any).process;
+    }
+  }
+  
+  // Verify process.nextTick implementation
+  console.log('[browserSafeParser] process.nextTick verification:', typeof (globalThis as any).process.nextTick);
+  
+  // Test process.nextTick is working
+  console.log('[browserSafeParser] process.nextTick test initiated, waiting for callback');
+  (globalThis as any).process.nextTick(() => {
+    console.log('[browserSafeParser] ✅ process.nextTick test successful');
+  });
+}
+
+/**
+ * Parse replay data using the browser-safe parser
+ */
+export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promise<ReplayData> {
+  console.log(`[browserSafeParser] Parsing replay data (${data.length} bytes)`);
+  
+  if (!parserInitialized) {
+    console.log('[browserSafeParser] Parser not initialized, initializing now');
+    await initBrowserSafeParser();
+  }
   
   try {
     // Return a promise that will resolve with the parsed data
@@ -151,201 +113,128 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
       // Set a timeout
       const timeoutId = setTimeout(() => {
         console.error(`[browserSafeParser] Parsing timed out after ${PARSER_TIMEOUT_MS/1000} seconds`);
-        reject(new Error(`Parsing timed out after ${PARSER_TIMEOUT_MS/1000} seconds`));
+        reject(new Error('Parsing timed out'));
       }, PARSER_TIMEOUT_MS);
       
       try {
-        // Extract the ReplayParser constructor from JSSUH module
-        let ReplayParser;
-        
-        // Check for various export patterns
-        if (JSSUHModule.default && typeof JSSUHModule.default === 'function') {
-          ReplayParser = JSSUHModule.default;
-          console.log('[browserSafeParser] Using default export constructor for ReplayParser');
-        } else if (JSSUHModule.ReplayParser && typeof JSSUHModule.ReplayParser === 'function') {
-          ReplayParser = JSSUHModule.ReplayParser;
-          console.log('[browserSafeParser] Using named export constructor for ReplayParser');
-        } else {
-          console.log('[browserSafeParser] Available exports:', Object.keys(JSSUHModule));
-          // Try to find a constructor in the exports
-          for (const key of Object.keys(JSSUHModule)) {
-            if (typeof JSSUHModule[key] === 'function') {
-              ReplayParser = JSSUHModule[key];
-              console.log(`[browserSafeParser] Using export '${key}' as constructor for ReplayParser`);
-              break;
-            }
-          }
-        }
-        
-        if (!ReplayParser) {
-          console.error('[browserSafeParser] Could not find ReplayParser constructor in module');
-          clearTimeout(timeoutId);
-          reject(new Error('ReplayParser constructor not found in JSSUH module'));
-          return;
-        }
-        
-        // Create a parser instance
-        const parserInstance = new ReplayParser();
-        console.log('[browserSafeParser] Created parser instance');
-        
-        // Verify the parser instance
-        if (!parserInstance) {
-          throw new Error('Failed to create parser instance');
-        }
+        console.log('[browserSafeParser] Creating parser instance');
+        const parser = new ReplayParser();
         
         // Collected data
-        const result: any = {
-          header: null,
-          commands: [],
-          players: [],
-          chat: []
-        };
+        let header: any = null;
+        const commands: any[] = [];
         
-        // Set up event listeners
-        parserInstance.on('error', (err: any) => {
+        // Listen for the replay header event
+        parser.on('replayHeader', (replayHeader: any) => {
+          console.log('[browserSafeParser] Received replay header:', 
+            replayHeader ? `version ${replayHeader.version}, type ${replayHeader.type}` : 'null');
+          header = replayHeader;
+        });
+        
+        // Listen for command data
+        parser.on('command', (command: any) => {
+          commands.push(command);
+          
+          // Log progress occasionally
+          if (commands.length % 500 === 0) {
+            console.log(`[browserSafeParser] Parsed ${commands.length} commands`);
+          }
+        });
+        
+        // Listen for the end event
+        parser.on('end', () => {
+          console.log(`[browserSafeParser] Parser finished, parsed ${commands.length} commands`);
+          
+          clearTimeout(timeoutId);
+          
+          const players = header?.players || [];
+          const mapName = header?.mapName || 'Unknown';
+          
+          console.log(`[browserSafeParser] Found ${players.length} players on map: ${mapName}`);
+          
+          resolve({
+            header,
+            commands,
+            players,
+            mapName,
+          });
+        });
+        
+        // Listen for errors
+        parser.on('error', (err: any) => {
           console.error('[browserSafeParser] Parser error:', err);
           clearTimeout(timeoutId);
-          reject(new Error(`Parser error: ${err instanceof Error ? err.message : err?.toString() || 'Unknown error'}`));
+          reject(err);
         });
         
-        parserInstance.on('replayHeader', (header: any) => {
-          console.log('[browserSafeParser] Received replay header:', header);
-          result.header = header;
-        });
-        
-        // Listen for commands (core gameplay actions)
-        parserInstance.on('command', (command: any) => {
-          if (result.commands.length < 5) {
-            console.log('[browserSafeParser] Received command:', command);
-          } else if (result.commands.length === 5) {
-            console.log('[browserSafeParser] More commands received...');
-          }
-          result.commands.push(command);
-        });
-        
-        // Alternative event name for commands in some versions
-        parserInstance.on('action', (action: any) => {
-          if (result.commands.length < 5) {
-            console.log('[browserSafeParser] Received action:', action);
-          }
-          result.commands.push(action);
-        });
-        
-        // Generic data event
-        parserInstance.on('data', (data: any) => {
-          console.log('[browserSafeParser] Received generic data event:', typeof data);
-          // Try to categorize the data
-          if (data && typeof data === 'object') {
-            if (data.type === 'command' || data.type === 'action') {
-              result.commands.push(data);
-            } else if (data.type === 'player') {
-              result.players.push(data);
-            } else if (data.type === 'chat') {
-              result.chat.push(data);
-            } else if (data.header) {
-              result.header = data.header;
-            }
-          }
-        });
-        
-        parserInstance.on('player', (player: any) => {
-          console.log('[browserSafeParser] Received player info:', player);
-          result.players.push(player);
-        });
-        
-        parserInstance.on('chat', (message: any) => {
-          console.log('[browserSafeParser] Received chat message:', message);
-          result.chat.push(message);
-        });
-        
-        parserInstance.on('end', () => {
-          console.log('[browserSafeParser] Parsing completed, end event received');
-          clearTimeout(timeoutId);
-          console.log('[browserSafeParser] Total commands:', result.commands.length);
-          console.log('[browserSafeParser] Player count:', result.players.length);
-          
-          // Add additional information to help debugging
-          if (!result.header) {
-            console.warn('[browserSafeParser] No header data collected');
-          }
-          
-          if (result.commands.length === 0) {
-            console.warn('[browserSafeParser] No commands/actions collected');
-          }
-          
-          if (result.players.length === 0) {
-            console.warn('[browserSafeParser] No player information collected');
-          }
-          
-          // Extract map name from header if available
-          if (result.header && result.header.mapName) {
-            console.log('[browserSafeParser] Map name from header:', result.header.mapName);
-          }
-          
-          // Add map name if we can find it
-          if (!result.mapName && result.header && result.header.mapName) {
-            result.mapName = result.header.mapName;
-          }
-          
-          // Calculate duration if possible
-          if (result.commands.length > 0) {
-            const lastCommand = result.commands[result.commands.length - 1];
-            if (lastCommand && lastCommand.frame) {
-              // In StarCraft, 24 frames = 1 second
-              const durationInFrames = lastCommand.frame;
-              const durationMS = Math.floor(durationInFrames / 24 * 1000);
-              result.durationMS = durationMS;
-              console.log('[browserSafeParser] Estimated duration:', Math.floor(durationMS/1000), 'seconds');
-            }
-          }
-          
-          resolve(result);
-        });
-        
-        // Define chunk size for processing
-        const CHUNK_SIZE = 8192; // 8KB chunks
-        console.log(`[browserSafeParser] Processing data in chunks of ${CHUNK_SIZE} bytes`);
+        // Manual chunking and writing to the parser
+        console.log(`[browserSafeParser] Manually writing data in chunks (chunk size: ${CHUNK_SIZE} bytes)`);
         
         try {
-          // Process the data in chunks
-          for (let i = 0; i < data.length; i += CHUNK_SIZE) {
-            const chunk = data.slice(i, Math.min(i + CHUNK_SIZE, data.length));
-            const chunkNumber = Math.floor(i / CHUNK_SIZE) + 1;
-            const totalChunks = Math.ceil(data.length / CHUNK_SIZE);
-            
-            console.log(`[browserSafeParser] Writing chunk ${chunkNumber}/${totalChunks} (${chunk.length} bytes)`);
-            
-            // Write chunk to parser
-            const writeSuccess = parserInstance.write(chunk);
-            console.log(`[browserSafeParser] Chunk ${chunkNumber} write result:`, writeSuccess);
-            
-            // Small delay between chunks to allow event processing
-            if (i + CHUNK_SIZE < data.length && totalChunks > 10) {
-              await new Promise(resolve => setTimeout(resolve, 0));
-            }
-          }
+          // Split the data into chunks and write them
+          await processDataInChunks(parser, data);
           
-          // Signal end of data
-          console.log('[browserSafeParser] All chunks written, sending end signal');
-          parserInstance.end();
-          console.log('[browserSafeParser] End signal sent successfully');
         } catch (writeError) {
-          console.error('[browserSafeParser] Error during chunk processing:', writeError);
+          console.error('[browserSafeParser] Error while writing chunks:', writeError);
           
-          // Try alternative approach with a single write
-          console.log('[browserSafeParser] Attempting fallback with single write operation');
-          parserInstance.write(data);
-          parserInstance.end();
-          console.log('[browserSafeParser] Fallback completed');
+          // Fallback to writing the entire data at once
+          try {
+            console.log('[browserSafeParser] Falling back to writing all data at once');
+            parser.write(data);
+            parser.end();
+          } catch (fallbackError) {
+            console.error('[browserSafeParser] Fallback method failed:', fallbackError);
+            clearTimeout(timeoutId);
+            reject(fallbackError);
+          }
         }
+        
       } catch (error) {
         console.error('[browserSafeParser] Error in parser setup:', error);
         clearTimeout(timeoutId);
-        reject(new Error(`Error in parser setup: ${error instanceof Error ? error.message : 'Unknown error'}`));
+        reject(error);
       }
     });
   } catch (error) {
-    console.error('[browserSafeParser] Error during parsing:', error);
-    throw new Error(`Error during parsing: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.error('[browserSafeParser] Error in parseReplayWithBrowserSafeParser:', error);
+    throw error;
   }
+}
+
+/**
+ * Process the replay data in chunks
+ */
+async function processDataInChunks(parser: any, data: Uint8Array): Promise<void> {
+  return new Promise((resolve, reject) => {
+    try {
+      const totalChunks = Math.ceil(data.length / CHUNK_SIZE);
+      console.log(`[browserSafeParser] Processing ${totalChunks} chunks`);
+      
+      // Write each chunk
+      for (let i = 0; i < data.length; i += CHUNK_SIZE) {
+        const end = Math.min(i + CHUNK_SIZE, data.length);
+        const chunk = data.slice(i, end);
+        
+        if (i === 0) {
+          console.log(`[browserSafeParser] Writing first chunk (${chunk.length} bytes)`);
+        }
+        
+        parser.write(chunk);
+        
+        // Occasionally log progress
+        if (i % (CHUNK_SIZE * 10) === 0 && i > 0) {
+          console.log(`[browserSafeParser] Written ${Math.floor(i / CHUNK_SIZE)} chunks (${Math.floor((i / data.length) * 100)}%)`);
+        }
+      }
+      
+      // End the stream
+      console.log('[browserSafeParser] Finished writing chunks, ending parser');
+      parser.end();
+      
+      resolve();
+    } catch (error) {
+      console.error('[browserSafeParser] Error processing chunks:', error);
+      reject(error);
+    }
+  });
 }

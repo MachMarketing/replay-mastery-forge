@@ -88,5 +88,13 @@ if (typeof window !== 'undefined') {
       transformMixedEsModules: true,
       include: [/node_modules/],
     },
+    rollupOptions: {
+      // Ensure JSSUH is properly bundled and not split into separate chunks
+      output: {
+        manualChunks: {
+          'parser-core': ['jssuh', 'stream-browserify'],
+        }
+      }
+    },
   },
 }));
