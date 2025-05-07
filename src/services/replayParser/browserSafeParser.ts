@@ -1,3 +1,4 @@
+
 /**
  * This module provides a browser-safe implementation of the replay parser
  * using JSSUH library that works in the browser environment
@@ -142,7 +143,7 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
       }, PARSER_TIMEOUT_MS);
       
       // Declare fallbackTimeout at this scope level so it's available to all handlers
-      // Use NodeJS.Timeout type to match the setTimeout return type
+      // Use ReturnType<typeof setTimeout> to match the setTimeout return type
       let fallbackTimeout: ReturnType<typeof setTimeout> | null = null;
       
       try {
@@ -216,42 +217,44 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
           reject(err);
         });
 
-        // IMPROVED APPROACH: Use Readable.from() helper for simpler stream creation
         try {
-          console.log('[browserSafeParser] Creating Readable.from([data]) and piping via pipeChk()');
-          
-          const buffer = Buffer.from(data);
-          const readable = Readable.from([buffer]);
-          
-          // Give JSSUH the uniform stream API it expects
-          parser.pipeChk(readable);
-          console.log('[browserSafeParser] Successfully called pipeChk, waiting for events');
-          
-          // Also: if we still haven't seen a header in 2s, fall back to raw writes
+          console.log('[browserSafeParser] Creating Readable.from([data])');
+          const buf = Buffer.from(data);  
+          const src = Readable.from([buf]);
+
+          // Tell JSSUH where to read the checksum‐block bytes from:
+          parser.pipeChk(src);
+
+          // Pipe ALL data into the parser transform itself:
+          src.pipe(parser);
+
+          console.log('[browserSafeParser] Streaming data into parser with pipe() + pipeChk()');
+
+          // Fallback if nothing ever fires after 10s:
           fallbackTimeout = setTimeout(() => {
-            console.warn('[browserSafeParser] ⚠️ No events after pipeChk—falling back to write/end');
+            console.warn('[browserSafeParser] No events after 10s—falling back to write/end');
             try {
-              parser.write(buffer);
+              parser.write(buf);
               parser.end();
-              console.log('[browserSafeParser] Fallback write/end executed');
-            } catch (e) {
-              console.error('[browserSafeParser] Fallback write/end failed:', e);
+              console.log('[browserSafeParser] Fallback write/end completed');
+            } catch (e: any) {
+              console.error('[browserSafeParser] Fallback write/end error:', e.message, e.stack);
               reject(e);
             }
-          }, 2000);
+          }, 10000);
           
         } catch (pipeError) {
-          console.error('[browserSafeParser] Error using pipeChk approach:', pipeError);
+          console.error('[browserSafeParser] Error in streaming approach:', pipeError);
           
-          // Immediate fallback to manual chunk writing if pipeChk fails
+          // Immediate fallback to manual chunk writing if streaming fails
           console.log('[browserSafeParser] Immediately falling back to direct write+end approach');
           try {
             parser.write(data);
             console.log('[browserSafeParser] Successfully wrote data, calling end()');
             parser.end();
             console.log('[browserSafeParser] Called end(), waiting for events');
-          } catch (writeError) {
-            console.error('[browserSafeParser] Error in direct write approach:', writeError);
+          } catch (writeError: any) {
+            console.error('[browserSafeParser] Error in direct write approach:', writeError.message, writeError.stack);
             clearTimeout(timeoutId);
             reject(writeError);
           }
