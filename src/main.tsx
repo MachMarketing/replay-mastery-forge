@@ -21,13 +21,21 @@ const queryClient = new QueryClient({
 // Explicit polyfill for process.nextTick
 if (typeof window !== 'undefined') {
   if (typeof window.process === 'undefined') {
-    window.process = { env: {} };
-  }
-  if (typeof window.process.nextTick !== 'function') {
-    window.process.nextTick = function(callback, ...args) {
-      setTimeout(() => callback(...args), 0);
+    // Use 'as any' to bypass TypeScript's strict type checking
+    // This is acceptable as we're just creating a minimal polyfill
+    (window as any).process = { 
+      env: {},
+      nextTick: function(callback: Function, ...args: any[]) {
+        setTimeout(() => callback(...args), 0);
+      }
     };
     console.log('✅ Explicit process.nextTick polyfill applied in main.tsx');
+  } else if (typeof window.process.nextTick !== 'function') {
+    // Add nextTick if process exists but nextTick doesn't
+    window.process.nextTick = function(callback: Function, ...args: any[]) {
+      setTimeout(() => callback(...args), 0);
+    };
+    console.log('✅ Added process.nextTick to existing process object');
   }
 }
 
