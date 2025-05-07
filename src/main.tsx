@@ -1,66 +1,55 @@
 
-import { createRoot } from 'react-dom/client'
-import App from './App.tsx'
-import './index.css'
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App.tsx';
+import './index.css';
+import { BrowserRouter } from "react-router-dom";
+import { Toaster } from '@/components/ui/sonner';
+import { AuthProvider } from './context/AuthContext';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-// Polyfill for WebAssembly compatibility
-if (typeof globalThis.WebAssembly === 'undefined') {
-  console.warn('WebAssembly is not supported in this browser. Some features may not work.');
-}
+// Create React Query client
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
-// Polyfill setTimeout/clearTimeout globally if needed (should not normally be necessary, but just in case)
-if (typeof globalThis.setTimeout === 'undefined' && typeof setTimeout === 'function') {
-  (globalThis as any).setTimeout = setTimeout;
-  console.log('Polyfilled global.setTimeout');
-}
-
-if (typeof globalThis.clearTimeout === 'undefined' && typeof clearTimeout === 'function') {
-  (globalThis as any).clearTimeout = clearTimeout;
-  console.log('Polyfilled global.clearTimeout');
-}
-
-// Provide global window access to Buffer for WebAssembly modules that need it
-import { Buffer } from 'buffer';
-window.Buffer = Buffer;
-
-// Make sure process is defined globally with a properly implemented nextTick
-if (typeof globalThis.process === 'undefined') {
-  console.log('Polyfilling global.process');
-  (globalThis as any).process = {
-    env: {},
-    browser: true,
-    nextTick: (fn: Function, ...args: any[]) => setTimeout(() => fn(...args), 0),
-  };
-} else {
-  // Make sure process.env exists
-  if (!(globalThis as any).process.env) {
-    (globalThis as any).process.env = {};
+// Explicit polyfill for process.nextTick
+if (typeof window !== 'undefined') {
+  if (typeof window.process === 'undefined') {
+    window.process = { env: {} };
   }
-  // Ensure nextTick is available and properly implemented
-  if (typeof (globalThis as any).process.nextTick !== 'function') {
-    (globalThis as any).process.nextTick = (fn: Function, ...args: any[]) => setTimeout(() => fn(...args), 0);
-    console.log('Polyfilled global.process.nextTick');
+  if (typeof window.process.nextTick !== 'function') {
+    window.process.nextTick = function(callback, ...args) {
+      setTimeout(() => callback(...args), 0);
+    };
+    console.log('✅ Explicit process.nextTick polyfill applied in main.tsx');
   }
 }
 
-// Also make it available on window for libraries that expect it there
-if (typeof window !== 'undefined' && !window.process) {
-  (window as any).process = (globalThis as any).process;
-  console.log('Mirrored process to window.process');
-}
+// Log environment details to help debugging
+console.log('Environment info:');
+console.log('- process exists:', typeof process !== 'undefined');
+console.log('- process.env exists:', typeof process !== 'undefined' && typeof process.env !== 'undefined');
+console.log('- process.nextTick exists:', typeof process !== 'undefined' && typeof process.nextTick === 'function');
+console.log('- window.process exists:', typeof window !== 'undefined' && typeof window.process !== 'undefined');
 
-// Make sure there's an element with id "root" in the DOM
-const rootElement = document.getElementById("root");
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <App />
+          <Toaster />
+        </AuthProvider>
+      </QueryClientProvider>
+    </BrowserRouter>
+  </React.StrictMode>,
+);
 
-if (!rootElement) {
-  console.error("Failed to find the root element");
-  document.body.innerHTML = '<div id="root"></div>';
-}
-
-// Create root with error handling
-try {
-  createRoot(document.getElementById("root")!).render(<App />);
-  console.log("✅ Application successfully mounted");
-} catch (e) {
-  console.error("❌ Failed to render application:", e);
-}
+// Log successful render
+console.log('✅ App successfully rendered');

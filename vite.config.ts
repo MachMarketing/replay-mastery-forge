@@ -27,23 +27,9 @@ export default defineConfig(({ mode }) => ({
     {
       name: 'explicit-process-nextTick-polyfill',
       transform(code: string, id: string) {
-        // Add explicit polyfill for process.nextTick at the top of main.tsx
+        // Only apply to main.tsx
         if (id.includes('main.tsx')) {
-          const polyfill = `
-// Explicit polyfill for process.nextTick
-if (typeof window !== 'undefined') {
-  if (typeof window.process === 'undefined') {
-    window.process = { env: {} };
-  }
-  if (typeof window.process.nextTick !== 'function') {
-    window.process.nextTick = function(callback, ...args) {
-      setTimeout(() => callback(...args), 0);
-    };
-    console.log('✅ Explicit process.nextTick polyfill applied');
-  }
-}
-`;
-          return polyfill + code;
+          return null; // Skip as we've already added the polyfill directly in main.tsx
         }
         return null;
       },
@@ -65,8 +51,6 @@ if (typeof window !== 'undefined') {
     // Define process.env for compatibility
     'process.env': {},
     'global': 'globalThis',
-    // Use queueMicrotask instead of a function string
-    'process.nextTick': 'globalThis.queueMicrotask',
   },
   optimizeDeps: {
     esbuildOptions: {
@@ -81,7 +65,7 @@ if (typeof window !== 'undefined') {
       ],
     },
     // Include JSSUH and its dependencies in the optimization
-    include: ['jssuh', 'stream-browserify', 'process/browser', 'events'],
+    include: ['jssuh', 'react', 'react-dom', 'stream-browserify', 'process/browser', 'events'],
   },
   build: {
     commonjsOptions: {
@@ -93,6 +77,7 @@ if (typeof window !== 'undefined') {
       output: {
         manualChunks: {
           'parser-core': ['jssuh', 'stream-browserify'],
+          'react-vendor': ['react', 'react-dom'],
         }
       }
     },
