@@ -22,8 +22,9 @@ export async function getReplayParserConstructor(): Promise<
     
     // Quick smoke-test
     const test = new ReplayParser({ encoding: 'cp1252' });
-    ['write', 'end', 'on'].forEach((fn) => {
+    ['write', 'end', 'on', 'pipeChk'].forEach((fn) => {
       if (typeof (test as any)[fn] !== 'function') {
+        console.error(`[jssuhLoader] ReplayParser missing method ${fn}:`, test);
         throw new Error(`ReplayParser missing method ${fn}`);
       }
     });

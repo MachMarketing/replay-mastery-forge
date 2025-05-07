@@ -7,12 +7,11 @@
 import { ParsedReplayResult } from '../replayParserService';
 // Import JSSUH using our dedicated loader
 import JSSUH, { getReplayParserConstructor } from './jssuhLoader';
+// Import Readable for stream-based parsing
+import { Readable } from 'stream-browserify';
 
 // Define timeout for parser operations
 const PARSER_TIMEOUT_MS = 60000; // 60 seconds
-
-// Set chunk size for manual data writing (8KB)
-const CHUNK_SIZE = 8 * 1024;
 
 // Flag to track if parser has been initialized
 let parserInitialized = false;
@@ -45,6 +44,16 @@ export async function initBrowserSafeParser(): Promise<void> {
     
     if (!testParser) {
       throw new Error('Failed to create ReplayParser instance');
+    }
+    
+    console.log('[browserSafeParser] Test parser has these methods:', 
+      Object.keys(testParser).filter(k => typeof (testParser as any)[k] === 'function'));
+    
+    // Specifically check if pipeChk exists
+    if (typeof testParser.pipeChk !== 'function') {
+      console.warn('[browserSafeParser] Warning: pipeChk method not found on parser');
+    } else {
+      console.log('[browserSafeParser] ✅ pipeChk method found on parser');
     }
     
     // Mark as initialized if everything worked
@@ -148,6 +157,7 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
         
         // Create parser with proper encoding option from jssuh docs
         const parser = new ReplayParserClass({ encoding: 'cp1252' });
+        console.log('[browserSafeParser] Created ReplayParser instance with options: { encoding: "cp1252" }');
         
         // Collected data
         let header: any = null;
@@ -195,29 +205,52 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
           clearTimeout(timeoutId);
           reject(err);
         });
-        
-        // Manual chunking and writing to the parser
-        console.log(`[browserSafeParser] Manually writing data in chunks (chunk size: ${CHUNK_SIZE} bytes)`);
-        
+
+        // NEW APPROACH: Use stream-based parsing with pipeChk
         try {
-          // Split the data into chunks and write them
-          await processDataInChunks(parser, data);
+          console.log('[browserSafeParser] Creating a Readable and piping via pipeChk()');
           
-        } catch (writeError) {
-          console.error('[browserSafeParser] Error while writing chunks:', writeError);
+          if (typeof parser.pipeChk !== 'function') {
+            console.error('[browserSafeParser] pipeChk method not available on parser instance');
+            throw new Error('pipeChk method not available on parser instance');
+          }
           
-          // Fallback to writing the entire data at once
+          const readable = new Readable({
+            read() {
+              try {
+                console.log('[browserSafeParser] Readable.read called, pushing data');
+                // push all data, then end
+                this.push(Buffer.from(data));
+                this.push(null);
+                console.log('[browserSafeParser] Successfully pushed data to readable stream');
+              } catch (e) {
+                console.error('[browserSafeParser] Error in Readable.read:', e);
+                this.destroy(e instanceof Error ? e : new Error(String(e)));
+              }
+            }
+          });
+          
+          // Give JSSUH the uniform stream API it expects
+          console.log('[browserSafeParser] Calling parser.pipeChk with readable stream');
+          parser.pipeChk(readable);
+          console.log('[browserSafeParser] Successfully called pipeChk, waiting for events');
+          
+        } catch (pipeError) {
+          console.error('[browserSafeParser] Error using pipeChk approach:', pipeError);
+          
+          // Fallback to manual chunk writing if pipeChk fails
+          console.log('[browserSafeParser] Falling back to direct write+end approach');
           try {
-            console.log('[browserSafeParser] Falling back to writing all data at once');
             parser.write(data);
+            console.log('[browserSafeParser] Successfully wrote data, calling end()');
             parser.end();
-          } catch (fallbackError) {
-            console.error('[browserSafeParser] Fallback method failed:', fallbackError);
+            console.log('[browserSafeParser] Called end(), waiting for events');
+          } catch (writeError) {
+            console.error('[browserSafeParser] Error in direct write approach:', writeError);
             clearTimeout(timeoutId);
-            reject(fallbackError);
+            reject(writeError);
           }
         }
-        
       } catch (error) {
         console.error('[browserSafeParser] Error in parser setup:', error);
         clearTimeout(timeoutId);
@@ -228,42 +261,4 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
     console.error('[browserSafeParser] Error in parseReplayWithBrowserSafeParser:', error);
     throw error;
   }
-}
-
-/**
- * Process the replay data in chunks
- */
-async function processDataInChunks(parser: any, data: Uint8Array): Promise<void> {
-  return new Promise((resolve, reject) => {
-    try {
-      const totalChunks = Math.ceil(data.length / CHUNK_SIZE);
-      console.log(`[browserSafeParser] Processing ${totalChunks} chunks`);
-      
-      // Write each chunk
-      for (let i = 0; i < data.length; i += CHUNK_SIZE) {
-        const end = Math.min(i + CHUNK_SIZE, data.length);
-        const chunk = data.slice(i, end);
-        
-        if (i === 0) {
-          console.log(`[browserSafeParser] Writing first chunk (${chunk.length} bytes)`);
-        }
-        
-        parser.write(chunk);
-        
-        // Occasionally log progress
-        if (i % (CHUNK_SIZE * 10) === 0 && i > 0) {
-          console.log(`[browserSafeParser] Written ${Math.floor(i / CHUNK_SIZE)} chunks (${Math.floor((i / data.length) * 100)}%)`);
-        }
-      }
-      
-      // End the stream
-      console.log('[browserSafeParser] Finished writing chunks, ending parser');
-      parser.end();
-      
-      resolve();
-    } catch (error) {
-      console.error('[browserSafeParser] Error processing chunks:', error);
-      reject(error);
-    }
-  });
 }
