@@ -6,10 +6,53 @@
  * with appropriate error handling and timeouts.
  */
 import type { ParsedReplayResult } from '../replayParserService';
-import { Readable } from 'stream';
 
 // Polyfill globals that might be needed
 const polyfillGlobals = () => {
+  console.log('[browserSafeParser] Starting global polyfills');
+  
+  // Ensure global process exists
+  if (typeof globalThis.process === 'undefined') {
+    console.log('[browserSafeParser] Creating global.process object');
+    (globalThis as any).process = {
+      env: {},
+      browser: true,
+    };
+  } else {
+    console.log('[browserSafeParser] global.process exists:', typeof globalThis.process);
+  }
+
+  // Ensure process.env exists
+  if (!(globalThis as any).process.env) {
+    console.log('[browserSafeParser] Creating process.env object');
+    (globalThis as any).process.env = {};
+  } else {
+    console.log('[browserSafeParser] process.env exists:', typeof (globalThis as any).process.env);
+  }
+  
+  // CRITICAL: Explicitly ensure process.nextTick is available
+  if (typeof (globalThis as any).process.nextTick !== 'function') {
+    console.log('[browserSafeParser] Adding nextTick implementation to process');
+    (globalThis as any).process.nextTick = function(callback: Function, ...args: any[]) {
+      return setTimeout(() => callback(...args), 0);
+    };
+    console.log('[browserSafeParser] ✅ process.nextTick polyfilled successfully');
+  } else {
+    console.log('[browserSafeParser] process.nextTick already exists:', 
+                typeof (globalThis as any).process.nextTick);
+  }
+  
+  // Mirror to window object for libraries that directly access it
+  if (typeof window !== 'undefined') {
+    if (!window.process) {
+      console.log('[browserSafeParser] Mirroring process to window.process');
+      (window as any).process = (globalThis as any).process;
+    }
+    console.log('[browserSafeParser] window.process check:', 
+                window.process ? 'exists' : 'missing',
+                'nextTick:', typeof (window as any).process?.nextTick);
+  }
+
   // setTimeout and clearTimeout
   if (typeof globalThis.setTimeout === 'undefined' && typeof setTimeout === 'function') {
     (globalThis as any).setTimeout = setTimeout;
@@ -19,31 +62,6 @@ const polyfillGlobals = () => {
   if (typeof globalThis.clearTimeout === 'undefined' && typeof clearTimeout === 'function') {
     (globalThis as any).clearTimeout = clearTimeout;
     console.log('[browserSafeParser] Polyfilled global.clearTimeout');
-  }
-  
-  // requestAnimationFrame
-  if (typeof globalThis.requestAnimationFrame === 'undefined' && typeof requestAnimationFrame === 'function') {
-    (globalThis as any).requestAnimationFrame = requestAnimationFrame;
-    console.log('[browserSafeParser] Polyfilled global.requestAnimationFrame');
-  }
-  
-  // Explicitly ensure process.nextTick is available
-  if (typeof globalThis.process === 'undefined') {
-    (globalThis as any).process = {
-      env: {},
-      browser: true,
-      nextTick: (fn: Function, ...args: any[]) => setTimeout(() => fn(...args), 0)
-    };
-    console.log('[browserSafeParser] Created global.process with nextTick');
-  } else if (!(globalThis as any).process.nextTick) {
-    (globalThis as any).process.nextTick = (fn: Function, ...args: any[]) => setTimeout(() => fn(...args), 0);
-    console.log('[browserSafeParser] Added nextTick to existing global.process');
-  }
-  
-  // Also add it to window for libraries that directly access window.process
-  if (typeof window !== 'undefined' && !window.process) {
-    (window as any).process = (globalThis as any).process;
-    console.log('[browserSafeParser] Mirrored process to window.process');
   }
 };
 
@@ -68,8 +86,26 @@ export async function initBrowserSafeParser(): Promise<void> {
   console.log('[browserSafeParser] Initializing browser-safe parser');
   
   try {
-    // Apply all global polyfills
+    // Apply all global polyfills - CRITICAL for stream functionality
     polyfillGlobals();
+    
+    // Additional safety check for process.nextTick
+    if (typeof (globalThis as any).process.nextTick !== 'function') {
+      console.error('[browserSafeParser] ⚠️ process.nextTick still not available after polyfill!');
+      throw new Error('Critical polyfill failure: process.nextTick unavailable');
+    } else {
+      console.log('[browserSafeParser] process.nextTick verification:', typeof (globalThis as any).process.nextTick);
+      
+      // Test the nextTick function
+      let nextTickWorked = false;
+      (globalThis as any).process.nextTick(() => {
+        nextTickWorked = true;
+        console.log('[browserSafeParser] ✅ process.nextTick test successful');
+      });
+      
+      // If nextTick is properly polyfilled but not actually working, we'll see this message
+      console.log('[browserSafeParser] process.nextTick test initiated, waiting for callback');
+    }
     
     // Dynamically import jssuh
     console.log('[browserSafeParser] Attempting to import JSSUH module');
@@ -113,13 +149,19 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
     console.log('[browserSafeParser] Setting up stream-based parsing');
     
     // Create a readable stream from the data
-    // We need to explicitly create a Readable stream from Node.js's stream module
     let Readable: any;
+    
     try {
-      // Try to import the stream module
+      // Try to import the stream module with explicit error handling
+      console.log('[browserSafeParser] Attempting to import stream-browserify');
       const stream = await import('stream-browserify');
+      
+      if (!stream || !stream.Readable) {
+        throw new Error('stream-browserify import succeeded but Readable is not available');
+      }
+      
       Readable = stream.Readable;
-      console.log('[browserSafeParser] Successfully imported stream-browserify');
+      console.log('[browserSafeParser] Successfully imported stream-browserify, Readable available:', !!Readable);
     } catch (err) {
       console.error('[browserSafeParser] Failed to import stream-browserify:', err);
       throw new Error('Failed to import stream module. Make sure stream-browserify is installed.');
@@ -130,8 +172,13 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
       throw new Error('Readable stream constructor not available');
     }
 
-    // Creating the readable stream
+    // Creating the readable stream with explicit error handling
+    console.log('[browserSafeParser] Creating readable stream from data');
     const readableStream = new Readable();
+    
+    if (!readableStream) {
+      throw new Error('Failed to create readableStream instance');
+    }
     
     // Push the data to the stream
     readableStream.push(data);
@@ -180,6 +227,11 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
         // Create a parser instance
         const parserInstance = new ReplayParser();
         console.log('[browserSafeParser] Created parser instance');
+        
+        // Verify that parserInstance is an EventEmitter with write method
+        if (!parserInstance || typeof parserInstance.write !== 'function') {
+          throw new Error('Parser instance is not a valid writable stream');
+        }
         
         // Collected data
         const result: any = {
@@ -295,8 +347,21 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
           readableStreamExists: !!readableStream, 
           parserInstanceExists: !!parserInstance,
           readableStreamIsReadable: readableStream && typeof readableStream.pipe === 'function',
-          parserInstanceHasPipeTarget: parserInstance && typeof parserInstance.write === 'function'
+          parserInstanceHasPipeTarget: parserInstance && typeof parserInstance.write === 'function',
+          processNextTickExists: typeof (globalThis as any).process?.nextTick === 'function'
         });
+        
+        // Double check process.nextTick right before pipe
+        if (typeof (globalThis as any).process?.nextTick !== 'function') {
+          console.error('[browserSafeParser] ⚠️ process.nextTick missing before pipe operation!');
+          console.log('[browserSafeParser] Re-applying nextTick polyfill');
+          if (typeof (globalThis as any).process === 'undefined') {
+            (globalThis as any).process = {};
+          }
+          (globalThis as any).process.nextTick = function(callback: Function, ...args: any[]) {
+            return setTimeout(() => callback(...args), 0);
+          };
+        }
         
         // Perform the pipe operation
         if (!readableStream || typeof readableStream.pipe !== 'function') {
@@ -307,9 +372,47 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
           throw new Error('parserInstance is not a valid writable stream target');
         }
         
-        readableStream.pipe(parserInstance);
-        console.log('[browserSafeParser] Successfully piped stream to parser');
-        
+        // Try-catch specifically around the pipe operation
+        try {
+          readableStream.pipe(parserInstance);
+          console.log('[browserSafeParser] Successfully piped stream to parser');
+        } catch (pipeError) {
+          console.error('[browserSafeParser] Error in pipe operation:', pipeError);
+          
+          // Manual alternative to pipe
+          if (readableStream && parserInstance) {
+            console.log('[browserSafeParser] Attempting manual data pushing as fallback');
+            
+            try {
+              // Manual data pushing instead of pipe
+              const dataChunks = [data]; // Use the original data
+              
+              // Process data chunks one by one
+              for (const chunk of dataChunks) {
+                if (parserInstance.write && typeof parserInstance.write === 'function') {
+                  parserInstance.write(chunk);
+                  console.log('[browserSafeParser] Manually wrote chunk to parser');
+                } else {
+                  console.error('[browserSafeParser] Parser write method unavailable for manual pushing');
+                }
+              }
+              
+              // End the parser
+              if (parserInstance.end && typeof parserInstance.end === 'function') {
+                parserInstance.end();
+                console.log('[browserSafeParser] Manually ended parser stream');
+              } else {
+                console.error('[browserSafeParser] Parser end method unavailable');
+              }
+              
+            } catch (manualError) {
+              console.error('[browserSafeParser] Error in manual data pushing:', manualError);
+              throw manualError;
+            }
+          } else {
+            throw pipeError;
+          }
+        }
       } catch (error) {
         console.error('[browserSafeParser] Error in parser setup:', error);
         clearTimeout(timeoutId);

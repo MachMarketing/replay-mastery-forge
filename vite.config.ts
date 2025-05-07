@@ -24,16 +24,49 @@ export default defineConfig(({ mode }) => ({
       },
     }),
     mode === 'development' && componentTagger(),
+    {
+      name: 'explicit-process-nextTick-polyfill',
+      transform(code, id) {
+        // Add explicit polyfill for process.nextTick at the top of main.tsx
+        if (id.includes('main.tsx')) {
+          const polyfill = `
+// Explicit polyfill for process.nextTick
+if (typeof window !== 'undefined') {
+  if (typeof window.process === 'undefined') {
+    window.process = { env: {} };
+  }
+  if (typeof window.process.nextTick !== 'function') {
+    window.process.nextTick = function(callback, ...args) {
+      setTimeout(() => callback(...args), 0);
+    };
+    console.log('✅ Explicit process.nextTick polyfill applied');
+  }
+}
+`;
+          return polyfill + code;
+        }
+        return null;
+      },
+    },
   ].filter(Boolean),
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Explicit aliases for Node.js built-ins
+      stream: 'stream-browserify',
+      process: 'process/browser',
+      zlib: 'browserify-zlib',
+      util: 'util',
+      path: 'path-browserify',
+      buffer: 'buffer',
     },
   },
   define: {
     // Define process.env for compatibility
     'process.env': {},
     'global': 'globalThis',
+    // Ensure nextTick is available
+    'process.nextTick': 'function(cb) { setTimeout(cb, 0); }',
   },
   optimizeDeps: {
     esbuildOptions: {
@@ -48,7 +81,7 @@ export default defineConfig(({ mode }) => ({
       ],
     },
     // Include JSSUH and its dependencies in the optimization
-    include: ['jssuh'],
+    include: ['jssuh', 'stream-browserify', 'process/browser', 'events'],
   },
   build: {
     commonjsOptions: {
