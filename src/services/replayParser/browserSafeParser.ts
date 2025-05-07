@@ -145,47 +145,6 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
   console.log('[browserSafeParser] File data length:', data.length);
   
   try {
-    // Import stream module only in this function, to avoid early errors
-    console.log('[browserSafeParser] Setting up stream-based parsing');
-    
-    // Create a readable stream from the data
-    let Readable: any;
-    
-    try {
-      // Try to import the stream module with explicit error handling
-      console.log('[browserSafeParser] Attempting to import stream-browserify');
-      const stream = await import('stream-browserify');
-      
-      if (!stream || !stream.Readable) {
-        throw new Error('stream-browserify import succeeded but Readable is not available');
-      }
-      
-      Readable = stream.Readable;
-      console.log('[browserSafeParser] Successfully imported stream-browserify, Readable available:', !!Readable);
-    } catch (err) {
-      console.error('[browserSafeParser] Failed to import stream-browserify:', err);
-      throw new Error('Failed to import stream module. Make sure stream-browserify is installed.');
-    }
-
-    if (!Readable || typeof Readable !== 'function') {
-      console.error('[browserSafeParser] Readable stream constructor not available');
-      throw new Error('Readable stream constructor not available');
-    }
-
-    // Creating the readable stream with explicit error handling
-    console.log('[browserSafeParser] Creating readable stream from data');
-    const readableStream = new Readable();
-    
-    if (!readableStream) {
-      throw new Error('Failed to create readableStream instance');
-    }
-    
-    // Push the data to the stream
-    readableStream.push(data);
-    readableStream.push(null); // Signal the end of the stream
-    
-    console.log('[browserSafeParser] Created readable stream from data');
-    
     // Return a promise that will resolve with the parsed data
     return new Promise((resolve, reject) => {
       // Set a timeout
@@ -194,43 +153,43 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
         reject(new Error(`Parsing timed out after ${PARSER_TIMEOUT_MS/1000} seconds`));
       }, PARSER_TIMEOUT_MS);
       
-      // Extract the ReplayParser constructor from JSSUH module
-      let ReplayParser;
-      
-      // Check for various export patterns
-      if (JSSUHModule.default && typeof JSSUHModule.default === 'function') {
-        ReplayParser = JSSUHModule.default;
-        console.log('[browserSafeParser] Using default export constructor for ReplayParser');
-      } else if (JSSUHModule.ReplayParser && typeof JSSUHModule.ReplayParser === 'function') {
-        ReplayParser = JSSUHModule.ReplayParser;
-        console.log('[browserSafeParser] Using named export constructor for ReplayParser');
-      } else {
-        console.log('[browserSafeParser] Available exports:', Object.keys(JSSUHModule));
-        // Try to find a constructor in the exports
-        for (const key of Object.keys(JSSUHModule)) {
-          if (typeof JSSUHModule[key] === 'function') {
-            ReplayParser = JSSUHModule[key];
-            console.log(`[browserSafeParser] Using export '${key}' as constructor for ReplayParser`);
-            break;
+      try {
+        // Extract the ReplayParser constructor from JSSUH module
+        let ReplayParser;
+        
+        // Check for various export patterns
+        if (JSSUHModule.default && typeof JSSUHModule.default === 'function') {
+          ReplayParser = JSSUHModule.default;
+          console.log('[browserSafeParser] Using default export constructor for ReplayParser');
+        } else if (JSSUHModule.ReplayParser && typeof JSSUHModule.ReplayParser === 'function') {
+          ReplayParser = JSSUHModule.ReplayParser;
+          console.log('[browserSafeParser] Using named export constructor for ReplayParser');
+        } else {
+          console.log('[browserSafeParser] Available exports:', Object.keys(JSSUHModule));
+          // Try to find a constructor in the exports
+          for (const key of Object.keys(JSSUHModule)) {
+            if (typeof JSSUHModule[key] === 'function') {
+              ReplayParser = JSSUHModule[key];
+              console.log(`[browserSafeParser] Using export '${key}' as constructor for ReplayParser`);
+              break;
+            }
           }
         }
-      }
-      
-      if (!ReplayParser) {
-        console.error('[browserSafeParser] Could not find ReplayParser constructor in module');
-        clearTimeout(timeoutId);
-        reject(new Error('ReplayParser constructor not found in JSSUH module'));
-        return;
-      }
-      
-      try {
+        
+        if (!ReplayParser) {
+          console.error('[browserSafeParser] Could not find ReplayParser constructor in module');
+          clearTimeout(timeoutId);
+          reject(new Error('ReplayParser constructor not found in JSSUH module'));
+          return;
+        }
+        
         // Create a parser instance
         const parserInstance = new ReplayParser();
         console.log('[browserSafeParser] Created parser instance');
         
-        // Verify that parserInstance is an EventEmitter with write method
-        if (!parserInstance || typeof parserInstance.write !== 'function') {
-          throw new Error('Parser instance is not a valid writable stream');
+        // Verify the parser instance
+        if (!parserInstance) {
+          throw new Error('Failed to create parser instance');
         }
         
         // Collected data
@@ -342,75 +301,42 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
           resolve(result);
         });
         
-        // Log the state of both objects before calling pipe
-        console.log('💡 Debugging pipe setup:', { 
-          readableStreamExists: !!readableStream, 
-          parserInstanceExists: !!parserInstance,
-          readableStreamIsReadable: readableStream && typeof readableStream.pipe === 'function',
-          parserInstanceHasPipeTarget: parserInstance && typeof parserInstance.write === 'function',
-          processNextTickExists: typeof (globalThis as any).process?.nextTick === 'function'
-        });
+        // Instead of using pipe which causes the TypeError, we'll manually feed the data to the parser
+        console.log('[browserSafeParser] Using manual data feeding instead of pipe to avoid stream compatibility issues');
         
-        // Double check process.nextTick right before pipe
-        if (typeof (globalThis as any).process?.nextTick !== 'function') {
-          console.error('[browserSafeParser] ⚠️ process.nextTick missing before pipe operation!');
-          console.log('[browserSafeParser] Re-applying nextTick polyfill');
-          if (typeof (globalThis as any).process === 'undefined') {
-            (globalThis as any).process = {};
-          }
-          (globalThis as any).process.nextTick = function(callback: Function, ...args: any[]) {
-            return setTimeout(() => callback(...args), 0);
-          };
-        }
-        
-        // Perform the pipe operation
-        if (!readableStream || typeof readableStream.pipe !== 'function') {
-          throw new Error('readableStream is not a valid Readable stream');
-        }
-        
-        if (!parserInstance || typeof parserInstance.write !== 'function') {
-          throw new Error('parserInstance is not a valid writable stream target');
-        }
-        
-        // Try-catch specifically around the pipe operation
         try {
-          readableStream.pipe(parserInstance);
-          console.log('[browserSafeParser] Successfully piped stream to parser');
-        } catch (pipeError) {
-          console.error('[browserSafeParser] Error in pipe operation:', pipeError);
-          
-          // Manual alternative to pipe
-          if (readableStream && parserInstance) {
-            console.log('[browserSafeParser] Attempting manual data pushing as fallback');
+          // Directly write data to the parser instance
+          if (typeof parserInstance.write === 'function') {
+            const writeSuccess = parserInstance.write(data);
+            console.log('[browserSafeParser] Data written to parser successfully:', writeSuccess);
             
-            try {
-              // Manual data pushing instead of pipe
-              const dataChunks = [data]; // Use the original data
-              
-              // Process data chunks one by one
-              for (const chunk of dataChunks) {
-                if (parserInstance.write && typeof parserInstance.write === 'function') {
-                  parserInstance.write(chunk);
-                  console.log('[browserSafeParser] Manually wrote chunk to parser');
-                } else {
-                  console.error('[browserSafeParser] Parser write method unavailable for manual pushing');
-                }
-              }
-              
-              // End the parser
-              if (parserInstance.end && typeof parserInstance.end === 'function') {
-                parserInstance.end();
-                console.log('[browserSafeParser] Manually ended parser stream');
-              } else {
-                console.error('[browserSafeParser] Parser end method unavailable');
-              }
-              
-            } catch (manualError) {
-              console.error('[browserSafeParser] Error in manual data pushing:', manualError);
-              throw manualError;
+            // Signal the end of data
+            if (typeof parserInstance.end === 'function') {
+              parserInstance.end();
+              console.log('[browserSafeParser] End signal sent to parser');
+            } else {
+              console.warn('[browserSafeParser] Parser does not have an end method');
             }
           } else {
-            throw pipeError;
+            throw new Error('Parser instance does not have a write method');
+          }
+        } catch (writeError) {
+          console.error('[browserSafeParser] Error writing data to parser:', writeError);
+          
+          // Try alternative approach - chunk the data into smaller pieces
+          console.log('[browserSafeParser] Attempting alternative approach with chunked data');
+          
+          const CHUNK_SIZE = 8192; // 8KB chunks
+          for (let i = 0; i < data.length; i += CHUNK_SIZE) {
+            const chunk = data.slice(i, Math.min(i + CHUNK_SIZE, data.length));
+            const chunkWriteSuccess = parserInstance.write(chunk);
+            console.log(`[browserSafeParser] Chunk ${i/CHUNK_SIZE + 1} written:`, chunkWriteSuccess);
+          }
+          
+          // Signal the end of data
+          if (typeof parserInstance.end === 'function') {
+            parserInstance.end();
+            console.log('[browserSafeParser] End signal sent after chunked writing');
           }
         }
       } catch (error) {
