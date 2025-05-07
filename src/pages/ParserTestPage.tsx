@@ -10,16 +10,20 @@ import { runBrowserParserTest } from '@/test/parserTest';
 import { runE2EParserTest } from '@/test/e2eParserTest';
 import { Badge } from '@/components/ui/badge';
 import { createMockFileFromUint8Array } from '@/services/fileReader';
-import { Loader2, CheckCircle, AlertCircle, FileUp, RefreshCcw } from 'lucide-react';
+import { Loader2, CheckCircle, AlertCircle, FileUp, RefreshCcw, ChevronDown, ChevronUp, BarChart2 } from 'lucide-react';
+import { analyzeReplayData } from '@/services/replayParser/analyzer';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const ParserTestPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [testResults, setTestResults] = useState<any | null>(null);
   const [e2eResults, setE2eResults] = useState<any | null>(null);
+  const [analysisResults, setAnalysisResults] = useState<any | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [isE2eTestRunning, setIsE2eTestRunning] = useState(false);
+  const [isAnalysisRunning, setIsAnalysisRunning] = useState(false);
 
   // Create mock test data to test the parser without a real file
   const createMockReplayData = () => {
@@ -64,6 +68,7 @@ const ParserTestPage = () => {
     if (event.target.files && event.target.files.length > 0) {
       setSelectedFile(event.target.files[0]);
       setE2eResults(null); // Reset E2E results when file changes
+      setAnalysisResults(null); // Reset analysis results when file changes
     }
   };
   
@@ -125,6 +130,44 @@ const ParserTestPage = () => {
       });
     } finally {
       setIsE2eTestRunning(false);
+    }
+  };
+  
+  // Handle running meta-aware analysis
+  const handleRunAnalysis = async () => {
+    if (!testResults) {
+      console.error('No replay data available for analysis');
+      return;
+    }
+    
+    setIsAnalysisRunning(true);
+    setAnalysisResults(null);
+    
+    try {
+      console.log('Running meta-aware replay analysis...');
+      
+      // Create the input data structure expected by the analyzer
+      const analysisInput = {
+        playerName: testResults.playerName || 'Player',
+        opponentName: testResults.opponentName || 'Opponent',
+        playerRace: testResults.playerRace || 'Terran',
+        opponentRace: testResults.opponentRace || 'Terran',
+        map: testResults.map || 'Unknown',
+        duration: testResults.duration || '10:00',
+        result: testResults.result || 'win',
+        apm: testResults.apm || 120,
+        buildOrder: testResults.buildOrder || []
+      };
+      
+      const analysis = await analyzeReplayData(analysisInput);
+      setAnalysisResults(analysis);
+      console.log('Analysis results:', analysis);
+      
+    } catch (err) {
+      console.error('Analysis error:', err);
+      setError(`Analysis failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIsAnalysisRunning(false);
     }
   };
 
@@ -208,6 +251,27 @@ const ParserTestPage = () => {
                     )}
                   </div>
                   
+                  {testResults && (
+                    <Button 
+                      onClick={handleRunAnalysis}
+                      disabled={isAnalysisRunning || !testResults}
+                      variant="secondary"
+                      className="w-full mt-2"
+                    >
+                      {isAnalysisRunning ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Analyzing Meta Strategy...
+                        </>
+                      ) : (
+                        <>
+                          <BarChart2 className="mr-2 h-4 w-4" />
+                          Run Meta-Aware Analysis
+                        </>
+                      )}
+                    </Button>
+                  )}
+                  
                   {/* E2E Test Results */}
                   {e2eResults && (
                     <div className={`mt-4 p-3 rounded-md border ${e2eResults.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
@@ -225,7 +289,7 @@ const ParserTestPage = () => {
                           {e2eResults.differences && Object.keys(e2eResults.differences).length > 0 && (
                             <details className="mt-2">
                               <summary className="text-xs font-medium cursor-pointer">
-                                Unterschiede anzeigen
+                                Show Differences
                               </summary>
                               <div className="mt-2 text-xs bg-black/5 p-2 rounded overflow-auto max-h-40">
                                 <pre>
@@ -242,10 +306,10 @@ const ParserTestPage = () => {
               </CardContent>
             </Card>
             
-            {/* Test Results card */}
+            {/* Results Tabs */}
             <Card>
               <CardHeader>
-                <CardTitle>Parser Status</CardTitle>
+                <CardTitle>Parser Results</CardTitle>
                 <CardDescription>
                   {isLoading ? 'Running test...' : error 
                     ? 'Test failed with errors' 
@@ -267,28 +331,113 @@ const ParserTestPage = () => {
                     </AlertDescription>
                   </Alert>
                 ) : testResults ? (
-                  <div className="space-y-4">
-                    <div className="flex items-start space-x-2">
-                      <CheckCircle className="h-5 w-5 text-green-500 mt-0.5" />
-                      <div>
-                        <h3 className="font-medium">Test completed successfully</h3>
-                        <p className="text-sm text-gray-500">
-                          The parser was able to process the replay file
-                        </p>
+                  <Tabs defaultValue="raw" className="w-full">
+                    <TabsList className="grid grid-cols-2">
+                      <TabsTrigger value="raw">Raw Data</TabsTrigger>
+                      <TabsTrigger value="analysis" disabled={!analysisResults}>Meta Analysis</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="raw">
+                      <div className="space-y-4">
+                        <div className="flex items-start space-x-2">
+                          <CheckCircle className="h-5 w-5 text-green-500 mt-0.5" />
+                          <div>
+                            <h3 className="font-medium">Test completed successfully</h3>
+                            <p className="text-sm text-gray-500">
+                              The parser was able to process the replay file
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <Separator />
+                        
+                        <div className="space-y-2">
+                          <h3 className="font-medium">Parsed Data:</h3>
+                          <div className="bg-secondary/20 p-3 rounded-md overflow-auto max-h-60">
+                            <pre className="text-xs whitespace-pre-wrap">
+                              {JSON.stringify(testResults, null, 2)}
+                            </pre>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    
-                    <Separator />
-                    
-                    <div className="space-y-2">
-                      <h3 className="font-medium">Parsed Data:</h3>
-                      <div className="bg-secondary/20 p-3 rounded-md overflow-auto max-h-60">
-                        <pre className="text-xs whitespace-pre-wrap">
-                          {JSON.stringify(testResults, null, 2)}
-                        </pre>
-                      </div>
-                    </div>
-                  </div>
+                    </TabsContent>
+                    <TabsContent value="analysis">
+                      {analysisResults ? (
+                        <div className="space-y-4">
+                          <div className="flex items-start space-x-2">
+                            <CheckCircle className="h-5 w-5 text-green-500 mt-0.5" />
+                            <div>
+                              <h3 className="font-medium">Meta analysis completed</h3>
+                              <p className="text-sm text-gray-500">
+                                Analysis based on 2025 professional meta strategies
+                              </p>
+                            </div>
+                          </div>
+                          
+                          <Separator />
+                          
+                          {/* Strengths Section */}
+                          <div className="space-y-2">
+                            <h3 className="font-medium text-green-600">Strengths:</h3>
+                            <ul className="list-disc pl-5 space-y-1">
+                              {analysisResults.strengths.map((strength: string, index: number) => (
+                                <li key={`strength-${index}`} className="text-sm">
+                                  {strength}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          
+                          {/* Weaknesses Section */}
+                          <div className="space-y-2">
+                            <h3 className="font-medium text-red-600">Areas for Improvement:</h3>
+                            <ul className="list-disc pl-5 space-y-1">
+                              {analysisResults.weaknesses.map((weakness: string, index: number) => (
+                                <li key={`weakness-${index}`} className="text-sm">
+                                  {weakness}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          
+                          {/* Recommendations Section */}
+                          <div className="space-y-2">
+                            <h3 className="font-medium text-blue-600">Recommendations:</h3>
+                            <ul className="list-disc pl-5 space-y-1">
+                              {analysisResults.recommendations.map((rec: string, index: number) => (
+                                <li key={`rec-${index}`} className="text-sm">
+                                  {rec}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          
+                          {/* Training Plan Section */}
+                          <div className="space-y-2">
+                            <details>
+                              <summary className="font-medium text-purple-600 cursor-pointer flex items-center">
+                                10-Day Training Plan
+                                <ChevronDown className="inline-block ml-1 h-4 w-4" />
+                              </summary>
+                              <div className="mt-2 border rounded-md p-2 bg-secondary/10">
+                                <ul className="divide-y">
+                                  {analysisResults.trainingPlan.map((day: any, index: number) => (
+                                    <li key={`day-${index}`} className="py-2">
+                                      <div className="font-medium text-xs">Day {day.day}: {day.focus}</div>
+                                      <div className="text-xs mt-1">{day.drill}</div>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            </details>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-40 text-gray-500">
+                          <p>Run the meta analysis to see insights</p>
+                        </div>
+                      )}
+                    </TabsContent>
+                  </Tabs>
                 ) : (
                   <div className="flex flex-col items-center justify-center h-40 text-gray-500">
                     <p>Ready to run test</p>
