@@ -1,3 +1,4 @@
+
 /**
  * Browser-Safe Parser implementation
  * 
@@ -204,7 +205,7 @@ async function parseWithDirectDataAndTimeout(data: Uint8Array, timeoutMs: number
         };
       }
       
-      // Patchen Sie auch die _write Methode
+      // Patch the _write method as well
       if (parser._write && parser._write.toString().includes('process.nextTick')) {
         console.log('[browserSafeParser] Monkey patching parser._write to handle process.nextTick');
         const originalWrite = parser._write;
