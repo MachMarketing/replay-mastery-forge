@@ -70,6 +70,7 @@
     "recharts": "^2.12.7",
     "rollup-plugin-node-polyfills": "^0.2.1",
     "screp-js": "^0.3.0",
+    "screparsed": "^0.0.5",
     "sonner": "^1.5.0",
     "stream-browserify": "^3.0.0",
     "tailwind-merge": "^2.5.2",
