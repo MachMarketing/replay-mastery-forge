@@ -1,4 +1,3 @@
-
 /**
  * This module provides a browser-safe implementation of the replay parser
  * using JSSUH library that works in the browser environment
@@ -143,7 +142,8 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
       }, PARSER_TIMEOUT_MS);
       
       // Declare fallbackTimeout at this scope level so it's available to all handlers
-      let fallbackTimeout: number | null = null;
+      // Use NodeJS.Timeout type to match the setTimeout return type
+      let fallbackTimeout: ReturnType<typeof setTimeout> | null = null;
       
       try {
         console.log('[browserSafeParser] Creating parser instance');
