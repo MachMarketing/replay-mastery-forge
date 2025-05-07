@@ -205,6 +205,23 @@ async function parseWithDirectDataAndTimeout(data: Uint8Array, timeoutMs: number
         };
       }
       
+      // Patchen Sie auch die _write Methode
+      if (parser._write && parser._write.toString().includes('process.nextTick')) {
+        console.log('[browserSafeParser] Monkey patching parser._write to handle process.nextTick');
+        const originalWrite = parser._write;
+        parser._write = function(chunk: any, encoding: string, callback: Function) {
+          try {
+            const result = originalWrite.call(this, chunk, encoding, (err: any) => {
+              setTimeout(() => callback(err), 0);
+            });
+            return result;
+          } catch (err) {
+            console.error('[browserSafeParser] Error in patched _write:', err);
+            setTimeout(() => callback(err), 0);
+          }
+        };
+      }
+      
       // Collected data
       const result: any = {
         header: null,
@@ -225,6 +242,9 @@ async function parseWithDirectDataAndTimeout(data: Uint8Array, timeoutMs: number
         result.header = header;
       });
       
+      // Listen for different event types that JSSUH might emit
+      
+      // Commands
       parser.on('command', (command: any) => {
         // Don't log every command to keep the console clean
         if (result.commands.length < 5) {
@@ -235,6 +255,31 @@ async function parseWithDirectDataAndTimeout(data: Uint8Array, timeoutMs: number
           console.log(`[browserSafeParser] Processed ${result.commands.length} commands so far...`);
         }
         result.commands.push(command);
+      });
+      
+      // Action - alternative name for commands in some versions
+      parser.on('action', (action: any) => {
+        if (result.commands.length < 5) {
+          console.log('[browserSafeParser] Received action:', action);
+        }
+        result.commands.push(action);
+      });
+      
+      // Data - generic event that might contain various data types
+      parser.on('data', (data: any) => {
+        console.log('[browserSafeParser] Received generic data event:', typeof data, data);
+        if (data && typeof data === 'object') {
+          // Try to categorize based on data structure
+          if (data.type === 'command' || data.type === 'action') {
+            result.commands.push(data);
+          } else if (data.type === 'player') {
+            result.players.push(data);
+          } else if (data.type === 'chat') {
+            result.chat.push(data);
+          } else if (data.header) {
+            result.header = data.header;
+          }
+        }
       });
       
       parser.on('player', (player: any) => {
@@ -252,6 +297,42 @@ async function parseWithDirectDataAndTimeout(data: Uint8Array, timeoutMs: number
         clearTimeout(timeoutId);
         console.log('[browserSafeParser] Total commands:', result.commands.length);
         console.log('[browserSafeParser] Player count:', result.players.length);
+        
+        // Add additional information to help debugging
+        if (!result.header) {
+          console.warn('[browserSafeParser] No header data collected');
+        }
+        
+        if (result.commands.length === 0) {
+          console.warn('[browserSafeParser] No commands/actions collected');
+        }
+        
+        if (result.players.length === 0) {
+          console.warn('[browserSafeParser] No player information collected');
+        }
+        
+        // Extract map name from header if available
+        if (result.header && result.header.mapName) {
+          console.log('[browserSafeParser] Map name from header:', result.header.mapName);
+        }
+        
+        // Add map name if we can find it
+        if (!result.mapName && result.header && result.header.mapName) {
+          result.mapName = result.header.mapName;
+        }
+        
+        // Calculate duration if possible
+        if (result.commands.length > 0) {
+          const lastCommand = result.commands[result.commands.length - 1];
+          if (lastCommand && lastCommand.frame) {
+            // In StarCraft, 24 frames = 1 second
+            const durationInFrames = lastCommand.frame;
+            const durationMS = Math.floor(durationInFrames / 24 * 1000);
+            result.durationMS = durationMS;
+            console.log('[browserSafeParser] Estimated duration:', Math.floor(durationMS/1000), 'seconds');
+          }
+        }
+        
         resolve(result);
       });
       
@@ -356,3 +437,4 @@ async function parseWithDirectDataAndTimeout(data: Uint8Array, timeoutMs: number
     }
   });
 }
+

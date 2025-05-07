@@ -6,6 +6,7 @@
 import { ParsedReplayResult } from './replayParserService';
 import { initBrowserSafeParser, parseReplayWithBrowserSafeParser } from './replayParser/browserSafeParser';
 import { mapRawToParsed } from './replayMapper';
+import { transformJSSUHData } from './replayParser/transformer';
 
 // Ensure global.process is available with proper nextTick implementation
 if (typeof globalThis.process === 'undefined') {
@@ -100,14 +101,29 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     console.log('[browserReplayParser] Parsing with browser-safe parser...');
     const parsedData = await parseReplayWithBrowserSafeParser(uint8Data);
     
+    // Check if we have valid parsed data
+    if (!parsedData || (typeof parsedData === 'object' && Object.keys(parsedData).length === 0)) {
+      console.error('[browserReplayParser] Parser returned empty data');
+      throw new Error('Parser returned empty data');
+    }
+    
     // Log the parsed data (truncated)
     const dataKeys = Object.keys(parsedData);
     console.log(`[browserReplayParser] Parsing complete, found ${dataKeys.length} data fields:`, 
       dataKeys.join(', '));
     
+    // Log more detailed information about the parsed data to help debugging
+    console.log(`[browserReplayParser] Header present: ${parsedData.header ? 'Yes' : 'No'}`);
+    console.log(`[browserReplayParser] Commands count: ${parsedData.commands?.length || 0}`);
+    console.log(`[browserReplayParser] Players count: ${parsedData.players?.length || 0}`);
+    console.log(`[browserReplayParser] Map name: ${parsedData.mapName || 'Unknown'}`);
+    
+    // Apply JSSUH-specific transformation if needed
+    const transformedData = transformJSSUHData(parsedData);
+    
     // Map the raw parsed data to our application format
     console.log('[browserReplayParser] Mapping parsed data to application format...');
-    return mapRawToParsed(parsedData);
+    return mapRawToParsed(transformedData);
   } catch (error) {
     console.error('[browserReplayParser] Error parsing replay:', error);
     throw error;
