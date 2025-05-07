@@ -1,4 +1,3 @@
-
 /**
  * Browser-Safe Parser implementation
  * 
@@ -437,4 +436,3 @@ async function parseWithDirectDataAndTimeout(data: Uint8Array, timeoutMs: number
     }
   });
 }
-
