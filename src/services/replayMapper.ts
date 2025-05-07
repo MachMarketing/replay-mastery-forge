@@ -1,3 +1,4 @@
+
 /**
  * Maps raw parser data to our application's format
  */
@@ -214,7 +215,7 @@ function mapScreparsedFormat(rawData: any): ParsedReplayResult {
   }
   
   // Set result based on game outcome if available, default to 'win'
-  const result = rawData.players && 
+  const gameResult = rawData.players && 
                 rawData.players.length > 0 && 
                 rawData.players[0].result === 'loss' ? 'loss' : 'win';
   
@@ -252,8 +253,8 @@ function mapScreparsedFormat(rawData: any): ParsedReplayResult {
     recommendations = ['Practice overlord positioning', 'Focus on getting earlier third hatchery'];
   }
   
-  // Construct the final result
-  const result: ParsedReplayResult = {
+  // Construct the final parsed data
+  const parsedData: ParsedReplayResult = {
     playerName,
     opponentName,
     playerRace,
@@ -263,7 +264,7 @@ function mapScreparsedFormat(rawData: any): ParsedReplayResult {
     duration,
     durationMS: durationMs,
     date,
-    result: result,
+    result: gameResult,
     apm,
     eapm,
     buildOrder,
@@ -274,7 +275,8 @@ function mapScreparsedFormat(rawData: any): ParsedReplayResult {
   };
   
   // Debug log the result
-  debugLogReplayData(result);
+  debugLogReplayData(parsedData);
   
-  return result;
+  return parsedData;
 }
+
