@@ -6,6 +6,7 @@
  * with appropriate error handling and timeouts.
  */
 import type { ParsedReplayResult } from '../replayParserService';
+import { Readable } from 'stream';
 
 // Polyfill globals that might be needed
 const polyfillGlobals = () => {
@@ -107,25 +108,45 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
   
   console.log('[browserSafeParser] File data length:', data.length);
   
-  // Parse with a timeout to prevent infinite blocking
-  return await parseWithDirectDataAndTimeout(data, PARSER_TIMEOUT_MS);
-}
-
-/**
- * Parse with direct data writing approach and timeout wrapper
- * This completely avoids using pipe() which is causing issues in the browser
- */
-async function parseWithDirectDataAndTimeout(data: Uint8Array, timeoutMs: number): Promise<any> {
-  console.log('[browserSafeParser] Using direct data writing approach (no pipe)...');
-  
-  return new Promise((resolve, reject) => {
-    // Set a timeout
-    const timeoutId = setTimeout(() => {
-      console.error(`[browserSafeParser] Parsing timed out after ${timeoutMs/1000} seconds`);
-      reject(new Error(`Parsing timed out after ${timeoutMs/1000} seconds`));
-    }, timeoutMs);
+  try {
+    // Import stream module only in this function, to avoid early errors
+    console.log('[browserSafeParser] Setting up stream-based parsing');
     
+    // Create a readable stream from the data
+    // We need to explicitly create a Readable stream from Node.js's stream module
+    let Readable: any;
     try {
+      // Try to import the stream module
+      const stream = await import('stream-browserify');
+      Readable = stream.Readable;
+      console.log('[browserSafeParser] Successfully imported stream-browserify');
+    } catch (err) {
+      console.error('[browserSafeParser] Failed to import stream-browserify:', err);
+      throw new Error('Failed to import stream module. Make sure stream-browserify is installed.');
+    }
+
+    if (!Readable || typeof Readable !== 'function') {
+      console.error('[browserSafeParser] Readable stream constructor not available');
+      throw new Error('Readable stream constructor not available');
+    }
+
+    // Creating the readable stream
+    const readableStream = new Readable();
+    
+    // Push the data to the stream
+    readableStream.push(data);
+    readableStream.push(null); // Signal the end of the stream
+    
+    console.log('[browserSafeParser] Created readable stream from data');
+    
+    // Return a promise that will resolve with the parsed data
+    return new Promise((resolve, reject) => {
+      // Set a timeout
+      const timeoutId = setTimeout(() => {
+        console.error(`[browserSafeParser] Parsing timed out after ${PARSER_TIMEOUT_MS/1000} seconds`);
+        reject(new Error(`Parsing timed out after ${PARSER_TIMEOUT_MS/1000} seconds`));
+      }, PARSER_TIMEOUT_MS);
+      
       // Extract the ReplayParser constructor from JSSUH module
       let ReplayParser;
       
@@ -155,285 +176,148 @@ async function parseWithDirectDataAndTimeout(data: Uint8Array, timeoutMs: number
         return;
       }
       
-      // Ensure process.nextTick is available before creating parser
-      polyfillGlobals();
-      
-      // Create a parser instance
-      let parser;
       try {
-        parser = new ReplayParser();
-        console.log('[browserSafeParser] Parser instance created successfully');
-      } catch (err) {
-        console.error('[browserSafeParser] Failed to create parser instance:', err);
-        clearTimeout(timeoutId);
-        reject(new Error(`Failed to create parser instance: ${err instanceof Error ? err.message : 'Unknown error'}`));
-        return;
-      }
-      
-      if (!parser) {
-        console.error('[browserSafeParser] Parser instance is undefined after creation');
-        clearTimeout(timeoutId);
-        reject(new Error('Parser instance is undefined after creation'));
-        return;
-      }
-      
-      // Log available methods on the parser for debugging
-      console.log('[browserSafeParser] Parser methods:', 
-                 Object.getOwnPropertyNames(Object.getPrototypeOf(parser)));
-      
-      // Check that the parser has the necessary event methods
-      if (typeof parser.on !== 'function') {
-        console.error('[browserSafeParser] Parser does not have "on" method');
-        clearTimeout(timeoutId);
-        reject(new Error('Parser does not have "on" method'));
-        return;
-      }
-      
-      // Monkey patch the parser if it's using process.nextTick
-      if (parser._transform && parser._transform.toString().includes('process.nextTick')) {
-        console.log('[browserSafeParser] Monkey patching parser._transform to handle process.nextTick');
-        const originalTransform = parser._transform;
-        parser._transform = function(chunk: any, encoding: string, callback: Function) {
-          try {
-            return originalTransform.call(this, chunk, encoding, (err: any, data: any) => {
-              setTimeout(() => callback(err, data), 0);
-            });
-          } catch (err) {
-            console.error('[browserSafeParser] Error in patched _transform:', err);
-            setTimeout(() => callback(err), 0);
-          }
+        // Create a parser instance
+        const parserInstance = new ReplayParser();
+        console.log('[browserSafeParser] Created parser instance');
+        
+        // Collected data
+        const result: any = {
+          header: null,
+          commands: [],
+          players: [],
+          chat: []
         };
-      }
-      
-      // Patch the _write method as well
-      if (parser._write && parser._write.toString().includes('process.nextTick')) {
-        console.log('[browserSafeParser] Monkey patching parser._write to handle process.nextTick');
-        const originalWrite = parser._write;
-        parser._write = function(chunk: any, encoding: string, callback: Function) {
-          try {
-            const result = originalWrite.call(this, chunk, encoding, (err: any) => {
-              setTimeout(() => callback(err), 0);
-            });
-            return result;
-          } catch (err) {
-            console.error('[browserSafeParser] Error in patched _write:', err);
-            setTimeout(() => callback(err), 0);
+        
+        // Set up event listeners
+        parserInstance.on('error', (err: any) => {
+          console.error('[browserSafeParser] Parser error:', err);
+          clearTimeout(timeoutId);
+          reject(new Error(`Parser error: ${err instanceof Error ? err.message : err?.toString() || 'Unknown error'}`));
+        });
+        
+        parserInstance.on('replayHeader', (header: any) => {
+          console.log('[browserSafeParser] Received replay header:', header);
+          result.header = header;
+        });
+        
+        // Listen for commands (core gameplay actions)
+        parserInstance.on('command', (command: any) => {
+          if (result.commands.length < 5) {
+            console.log('[browserSafeParser] Received command:', command);
+          } else if (result.commands.length === 5) {
+            console.log('[browserSafeParser] More commands received...');
           }
-        };
-      }
-      
-      // Collected data
-      const result: any = {
-        header: null,
-        commands: [],
-        players: [],
-        chat: []
-      };
-      
-      // Set up event listeners for the parser
-      parser.on('error', (err: any) => {
-        console.error('[browserSafeParser] Parser error:', err);
-        clearTimeout(timeoutId);
-        reject(new Error(`Parser error: ${err instanceof Error ? err.message : err?.toString() || 'Unknown error'}`));
-      });
-      
-      parser.on('replayHeader', (header: any) => {
-        console.log('[browserSafeParser] Received replay header:', header);
-        result.header = header;
-      });
-      
-      // Listen for different event types that JSSUH might emit
-      
-      // Commands
-      parser.on('command', (command: any) => {
-        // Don't log every command to keep the console clean
-        if (result.commands.length < 5) {
-          console.log('[browserSafeParser] Received command:', command);
-        } else if (result.commands.length === 5) {
-          console.log('[browserSafeParser] More commands received...');
-        } else if (result.commands.length % 1000 === 0) {
-          console.log(`[browserSafeParser] Processed ${result.commands.length} commands so far...`);
-        }
-        result.commands.push(command);
-      });
-      
-      // Action - alternative name for commands in some versions
-      parser.on('action', (action: any) => {
-        if (result.commands.length < 5) {
-          console.log('[browserSafeParser] Received action:', action);
-        }
-        result.commands.push(action);
-      });
-      
-      // Data - generic event that might contain various data types
-      parser.on('data', (data: any) => {
-        console.log('[browserSafeParser] Received generic data event:', typeof data, data);
-        if (data && typeof data === 'object') {
-          // Try to categorize based on data structure
-          if (data.type === 'command' || data.type === 'action') {
-            result.commands.push(data);
-          } else if (data.type === 'player') {
-            result.players.push(data);
-          } else if (data.type === 'chat') {
-            result.chat.push(data);
-          } else if (data.header) {
-            result.header = data.header;
+          result.commands.push(command);
+        });
+        
+        // Alternative event name for commands in some versions
+        parserInstance.on('action', (action: any) => {
+          if (result.commands.length < 5) {
+            console.log('[browserSafeParser] Received action:', action);
           }
-        }
-      });
-      
-      parser.on('player', (player: any) => {
-        console.log('[browserSafeParser] Received player info:', player);
-        result.players.push(player);
-      });
-      
-      parser.on('chat', (message: any) => {
-        console.log('[browserSafeParser] Received chat message:', message);
-        result.chat.push(message);
-      });
-      
-      parser.on('end', () => {
-        console.log('[browserSafeParser] Parsing completed, end event received');
-        clearTimeout(timeoutId);
-        console.log('[browserSafeParser] Total commands:', result.commands.length);
-        console.log('[browserSafeParser] Player count:', result.players.length);
+          result.commands.push(action);
+        });
         
-        // Add additional information to help debugging
-        if (!result.header) {
-          console.warn('[browserSafeParser] No header data collected');
-        }
-        
-        if (result.commands.length === 0) {
-          console.warn('[browserSafeParser] No commands/actions collected');
-        }
-        
-        if (result.players.length === 0) {
-          console.warn('[browserSafeParser] No player information collected');
-        }
-        
-        // Extract map name from header if available
-        if (result.header && result.header.mapName) {
-          console.log('[browserSafeParser] Map name from header:', result.header.mapName);
-        }
-        
-        // Add map name if we can find it
-        if (!result.mapName && result.header && result.header.mapName) {
-          result.mapName = result.header.mapName;
-        }
-        
-        // Calculate duration if possible
-        if (result.commands.length > 0) {
-          const lastCommand = result.commands[result.commands.length - 1];
-          if (lastCommand && lastCommand.frame) {
-            // In StarCraft, 24 frames = 1 second
-            const durationInFrames = lastCommand.frame;
-            const durationMS = Math.floor(durationInFrames / 24 * 1000);
-            result.durationMS = durationMS;
-            console.log('[browserSafeParser] Estimated duration:', Math.floor(durationMS/1000), 'seconds');
-          }
-        }
-        
-        resolve(result);
-      });
-      
-      // Check write method exists
-      if (typeof parser.write !== 'function') {
-        console.error('[browserSafeParser] Parser does not have write method');
-        clearTimeout(timeoutId);
-        reject(new Error('Parser does not have write method'));
-        return;
-      }
-      
-      // Write the data chunk by chunk to avoid memory issues
-      const CHUNK_SIZE = 4096; // Smaller chunks (4KB instead of 8KB)
-      let offset = 0;
-      
-      function writeNextChunk() {
-        if (offset >= data.length) {
-          // All chunks written successfully
-          console.log('[browserSafeParser] All data written, signaling end of stream');
-          
-          // End the stream when all data has been written, handle missing end method
-          if (typeof parser.end === 'function') {
-            console.log('[browserSafeParser] Calling parser.end()');
-            try {
-              parser.end();
-            } catch (err) {
-              console.error('[browserSafeParser] Error in parser.end():', err);
-              // Still resolve since we've written all the data
-              clearTimeout(timeoutId);
-              resolve(result);
+        // Generic data event
+        parserInstance.on('data', (data: any) => {
+          console.log('[browserSafeParser] Received generic data event:', typeof data);
+          // Try to categorize the data
+          if (data && typeof data === 'object') {
+            if (data.type === 'command' || data.type === 'action') {
+              result.commands.push(data);
+            } else if (data.type === 'player') {
+              result.players.push(data);
+            } else if (data.type === 'chat') {
+              result.chat.push(data);
+            } else if (data.header) {
+              result.header = data.header;
             }
-          } else if (typeof parser.emit === 'function') {
-            console.log('[browserSafeParser] Parser.end not available, emitting end event manually');
-            try {
-              parser.emit('end');
-            } catch (err) {
-              console.error('[browserSafeParser] Error emitting end event:', err);
-              clearTimeout(timeoutId);
-              resolve(result);
+          }
+        });
+        
+        parserInstance.on('player', (player: any) => {
+          console.log('[browserSafeParser] Received player info:', player);
+          result.players.push(player);
+        });
+        
+        parserInstance.on('chat', (message: any) => {
+          console.log('[browserSafeParser] Received chat message:', message);
+          result.chat.push(message);
+        });
+        
+        parserInstance.on('end', () => {
+          console.log('[browserSafeParser] Parsing completed, end event received');
+          clearTimeout(timeoutId);
+          console.log('[browserSafeParser] Total commands:', result.commands.length);
+          console.log('[browserSafeParser] Player count:', result.players.length);
+          
+          // Add additional information to help debugging
+          if (!result.header) {
+            console.warn('[browserSafeParser] No header data collected');
+          }
+          
+          if (result.commands.length === 0) {
+            console.warn('[browserSafeParser] No commands/actions collected');
+          }
+          
+          if (result.players.length === 0) {
+            console.warn('[browserSafeParser] No player information collected');
+          }
+          
+          // Extract map name from header if available
+          if (result.header && result.header.mapName) {
+            console.log('[browserSafeParser] Map name from header:', result.header.mapName);
+          }
+          
+          // Add map name if we can find it
+          if (!result.mapName && result.header && result.header.mapName) {
+            result.mapName = result.header.mapName;
+          }
+          
+          // Calculate duration if possible
+          if (result.commands.length > 0) {
+            const lastCommand = result.commands[result.commands.length - 1];
+            if (lastCommand && lastCommand.frame) {
+              // In StarCraft, 24 frames = 1 second
+              const durationInFrames = lastCommand.frame;
+              const durationMS = Math.floor(durationInFrames / 24 * 1000);
+              result.durationMS = durationMS;
+              console.log('[browserSafeParser] Estimated duration:', Math.floor(durationMS/1000), 'seconds');
             }
-          } else {
-            console.warn('[browserSafeParser] No way to signal end of data to parser');
-            // Resolve manually since we can't properly signal end
-            setTimeout(() => {
-              clearTimeout(timeoutId);
-              resolve(result);
-            }, 1000);
           }
-          return;
+          
+          resolve(result);
+        });
+        
+        // Log the state of both objects before calling pipe
+        console.log('💡 Debugging pipe setup:', { 
+          readableStreamExists: !!readableStream, 
+          parserInstanceExists: !!parserInstance,
+          readableStreamIsReadable: readableStream && typeof readableStream.pipe === 'function',
+          parserInstanceHasPipeTarget: parserInstance && typeof parserInstance.write === 'function'
+        });
+        
+        // Perform the pipe operation
+        if (!readableStream || typeof readableStream.pipe !== 'function') {
+          throw new Error('readableStream is not a valid Readable stream');
         }
         
-        const end = Math.min(offset + CHUNK_SIZE, data.length);
-        const chunk = data.slice(offset, end);
-        
-        try {
-          // Use a try-catch around each write operation
-          const writeResult = parser.write(chunk);
-          console.log(`[browserSafeParser] Chunk ${offset}:${end} written (${chunk.length} bytes), write result:`, writeResult);
-          
-          offset = end;
-          
-          // Use our own setTimeout instead of requestAnimationFrame for greater reliability
-          setTimeout(writeNextChunk, 0);
-        } catch (err) {
-          console.error('[browserSafeParser] Error writing chunk to parser:', err);
-          
-          // If it's a nextTick error, try one more time with a fresh process.nextTick
-          if (err instanceof Error && err.message.includes('nextTick')) {
-            console.log('[browserSafeParser] nextTick error detected, reapplying polyfill and retrying');
-            polyfillGlobals();
-            
-            // Try one more time after refreshing polyfills
-            setTimeout(() => {
-              try {
-                const writeResult = parser.write(chunk);
-                console.log(`[browserSafeParser] Retry successful: Chunk ${offset}:${end} written`);
-                offset = end;
-                setTimeout(writeNextChunk, 0);
-              } catch (retryErr) {
-                console.error('[browserSafeParser] Retry failed:', retryErr);
-                clearTimeout(timeoutId);
-                reject(new Error(`Error writing data after retry: ${retryErr instanceof Error ? retryErr.message : 'Unknown error'}`));
-              }
-            }, 0);
-          } else {
-            // For other errors, just fail
-            clearTimeout(timeoutId);
-            reject(new Error(`Error writing data: ${err instanceof Error ? err.message : 'Unknown error'}`));
-          }
+        if (!parserInstance || typeof parserInstance.write !== 'function') {
+          throw new Error('parserInstance is not a valid writable stream target');
         }
+        
+        readableStream.pipe(parserInstance);
+        console.log('[browserSafeParser] Successfully piped stream to parser');
+        
+      } catch (error) {
+        console.error('[browserSafeParser] Error in parser setup:', error);
+        clearTimeout(timeoutId);
+        reject(new Error(`Error in parser setup: ${error instanceof Error ? error.message : 'Unknown error'}`));
       }
-      
-      // Start the writing process
-      writeNextChunk();
-      
-    } catch (error) {
-      // Clear the timeout
-      clearTimeout(timeoutId);
-      
-      console.error('[browserSafeParser] Error in parser setup:', error);
-      reject(new Error(`Error in parser setup: ${error instanceof Error ? error.message : 'Unknown error'}`));
-    }
-  });
+    });
+  } catch (error) {
+    console.error('[browserSafeParser] Error during parsing:', error);
+    throw new Error(`Error during parsing: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
