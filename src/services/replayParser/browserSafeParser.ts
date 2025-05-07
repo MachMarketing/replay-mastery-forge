@@ -1,4 +1,3 @@
-
 /**
  * This module provides a browser-safe implementation of the replay parser
  * using JSSUH library that works in the browser environment
@@ -9,6 +8,7 @@ import { ParsedReplayResult } from '../replayParserService';
 import JSSUH, { getReplayParserConstructor } from './jssuhLoader';
 // Import Readable for stream-based parsing
 import { Readable } from 'stream-browserify';
+import { Buffer } from 'buffer';
 
 // Define timeout for parser operations
 const PARSER_TIMEOUT_MS = 60000; // 60 seconds
@@ -185,6 +185,7 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
           console.log(`[browserSafeParser] Parser finished, parsed ${commands.length} commands`);
           
           clearTimeout(timeoutId);
+          clearTimeout(fallbackTimeout);
           
           const players = header?.players || [];
           const mapName = header?.mapName || 'Unknown';
@@ -203,43 +204,39 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
         parser.on('error', (err: any) => {
           console.error('[browserSafeParser] Parser error:', err);
           clearTimeout(timeoutId);
+          clearTimeout(fallbackTimeout);
           reject(err);
         });
 
-        // NEW APPROACH: Use stream-based parsing with pipeChk
+        // IMPROVED APPROACH: Use Readable.from() helper for simpler stream creation
         try {
-          console.log('[browserSafeParser] Creating a Readable and piping via pipeChk()');
+          console.log('[browserSafeParser] Creating Readable.from([data]) and piping via pipeChk()');
           
-          if (typeof parser.pipeChk !== 'function') {
-            console.error('[browserSafeParser] pipeChk method not available on parser instance');
-            throw new Error('pipeChk method not available on parser instance');
-          }
-          
-          const readable = new Readable({
-            read() {
-              try {
-                console.log('[browserSafeParser] Readable.read called, pushing data');
-                // push all data, then end
-                this.push(Buffer.from(data));
-                this.push(null);
-                console.log('[browserSafeParser] Successfully pushed data to readable stream');
-              } catch (e) {
-                console.error('[browserSafeParser] Error in Readable.read:', e);
-                this.destroy(e instanceof Error ? e : new Error(String(e)));
-              }
-            }
-          });
+          const buffer = Buffer.from(data);
+          const readable = Readable.from([buffer]);
           
           // Give JSSUH the uniform stream API it expects
-          console.log('[browserSafeParser] Calling parser.pipeChk with readable stream');
           parser.pipeChk(readable);
           console.log('[browserSafeParser] Successfully called pipeChk, waiting for events');
+          
+          // Also: if we still haven't seen a header in 2s, fall back to raw writes
+          const fallbackTimeout = setTimeout(() => {
+            console.warn('[browserSafeParser] ⚠️ No events after pipeChk—falling back to write/end');
+            try {
+              parser.write(buffer);
+              parser.end();
+              console.log('[browserSafeParser] Fallback write/end executed');
+            } catch (e) {
+              console.error('[browserSafeParser] Fallback write/end failed:', e);
+              reject(e);
+            }
+          }, 2000);
           
         } catch (pipeError) {
           console.error('[browserSafeParser] Error using pipeChk approach:', pipeError);
           
-          // Fallback to manual chunk writing if pipeChk fails
-          console.log('[browserSafeParser] Falling back to direct write+end approach');
+          // Immediate fallback to manual chunk writing if pipeChk fails
+          console.log('[browserSafeParser] Immediately falling back to direct write+end approach');
           try {
             parser.write(data);
             console.log('[browserSafeParser] Successfully wrote data, calling end()');
