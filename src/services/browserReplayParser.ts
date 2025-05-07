@@ -42,10 +42,14 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       
       try {
         console.log('[browserReplayParser] Parsing with screparsed...');
+        // Call the ReplayParser.fromArrayBuffer method directly
         const result = await ReplayParser.fromArrayBuffer(fileData);
         
         console.log(`[browserReplayParser] Parsing complete, found data:`, 
           result ? 'Result found' : 'No result');
+        
+        // Add the debugging log to see the exact structure
+        console.log('🛠 full parsed object →', result);
         
         // Clear the timeout since parsing completed
         clearTimeout(timeoutId);
@@ -54,18 +58,24 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
           throw new Error('Parser returned empty data');
         }
         
-        // Log more detailed information about the parsed data to help debugging
-        console.log(`[browserReplayParser] Header present: ${result.header ? 'Yes' : 'No'}`);
-        console.log(`[browserReplayParser] Commands count: ${result.commands?.length || 0}`);
-        console.log(`[browserReplayParser] Players count: ${result.players?.length || 0}`);
-        console.log(`[browserReplayParser] Map name: ${result.mapName || 'Unknown'}`);
+        // Log more detailed information about the parsed result structure
+        console.log(`[browserReplayParser] Result keys: ${Object.keys(result).join(', ')}`);
         
-        // Format the data in a way that matches our expected output
+        if (result.gameInfo) {
+          console.log(`[browserReplayParser] Game info: ${result.gameInfo.map || 'Unknown map'}`);
+        }
+        
+        if (result.players) {
+          console.log(`[browserReplayParser] Players count: ${result.players.length || 0}`);
+        }
+        
+        // Format the data based on what we see in the result object
+        // We'll use a more adaptive approach instead of assuming specific properties
         const parsedData = {
-          header: result.header,
-          commands: result.commands,
-          players: result.players,
-          mapName: result.mapName,
+          header: result.header || result.gameInfo || {},
+          commands: result.commands || [],
+          players: result.players || [],
+          mapName: result.gameInfo?.map || result.mapName || 'Unknown',
         };
         
         // Map the raw parsed data to our application format
