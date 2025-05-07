@@ -74,46 +74,32 @@ export async function initBrowserSafeParser(): Promise<void> {
  * Apply necessary global polyfills for JSSUH
  */
 function applyGlobalPolyfills(): void {
-  // Check global process
-  if (typeof globalThis.process !== 'undefined') {
-    console.log('[browserSafeParser] global.process exists:', typeof globalThis.process);
-  } else {
-    console.log('[browserSafeParser] global.process not found, creating it');
-    (globalThis as any).process = { env: {} };
-  }
-  
-  // Check process.env
-  if ((globalThis as any).process.env) {
-    console.log('[browserSafeParser] process.env exists:', typeof (globalThis as any).process.env);
-  } else {
-    console.log('[browserSafeParser] process.env not found, creating it');
-    (globalThis as any).process.env = {};
-  }
-  
-  // Check process.nextTick - use queueMicrotask for proper microtask semantics
-  if (typeof (globalThis as any).process.nextTick === 'function') {
-    console.log('[browserSafeParser] process.nextTick already exists, updating to use queueMicrotask');
-  }
-  
-  // Always replace nextTick with queueMicrotask implementation for true microtask semantics
-  (globalThis as any).process.nextTick = (callback: Function, ...args: any[]) => {
-    // queueMicrotask is a true microtask
-    queueMicrotask(() => callback(...args));
+  // 1) Ensure we have a single process object
+  const proc: any = (globalThis as any).process || {};
+  proc.env = proc.env || {};
+
+  // 2) Polyfill nextTick using queueMicrotask
+  proc.nextTick = (cb: Function, ...args: any[]) => {
+    queueMicrotask(() => cb(...args));
   };
-  
-  // Check window.process
+
+  // 3) Write it back to all global slots JSSUH might use
+  (globalThis as any).process = proc;
   if (typeof window !== 'undefined') {
-    if (typeof window.process !== 'undefined') {
-      console.log('[browserSafeParser] window.process check: exists',
-        typeof window.process.nextTick === 'function' ? 'nextTick: function' : 'nextTick: missing');
-    } else {
-      console.log('[browserSafeParser] window.process not found, mirroring from global');
-      (window as any).process = (globalThis as any).process;
-    }
+    (window as any).process = proc;
   }
+
+  // 4) Also alias process2 → process, so process2.nextTick is available
+  (globalThis as any).process2 = proc;
+  if (typeof window !== 'undefined') {
+    (window as any).process2 = proc;
+  }
+
+  console.log('[browserSafeParser] Polyfilled process & process2.nextTick');
   
   // Verify process.nextTick implementation
   console.log('[browserSafeParser] process.nextTick verification:', typeof (globalThis as any).process.nextTick);
+  console.log('[browserSafeParser] process2.nextTick verification:', typeof (globalThis as any).process2?.nextTick);
   
   // Test process.nextTick is working
   console.log('[browserSafeParser] process.nextTick test initiated, waiting for callback');
