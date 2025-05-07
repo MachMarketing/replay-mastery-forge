@@ -1,3 +1,4 @@
+
 /**
  * This module provides a browser-safe implementation of the replay parser
  * using JSSUH library that works in the browser environment
@@ -141,6 +142,9 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
         reject(new Error('Parsing timed out'));
       }, PARSER_TIMEOUT_MS);
       
+      // Declare fallbackTimeout at this scope level so it's available to all handlers
+      let fallbackTimeout: number | null = null;
+      
       try {
         console.log('[browserSafeParser] Creating parser instance');
         
@@ -185,7 +189,9 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
           console.log(`[browserSafeParser] Parser finished, parsed ${commands.length} commands`);
           
           clearTimeout(timeoutId);
-          clearTimeout(fallbackTimeout);
+          if (fallbackTimeout !== null) {
+            clearTimeout(fallbackTimeout);
+          }
           
           const players = header?.players || [];
           const mapName = header?.mapName || 'Unknown';
@@ -204,7 +210,9 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
         parser.on('error', (err: any) => {
           console.error('[browserSafeParser] Parser error:', err);
           clearTimeout(timeoutId);
-          clearTimeout(fallbackTimeout);
+          if (fallbackTimeout !== null) {
+            clearTimeout(fallbackTimeout);
+          }
           reject(err);
         });
 
@@ -220,7 +228,7 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
           console.log('[browserSafeParser] Successfully called pipeChk, waiting for events');
           
           // Also: if we still haven't seen a header in 2s, fall back to raw writes
-          const fallbackTimeout = setTimeout(() => {
+          fallbackTimeout = setTimeout(() => {
             console.warn('[browserSafeParser] ⚠️ No events after pipeChk—falling back to write/end');
             try {
               parser.write(buffer);
