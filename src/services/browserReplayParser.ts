@@ -7,22 +7,23 @@ import { ParsedReplayResult } from './replayParserService';
 import { initBrowserSafeParser, parseReplayWithBrowserSafeParser } from './replayParser/browserSafeParser';
 import { mapRawToParsed } from './replayMapper';
 
-// Ensure global.process is available
+// Ensure global.process is available with proper nextTick implementation
 if (typeof globalThis.process === 'undefined') {
   console.log('[browserReplayParser] Polyfilling global.process');
   (globalThis as any).process = {
     env: {},
     browser: true,
-    nextTick: (fn: Function) => setTimeout(fn, 0),
+    nextTick: (fn: Function, ...args: any[]) => setTimeout(() => fn(...args), 0),
   };
 } else {
   // Make sure process.env exists
   if (!(globalThis as any).process.env) {
     (globalThis as any).process.env = {};
   }
-  // Ensure nextTick is available
+  // Ensure nextTick is available and properly implemented
   if (typeof (globalThis as any).process.nextTick !== 'function') {
-    (globalThis as any).process.nextTick = (fn: Function) => setTimeout(fn, 0);
+    (globalThis as any).process.nextTick = (fn: Function, ...args: any[]) => setTimeout(() => fn(...args), 0);
+    console.log('[browserReplayParser] Polyfilled global.process.nextTick');
   }
 }
 

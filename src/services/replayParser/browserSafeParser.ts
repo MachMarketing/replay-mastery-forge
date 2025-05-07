@@ -25,6 +25,25 @@ const polyfillGlobals = () => {
     (globalThis as any).requestAnimationFrame = requestAnimationFrame;
     console.log('[browserSafeParser] Polyfilled global.requestAnimationFrame');
   }
+  
+  // Explicitly ensure process.nextTick is available
+  if (typeof globalThis.process === 'undefined') {
+    (globalThis as any).process = {
+      env: {},
+      browser: true,
+      nextTick: (fn: Function, ...args: any[]) => setTimeout(() => fn(...args), 0)
+    };
+    console.log('[browserSafeParser] Created global.process with nextTick');
+  } else if (!(globalThis as any).process.nextTick) {
+    (globalThis as any).process.nextTick = (fn: Function, ...args: any[]) => setTimeout(() => fn(...args), 0);
+    console.log('[browserSafeParser] Added nextTick to existing global.process');
+  }
+  
+  // Also add it to window for libraries that directly access window.process
+  if (typeof window !== 'undefined' && !window.process) {
+    (window as any).process = (globalThis as any).process;
+    console.log('[browserSafeParser] Mirrored process to window.process');
+  }
 };
 
 // Flag to track parser initialization
@@ -136,6 +155,9 @@ async function parseWithDirectDataAndTimeout(data: Uint8Array, timeoutMs: number
         return;
       }
       
+      // Ensure process.nextTick is available before creating parser
+      polyfillGlobals();
+      
       // Create a parser instance
       let parser;
       try {
@@ -165,6 +187,22 @@ async function parseWithDirectDataAndTimeout(data: Uint8Array, timeoutMs: number
         clearTimeout(timeoutId);
         reject(new Error('Parser does not have "on" method'));
         return;
+      }
+      
+      // Monkey patch the parser if it's using process.nextTick
+      if (parser._transform && parser._transform.toString().includes('process.nextTick')) {
+        console.log('[browserSafeParser] Monkey patching parser._transform to handle process.nextTick');
+        const originalTransform = parser._transform;
+        parser._transform = function(chunk: any, encoding: string, callback: Function) {
+          try {
+            return originalTransform.call(this, chunk, encoding, (err: any, data: any) => {
+              setTimeout(() => callback(err, data), 0);
+            });
+          } catch (err) {
+            console.error('[browserSafeParser] Error in patched _transform:', err);
+            setTimeout(() => callback(err), 0);
+          }
+        };
       }
       
       // Collected data
@@ -226,7 +264,7 @@ async function parseWithDirectDataAndTimeout(data: Uint8Array, timeoutMs: number
       }
       
       // Write the data chunk by chunk to avoid memory issues
-      const CHUNK_SIZE = 8192; // 8KB chunks
+      const CHUNK_SIZE = 4096; // Smaller chunks (4KB instead of 8KB)
       let offset = 0;
       
       function writeNextChunk() {
@@ -237,10 +275,23 @@ async function parseWithDirectDataAndTimeout(data: Uint8Array, timeoutMs: number
           // End the stream when all data has been written, handle missing end method
           if (typeof parser.end === 'function') {
             console.log('[browserSafeParser] Calling parser.end()');
-            parser.end();
+            try {
+              parser.end();
+            } catch (err) {
+              console.error('[browserSafeParser] Error in parser.end():', err);
+              // Still resolve since we've written all the data
+              clearTimeout(timeoutId);
+              resolve(result);
+            }
           } else if (typeof parser.emit === 'function') {
             console.log('[browserSafeParser] Parser.end not available, emitting end event manually');
-            parser.emit('end');
+            try {
+              parser.emit('end');
+            } catch (err) {
+              console.error('[browserSafeParser] Error emitting end event:', err);
+              clearTimeout(timeoutId);
+              resolve(result);
+            }
           } else {
             console.warn('[browserSafeParser] No way to signal end of data to parser');
             // Resolve manually since we can't properly signal end
@@ -256,22 +307,40 @@ async function parseWithDirectDataAndTimeout(data: Uint8Array, timeoutMs: number
         const chunk = data.slice(offset, end);
         
         try {
+          // Use a try-catch around each write operation
           const writeResult = parser.write(chunk);
           console.log(`[browserSafeParser] Chunk ${offset}:${end} written (${chunk.length} bytes), write result:`, writeResult);
           
           offset = end;
           
-          // Continue writing chunks asynchronously to avoid blocking the main thread
-          // Use requestAnimationFrame if available for better browser performance
-          if (typeof requestAnimationFrame === 'function') {
-            requestAnimationFrame(writeNextChunk);
-          } else {
-            setTimeout(writeNextChunk, 0);
-          }
+          // Use our own setTimeout instead of requestAnimationFrame for greater reliability
+          setTimeout(writeNextChunk, 0);
         } catch (err) {
           console.error('[browserSafeParser] Error writing chunk to parser:', err);
-          clearTimeout(timeoutId);
-          reject(new Error(`Error writing data: ${err instanceof Error ? err.message : 'Unknown error'}`));
+          
+          // If it's a nextTick error, try one more time with a fresh process.nextTick
+          if (err instanceof Error && err.message.includes('nextTick')) {
+            console.log('[browserSafeParser] nextTick error detected, reapplying polyfill and retrying');
+            polyfillGlobals();
+            
+            // Try one more time after refreshing polyfills
+            setTimeout(() => {
+              try {
+                const writeResult = parser.write(chunk);
+                console.log(`[browserSafeParser] Retry successful: Chunk ${offset}:${end} written`);
+                offset = end;
+                setTimeout(writeNextChunk, 0);
+              } catch (retryErr) {
+                console.error('[browserSafeParser] Retry failed:', retryErr);
+                clearTimeout(timeoutId);
+                reject(new Error(`Error writing data after retry: ${retryErr instanceof Error ? retryErr.message : 'Unknown error'}`));
+              }
+            }, 0);
+          } else {
+            // For other errors, just fail
+            clearTimeout(timeoutId);
+            reject(new Error(`Error writing data: ${err instanceof Error ? err.message : 'Unknown error'}`));
+          }
         }
       }
       

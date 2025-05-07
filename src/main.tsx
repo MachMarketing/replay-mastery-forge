@@ -23,14 +23,30 @@ if (typeof globalThis.clearTimeout === 'undefined' && typeof clearTimeout === 'f
 import { Buffer } from 'buffer';
 window.Buffer = Buffer;
 
-// Make sure process is defined globally 
+// Make sure process is defined globally with a properly implemented nextTick
 if (typeof globalThis.process === 'undefined') {
   console.log('Polyfilling global.process');
   (globalThis as any).process = {
     env: {},
     browser: true,
-    nextTick: (fn: Function) => setTimeout(fn, 0),
+    nextTick: (fn: Function, ...args: any[]) => setTimeout(() => fn(...args), 0),
   };
+} else {
+  // Make sure process.env exists
+  if (!(globalThis as any).process.env) {
+    (globalThis as any).process.env = {};
+  }
+  // Ensure nextTick is available and properly implemented
+  if (typeof (globalThis as any).process.nextTick !== 'function') {
+    (globalThis as any).process.nextTick = (fn: Function, ...args: any[]) => setTimeout(() => fn(...args), 0);
+    console.log('Polyfilled global.process.nextTick');
+  }
+}
+
+// Also make it available on window for libraries that expect it there
+if (typeof window !== 'undefined' && !window.process) {
+  (window as any).process = (globalThis as any).process;
+  console.log('Mirrored process to window.process');
 }
 
 // Make sure there's an element with id "root" in the DOM
