@@ -8,6 +8,13 @@ import { initBrowserSafeParser, parseReplayWithBrowserSafeParser } from './repla
 import { mapRawToParsed } from './replayMapper';
 import { transformJSSUHData } from './replayParser/transformer';
 
+// Add an explicit import of JSSUH to test if it's available and log its structure
+import JSSUH from 'jssuh';
+
+// Log the JSSUH object to help debug imports
+console.log('[browserReplayParser] JSSUH import:', JSSUH);
+console.log('[browserReplayParser] JSSUH keys:', JSSUH ? Object.keys(JSSUH) : 'not loaded');
+
 // Ensure global.process is available with proper nextTick implementation
 if (typeof globalThis.process === 'undefined') {
   console.log('[browserReplayParser] Polyfilling global.process');

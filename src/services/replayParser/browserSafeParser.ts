@@ -1,12 +1,11 @@
-
 /**
  * This module provides a browser-safe implementation of the replay parser
  * using JSSUH library that works in the browser environment
  */
-// Import the correct type definition
+// Import the correct type definition and our JSSUH loader
 import { ParsedReplayResult } from '../replayParserService';
-// Import JSSUH correctly
-import * as JSSUH from 'jssuh';
+// Import JSSUH using our dedicated loader
+import JSSUH, { getReplayParserConstructor } from './jssuhLoader';
 
 // Define timeout for parser operations
 const PARSER_TIMEOUT_MS = 60000; // 60 seconds
@@ -16,6 +15,7 @@ const CHUNK_SIZE = 8 * 1024;
 
 // Flag to track if parser has been initialized
 let parserInitialized = false;
+let ReplayParserClass: any = null;
 
 /**
  * Initialize the browser-safe parser
@@ -28,17 +28,19 @@ export async function initBrowserSafeParser(): Promise<void> {
     console.log('[browserSafeParser] Starting global polyfills');
     applyGlobalPolyfills();
 
-    // Verify JSSUH module by creating a test parser instance
-    console.log('[browserSafeParser] Verifying JSSUH module');
-    console.log('[browserSafeParser] JSSUH module:', JSSUH);
+    // Get the ReplayParser constructor from our loader
+    console.log('[browserSafeParser] Getting ReplayParser constructor');
+    ReplayParserClass = await getReplayParserConstructor();
     
-    // Check if ReplayParser exists in the imported module
-    if (!JSSUH.ReplayParser) {
-      console.error('[browserSafeParser] JSSUH.ReplayParser is not defined:', JSSUH);
-      throw new Error('JSSUH.ReplayParser is not defined in the imported module');
+    if (!ReplayParserClass) {
+      console.error('[browserSafeParser] Failed to get ReplayParser constructor');
+      throw new Error('Failed to get ReplayParser constructor');
     }
     
-    const testParser = new JSSUH.ReplayParser();
+    console.log('[browserSafeParser] Successfully obtained ReplayParser constructor');
+    
+    // Test creating an instance
+    const testParser = new ReplayParserClass();
     
     if (!testParser) {
       throw new Error('Failed to create ReplayParser instance');
@@ -47,6 +49,9 @@ export async function initBrowserSafeParser(): Promise<void> {
     // Mark as initialized if everything worked
     parserInitialized = true;
     console.log('[browserSafeParser] Browser-safe parser initialized successfully');
+    
+    // Store the constructor globally for reuse
+    (window as any).__JSSUH_ReplayParser = ReplayParserClass;
     
   } catch (error) {
     console.error('[browserSafeParser] Error initializing browser-safe parser:', error);
@@ -127,14 +132,19 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
       
       try {
         console.log('[browserSafeParser] Creating parser instance');
-        // Ensure we're using the correct way to access the ReplayParser
-        if (!JSSUH.ReplayParser) {
-          console.error('[browserSafeParser] JSSUH.ReplayParser is not defined:', JSSUH);
-          reject(new Error('JSSUH.ReplayParser is not defined'));
-          return;
+        
+        // Use the cached ReplayParser class
+        if (!ReplayParserClass) {
+          ReplayParserClass = (window as any).__JSSUH_ReplayParser;
+          
+          if (!ReplayParserClass) {
+            console.error('[browserSafeParser] ReplayParser class not available');
+            reject(new Error('ReplayParser class not available'));
+            return;
+          }
         }
         
-        const parser = new JSSUH.ReplayParser();
+        const parser = new ReplayParserClass();
         
         // Collected data
         let header: any = null;

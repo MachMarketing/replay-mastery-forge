@@ -12,6 +12,7 @@ import UploadPage from '@/pages/UploadPage';
 import NotFound from '@/pages/NotFound';
 import ParserTestPage from '@/pages/ParserTestPage';
 import ParserTest from '@/pages/ParserTest';
+import JSSUHTestPage from '@/pages/JSSUHTest';
 import { Toaster } from '@/components/ui/sonner';
 import './App.css';
 
@@ -40,6 +41,7 @@ function App() {
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/parser-test" element={<ParserTestPage />} />
           <Route path="/parser-debug" element={<ParserTest />} />
+          <Route path="/jssuh-test" element={<JSSUHTestPage />} />
           
           {/* Upload route is public to allow users to test without login */}
           <Route path="/upload" element={<UploadPage />} />
