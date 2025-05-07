@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, CheckCircle } from 'lucide-react';
-import JSSUH from 'jssuh';
+import { getReplayParserConstructor } from '@/services/replayParser/jssuhLoader';
 
 const JSSUHTest: React.FC = () => {
   const [status, setStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
@@ -11,34 +11,38 @@ const JSSUHTest: React.FC = () => {
   const [jssuhInfo, setJssuhInfo] = useState<any>(null);
 
   useEffect(() => {
-    // On mount, check if JSSUH is loaded and get its keys
-    if (JSSUH) {
-      setJssuhInfo({
-        type: typeof JSSUH,
-        hasReplayParser: !!JSSUH.ReplayParser,
-        isFunction: typeof JSSUH === 'function',
-        keys: typeof JSSUH === 'object' ? Object.keys(JSSUH) : []
-      });
-    }
+    // On mount, check if JSSUH is loaded
+    const checkJSSUH = async () => {
+      try {
+        // Try to import dynamically
+        const mod = await import('jssuh');
+        setJssuhInfo({
+          type: typeof mod,
+          hasReplayParser: !!mod.ReplayParser,
+          isFunction: typeof mod.ReplayParser === 'function',
+          keys: Object.keys(mod)
+        });
+      } catch (error) {
+        console.error('Error checking JSSUH:', error);
+        setJssuhInfo({
+          error: `Failed to load: ${error instanceof Error ? error.message : String(error)}`,
+          type: 'unknown'
+        });
+      }
+    };
+    
+    checkJSSUH();
   }, []);
 
   const runTest = async () => {
     setStatus('testing');
     try {
-      // Log what JSSUH gives us
-      console.log('JSSUH module:', JSSUH);
+      // Use our getReplayParserConstructor helper
+      const ReplayParserClass = await getReplayParserConstructor();
+      console.log('JSSUH ReplayParser constructor:', ReplayParserClass);
       
-      // Try to find the ReplayParser
-      const ReplayParserClass = JSSUH.ReplayParser || 
-                               JSSUH.default?.ReplayParser || 
-                               (typeof JSSUH === 'function' ? JSSUH : null);
-      
-      if (!ReplayParserClass) {
-        throw new Error('Could not find ReplayParser in JSSUH module');
-      }
-      
-      // Test instantiating the ReplayParser
-      const parser = new ReplayParserClass();
+      // Create parser with proper encoding option
+      const parser = new ReplayParserClass({ encoding: 'cp1252' });
       
       // Check if it has the expected methods
       const hasOnMethod = typeof parser.on === 'function';
@@ -95,7 +99,8 @@ const JSSUHTest: React.FC = () => {
           <p>JSSUH type: {jssuhInfo.type}</p>
           <p>Has ReplayParser: {jssuhInfo.hasReplayParser ? 'Yes' : 'No'}</p>
           <p>Is function: {jssuhInfo.isFunction ? 'Yes' : 'No'}</p>
-          <p>Available keys: {jssuhInfo.keys.length > 0 ? jssuhInfo.keys.join(', ') : 'None'}</p>
+          <p>Available keys: {jssuhInfo.keys?.length > 0 ? jssuhInfo.keys.join(', ') : 'None'}</p>
+          {jssuhInfo.error && <p className="text-destructive">Error: {jssuhInfo.error}</p>}
         </div>
       )}
       

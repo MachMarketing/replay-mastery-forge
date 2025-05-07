@@ -1,62 +1,40 @@
 
 /**
- * Helper module to directly import and test the JSSUH library
- * This helps ensure we're loading the library correctly
+ * Load the named export ReplayParser from jssuh
  */
-import JSSUH from 'jssuh';
-
-// This function returns the ReplayParser constructor from JSSUH
-export function getReplayParserConstructor() {
-  console.log('[jssuhLoader] Loading JSSUH ReplayParser');
+export async function getReplayParserConstructor(): Promise<
+  new (opts?: { encoding?: string }) => any
+> {
+  console.log('[jssuhLoader] Loading JSSUH ReplayParser with dynamic import');
   
   try {
-    // Log what we received from the import
-    console.log('[jssuhLoader] JSSUH import:', JSSUH);
+    // dynamic import ensures you get the real ESM namespace
+    const mod = await import('jssuh');
+    console.log('[jssuhLoader] JSSUH module loaded:', mod);
     
-    if (!JSSUH) {
-      throw new Error('JSSUH module not properly loaded');
+    const ReplayParser = mod.ReplayParser;
+    if (typeof ReplayParser !== 'function') {
+      console.error('[jssuhLoader] exports from jssuh:', Object.keys(mod));
+      throw new Error('jssuh did not export ReplayParser');
     }
     
-    // Log the available exports
-    const jssuKeys = typeof JSSUH === 'object' ? Object.keys(JSSUH) : [];
-    console.log('[jssuhLoader] JSSUH available exports:', jssuKeys);
+    console.log('[jssuhLoader] Found ReplayParser constructor');
     
-    // Attempt to find the ReplayParser, trying different possible locations
-    const ReplayParserClass = JSSUH.ReplayParser || 
-                             JSSUH.default?.ReplayParser || 
-                             (typeof JSSUH === 'function' ? JSSUH : null);
-                             
-    if (!ReplayParserClass) {
-      throw new Error('Could not find ReplayParser in JSSUH module');
-    }
-    
-    // Test if it's instantiable
-    try {
-      const testInstance = new ReplayParserClass();
-      console.log('[jssuhLoader] Successfully created ReplayParser instance:', testInstance);
-      
-      // Check for required methods on the parser
-      const hasWrite = typeof testInstance.write === 'function';
-      const hasEnd = typeof testInstance.end === 'function';
-      const hasOn = typeof testInstance.on === 'function';
-      
-      console.log('[jssuhLoader] Parser methods check:', { hasWrite, hasEnd, hasOn });
-      
-      if (!hasWrite || !hasEnd || !hasOn) {
-        throw new Error('ReplayParser instance is missing required methods');
+    // Quick smoke-test
+    const test = new ReplayParser({ encoding: 'cp1252' });
+    ['write', 'end', 'on'].forEach((fn) => {
+      if (typeof (test as any)[fn] !== 'function') {
+        throw new Error(`ReplayParser missing method ${fn}`);
       }
-    } catch (instError) {
-      console.error('[jssuhLoader] Failed to instantiate ReplayParser:', instError);
-      throw new Error(`ReplayParser instantiation failed: ${instError instanceof Error ? instError.message : String(instError)}`);
-    }
+    });
     
-    console.log('[jssuhLoader] Successfully verified ReplayParser constructor');
-    return ReplayParserClass;
+    console.log('[jssuhLoader] ReplayParser smoke test passed');
+    return ReplayParser;
   } catch (error) {
     console.error('[jssuhLoader] Error getting ReplayParser constructor:', error);
     throw error;
   }
 }
 
-// Export the JSSUH module directly
-export default JSSUH;
+// For backward compatibility, also export the default import
+export { default } from 'jssuh';

@@ -1,3 +1,4 @@
+
 /**
  * This module provides a browser-safe implementation of the replay parser
  * using JSSUH library that works in the browser environment
@@ -39,8 +40,8 @@ export async function initBrowserSafeParser(): Promise<void> {
     
     console.log('[browserSafeParser] Successfully obtained ReplayParser constructor');
     
-    // Test creating an instance
-    const testParser = new ReplayParserClass();
+    // Test creating an instance with proper encoding option
+    const testParser = new ReplayParserClass({ encoding: 'cp1252' });
     
     if (!testParser) {
       throw new Error('Failed to create ReplayParser instance');
@@ -79,15 +80,16 @@ function applyGlobalPolyfills(): void {
     (globalThis as any).process.env = {};
   }
   
-  // Check process.nextTick
+  // Check process.nextTick - use queueMicrotask for proper microtask semantics
   if (typeof (globalThis as any).process.nextTick === 'function') {
-    console.log('[browserSafeParser] process.nextTick already exists:', typeof (globalThis as any).process.nextTick);
-  } else {
-    console.log('[browserSafeParser] process.nextTick not found, creating it');
-    (globalThis as any).process.nextTick = (callback: Function, ...args: any[]) => {
-      setTimeout(() => callback(...args), 0);
-    };
+    console.log('[browserSafeParser] process.nextTick already exists, updating to use queueMicrotask');
   }
+  
+  // Always replace nextTick with queueMicrotask implementation for true microtask semantics
+  (globalThis as any).process.nextTick = (callback: Function, ...args: any[]) => {
+    // queueMicrotask is a true microtask
+    queueMicrotask(() => callback(...args));
+  };
   
   // Check window.process
   if (typeof window !== 'undefined') {
@@ -144,7 +146,8 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
           }
         }
         
-        const parser = new ReplayParserClass();
+        // Create parser with proper encoding option from jssuh docs
+        const parser = new ReplayParserClass({ encoding: 'cp1252' });
         
         // Collected data
         let header: any = null;

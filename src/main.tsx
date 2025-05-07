@@ -18,7 +18,7 @@ const queryClient = new QueryClient({
   },
 });
 
-// Explicit polyfill for process.nextTick
+// Explicit polyfill for process.nextTick using queueMicrotask
 if (typeof window !== 'undefined') {
   if (typeof window.process === 'undefined') {
     // Use 'as any' to bypass TypeScript's strict type checking
@@ -26,16 +26,16 @@ if (typeof window !== 'undefined') {
     (window as any).process = { 
       env: {},
       nextTick: function(callback: Function, ...args: any[]) {
-        setTimeout(() => callback(...args), 0);
+        queueMicrotask(() => callback(...args));
       }
     };
-    console.log('✅ Explicit process.nextTick polyfill applied in main.tsx');
+    console.log('✅ Explicit process.nextTick polyfill applied in main.tsx with queueMicrotask');
   } else if (typeof window.process.nextTick !== 'function') {
     // Add nextTick if process exists but nextTick doesn't
     window.process.nextTick = function(callback: Function, ...args: any[]) {
-      setTimeout(() => callback(...args), 0);
+      queueMicrotask(() => callback(...args));
     };
-    console.log('✅ Added process.nextTick to existing process object');
+    console.log('✅ Added process.nextTick using queueMicrotask to existing process object');
   }
 }
 
