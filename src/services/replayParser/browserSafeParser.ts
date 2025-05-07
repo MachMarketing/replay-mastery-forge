@@ -147,7 +147,7 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
   
   try {
     // Return a promise that will resolve with the parsed data
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       // Set a timeout
       const timeoutId = setTimeout(() => {
         console.error(`[browserSafeParser] Parsing timed out after ${PARSER_TIMEOUT_MS/1000} seconds`);
