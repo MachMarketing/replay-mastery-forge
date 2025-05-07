@@ -26,7 +26,7 @@ export default defineConfig(({ mode }) => ({
     mode === 'development' && componentTagger(),
     {
       name: 'explicit-process-nextTick-polyfill',
-      transform(code, id) {
+      transform(code: string, id: string) {
         // Add explicit polyfill for process.nextTick at the top of main.tsx
         if (id.includes('main.tsx')) {
           const polyfill = `
@@ -65,8 +65,8 @@ if (typeof window !== 'undefined') {
     // Define process.env for compatibility
     'process.env': {},
     'global': 'globalThis',
-    // Ensure nextTick is available
-    'process.nextTick': 'function(cb) { setTimeout(cb, 0); }',
+    // Use queueMicrotask instead of a function string
+    'process.nextTick': 'globalThis.queueMicrotask',
   },
   optimizeDeps: {
     esbuildOptions: {
