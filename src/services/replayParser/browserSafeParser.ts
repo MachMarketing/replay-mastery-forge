@@ -74,32 +74,52 @@ export async function initBrowserSafeParser(): Promise<void> {
  * Apply necessary global polyfills for JSSUH
  */
 function applyGlobalPolyfills(): void {
-  // 1) Ensure we have a single process object
-  const proc: any = (globalThis as any).process || {};
-  proc.env = proc.env || {};
-
-  // 2) Polyfill nextTick using queueMicrotask
-  proc.nextTick = (cb: Function, ...args: any[]) => {
-    queueMicrotask(() => cb(...args));
+  // 1) Create a single process object with nextTick
+  const proc: any = {
+    env: {},
+    browser: true,
+    nextTick(cb: Function, ...args: any[]) {
+      queueMicrotask(() => cb(...args));
+    },
   };
+  // Some modules do `import p from 'process'`, so p.default must exist
+  proc.default = proc;
 
-  // 3) Write it back to all global slots JSSUH might use
+  // 2) Install it in every place JSSUH might look
   (globalThis as any).process = proc;
+  (globalThis as any).process2 = proc;
+  (globalThis as any).process3 = proc;
   if (typeof window !== 'undefined') {
     (window as any).process = proc;
-  }
-
-  // 4) Also alias process2 → process, so process2.nextTick is available
-  (globalThis as any).process2 = proc;
-  if (typeof window !== 'undefined') {
     (window as any).process2 = proc;
+    (window as any).process3 = proc;
   }
 
-  console.log('[browserSafeParser] Polyfilled process & process2.nextTick');
+  console.log('[browserSafeParser] ✅ Polyfilled process/process2/process3.nextTick');
+
+  // 3) Shim Readable.from for stream-browserify
+  if (typeof Readable.from !== 'function') {
+    Readable.from = function<T>(iterable: Iterable<T>) {
+      const it = iterable[Symbol.iterator]();
+      return new Readable({
+        objectMode: true,
+        read() {
+          const { value, done } = it.next();
+          if (done) {
+            this.push(null);
+          } else {
+            this.push(value);
+          }
+        },
+      });
+    } as any;
+    console.log('[browserSafeParser] ✅ Shimmed Readable.from');
+  }
   
   // Verify process.nextTick implementation
   console.log('[browserSafeParser] process.nextTick verification:', typeof (globalThis as any).process.nextTick);
   console.log('[browserSafeParser] process2.nextTick verification:', typeof (globalThis as any).process2?.nextTick);
+  console.log('[browserSafeParser] process3.nextTick verification:', typeof (globalThis as any).process3?.nextTick);
   
   // Test process.nextTick is working
   console.log('[browserSafeParser] process.nextTick test initiated, waiting for callback');
