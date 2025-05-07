@@ -42,8 +42,12 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       
       try {
         console.log('[browserReplayParser] Parsing with screparsed...');
-        // Call the ReplayParser.fromArrayBuffer method directly
-        const result = await ReplayParser.fromArrayBuffer(fileData);
+        // Create the parser from the array buffer
+        const parser = ReplayParser.fromArrayBuffer(fileData);
+        
+        console.log('[browserReplayParser] Running parser.parse()...');
+        // Actually run the parsing operation
+        const result = await parser.parse();
         
         console.log(`[browserReplayParser] Parsing complete, found data:`, 
           result ? 'Result found' : 'No result');
@@ -72,10 +76,11 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
         // Format the data based on what we see in the result object
         // We'll use a more adaptive approach instead of assuming specific properties
         const parsedData = {
-          header: result.header || result.gameInfo || {},
-          commands: result.commands || [],
+          header: result.gameInfo || {},
+          commands: [], // screparsed doesn't emit individual commands
           players: result.players || [],
-          mapName: result.gameInfo?.map || result.mapName || 'Unknown',
+          mapName: result.gameInfo?.map || 'Unknown',
+          chat: result.chatMessages || []
         };
         
         // Map the raw parsed data to our application format
