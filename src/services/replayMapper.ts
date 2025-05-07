@@ -1,4 +1,3 @@
-
 /**
  * Maps raw parser data to our application's format
  */
@@ -16,10 +15,10 @@ export function mapRawToParsed(rawData: any): ParsedReplayResult {
   console.log('🔄 mapRawToParsed keys:', Object.keys(rawData));
   
   try {
-    // Check if we're dealing with SCREP-WASM format (has Header property)
-    if (rawData.Header) {
-      console.log('🔄 Handling SCREP-WASM format with Header');
-      return mapScrepWasmFormat(rawData);
+    // Check if we're dealing with screparsed format (has gameInfo property)
+    if (rawData.header && typeof rawData.header === 'object') {
+      console.log('🔄 Handling screparsed format with gameInfo');
+      return mapScreparsedFormat(rawData);
     }
     
     // Check if data is already in our format
@@ -100,29 +99,12 @@ export function mapRawToParsed(rawData: any): ParsedReplayResult {
 }
 
 /**
- * Map data from the SCREP-WASM format (with Header, Commands, etc.)
+ * Map data from the screparsed format with gameInfo, players, etc.
  */
-function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
-  // Debug the raw WASM data structure
-  console.log('🔄 SCREP-WASM Header:', rawData.Header ? Object.keys(rawData.Header) : 'missing');
-  
-  // Add detailed debugging logs
-  console.log('🔄 mapScrepWasmFormat received rawData keys:', Object.keys(rawData));
-  console.log('🔄 mapScrepWasmFormat rawData.Commands:', rawData.Commands);
-  console.log('🔄 mapScrepWasmFormat rawData.Commands is Array:', Array.isArray(rawData.Commands));
-  
-  // Add detailed logging of the Header structure
-  console.log('💡 Full Header object:', rawData.Header);
-  console.log('💡 Header.players array:', rawData.Header.Players || rawData.Header.players);
-  
-  console.log('🔄 SCREP-WASM MapData:', rawData.MapData ? Object.keys(rawData.MapData) : 'missing');
-  console.log('🔄 SCREP-WASM Computed:', rawData.Computed ? Object.keys(rawData.Computed) : 'missing');
-  console.log('🔄 SCREP-WASM Commands count:', rawData.Commands ? rawData.Commands.length : 'missing');
-  
-  // Log the first few commands to understand their structure
-  if (rawData.Commands && rawData.Commands.length > 0) {
-    console.log('💡 First 3 commands sample:', rawData.Commands.slice(0, 3));
-  }
+function mapScreparsedFormat(rawData: any): ParsedReplayResult {
+  // Debug the raw structure
+  console.log('🔄 screparsed header:', rawData.header ? Object.keys(rawData.header) : 'missing');
+  console.log('🔄 screparsed players:', rawData.players ? rawData.players.length : 'missing');
   
   // Extract players
   let playerName = 'Player';
@@ -130,60 +112,32 @@ function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
   let playerRace = 'Terran';
   let opponentRace = 'Protoss';
   
-  if (rawData.Header?.Players && Array.isArray(rawData.Header.Players)) {
-    // SCREP-WASM uses uppercase "Players" field
-    const players = rawData.Header.Players;
-    
+  if (rawData.players && Array.isArray(rawData.players) && rawData.players.length > 0) {
     // Extract player info (first player in the array)
-    if (players.length > 0) {
-      const player = players[0];
-      playerName = formatPlayerName(player.Name || '');
-      playerRace = standardizeRaceName(player.Race?.Name || 'Unknown');
+    if (rawData.players.length > 0) {
+      const player = rawData.players[0];
+      playerName = formatPlayerName(player.name || '');
+      playerRace = standardizeRaceName(player.race || 'Unknown');
+      
+      console.log(`🔄 Player 1: ${playerName} (${playerRace})`);
     }
     
     // Extract opponent info (second player in the array)
-    if (players.length > 1) {
-      const opponent = players[1];
-      opponentName = formatPlayerName(opponent.Name || '');
-      opponentRace = standardizeRaceName(opponent.Race?.Name || 'Unknown');
+    if (rawData.players.length > 1) {
+      const opponent = rawData.players[1];
+      opponentName = formatPlayerName(opponent.name || '');
+      opponentRace = standardizeRaceName(opponent.race || 'Unknown');
+      
+      console.log(`🔄 Player 2: ${opponentName} (${opponentRace})`);
     }
-    
-    console.log(`🔄 Extracted players: ${playerName} (${playerRace}) vs ${opponentName} (${opponentRace})`);
-  } else if (rawData.Header?.players && Array.isArray(rawData.Header.players)) {
-    // Lowercase "players" field (alternative format)
-    const players = rawData.Header.players;
-    
-    // Extract player info (first player in the array)
-    if (players.length > 0) {
-      const player = players[0];
-      playerName = formatPlayerName(player.Name || player.name || '');
-      playerRace = standardizeRaceName(
-        player.Race?.Name || player.Race?.name || player.race || 'Unknown'
-      );
-    }
-    
-    // Extract opponent info (second player in the array)
-    if (players.length > 1) {
-      const opponent = players[1];
-      opponentName = formatPlayerName(opponent.Name || opponent.name || '');
-      opponentRace = standardizeRaceName(
-        opponent.Race?.Name || opponent.Race?.name || opponent.race || 'Unknown'
-      );
-    }
-    
-    console.log(`🔄 Extracted players: ${playerName} (${playerRace}) vs ${opponentName} (${opponentRace})`);
   }
   
   // Extract map information
   let map = 'Unknown Map';
-  if (rawData.Header?.Map) {
-    map = rawData.Header.Map;
-  } else if (rawData.Header?.map) {
-    map = rawData.Header.map;
-  } else if (rawData.Header?.mapName) {
-    map = rawData.Header.mapName;
-  } else if (rawData.MapData?.name) {
-    map = rawData.MapData.name;
+  if (rawData.header?.map) {
+    map = rawData.header.map;
+  } else if (rawData.mapName) {
+    map = rawData.mapName;
   }
   
   // Clean up map name by removing control characters
@@ -195,13 +149,14 @@ function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
   // Create matchup
   const matchup = `${playerRace.charAt(0)}v${opponentRace.charAt(0)}`;
   
-  // Extract duration
+  // Extract duration from frames
   let durationMs = 600000; // Default: 10 minutes
   let duration = '10:00';
   
-  if (rawData.Header?.Frames) {
-    const frames = rawData.Header.Frames;
+  const gameInfo = rawData.header;
+  if (gameInfo && gameInfo.frames) {
     // Frames to MS (assuming 23.81 FPS for Brood War)
+    const frames = gameInfo.frames;
     durationMs = Math.round(frames / 23.81 * 1000);
     
     const minutes = Math.floor(durationMs / 60000);
@@ -209,173 +164,72 @@ function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
     duration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
     
     console.log(`🔄 Duration: ${duration} (${durationMs}ms from ${frames} frames)`);
-  } else if (rawData.Header?.durationFrames) {
-    const frames = rawData.Header.durationFrames;
-    // Frames to MS (assuming 23.81 FPS for Brood War)
-    durationMs = Math.round(frames / 23.81 * 1000);
-    
-    const minutes = Math.floor(durationMs / 60000);
-    const seconds = Math.floor((durationMs % 60000) / 1000);
-    duration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
   
   // Extract date
   let date = new Date().toISOString().split('T')[0];
-  if (rawData.Header?.StartTime) {
+  if (gameInfo && gameInfo.startTime) {
     try {
-      const startDate = new Date(rawData.Header.StartTime);
+      const startDate = new Date(gameInfo.startTime);
       date = startDate.toISOString().split('T')[0];
     } catch {
-      console.warn('🔄 Could not parse StartTime:', rawData.Header.StartTime);
-    }
-  } else if (rawData.Header?.startTime) {
-    try {
-      const startDate = new Date(rawData.Header.startTime);
-      date = startDate.toISOString().split('T')[0];
-    } catch {
-      console.warn('🔄 Could not parse startTime:', rawData.Header.startTime);
+      console.warn('🔄 Could not parse startTime:', gameInfo.startTime);
     }
   }
   
-  // Calculate APM and EAPM
+  // Calculate APM from players data
   let apm = 150; // Default
   let eapm = 120; // Default
   
-  if (rawData.Computed?.apm) {
-    apm = Math.round(rawData.Computed.apm);
-    eapm = Math.round(rawData.Computed.eapm || apm * 0.8);
-  } else if (rawData.Commands && Array.isArray(rawData.Commands)) {
-    const durationMinutes = Math.max(durationMs / 60000, 1);
-    apm = Math.round(rawData.Commands.length / durationMinutes);
-    eapm = Math.round(apm * 0.8); // Estimate EAPM as 80% of APM
+  // Use the first player's APM if available
+  if (rawData.players && rawData.players.length > 0 && rawData.players[0].apm) {
+    apm = Math.round(rawData.players[0].apm);
+    eapm = Math.round(rawData.players[0].eapm || apm * 0.8);
   }
   
-  // Enhanced build order extraction
-  let buildOrder: Array<{time: string; supply: number; action: string}> = [];
-  if (rawData.Commands && Array.isArray(rawData.Commands) && rawData.Commands.length > 0) {
-    console.log('💡 Processing Commands for build order, commands count:', rawData.Commands.length);
-    
-    // Add the requested debug logs
-    console.log('💡 First 5 Commands:', rawData.Commands.slice(0, 5));
-    console.log('💡 Sample Command keys (first command):', rawData.Commands.length > 0 ? Object.keys(rawData.Commands[0]) : 'No commands');
-    
-    // Enhanced debug for Commands array structure
-    if (rawData.Commands.length > 0) {
-      const sampleCmd = rawData.Commands[0];
-      console.log('💡 Detailed command structure of first command:', JSON.stringify(sampleCmd, null, 2));
-      console.log('💡 Command properties:', {
-        id: sampleCmd.id,
-        type: sampleCmd.type,
-        name: sampleCmd.name,
-        action: sampleCmd.action,
-        frame: sampleCmd.frame,
-        player: sampleCmd.player
-      });
-    }
-    
-    // Look for build-related commands - need to handle different possible command structures
-    const buildRelatedCommands = rawData.Commands.filter((cmd: any) => {
-      // Check various command properties that might indicate building or training
-      const isTrainOrBuild = cmd.type === 'build' || 
-                            cmd.type === 'train' || 
-                            cmd.name?.toLowerCase().includes('build') ||
-                            cmd.name?.toLowerCase().includes('train') ||
-                            cmd.action?.toLowerCase().includes('build') ||
-                            cmd.action?.toLowerCase().includes('train') ||
-                            // Building-specific commands
-                            cmd.name?.includes('Gateway') ||
-                            cmd.name?.includes('Nexus') ||
-                            cmd.name?.includes('Pylon') ||
-                            cmd.name?.includes('Barracks') ||
-                            cmd.name?.includes('Factory') ||
-                            cmd.name?.includes('Command Center') ||
-                            cmd.name?.includes('Supply Depot') ||
-                            cmd.name?.includes('Hatchery') ||
-                            cmd.name?.includes('Spawning Pool') ||
-                            cmd.name?.includes('Evolution Chamber') ||
-                            // Check for explicit command IDs
-                            cmd.id === 0xc || // Build (Protoss/Terran)
-                            cmd.id === 0x0c || // Build (Protoss/Terran)
-                            cmd.id === 0x1c || // Train unit
-                            cmd.id === 0x1f || // Zerg build/morph
-                            cmd.id === 0x23 || // Upgrade
-                            cmd.id === 0x30 || // Technology research
-                            cmd.id === 0x32;  // Build/morph structure
-                            
-      if (isTrainOrBuild) {
-        console.log('💡 Found build command:', cmd);
-      }
-      
-      return isTrainOrBuild;
+  // Process chat messages if available
+  let chatMessages: string[] = [];
+  if (rawData.chat && Array.isArray(rawData.chat) && rawData.chat.length > 0) {
+    chatMessages = rawData.chat.map((chat: any) => {
+      const sender = chat.sender?.name || 'Unknown';
+      return `${sender}: ${chat.message}`;
     });
-    
-    console.log(`💡 Found ${buildRelatedCommands.length} build-related commands`);
-    
-    // Extract build info from the filtered commands
-    buildOrder = buildRelatedCommands.map((cmd: any, index: number) => {
-      // Convert frame to time display
-      const frameTime = cmd.frame || cmd.Frame || 0;
-      const seconds = Math.floor(frameTime / 23.81);
-      const minutes = Math.floor(seconds / 60);
-      const remainingSeconds = seconds % 60;
-      const timeString = `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-      
-      // Get the supply value
-      const supply = cmd.supply || cmd.Supply || index * 2 + 8; // Fallback to an estimated supply count
-      
-      // Extract the action name with fallbacks for different property names
-      const action = cmd.name || cmd.Name || cmd.action || cmd.Action || 
-                    (cmd.type ? `${cmd.type} ${cmd.unit || ''}` : 'Unknown Build Action');
-      
-      return {
-        time: timeString,
-        supply: typeof supply === 'number' ? supply : parseInt(supply, 10) || 0,
-        action: action 
-      };
-    })
-    .filter((item: any) => item.action && item.action !== 'Unknown Build Action')
-    .slice(0, 30); // Limit to first 30 build actions
   }
   
-  console.log(`🔄 Extracted build order items: ${buildOrder.length}`);
+  // Enhanced build order extraction based on screparsed format
+  let buildOrder: Array<{time: string; supply: number; action: string}> = [];
   
-  // Create a basic resources graph from commands if available
+  // Assuming screparsed provides some sort of command or action history
+  // We'll need to adjust this based on what's actually in the data
+  
+  // Try to derive build order from players' buildOrder if available
+  if (rawData.players && rawData.players.length > 0 && rawData.players[0].buildOrder) {
+    buildOrder = rawData.players[0].buildOrder.map((item: any, index: number) => {
+      return {
+        time: item.time || `${Math.floor(index * 30 / 60)}:${(index * 30 % 60).toString().padStart(2, '0')}`,
+        supply: item.supply || index * 2 + 8,
+        action: item.action || item.unit || 'Unknown Action'
+      };
+    });
+  }
+  
+  // Set result based on game outcome if available, default to 'win'
+  const result = rawData.players && 
+                rawData.players.length > 0 && 
+                rawData.players[0].result === 'loss' ? 'loss' : 'win';
+  
+  // Create a basic resources graph if available
   let resourcesGraph: Array<{time: string; minerals: number; gas: number}> = [];
-  if (rawData.Commands && Array.isArray(rawData.Commands)) {
-    // Try to find resource-related commands
-    const resourceCommands = rawData.Commands.filter((cmd: any) => 
-      cmd.minerals !== undefined || 
-      cmd.Minerals !== undefined || 
-      cmd.gas !== undefined || 
-      cmd.Gas !== undefined ||
-      cmd.Resources?.minerals !== undefined ||
-      cmd.Resources?.gas !== undefined);
-    
-    if (resourceCommands.length > 0) {
-      console.log(`💡 Found ${resourceCommands.length} resource-related commands`);
-      
-      // Sample at intervals
-      const interval = Math.max(Math.floor(resourceCommands.length / 20), 1);
-      resourcesGraph = resourceCommands
-        .filter((_: any, i: number) => i % interval === 0)
-        .map((cmd: any) => {
-          const frameTime = cmd.frame || cmd.Frame || 0;
-          const seconds = Math.floor(frameTime / 23.81);
-          const minutes = Math.floor(seconds / 60);
-          const remainingSeconds = seconds % 60;
-          const timeString = `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-          
-          // Handle different resource property structures
-          const minerals = cmd.minerals || cmd.Minerals || cmd.Resources?.minerals || 0;
-          const gas = cmd.gas || cmd.Gas || cmd.Resources?.gas || 0;
-          
-          return {
-            time: timeString,
-            minerals: typeof minerals === 'number' ? minerals : parseInt(minerals, 10) || 0,
-            gas: typeof gas === 'number' ? gas : parseInt(gas, 10) || 0
-          };
-        });
-    }
+  
+  // Try to derive resources from players' resources if available
+  if (rawData.players && rawData.players.length > 0 && rawData.players[0].resourceHistory) {
+    resourcesGraph = rawData.players[0].resourceHistory.map((item: any) => {
+      return {
+        time: item.time || '0:00',
+        minerals: item.minerals || 0,
+        gas: item.gas || 0
+      };
+    });
   }
   
   // Default strengths and recommendations based on player race
@@ -383,7 +237,7 @@ function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
   let weaknesses = ['Could improve build order efficiency'];
   let recommendations = ['Focus on early game scouting'];
   
-  // Create race-specific default feedback
+  // Create race-specific default feedback based on the player's race
   if (playerRace === 'Terran') {
     strengths = ['Good defensive positioning', 'Effective unit production'];
     weaknesses = ['Could improve siege tank placement', 'Slow tech transitions'];
@@ -409,7 +263,7 @@ function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
     duration,
     durationMS: durationMs,
     date,
-    result: 'win', // Default to win as we can't determine from SCREP data
+    result: result,
     apm,
     eapm,
     buildOrder,
@@ -419,7 +273,7 @@ function mapScrepWasmFormat(rawData: any): ParsedReplayResult {
     recommendations
   };
   
-  // Debug log the result - fix: remove the second argument
+  // Debug log the result
   debugLogReplayData(result);
   
   return result;

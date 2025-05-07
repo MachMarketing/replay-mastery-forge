@@ -41,7 +41,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       }, PARSER_TIMEOUT_MS);
       
       try {
-        console.log('[browserReplayParser] Parsing with screparsed...');
+        console.log('[browserReplayParser] Creating parser from ArrayBuffer...');
         // Create the parser from the array buffer
         const parser = ReplayParser.fromArrayBuffer(fileData);
         
@@ -49,14 +49,14 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
         // Actually run the parsing operation
         const result = await parser.parse();
         
-        console.log(`[browserReplayParser] Parsing complete, found data:`, 
-          result ? 'Result found' : 'No result');
-        
         // Add the debugging log to see the exact structure
         console.log('🛠 full parsed object →', result);
         
         // Clear the timeout since parsing completed
         clearTimeout(timeoutId);
+        
+        console.log(`[browserReplayParser] Parsing complete, found data:`, 
+          result ? 'Result found' : 'No result');
         
         if (!result) {
           throw new Error('Parser returned empty data');
