@@ -43,6 +43,8 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
   let rawData;
   try {
     rawData = await parseReplayWithBrowserSafeParser(new Uint8Array(fileBuffer));
+    console.log('[browserReplayParser] Raw parsed data structure:', 
+      rawData ? Object.keys(rawData).join(', ') : 'null');
   } catch (error) {
     console.error('[browserReplayParser] Error during parsing:', error);
     // If parsing fails, create a minimal structure
@@ -54,137 +56,59 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
     return createMinimalReplayData(file.name);
   }
   
-  console.log('[browserReplayParser] Raw parsed data:', rawData);
-  
-  // Check if we have a valid structure from screparsed
-  // If the _gameInfo property is present, it means we got the raw replay object
-  // rather than the parsed version - we need to handle this differently
-  if (rawData._gameInfo && (!rawData.header || !rawData.players || !rawData.commands)) {
-    console.log('[browserReplayParser] Got raw game info object, creating basic parsed structure');
-    
-    // Create a minimal viable structure for this case
+  try {
+    // Based on screparsed documentation, the structure should have:
+    // header, commands, mapData and players fields
     const parsedData = {
-      header: {
-        map: 'Unknown Map',
-        duration: 600, // Default 10 minutes
-        startTime: new Date().toISOString()
-      },
-      players: [
-        { id: 0, name: 'Player 1', race: 2 }, // 2 = Protoss
-        { id: 1, name: 'Player 2', race: 2 }  // 2 = Protoss
-      ],
-      commands: [],
-      mapData: { name: 'Unknown Map' }
+      header: rawData.header || {},
+      commands: Array.isArray(rawData.commands) ? rawData.commands : [],
+      mapData: rawData.mapData || { name: 'Unknown Map' },
+      players: Array.isArray(rawData.players) ? rawData.players : []
     };
     
-    // Try to extract some info from the raw data if possible
-    if (rawData._gameInfo && rawData._gameInfo.value && rawData._gameInfo.value.length > 100) {
-      // Look for player names in the byte array
-      // This is very basic extraction just to get something
-      try {
-        const dataArray = rawData._gameInfo.value;
-        // Try to find strings that look like player names
-        const textChunks = [];
-        let currentChunk = '';
-        
-        // Scan through the data looking for readable text
-        for (let i = 0; i < dataArray.length; i++) {
-          const byte = dataArray[i];
-          // If it's a printable ASCII character
-          if (byte >= 32 && byte <= 126) {
-            currentChunk += String.fromCharCode(byte);
-          } else if (currentChunk.length > 3) {
-            // If we have a chunk of reasonable length, save it
-            textChunks.push(currentChunk);
-            currentChunk = '';
-          } else {
-            currentChunk = '';
-          }
-        }
-        
-        // Find chunks that might be player names (not too long, no special chars)
-        const possibleNames = textChunks.filter(chunk => 
-          chunk.length > 2 && 
-          chunk.length < 16 && 
-          /^[a-zA-Z0-9_\-\s]+$/.test(chunk)
-        );
-        
-        if (possibleNames.length >= 2) {
-          parsedData.players[0].name = possibleNames[0];
-          parsedData.players[1].name = possibleNames[1];
-          console.log('[browserReplayParser] Extracted possible player names:', possibleNames.slice(0, 2));
-        }
-        
-        // Try to extract map name
-        const mapNames = textChunks.filter(chunk => 
-          chunk.length > 3 && 
-          chunk.length < 30 &&
-          chunk.toLowerCase().includes('map')
-        );
-        
-        if (mapNames.length > 0) {
-          parsedData.header.map = mapNames[0];
-          parsedData.mapData.name = mapNames[0];
-        }
-      } catch (e) {
-        console.error('[browserReplayParser] Error extracting data from raw bytes:', e);
-      }
-    }
-    
-    return transformParsedData(parsedData);
-  }
-  
-  try {
-    // Extract relevant data from screparsed output format
-    // Carefully check for undefined properties
-    const header = rawData.header || {};
-    const commands = Array.isArray(rawData.commands) ? rawData.commands : [];
-    const mapData = rawData.mapData || {};
-    
-    // Extract player data safely
-    const playerInfos = [];
-    
-    // Extract player data - handle the case where playerStructs is not iterable
-    if (rawData.players && Array.isArray(rawData.players)) {
-      playerInfos.push(...rawData.players);
-    } else if (header.players && Array.isArray(header.players)) {
-      playerInfos.push(...header.players);
-    } else if (rawData._gameInfo && rawData._gameInfo.playerStructs) {
-      // Try to extract from playerStructs directly if it exists but isn't iterable
-      try {
-        // If it's an object with keys we can enumerate
-        if (typeof rawData._gameInfo.playerStructs === 'object') {
+    // Handle special case where we got a raw game info object
+    if (!parsedData.players.length && rawData._gameInfo) {
+      console.log('[browserReplayParser] Using raw game info to extract players');
+      
+      // Try to extract player data from _gameInfo
+      if (rawData._gameInfo.playerStructs && typeof rawData._gameInfo.playerStructs === 'object') {
+        try {
           Object.keys(rawData._gameInfo.playerStructs).forEach(key => {
             const playerStruct = rawData._gameInfo.playerStructs[key];
             if (playerStruct) {
-              playerInfos.push({
+              parsedData.players.push({
                 id: Number(key),
                 name: playerStruct.name || `Player ${Number(key) + 1}`,
                 race: playerStruct.race || 2
               });
             }
           });
+        } catch (e) {
+          console.error('[browserReplayParser] Error extracting from playerStructs:', e);
         }
-      } catch (e) {
-        console.error('[browserReplayParser] Error extracting from playerStructs:', e);
       }
     }
     
-    // If we still don't have enough player data, create placeholder players
-    if (playerInfos.length < 2) {
-      console.log('[browserReplayParser] Not enough player data found, creating placeholders');
-      playerInfos.push(
-        { id: 0, name: 'Player 1', race: 2 }, // 2 = Protoss
-        { id: 1, name: 'Player 2', race: 2 }  // 2 = Protoss
-      );
+    // If we still don't have player data, use filename to guess
+    if (!parsedData.players.length) {
+      console.log('[browserReplayParser] No player data found, extracting from filename');
+      const fileNameParts = file.name.split('.')[0].split(/\s+|_|vs|VS|Vs/);
+      parsedData.players = [
+        { id: 0, name: fileNameParts.length > 0 ? fileNameParts[0] : 'Player 1', race: 2 },
+        { id: 1, name: fileNameParts.length > 1 ? fileNameParts[1] : 'Player 2', race: 2 }
+      ];
     }
     
-    return transformParsedData({
-      header,
-      commands,
-      mapData,
-      players: playerInfos
-    });
+    // Ensure we have at least 2 players
+    while (parsedData.players.length < 2) {
+      parsedData.players.push({ 
+        id: parsedData.players.length, 
+        name: `Player ${parsedData.players.length + 1}`, 
+        race: 2 
+      });
+    }
+    
+    return transformParsedData(parsedData);
   } catch (error) {
     console.error('[browserReplayParser] Error transforming parsed data:', error);
     return createMinimalReplayData(file.name);
@@ -277,11 +201,6 @@ function createMinimalReplayData(fileName: string): ParsedReplayData {
  */
 function transformParsedData(parsedData: any): ParsedReplayData {
   const { header = {}, commands = [], mapData = {}, players = [] } = parsedData;
-  
-  // Ensure we have at least 2 players
-  while (players.length < 2) {
-    players.push({ id: players.length, name: `Player ${players.length + 1}`, race: 2 });
-  }
   
   // Extract basic player info
   const player1 = players[0];
