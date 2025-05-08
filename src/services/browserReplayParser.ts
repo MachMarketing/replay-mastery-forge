@@ -56,6 +56,26 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
     transformedData.primaryPlayer.buildOrder = normalizeBuildOrder(transformedData.primaryPlayer.buildOrder);
     transformedData.secondaryPlayer.buildOrder = normalizeBuildOrder(transformedData.secondaryPlayer.buildOrder);
     
+    // Add analysis data to player objects for component compatibility
+    transformedData.primaryPlayer.strengths = transformedData.strengths;
+    transformedData.primaryPlayer.weaknesses = transformedData.weaknesses;
+    transformedData.primaryPlayer.recommendations = transformedData.recommendations;
+    
+    transformedData.secondaryPlayer.strengths = transformedData.strengths;
+    transformedData.secondaryPlayer.weaknesses = transformedData.weaknesses;
+    transformedData.secondaryPlayer.recommendations = transformedData.recommendations;
+    
+    // Add legacy properties for backward compatibility
+    transformedData.playerName = transformedData.primaryPlayer.name;
+    transformedData.opponentName = transformedData.secondaryPlayer.name;
+    transformedData.playerRace = transformedData.primaryPlayer.race;
+    transformedData.opponentRace = transformedData.secondaryPlayer.race;
+    transformedData.apm = transformedData.primaryPlayer.apm;
+    transformedData.eapm = transformedData.primaryPlayer.eapm;
+    transformedData.opponentApm = transformedData.secondaryPlayer.apm;
+    transformedData.opponentEapm = transformedData.secondaryPlayer.eapm;
+    transformedData.buildOrder = transformedData.primaryPlayer.buildOrder;
+    
     // Debug the final parsed data
     debugReplayData(transformedData);
     

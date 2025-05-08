@@ -139,7 +139,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       console.log('[UploadBox] Parsed data from unified parser:', parsedData);
       
       // Validate that the returned data contains required fields
-      if (!parsedData.playerName) {
+      if (!parsedData.primaryPlayer || !parsedData.primaryPlayer.name) {
         console.error('[UploadBox] Parsed data missing player name');
         throw new Error('Fehler: Keine Spielernamen gefunden');
       }
@@ -159,7 +159,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       setTimeout(() => {
         if (onUploadComplete && parsedData) {
           console.log('[UploadBox] Sending parsed data to parent component');
-          onUploadComplete(file, parsedData);
+          onUploadComplete(file, parsedData as any);
         } else {
           console.warn('[UploadBox] Cannot complete upload: onUploadComplete missing or no data');
         }

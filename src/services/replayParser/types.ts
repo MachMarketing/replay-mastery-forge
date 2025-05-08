@@ -12,6 +12,9 @@ export interface PlayerData {
   apm: number;
   eapm: number;
   buildOrder: Array<{ time: string; supply: number; action: string }>;
+  strengths?: string[];
+  weaknesses?: string[];
+  recommendations?: string[];
 }
 
 /**
@@ -44,6 +47,17 @@ export interface ParsedReplayData {
   strengths: string[];
   weaknesses: string[];
   recommendations: string[];
+  
+  // Legacy properties for backward compatibility
+  playerName?: string;
+  opponentName?: string;
+  playerRace?: string;
+  opponentRace?: string;
+  apm?: number;
+  eapm?: number;
+  opponentApm?: number;
+  opponentEapm?: number;
+  buildOrder?: Array<{ time: string; supply: number; action: string }>;
   
   // Optional training plan
   trainingPlan?: Array<{ day: number; focus: string; drill: string }>;

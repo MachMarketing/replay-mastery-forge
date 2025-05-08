@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ParsedReplayData, ParsedReplayResult } from '@/services/replayParser/types';
 import { useToast } from '@/hooks/use-toast';
@@ -136,7 +135,17 @@ export function useReplayParser(): ReplayParserResult {
           { day: 1, focus: "Macro Management", drill: "Constant worker production" },
           { day: 2, focus: "Micro Control", drill: "Unit positioning practice" },
           { day: 3, focus: "Build Order", drill: "Timing attack execution" }
-        ]
+        ],
+        // Ensure legacy properties are populated for backward compatibility
+        playerName: parsedData.primaryPlayer.name,
+        opponentName: parsedData.secondaryPlayer.name,
+        playerRace: parsedData.primaryPlayer.race,
+        opponentRace: parsedData.secondaryPlayer.race,
+        apm: parsedData.primaryPlayer.apm,
+        eapm: parsedData.primaryPlayer.eapm,
+        opponentApm: parsedData.secondaryPlayer.apm,
+        opponentEapm: parsedData.secondaryPlayer.eapm,
+        buildOrder: parsedData.primaryPlayer.buildOrder
       };
       
       // Final progress update
