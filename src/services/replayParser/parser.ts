@@ -78,13 +78,28 @@ export async function parseReplayFile(file: File): Promise<ParsedReplayData | nu
       const playerKeys = Object.keys(data.players[0]);
       console.log(`🔍 [parser.ts] First player data keys (${parseId}):`, playerKeys);
       
-      // Log build order/actions data if available
-      if (data.players[0].actions) {
-        console.log(`🔍 [parser.ts] Player actions available (${parseId})`);
+      // Access player data safely using typecasting
+      const firstPlayer = data.players[0] as any;
+      
+      // Log build order/actions data if available - safely checking all possible property names
+      if (firstPlayer.actions) {
+        console.log(`🔍 [parser.ts] Player actions available (${parseId}):`, 
+          firstPlayer.actions.slice(0, 3));
       }
       
-      if (data.players[0].buildOrder) {
-        console.log(`🔍 [parser.ts] Player build order available (${parseId})`);
+      if (firstPlayer.commands) {
+        console.log(`🔍 [parser.ts] Player commands available (${parseId}):`, 
+          firstPlayer.commands.slice(0, 3));
+      }
+      
+      if (firstPlayer.buildOrder) {
+        console.log(`🔍 [parser.ts] Player build order available (${parseId}):`, 
+          firstPlayer.buildOrder.slice(0, 3));
+      }
+      
+      if (firstPlayer.units) {
+        console.log(`🔍 [parser.ts] Player units available (${parseId}):`, 
+          firstPlayer.units.slice(0, 3));
       }
     }
     

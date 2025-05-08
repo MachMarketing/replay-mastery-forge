@@ -68,15 +68,28 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
             // Log more player properties as needed
           });
           
-          // Log build order info if available
-          if (result.players[0].actions) {
-            console.log(`🛠 First player actions sample (${parseId}):`, 
-              result.players[0].actions.slice(0, 5));
+          // Check for actual command/build order properties and log them
+          // Use typecasting and safe access to prevent errors
+          const firstPlayer = result.players[0] as any;
+          
+          if (firstPlayer.commands && Array.isArray(firstPlayer.commands)) {
+            console.log(`🛠 First player commands sample (${parseId}):`, 
+              firstPlayer.commands.slice(0, 5));
           }
           
-          if (result.players[0].buildOrder) {
+          if (firstPlayer.actions && Array.isArray(firstPlayer.actions)) {
+            console.log(`🛠 First player actions sample (${parseId}):`, 
+              firstPlayer.actions.slice(0, 5));
+          }
+          
+          if (firstPlayer.units && Array.isArray(firstPlayer.units)) {
+            console.log(`🛠 First player units sample (${parseId}):`, 
+              firstPlayer.units.slice(0, 5));
+          }
+          
+          if (firstPlayer.buildOrder && Array.isArray(firstPlayer.buildOrder)) {
             console.log(`🛠 First player build order sample (${parseId}):`, 
-              result.players[0].buildOrder.slice(0, 5));
+              firstPlayer.buildOrder.slice(0, 5));
           }
         }
         
