@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -13,6 +12,7 @@ import { createMockFileFromUint8Array } from '@/services/fileReader';
 import { Loader2, CheckCircle, AlertCircle, FileUp, RefreshCcw, ChevronDown, ChevronUp, BarChart2 } from 'lucide-react';
 import { analyzeReplayData } from '@/services/replayParser/analyzer';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ParsedReplayData } from '@/services/replayParser/types';
 
 const ParserTestPage = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -146,17 +146,22 @@ const ParserTestPage = () => {
     try {
       console.log('Running meta-aware replay analysis...');
       
-      // Create the input data structure expected by the analyzer
-      const analysisInput = {
+      // Create the input data structure expected by the analyzer with proper type casting
+      const analysisInput: ParsedReplayData = {
         playerName: testResults.playerName || 'Player',
         opponentName: testResults.opponentName || 'Opponent',
         playerRace: testResults.playerRace || 'Terran',
         opponentRace: testResults.opponentRace || 'Terran',
         map: testResults.map || 'Unknown',
         duration: testResults.duration || '10:00',
+        durationMS: testResults.durationMS || 600000,
         result: testResults.result || 'win',
         apm: testResults.apm || 120,
-        buildOrder: testResults.buildOrder || []
+        eapm: testResults.eapm || 110,
+        date: testResults.date || new Date().toISOString(),
+        matchup: testResults.matchup || 'TvT', 
+        buildOrder: testResults.buildOrder || [],
+        replayVersion: testResults.replayVersion || '1.16.1'
       };
       
       const analysis = await analyzeReplayData(analysisInput);
