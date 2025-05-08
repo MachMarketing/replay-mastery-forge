@@ -533,7 +533,7 @@ function analyzeExpansionTiming(replayData: ParsedReplayData): {
   baseCount: number
 } {
   let baseCount = 1; // Start with main base
-  let expansionTiming = 'none';
+  let expansionTiming: 'early'|'standard'|'late'|'none' = 'none';
   
   if (replayData.buildOrder && replayData.buildOrder.length > 0) {
     // Look for expansions in build order
