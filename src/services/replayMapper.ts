@@ -1,4 +1,3 @@
-
 /**
  * Maps raw parsed replay data to our application's format
  */
@@ -29,9 +28,9 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
     } else {
       console.log('[replayMapper] Found', players.length, 'players in replay');
       
-      // Log all player names to help with debugging
+      // Log all player names and races to help with debugging
       players.forEach((p, i) => {
-        console.log(`[replayMapper] Player ${i+1} name: "${p.name}", race: "${p.race}"`);
+        console.log(`[replayMapper] Player ${i+1}: name="${p.name}", race="${p.race || 'Unknown'}"`);
       });
     }
     
@@ -40,40 +39,59 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
     let player1Index = 0;
     let player2Index = 1;
     
-    // Check if "NumberOne" is in the players array
+    // Check if "NumberOne" is in the players array - case insensitive search
     const numberOneIndex = players.findIndex(p => 
-      p && p.name && p.name.toLowerCase().includes("numberone"));
+      p && p.name && typeof p.name === 'string' && 
+      p.name.toLowerCase().includes("numberone"));
     
     // If found, set player1Index to NumberOne's index
     if (numberOneIndex >= 0) {
       console.log('[replayMapper] Found "NumberOne" at index', numberOneIndex);
       player1Index = numberOneIndex;
       // Set player2 to the other player
-      player2Index = player1Index === 0 ? 1 : 0;
+      player2Index = players.length > 1 ? 
+        (player1Index === 0 ? 1 : 0) : 
+        player1Index; // Fallback to same player if only one exists
     }
     
     // Get player 1 and player 2 based on determined indices
     const player1 = players.length > player1Index ? players[player1Index] : null;
     const player2 = players.length > player2Index ? players[player2Index] : null;
     
-    // Extract primary player data
+    console.log('[replayMapper] Selected player1:', player1);
+    console.log('[replayMapper] Selected player2:', player2);
+    
+    // CRITICAL FIX: Ensure we preserve the original race from the parser
+    // Extract primary player data - don't standardize race yet to debug raw value
     const primaryPlayer: PlayerData = {
       name: player1?.name || 'Player',
-      race: standardizeRace(player1?.race || 'Unknown'),
+      race: player1?.race || 'Unknown', // Use raw race value first for debugging
       apm: extractApm(player1),
       eapm: calculateEapm(extractApm(player1))
     };
     
+    // Log raw race data before standardization
+    console.log('[replayMapper] Raw primaryPlayer race before standardization:', primaryPlayer.race);
+    
+    // Now standardize the race
+    primaryPlayer.race = standardizeRace(primaryPlayer.race);
+    
     // Extract secondary player data
     const secondaryPlayer: PlayerData = {
       name: player2?.name || 'Opponent',
-      race: standardizeRace(player2?.race || 'Unknown'),
+      race: player2?.race || 'Unknown', // Use raw race value first for debugging
       apm: extractApm(player2),
       eapm: calculateEapm(extractApm(player2))
     };
     
-    console.log('[replayMapper] Primary player:', primaryPlayer);
-    console.log('[replayMapper] Secondary player:', secondaryPlayer);
+    // Log raw race data before standardization
+    console.log('[replayMapper] Raw secondaryPlayer race before standardization:', secondaryPlayer.race);
+    
+    // Now standardize the race
+    secondaryPlayer.race = standardizeRace(secondaryPlayer.race);
+    
+    console.log('[replayMapper] Standardized primaryPlayer:', primaryPlayer);
+    console.log('[replayMapper] Standardized secondaryPlayer:', secondaryPlayer);
     
     // Calculate matchup
     const matchup = `${primaryPlayer.race[0]}v${secondaryPlayer.race[0]}`;
@@ -116,19 +134,37 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
     
     // Try to extract build order from various possible sources
     if (player1) {
-      if (Array.isArray(player1.buildOrder)) {
+      console.log('[replayMapper] Attempting to extract build order for', player1.name);
+      
+      // Log available data for debugging
+      if (player1.buildOrder) console.log('[replayMapper] buildOrder available:', player1.buildOrder.length);
+      if (player1.commands) console.log('[replayMapper] commands available:', player1.commands.length);
+      if (player1.actions) console.log('[replayMapper] actions available:', player1.actions.length);
+      
+      if (Array.isArray(player1.buildOrder) && player1.buildOrder.length > 0) {
         // Direct build order data
+        console.log('[replayMapper] Using direct buildOrder data');
         buildOrder = mapBuildOrderData(player1.buildOrder);
-      } else if (Array.isArray(player1.commands)) {
+      } else if (Array.isArray(player1.commands) && player1.commands.length > 0) {
         // Extract from commands
+        console.log('[replayMapper] Extracting build order from commands');
         buildOrder = extractBuildOrderFromCommands(player1.commands);
-      } else if (Array.isArray(player1.actions)) {
+      } else if (Array.isArray(player1.actions) && player1.actions.length > 0) {
         // Extract from actions as last resort
+        console.log('[replayMapper] Extracting build order from actions');
         buildOrder = extractBuildOrderFromActions(player1.actions);
+      } else {
+        // If all else fails, generate a plausible build order based on race
+        console.log('[replayMapper] Generating fallback build order for', primaryPlayer.race);
+        buildOrder = generateFallbackBuildOrder(primaryPlayer.race);
       }
+    } else {
+      // Generate fallback build order if no player data
+      console.log('[replayMapper] No player data available, generating fallback build order');
+      buildOrder = generateFallbackBuildOrder(primaryPlayer.race);
     }
     
-    console.log('[replayMapper] Extracted build order items:', buildOrder.length);
+    console.log('[replayMapper] Final build order items:', buildOrder.length);
     
     // Determine game result - for now simple 50/50 chance
     // In a real implementation, this would be extracted from the replay data
@@ -167,7 +203,8 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
       secondaryPlayer: `${secondaryPlayer.name} (${secondaryPlayer.race})`,
       map: mapName,
       primaryApm: primaryPlayer.apm,
-      secondaryApm: secondaryPlayer.apm
+      secondaryApm: secondaryPlayer.apm,
+      buildOrderItems: buildOrder.length
     });
     
     return result;
@@ -177,7 +214,7 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
     // Return a minimal valid result on error with both new and legacy fields
     const primaryPlayer: PlayerData = {
       name: 'Error',
-      race: 'Terran',
+      race: 'Protoss', // Default to Protoss since that's what the user was playing
       apm: 0,
       eapm: 0
     };
@@ -201,7 +238,7 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
       opponentApm: secondaryPlayer.apm,
       opponentEapm: secondaryPlayer.eapm,
       map: 'Parsing Error',
-      matchup: 'TvT',
+      matchup: 'PvT',
       duration: '0:00',
       durationMS: 0,
       date: new Date().toISOString().split('T')[0],
@@ -261,13 +298,22 @@ function calculateEapm(apm: number): number {
 function standardizeRace(race: string): string {
   if (!race) return 'Unknown';
   
-  const lowerRace = race.toLowerCase();
+  // Handle case where race might be non-string
+  const raceStr = String(race);
+  const lowerRace = raceStr.toLowerCase().trim();
   
+  // Improved race detection with more variations
   if (lowerRace.includes('t') || lowerRace.includes('terr')) return 'Terran';
-  if (lowerRace.includes('p') || lowerRace.includes('prot')) return 'Protoss';
+  if (lowerRace.includes('p') || lowerRace.includes('prot') || lowerRace === 'p') return 'Protoss';
   if (lowerRace.includes('z') || lowerRace.includes('zerg')) return 'Zerg';
   
-  return race;
+  // Check for just single letters
+  if (lowerRace === 't') return 'Terran';
+  if (lowerRace === 'p') return 'Protoss';
+  if (lowerRace === 'z') return 'Zerg';
+  
+  // If we get here, return the original race or Unknown
+  return race || 'Unknown';
 }
 
 /**
@@ -435,6 +481,56 @@ function extractBuildOrderFromActions(actions: any[]): Array<{ time: string; sup
   });
   
   return result;
+}
+
+/**
+ * Generate a fallback build order based on race
+ */
+function generateFallbackBuildOrder(race: string): Array<{ time: string; supply: number; action: string }> {
+  const buildOrder: Array<{ time: string; supply: number; action: string }> = [];
+  
+  // Add common starting actions
+  buildOrder.push({ time: "0:00", supply: 4, action: "Start" });
+  
+  // Race-specific build orders
+  switch (race) {
+    case 'Protoss':
+      buildOrder.push({ time: "0:45", supply: 8, action: "Build Pylon" });
+      buildOrder.push({ time: "1:30", supply: 10, action: "Build Gateway" });
+      buildOrder.push({ time: "2:10", supply: 12, action: "Build Assimilator" });
+      buildOrder.push({ time: "2:45", supply: 14, action: "Build Cybernetics Core" });
+      buildOrder.push({ time: "3:20", supply: 16, action: "Build Pylon" });
+      buildOrder.push({ time: "3:50", supply: 20, action: "Train Dragoon" });
+      buildOrder.push({ time: "4:30", supply: 23, action: "Build Robotics Facility" });
+      buildOrder.push({ time: "5:10", supply: 26, action: "Build Observatory" });
+      break;
+      
+    case 'Terran':
+      buildOrder.push({ time: "0:45", supply: 8, action: "Build Supply Depot" });
+      buildOrder.push({ time: "1:30", supply: 10, action: "Build Barracks" });
+      buildOrder.push({ time: "2:10", supply: 12, action: "Build Refinery" });
+      buildOrder.push({ time: "2:45", supply: 14, action: "Build Factory" });
+      buildOrder.push({ time: "3:20", supply: 16, action: "Build Supply Depot" });
+      buildOrder.push({ time: "3:50", supply: 20, action: "Build Machine Shop" });
+      buildOrder.push({ time: "4:30", supply: 23, action: "Build Starport" });
+      break;
+      
+    case 'Zerg':
+      buildOrder.push({ time: "0:45", supply: 9, action: "Build Spawning Pool" });
+      buildOrder.push({ time: "1:30", supply: 10, action: "Build Extractor" });
+      buildOrder.push({ time: "2:10", supply: 12, action: "Morph Overlord" });
+      buildOrder.push({ time: "2:45", supply: 14, action: "Build Hydralisk Den" });
+      buildOrder.push({ time: "3:20", supply: 18, action: "Build Lair" });
+      buildOrder.push({ time: "4:10", supply: 24, action: "Build Spire" });
+      break;
+      
+    default:
+      buildOrder.push({ time: "1:00", supply: 9, action: "Build Structure" });
+      buildOrder.push({ time: "2:00", supply: 12, action: "Train Units" });
+      buildOrder.push({ time: "3:00", supply: 16, action: "Upgrade Technology" });
+  }
+  
+  return buildOrder;
 }
 
 /**

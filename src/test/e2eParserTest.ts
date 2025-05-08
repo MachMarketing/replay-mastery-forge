@@ -27,6 +27,14 @@ export async function runE2EParserTest(file: File): Promise<E2ETestResult> {
       throw new Error('Browser parser returned no result');
     }
     
+    // Log the parsed result for debugging race issues
+    console.log('[e2eParserTest] Browser parser result:', {
+      playerName: browserParserResult.primaryPlayer?.name,
+      playerRace: browserParserResult.primaryPlayer?.race,
+      opponentName: browserParserResult.secondaryPlayer?.name,
+      opponentRace: browserParserResult.secondaryPlayer?.race,
+    });
+    
     // Ensure the result has all required fields for ParsedReplayResult
     const parsedResult: ParsedReplayResult = {
       ...browserParserResult,

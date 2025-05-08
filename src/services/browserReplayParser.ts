@@ -52,13 +52,14 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
         // Actually run the parsing operation
         const rawResult = await parser.parse();
         
-        // Add the debugging log to see the exact structure
+        // Add debugging logs to help diagnose race issues
         console.log(`🛠 [browserReplayParser] Full parsed object structure (${parseId}):`, rawResult);
         
         // Dump the raw data structure to help with debugging
-        console.log(`🛠 [browserReplayParser] Game info structure (${parseId}):`, rawResult.gameInfo ? Object.keys(rawResult.gameInfo) : 'none');
-        console.log(`🛠 [browserReplayParser] Players structure (${parseId}):`, rawResult.players ? 
-          rawResult.players.map((p: any) => Object.keys(p)) : 'none');
+        console.log(`🛠 [browserReplayParser] Game info structure (${parseId}):`, 
+                   rawResult.gameInfo ? Object.keys(rawResult.gameInfo) : 'none');
+        console.log(`🛠 [browserReplayParser] Players structure (${parseId}):`, 
+                   rawResult.players ? rawResult.players : 'none');
         
         // Process player data - don't modify original players array
         let processedPlayers = [];
@@ -70,14 +71,17 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
           
           // Log details for each player and process data
           processedPlayers.forEach((player: any, index: number) => {
+            // Save the original raw race value
+            const originalRace = player.race;
+            
             console.log(`🛠 [browserReplayParser] Player ${index + 1} details (${parseId}):`, {
-              name: player.name,
-              race: player.race,
+              name: player.name || 'Unknown',
+              race: originalRace || 'Unknown',
               apm: player.apm || calculateApmFromActions(player),
             });
             
             // Log player name for easy identification
-            console.log(`🛠 [browserReplayParser] Player ${index + 1} name: "${player.name}"`);
+            console.log(`🛠 [browserReplayParser] Player ${index + 1} name: "${player.name}", race: "${originalRace}"`);
             
             // Check for actual command/build order properties and log them
             const playerObj = player as any;
