@@ -51,7 +51,7 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
         });
       }
     }
-  }, [selectedPlayerIndex]);
+  }, [selectedPlayerIndex, analysisComplete, replayData, rawParsedData]);
   
   // Log data for debugging purposes with better visibility
   useEffect(() => {
@@ -240,14 +240,14 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       const hasBuildOrder = Array.isArray(displayData.buildOrder) && displayData.buildOrder.length > 0;
       console.log('💡 AnalysisDisplay - Build order status:', hasBuildOrder ? 'Available' : 'Missing');
       
-      // NEW: When user switches players, we need to create an adjusted version of the data
-      // that reflects the perspective of the selected player
+      // Create an adjusted version of the data for the selected player's perspective
       let viewData = { ...displayData };
       
       if (selectedPlayerIndex === 1) {
+        console.log('💡 AnalysisDisplay - Creating opponent perspective data');
         // Create inverted view for opponent perspective
         viewData = {
-          ...displayData,
+          ...JSON.parse(JSON.stringify(displayData)), // Deep copy to avoid reference issues
           id: displayData.id,
           // Swap names and races for display
           playerName: opponentName,
@@ -255,10 +255,10 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
           playerRace: normalizedOpponentRace,
           opponentRace: normalizedPlayerRace,
           // Swap result
-          result: displayData.result === 'win' ? 'loss' : 'win',
+          result: displayData.result === 'win' ? 'loss' : (displayData.result === 'loss' ? 'win' : displayData.result),
           // Customize analysis for opponent
-          strengths: displayData.weaknesses || [], // What was weakness for player is strength for opponent
-          weaknesses: displayData.strengths || [], // What was strength for player is weakness for opponent
+          strengths: Array.isArray(displayData.weaknesses) ? [...displayData.weaknesses] : [], // What was weakness for player is strength for opponent
+          weaknesses: Array.isArray(displayData.strengths) ? [...displayData.strengths] : [], // What was strength for player is weakness for opponent
           recommendations: [
             'Focus on countering opponent\'s build',
             'Improve army composition against this strategy',
@@ -268,7 +268,15 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
           buildOrder: buildOrder
         };
         
-        console.log('💡 AnalysisDisplay - Created opponent perspective data');
+        console.log('💡 AnalysisDisplay - Opponent perspective data created:', {
+          playerName: viewData.playerName,
+          opponentName: viewData.opponentName,
+          playerRace: viewData.playerRace,
+          opponentRace: viewData.opponentRace,
+          result: viewData.result
+        });
+      } else {
+        console.log('💡 AnalysisDisplay - Using original player perspective');
       }
       
       return (

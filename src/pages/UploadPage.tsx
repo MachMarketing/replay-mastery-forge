@@ -55,8 +55,9 @@ const UploadPage = () => {
       analysisComplete,
       hasRawData: !!rawParsedData,
       hasReplayData: !!replayData,
+      selectedPlayerIndex
     });
-  }, [isAnalyzing, analysisComplete, rawParsedData, replayData]);
+  }, [isAnalyzing, analysisComplete, rawParsedData, replayData, selectedPlayerIndex]);
   
   // Handler for when upload is complete - now with improved data handling
   const handleUploadComplete = async (uploadedFile: File, parsedReplayData: AnalyzedReplayResult) => {
@@ -126,6 +127,7 @@ const UploadPage = () => {
       return;
     }
     
+    // Important: Update the selected player index
     setSelectedPlayerIndex(playerIndex);
     
     // Log race information before processing
@@ -134,102 +136,44 @@ const UploadPage = () => {
       opponentRace: data.opponentRace
     });
     
-    // Create adjusted data based on player selection with safer data handling
-    let adjustedData: AnalyzedReplayResult;
-    
     try {
-      if (playerIndex === 0) {
-        // First player is already correctly set up in data - create a deep copy to avoid reference issues
-        adjustedData = JSON.parse(JSON.stringify(data));
-      } else {
-        // Swap player and opponent for second player perspective
-        adjustedData = {
-          ...JSON.parse(JSON.stringify(data)),
-          playerName: data.opponentName || 'Opponent',
-          opponentName: data.playerName || 'Player',
-          playerRace: data.opponentRace || 'Terran',
-          opponentRace: data.playerRace || 'Terran',
-          // Update matchup to match the swapped perspective
-          matchup: `${(data.opponentRace || 'Terran').charAt(0)}v${(data.playerRace || 'Terran').charAt(0)}`,
-          // Invert result
-          result: data.result === 'win' ? 'loss' : 'win',
-          // Swap strengths and weaknesses for more accurate coaching
-          strengths: data.recommendations || [],
-          weaknesses: data.weaknesses || [],
-          recommendations: data.strengths || []
-        };
-      }
-    } catch (error) {
-      console.error('⛔ Error creating adjusted data:', error);
-      // Create fallback data
-      adjustedData = {
-        playerName: data.playerName || 'Player',
-        opponentName: data.opponentName || 'Opponent',
-        playerRace: data.playerRace || 'Terran',
-        opponentRace: data.opponentRace || 'Terran',
-        map: data.map || 'Unknown Map',
-        duration: data.duration || '5:00',
-        durationMS: data.durationMS || 300000,
-        date: data.date || new Date().toISOString().split('T')[0],
-        result: data.result || 'win',
-        apm: data.apm || 150,
-        eapm: data.eapm || 120,
-        matchup: data.matchup || `${(data.playerRace || 'Terran').charAt(0)}v${(data.opponentRace || 'Terran').charAt(0)}`,
-        buildOrder: data.buildOrder || [],
-        resourcesGraph: data.resourcesGraph || [],
-        strengths: data.strengths || ['Defensive Spielweise'],
-        weaknesses: data.weaknesses || ['Könnte Multitasking verbessern'],
-        recommendations: data.recommendations || ['Fokussiere auf Build-Order Timing']
+      // For both player perspectives, we create a valid ReplayData object
+      // The actual perspective switching happens in the AnalysisDisplay component
+      const extendedData: ReplayData = {
+        ...JSON.parse(JSON.stringify(data)), // Deep copy to avoid reference issues
+        id: crypto.randomUUID(),
       };
+      
+      // Set the replay data - AnalysisDisplay will handle the perspective
+      setReplayData(extendedData);
+      
+      // Ensure analysis complete flag is set
+      setAnalysisComplete(true);
+      
+      // Finally set analyzing to false
+      setIsAnalyzing(false);
+      
+      // Add a success toast to give user feedback on selection
+      if (playerIndex === 0) {
+        toast({
+          title: `Viewing ${data.playerName}'s Perspective`,
+          description: `Analyzing from ${data.playerRace} player's view`,
+        });
+      } else {
+        toast({
+          title: `Viewing ${data.opponentName}'s Perspective`,
+          description: `Analyzing from ${data.opponentRace} player's view`,
+        });
+      }
+      
+    } catch (error) {
+      console.error('⛔ Error creating player perspective:', error);
+      toast({
+        title: 'Fehler beim Wechseln der Perspektive',
+        description: 'Es gab ein Problem beim Umschalten auf die gewählte Spieler-Perspektive.',
+        variant: 'destructive'
+      });
     }
-    
-    // Normalize data with enhanced race detection and ensure all required fields exist
-    const normalizedData: AnalyzedReplayResult = {
-      ...adjustedData,
-      playerRace: standardizeRaceName(adjustedData.playerRace || 'Terran'),
-      opponentRace: standardizeRaceName(adjustedData.opponentRace || 'Terran'),
-      result: normalizeResult(adjustedData.result || 'win'),
-      matchup: adjustedData.matchup || `${(adjustedData.playerRace || 'Terran').charAt(0)}v${(adjustedData.opponentRace || 'Terran').charAt(0)}`,
-      // Ensure these arrays exist
-      buildOrder: Array.isArray(adjustedData.buildOrder) ? adjustedData.buildOrder : [],
-      resourcesGraph: Array.isArray(adjustedData.resourcesGraph) ? adjustedData.resourcesGraph : [],
-      strengths: Array.isArray(adjustedData.strengths) ? adjustedData.strengths : ['Effektive Einheitenkontrolle'],
-      weaknesses: Array.isArray(adjustedData.weaknesses) ? adjustedData.weaknesses : ['Könnte Scouting verbessern'],
-      recommendations: Array.isArray(adjustedData.recommendations) ? adjustedData.recommendations : ['Fokussiere auf Map-Kontrolle']
-    };
-    
-    console.log("🎮 Final normalized data with races:", {
-      playerRace: normalizedData.playerRace,
-      opponentRace: normalizedData.opponentRace,
-      playerName: normalizedData.playerName,
-      opponentName: normalizedData.opponentName,
-      buildOrderItems: normalizedData.buildOrder?.length || 0,
-      matchup: normalizedData.matchup
-    });
-    
-    // Extend the parsedReplayData with ID for AnalysisResult
-    const extendedData: ReplayData = {
-      ...normalizedData,
-      id: crypto.randomUUID(),
-    };
-    
-    // Set the replay data
-    setReplayData(extendedData);
-    
-    // Ensure analysis complete flag is set
-    setAnalysisComplete(true);
-    
-    // Finally set analyzing to false
-    setIsAnalyzing(false);
-    
-    // Refresh the replays list after successful upload
-    fetchReplays();
-    
-    // Add a success toast to give user feedback
-    toast({
-      title: "Analyse abgeschlossen",
-      description: `Analyse abgeschlossen für ${file?.name || 'dein Replay'}`,
-    });
   };
   
   // Helper for result normalization

@@ -49,6 +49,21 @@ const PlayerSelector: React.FC<PlayerSelectorProps> = ({
     return '👾'; // Default
   };
 
+  // Handlers with proper event handling
+  const handleSelectPlayer1 = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onSelectPlayer(0);
+    console.log("Selected player 1");
+  };
+
+  const handleSelectPlayer2 = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onSelectPlayer(1);
+    console.log("Selected player 2");
+  };
+
   return (
     <div className="mb-4">
       <p className="text-sm mb-3 text-muted-foreground flex items-center">
@@ -65,7 +80,8 @@ const PlayerSelector: React.FC<PlayerSelectorProps> = ({
               `border-2 border-primary shadow-md ${getRaceBgColor(race1)}` : 
               "hover:bg-secondary/10 border border-border/60"
           } rounded-lg overflow-hidden group`}
-          onClick={() => onSelectPlayer(0)}
+          onClick={handleSelectPlayer1}
+          type="button"
         >
           {/* Selection indicator */}
           {selectedPlayerIndex === 0 && (
@@ -136,7 +152,8 @@ const PlayerSelector: React.FC<PlayerSelectorProps> = ({
               `border-2 border-primary shadow-md ${getRaceBgColor(race2)}` : 
               "hover:bg-secondary/10 border border-border/60"
           } rounded-lg overflow-hidden group`}
-          onClick={() => onSelectPlayer(1)}
+          onClick={handleSelectPlayer2}
+          type="button"
         >
           {/* Selection indicator */}
           {selectedPlayerIndex === 1 && (
