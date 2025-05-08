@@ -73,7 +73,23 @@ export async function parseReplayFile(file: File): Promise<ParsedReplayData | nu
     if (data.players && data.players.length > 0) {
       console.log(`🔍 [parser.ts] Player data available (${parseId}):`, 
         data.players.length, 'players');
+        
+      // Log the structure of player data to help debug
+      const playerKeys = Object.keys(data.players[0]);
+      console.log(`🔍 [parser.ts] First player data keys (${parseId}):`, playerKeys);
+      
+      // Log build order/actions data if available
+      if (data.players[0].actions) {
+        console.log(`🔍 [parser.ts] Player actions available (${parseId})`);
+      }
+      
+      if (data.players[0].buildOrder) {
+        console.log(`🔍 [parser.ts] Player build order available (${parseId})`);
+      }
     }
+    
+    // Add a unique identifier to the data
+    data.uniqueId = file.name + '_' + parseId;
     
     return data;
   } catch (error) {

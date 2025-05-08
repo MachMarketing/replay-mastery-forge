@@ -69,14 +69,14 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
           });
           
           // Log build order info if available
-          if (result.players[0].commands) {
-            console.log(`🛠 First player commands sample (${parseId}):`, 
-              result.players[0].commands.slice(0, 5));
+          if (result.players[0].actions) {
+            console.log(`🛠 First player actions sample (${parseId}):`, 
+              result.players[0].actions.slice(0, 5));
           }
           
-          if (result.players[0].units) {
-            console.log(`🛠 First player units sample (${parseId}):`, 
-              result.players[0].units.slice(0, 5));
+          if (result.players[0].buildOrder) {
+            console.log(`🛠 First player build order sample (${parseId}):`, 
+              result.players[0].buildOrder.slice(0, 5));
           }
         }
         
