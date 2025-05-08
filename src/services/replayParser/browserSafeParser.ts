@@ -24,12 +24,185 @@ export async function initBrowserSafeParser(): Promise<void> {
       const screparsed = await import('screparsed');
       console.log('[browserSafeParser] Screparsed import successful:', Object.keys(screparsed));
       
-      // Instead of trying many different ways, let's start with a simplified approach
-      // that directly uses the module's exported functionality
+      // APPROACH 1: Try Direct Parsing Methods
+      if (typeof (screparsed as any).ParsedReplay === 'function') {
+        console.log('[browserSafeParser] Found ParsedReplay constructor function');
+        parserInstance = {
+          parse: (data: Uint8Array) => {
+            return (screparsed as any).ParsedReplay(data);
+          }
+        };
+        isInitialized = true;
+        console.log('[browserSafeParser] ✅ Browser-safe parser initialized (using ParsedReplay constructor)');
+        return;
+      }
+
+      // APPROACH 2: Create and test ParsedReplay object
+      if (screparsed.ParsedReplay) {
+        console.log('[browserSafeParser] Found ParsedReplay class/object');
+        
+        // Check if it has static parse method
+        if (typeof (screparsed.ParsedReplay as any).parse === 'function') {
+          console.log('[browserSafeParser] Using ParsedReplay.parse static method');
+          parserInstance = {
+            parse: (data: Uint8Array) => (screparsed.ParsedReplay as any).parse(data)
+          };
+          isInitialized = true;
+          console.log('[browserSafeParser] ✅ Browser-safe parser initialized (using ParsedReplay static parse)');
+          return;
+        }
+      }
+
+      // APPROACH 3: Use ReplayParser - with enhanced buffer reader
+      if (screparsed.ReplayParser) {
+        console.log('[browserSafeParser] Found ReplayParser, trying with custom reader implementation');
+        
+        try {
+          // Create a specialized testing function for ReplayParser
+          const testParsingWithReplayParser = (buffer: Uint8Array) => {
+            // Create an enhanced buffer reader that matches what ReplayParser expects
+            const createEnhancedReader = (buffer: Uint8Array) => {
+              let position = 0;
+              // Based on console logs, we know the module is looking for specific methods
+              return {
+                read: (len: number) => {
+                  if (position + len > buffer.length) {
+                    throw new Error(`Read beyond buffer: position ${position}, length ${len}, buffer size ${buffer.length}`);
+                  }
+                  const result = buffer.slice(position, position + len);
+                  position += len;
+                  return result;
+                },
+                readByte: () => {
+                  if (position >= buffer.length) {
+                    throw new Error('Read beyond buffer end');
+                  }
+                  return buffer[position++];
+                },
+                readBytes: (len: number) => {
+                  if (position + len > buffer.length) {
+                    throw new Error(`Read beyond buffer: position ${position}, length ${len}, buffer size ${buffer.length}`);
+                  }
+                  const result = buffer.slice(position, position + len);
+                  position += len;
+                  return result;
+                },
+                seek: (pos: number) => {
+                  if (pos < 0 || pos > buffer.length) {
+                    throw new Error(`Invalid seek position: ${pos}, buffer size ${buffer.length}`);
+                  }
+                  position = pos;
+                  return position;
+                },
+                tell: () => position,
+                size: () => buffer.length,
+                slice: (start: number, end: number) => {
+                  if (start < 0 || end > buffer.length || start >= end) {
+                    throw new Error(`Invalid slice: start ${start}, end ${end}, buffer size ${buffer.length}`);
+                  }
+                  return buffer.slice(start, end);
+                },
+                getBuffer: () => buffer,
+                // Add additional methods that might be expected
+                readString: (len: number) => {
+                  const bytes = buffer.slice(position, position + len);
+                  position += len;
+                  return new TextDecoder('utf-8').decode(bytes);
+                },
+                readUint8: () => {
+                  return buffer[position++];
+                },
+                readUint16: () => {
+                  const value = (buffer[position] | (buffer[position + 1] << 8));
+                  position += 2;
+                  return value;
+                },
+                readUint32: () => {
+                  const value = (buffer[position] | 
+                                (buffer[position + 1] << 8) | 
+                                (buffer[position + 2] << 16) | 
+                                (buffer[position + 3] << 24));
+                  position += 4;
+                  return value >>> 0; // Convert to unsigned
+                }
+              };
+            };
+
+            // Try several approaches with ReplayParser
+            const readerObj = createEnhancedReader(buffer);
+            
+            // Try static parse method
+            if (typeof (screparsed.ReplayParser as any).parse === 'function') {
+              console.log('[browserSafeParser] Calling ReplayParser.parse with reader');
+              return (screparsed.ReplayParser as any).parse(readerObj);
+            }
+            
+            // Try static ParseReplay method
+            if (typeof (screparsed.ReplayParser as any).ParseReplay === 'function') {
+              console.log('[browserSafeParser] Calling ReplayParser.ParseReplay with reader');
+              return (screparsed.ReplayParser as any).ParseReplay(readerObj);
+            }
+            
+            // Try direct parsing - use as constructor if possible
+            try {
+              // This is tricky - try to call the constructor and check if parse exists
+              // We use 'as any' to bypass TypeScript's private constructor restriction
+              const parser = new (screparsed.ReplayParser as any)({ encoding: 'cp1252' });
+              console.log('[browserSafeParser] Created ReplayParser instance:', parser);
+              
+              // If we have a parse method on the instance, use it
+              if (typeof parser.parse === 'function') {
+                console.log('[browserSafeParser] Calling instance parse method with reader');
+                return parser.parse(readerObj);
+              }
+              
+              // Try other parsing methods on the instance
+              if (typeof parser.parseReplay === 'function') {
+                console.log('[browserSafeParser] Calling instance parseReplay method with reader');
+                return parser.parseReplay(readerObj);
+              }
+              
+              if (typeof parser.ParseReplay === 'function') {
+                console.log('[browserSafeParser] Calling instance ParseReplay method with reader');
+                return parser.ParseReplay(readerObj);
+              }
+              
+              console.log('[browserSafeParser] ReplayParser instance methods:', 
+                Object.getOwnPropertyNames(Object.getPrototypeOf(parser)));
+              
+              throw new Error('No parse method found on ReplayParser instance');
+            } catch (constrErr) {
+              console.error('[browserSafeParser] Error creating/using ReplayParser instance:', constrErr);
+              throw constrErr;
+            }
+          };
+          
+          // Test the parsing function with a small buffer
+          const testBuffer = new Uint8Array([0x01, 0x02, 0x03, 0x04]);
+          try {
+            console.log('[browserSafeParser] Testing parser with small buffer');
+            testParsingWithReplayParser(testBuffer);
+            console.log('[browserSafeParser] Test succeeded');
+            
+            // Set up our instance with the tested function
+            parserInstance = {
+              parse: testParsingWithReplayParser
+            };
+            isInitialized = true;
+            console.log('[browserSafeParser] ✅ Browser-safe parser initialized (using ReplayParser with reader)');
+            return;
+          } catch (testErr) {
+            console.log('[browserSafeParser] Parser test failed:', testErr);
+            // Continue to other approaches
+          }
+        } catch (readerErr) {
+          console.error('[browserSafeParser] Error with reader-based approach:', readerErr);
+        }
+      }
       
-      // Check if the module exports a parse function directly
+      // APPROACH 4: Try direct module methods
       if (typeof (screparsed as any).parse === 'function') {
-        console.log('[browserSafeParser] Using module.parse directly');
+        console.log('[browserSafeParser] Found direct parse function on module');
         parserInstance = {
           parse: (data: Uint8Array) => (screparsed as any).parse(data)
         };
@@ -38,116 +211,37 @@ export async function initBrowserSafeParser(): Promise<void> {
         return;
       }
       
-      // Check if the module exports a Parse function (case-sensitive)
-      if (typeof (screparsed as any).Parse === 'function') {
-        console.log('[browserSafeParser] Using module.Parse directly');
-        parserInstance = {
-          parse: (data: Uint8Array) => (screparsed as any).Parse(data)
-        };
-        isInitialized = true;
-        console.log('[browserSafeParser] ✅ Browser-safe parser initialized (using module.Parse)');
-        return;
-      }
-      
-      // Check if the default export is a function
-      if (typeof screparsed.default === 'function') {
-        console.log('[browserSafeParser] Using default export as function');
-        parserInstance = {
-          parse: (data: Uint8Array) => (screparsed.default as any)(data)
-        };
-        isInitialized = true;
-        console.log('[browserSafeParser] ✅ Browser-safe parser initialized (using default export)');
-        return;
-      }
-      
-      // Check if the default export has a parse method
-      if (screparsed.default && typeof (screparsed.default as any).parse === 'function') {
-        console.log('[browserSafeParser] Using default.parse');
-        parserInstance = {
-          parse: (data: Uint8Array) => (screparsed.default as any).parse(data)
-        };
-        isInitialized = true;
-        console.log('[browserSafeParser] ✅ Browser-safe parser initialized (using default.parse)');
-        return;
-      }
-      
-      // SCREPARSED MODULE INSPECTION
-      // Log available exports to help debug the module structure
-      console.log('[browserSafeParser] Module exports:', Object.keys(screparsed));
+      // APPROACH 5: Try default export
       if (screparsed.default) {
-        console.log('[browserSafeParser] Default export type:', typeof screparsed.default);
-        if (typeof screparsed.default === 'object') {
-          console.log('[browserSafeParser] Default export keys:', Object.keys(screparsed.default));
+        console.log('[browserSafeParser] Found default export, type:', typeof screparsed.default);
+        
+        if (typeof screparsed.default === 'function') {
+          console.log('[browserSafeParser] Using default as function');
+          parserInstance = {
+            parse: (data: Uint8Array) => (screparsed.default as any)(data)
+          };
+          isInitialized = true;
+          console.log('[browserSafeParser] ✅ Browser-safe parser initialized (using default as function)');
+          return;
+        }
+        
+        if (typeof (screparsed.default as any).parse === 'function') {
+          console.log('[browserSafeParser] Using default.parse');
+          parserInstance = {
+            parse: (data: Uint8Array) => (screparsed.default as any).parse(data)
+          };
+          isInitialized = true;
+          console.log('[browserSafeParser] ✅ Browser-safe parser initialized (using default.parse)');
+          return;
         }
       }
       
-      // Try the parseReplay function if it exists (common name in other parsers)
-      if (typeof (screparsed as any).parseReplay === 'function') {
-        console.log('[browserSafeParser] Using module.parseReplay');
-        parserInstance = {
-          parse: (data: Uint8Array) => (screparsed as any).parseReplay(data)
-        };
-        isInitialized = true;
-        console.log('[browserSafeParser] ✅ Browser-safe parser initialized (using parseReplay)');
-        return;
-      }
+      // Log available exports to help debug
+      console.log('[browserSafeParser] Module exports:', Object.keys(screparsed));
       
-      // Try direct configuration with special format
-      // This is a common pattern for WASM modules - they might need a specific object format
-      console.log('[browserSafeParser] Trying to create special parser with buffer reader');
+      // If we get here, we couldn't find a working parser
+      throw new Error('No compatible parsing method found in module');
       
-      try {
-        // Some WASM modules expect a reader object with specific methods
-        const createBufferReader = (buffer: Uint8Array) => {
-          let position = 0;
-          return {
-            read: (len: number) => {
-              const result = buffer.slice(position, position + len);
-              position += len;
-              return result;
-            },
-            seek: (pos: number) => {
-              position = pos;
-              return position;
-            },
-            tell: () => position,
-            size: () => buffer.length,
-            slice: (start: number, end: number) => buffer.slice(start, end),
-            getBuffer: () => buffer
-          };
-        };
-        
-        // Create a parser that uses our buffer reader
-        const parseWithReader = (data: Uint8Array) => {
-          // Create reader from buffer
-          const reader = createBufferReader(data);
-          
-          // Try different module exports with our reader
-          if (typeof (screparsed as any).parse === 'function') {
-            return (screparsed as any).parse(reader);
-          }
-          if (screparsed.default && typeof (screparsed.default as any).parse === 'function') {
-            return (screparsed.default as any).parse(reader);
-          }
-          if (typeof (screparsed as any).Parse === 'function') {
-            return (screparsed as any).Parse(reader);
-          }
-          if (typeof screparsed.default === 'function') {
-            return (screparsed.default as any)(reader);
-          }
-          
-          throw new Error('No compatible parsing method found for reader object');
-        };
-        
-        parserInstance = { parse: parseWithReader };
-        isInitialized = true;
-        console.log('[browserSafeParser] ✅ Browser-safe parser initialized (using buffer reader)');
-        return;
-      } catch (readerErr) {
-        console.error('[browserSafeParser] Failed to initialize with buffer reader:', readerErr);
-      }
-      
-      throw new Error('Could not initialize parser: No compatible parsing method found');
     } catch (importError) {
       console.error('[browserSafeParser] Failed to import screparsed module:', importError);
       throw new Error(`Failed to import screparsed module: ${importError}`);
