@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ParsedReplayData, ParsedReplayResult } from '@/services/replayParserService';
+import { ParsedReplayData, ParsedReplayResult } from '@/services/replayParser';
 import { useToast } from '@/hooks/use-toast';
 import { parseReplayInBrowser } from '@/services/browserReplayParser';
 import { hasBrowserWasmIssues } from '@/utils/browserDetection';
@@ -116,6 +116,12 @@ export function useReplayParser(): ReplayParserResult {
       if (!parsedData) {
         throw new Error('Parser hat keine Daten zurückgegeben');
       }
+      
+      // Log the parsed data player and race information
+      console.log('[useReplayParser] Parser returned player data:', {
+        player1: `${parsedData.primaryPlayer?.name} (${parsedData.primaryPlayer?.race})`,
+        player2: `${parsedData.secondaryPlayer?.name} (${parsedData.secondaryPlayer?.race})`
+      });
       
       // Ensure the result has all required fields for ParsedReplayResult
       const result: ParsedReplayResult = {

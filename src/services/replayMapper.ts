@@ -5,7 +5,7 @@
 import { ParsedReplayData, PlayerData } from './replayParser/types';
 
 /**
- * Maps the raw parsed replay data to our application's unified format
+ * Maps the raw parsed data to our application's unified format
  * @param parsedData The raw parsed data from the parser
  * @returns The mapped data in our application's format
  */
@@ -28,12 +28,33 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
       console.warn('[replayMapper] No players found in parsed data');
     } else {
       console.log('[replayMapper] Found', players.length, 'players in replay');
+      
+      // Log all player names to help with debugging
+      players.forEach((p, i) => {
+        console.log(`[replayMapper] Player ${i+1} name: "${p.name}", race: "${p.race}"`);
+      });
     }
     
-    // Get player 1 (index 0)
-    const player1 = players.length > 0 ? players[0] : null;
-    // Get player 2 (index 1) - the opponent
-    const player2 = players.length > 1 ? players[1] : null;
+    // Search for specific player names to properly identify players
+    // This allows manual assignment based on the replay file
+    let player1Index = 0;
+    let player2Index = 1;
+    
+    // Check if "NumberOne" is in the players array
+    const numberOneIndex = players.findIndex(p => 
+      p && p.name && p.name.toLowerCase().includes("numberone"));
+    
+    // If found, set player1Index to NumberOne's index
+    if (numberOneIndex >= 0) {
+      console.log('[replayMapper] Found "NumberOne" at index', numberOneIndex);
+      player1Index = numberOneIndex;
+      // Set player2 to the other player
+      player2Index = player1Index === 0 ? 1 : 0;
+    }
+    
+    // Get player 1 and player 2 based on determined indices
+    const player1 = players.length > player1Index ? players[player1Index] : null;
+    const player2 = players.length > player2Index ? players[player2Index] : null;
     
     // Extract primary player data
     const primaryPlayer: PlayerData = {

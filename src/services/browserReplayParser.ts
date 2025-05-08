@@ -60,13 +60,13 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
         console.log(`🛠 [browserReplayParser] Players structure (${parseId}):`, rawResult.players ? 
           rawResult.players.map((p: any) => Object.keys(p)) : 'none');
         
-        // Process player data
-        let processedPlayers = rawResult.players || [];
-        if (processedPlayers && processedPlayers.length > 0) {
-          console.log(`🛠 [browserReplayParser] Found ${processedPlayers.length} players`);
+        // Process player data - don't modify original players array
+        let processedPlayers = [];
+        if (rawResult.players && rawResult.players.length > 0) {
+          console.log(`🛠 [browserReplayParser] Found ${rawResult.players.length} players`);
           
-          // Make a copy of players to work with
-          processedPlayers = [...processedPlayers];
+          // Make a deep copy of players to work with
+          processedPlayers = JSON.parse(JSON.stringify(rawResult.players));
           
           // Log details for each player and process data
           processedPlayers.forEach((player: any, index: number) => {
@@ -74,11 +74,12 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
               name: player.name,
               race: player.race,
               apm: player.apm || calculateApmFromActions(player),
-              // Log more player properties
             });
             
+            // Log player name for easy identification
+            console.log(`🛠 [browserReplayParser] Player ${index + 1} name: "${player.name}"`);
+            
             // Check for actual command/build order properties and log them
-            // Use typecasting and safe access to prevent errors
             const playerObj = player as any;
             
             // Log commands if available
@@ -92,18 +93,6 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
               console.log(`🛠 [browserReplayParser] Player ${index + 1} actions sample (${parseId}):`, 
                 playerObj.actions.slice(0, 5));
               console.log(`🛠 [browserReplayParser] Player ${index + 1} action count: ${playerObj.actions.length}`);
-            }
-            
-            // Log units if available
-            if (playerObj.units && Array.isArray(playerObj.units)) {
-              console.log(`🛠 [browserReplayParser] Player ${index + 1} units sample (${parseId}):`, 
-                playerObj.units.slice(0, 5));
-            }
-            
-            // Log build order if available
-            if (playerObj.buildOrder && Array.isArray(playerObj.buildOrder)) {
-              console.log(`🛠 [browserReplayParser] Player ${index + 1} build order sample (${parseId}):`, 
-                playerObj.buildOrder.slice(0, 5));
             }
             
             // Calculate APM for each player if not provided by parser
