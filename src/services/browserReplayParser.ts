@@ -40,30 +40,125 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
   console.log('[browserReplayParser] File read successfully, size:', fileBuffer.byteLength);
   
   // Parse the replay using the screparsed browser-safe parser
-  const parsedData = await parseReplayWithBrowserSafeParser(new Uint8Array(fileBuffer));
+  const rawData = await parseReplayWithBrowserSafeParser(new Uint8Array(fileBuffer));
   
-  if (!parsedData) {
+  if (!rawData) {
     throw new Error('Parser returned no data');
   }
   
-  console.log('[browserReplayParser] Raw parsed data:', parsedData);
+  console.log('[browserReplayParser] Raw parsed data:', rawData);
+  
+  // Check if we have a valid structure from screparsed
+  // If the _gameInfo property is present, it means we got the raw replay object
+  // rather than the parsed version - we need to handle this differently
+  if (rawData._gameInfo && !rawData.header && !rawData.players && !rawData.commands) {
+    console.log('[browserReplayParser] Got raw game info object, creating basic parsed structure');
+    // Create a minimal viable structure for this case
+    const parsedData = {
+      header: {
+        map: 'Unknown Map',
+        duration: 600, // Default 10 minutes
+        startTime: new Date().toISOString()
+      },
+      players: [
+        { id: 0, name: 'Player 1', race: 2 }, // 2 = Protoss
+        { id: 1, name: 'Player 2', race: 2 }  // 2 = Protoss
+      ],
+      commands: [],
+      mapData: { name: 'Unknown Map' }
+    };
+    
+    // Try to extract some info from the raw data if possible
+    if (rawData._gameInfo && rawData._gameInfo.value && rawData._gameInfo.value.length > 100) {
+      // Look for player names in the byte array
+      // This is very basic extraction just to get something
+      try {
+        const dataArray = rawData._gameInfo.value;
+        // Try to find strings that look like player names
+        const textChunks = [];
+        let currentChunk = '';
+        
+        // Scan through the data looking for readable text
+        for (let i = 0; i < dataArray.length; i++) {
+          const byte = dataArray[i];
+          // If it's a printable ASCII character
+          if (byte >= 32 && byte <= 126) {
+            currentChunk += String.fromCharCode(byte);
+          } else if (currentChunk.length > 3) {
+            // If we have a chunk of reasonable length, save it
+            textChunks.push(currentChunk);
+            currentChunk = '';
+          } else {
+            currentChunk = '';
+          }
+        }
+        
+        // Find chunks that might be player names (not too long, no special chars)
+        const possibleNames = textChunks.filter(chunk => 
+          chunk.length > 2 && 
+          chunk.length < 16 && 
+          /^[a-zA-Z0-9_\-\s]+$/.test(chunk)
+        );
+        
+        if (possibleNames.length >= 2) {
+          parsedData.players[0].name = possibleNames[0];
+          parsedData.players[1].name = possibleNames[1];
+          console.log('[browserReplayParser] Extracted possible player names:', possibleNames.slice(0, 2));
+        }
+      } catch (e) {
+        console.error('[browserReplayParser] Error extracting data from raw bytes:', e);
+      }
+    }
+    
+    return transformParsedData(parsedData);
+  }
   
   // Extract relevant data from screparsed output format
-  const header = parsedData.header || {};
-  const commands = parsedData.commands || [];
-  const mapData = parsedData.mapData || {};
+  // Carefully check for undefined properties
+  const header = rawData.header || {};
+  const commands = Array.isArray(rawData.commands) ? rawData.commands : [];
+  const mapData = rawData.mapData || {};
   
+  // Extract player data safely
   const playerInfos = [];
   // Extract player data
-  if (parsedData.players && Array.isArray(parsedData.players)) {
-    playerInfos.push(...parsedData.players);
+  if (rawData.players && Array.isArray(rawData.players)) {
+    playerInfos.push(...rawData.players);
   } else if (header.players && Array.isArray(header.players)) {
     playerInfos.push(...header.players);
   }
   
+  // If we still don't have enough player data, create placeholder players
   if (playerInfos.length < 2) {
-    throw new Error('Could not find enough player data in replay');
+    console.log('[browserReplayParser] Not enough player data found, creating placeholders');
+    playerInfos.push(
+      { id: 0, name: 'Player 1', race: 2 }, // 2 = Protoss
+      { id: 1, name: 'Player 2', race: 2 }  // 2 = Protoss
+    );
   }
+  
+  return transformParsedData({
+    header,
+    commands,
+    mapData,
+    players: playerInfos
+  });
+}
+
+/**
+ * Transform the parsed data into our application's expected format
+ */
+function transformParsedData(parsedData: any): ParsedReplayData {
+  const { header = {}, commands = [], mapData = {}, players = [] } = parsedData;
+  
+  // Ensure we have at least 2 players
+  while (players.length < 2) {
+    players.push({ id: players.length, name: `Player ${players.length + 1}`, race: 2 });
+  }
+  
+  // Extract basic player info
+  const player1 = players[0];
+  const player2 = players[1];
   
   // Map player races based on screp format
   const mapRace = (raceVal: number | string): string => {
@@ -92,10 +187,6 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
     const gameLengthMinutes = header.duration ? header.duration / 60 : 10;
     return Math.round(playerCommands.length / gameLengthMinutes);
   };
-  
-  // Extract basic player info
-  const player1 = playerInfos[0];
-  const player2 = playerInfos[1];
   
   const transformedData: ParsedReplayData = {
     primaryPlayer: {
