@@ -1,7 +1,5 @@
 
 import { parseReplayWithBrowserSafeParser, initBrowserSafeParser } from './replayParser/browserSafeParser';
-import { transformJSSUHData } from './replayParser/transformer';
-import { normalizeBuildOrder, debugReplayData } from './replayParser/index';
 import { ParsedReplayData } from './replayParser/types';
 
 // Import readFileAsArrayBuffer
@@ -142,8 +140,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
     buildOrder: []
   };
   
-  // Debug the final parsed data
-  debugReplayData(transformedData);
+  console.log('[browserReplayParser] Transformed data:', transformedData);
   
   return transformedData;
 }

@@ -24,26 +24,15 @@ export async function initBrowserSafeParser(): Promise<void> {
       const screparsedImport = await import('screparsed');
       console.log('[browserSafeParser] Screparsed import successful:', screparsedImport);
       
-      // Due to variations in the module structure, we use a dynamic approach
-      // to find the right parser implementation
+      // Based on the TypeScript error, we can see the structure of the imported module
+      // It has ReplayParser and ParsedReplay classes but not a direct parse function
       
-      // First check if the module exposes a parse function directly
-      if (typeof screparsedImport.parse === 'function') {
-        console.log('[browserSafeParser] Found parse function at module root level');
-        parserModule = {
-          parse: (data: Uint8Array) => screparsedImport.parse(data)
-        };
-        isInitialized = true;
-        console.log('[browserSafeParser] ✅ Browser-safe parser initialized successfully (using root parse)');
-        return;
-      }
-      
-      // Check for ReplayParser class
+      // Check for ReplayParser class (this is what the error suggests exists)
       if (typeof screparsedImport.ReplayParser === 'function') {
         console.log('[browserSafeParser] Found ReplayParser class in module');
         try {
           // Try to create an instance using default constructor
-          const parser = new (screparsedImport.ReplayParser as any)();
+          const parser = new screparsedImport.ReplayParser();
           
           if (typeof parser.parse === 'function') {
             parserModule = {
@@ -58,14 +47,14 @@ export async function initBrowserSafeParser(): Promise<void> {
         }
       }
       
-      // Check for ParsedReplay class
+      // Check for ParsedReplay class (also exists according to the error)
       if (typeof screparsedImport.ParsedReplay === 'function') {
         console.log('[browserSafeParser] Found ParsedReplay class in module');
         
         // Check for static parse method
-        if (typeof (screparsedImport.ParsedReplay as any).parse === 'function') {
+        if (typeof screparsedImport.ParsedReplay.parse === 'function') {
           parserModule = {
-            parse: (data: Uint8Array) => (screparsedImport.ParsedReplay as any).parse(data)
+            parse: (data: Uint8Array) => screparsedImport.ParsedReplay.parse(data)
           };
           isInitialized = true;
           console.log('[browserSafeParser] ✅ Browser-safe parser initialized successfully (using ParsedReplay.parse)');
@@ -74,7 +63,7 @@ export async function initBrowserSafeParser(): Promise<void> {
         
         try {
           // Try instantiating ParsedReplay
-          const parsedReplay = new (screparsedImport.ParsedReplay as any)();
+          const parsedReplay = new screparsedImport.ParsedReplay();
           if (typeof parsedReplay.parse === 'function') {
             parserModule = {
               parse: (data: Uint8Array) => parsedReplay.parse(data)
@@ -88,15 +77,53 @@ export async function initBrowserSafeParser(): Promise<void> {
         }
       }
       
-      // Check if the default export has a parse function
-      if (screparsedImport.default && typeof screparsedImport.default.parse === 'function') {
-        console.log('[browserSafeParser] Using default export with parse function');
-        parserModule = {
-          parse: (data: Uint8Array) => screparsedImport.default.parse(data)
-        };
-        isInitialized = true;
-        console.log('[browserSafeParser] ✅ Browser-safe parser initialized successfully (default export)');
-        return;
+      // Check if the default export has the classes we need
+      if (screparsedImport.default) {
+        console.log('[browserSafeParser] Checking default export for parser implementation');
+        
+        // Try ReplayParser from default export
+        if (typeof screparsedImport.default.ReplayParser === 'function') {
+          try {
+            const parser = new screparsedImport.default.ReplayParser();
+            if (typeof parser.parse === 'function') {
+              parserModule = {
+                parse: (data: Uint8Array) => parser.parse(data)
+              };
+              isInitialized = true;
+              console.log('[browserSafeParser] ✅ Parser initialized successfully (using default.ReplayParser)');
+              return;
+            }
+          } catch (e) {
+            console.error('[browserSafeParser] Error creating default.ReplayParser instance:', e);
+          }
+        }
+        
+        // Try ParsedReplay from default export
+        if (typeof screparsedImport.default.ParsedReplay === 'function') {
+          // Check for static parse method
+          if (typeof screparsedImport.default.ParsedReplay.parse === 'function') {
+            parserModule = {
+              parse: (data: Uint8Array) => screparsedImport.default.ParsedReplay.parse(data)
+            };
+            isInitialized = true;
+            console.log('[browserSafeParser] ✅ Parser initialized (using default.ParsedReplay.parse)');
+            return;
+          }
+          
+          try {
+            const parsedReplay = new screparsedImport.default.ParsedReplay();
+            if (typeof parsedReplay.parse === 'function') {
+              parserModule = {
+                parse: (data: Uint8Array) => parsedReplay.parse(data)
+              };
+              isInitialized = true;
+              console.log('[browserSafeParser] ✅ Parser initialized (using default.ParsedReplay instance)');
+              return;
+            }
+          } catch (e) {
+            console.error('[browserSafeParser] Error creating default.ParsedReplay instance:', e);
+          }
+        }
       }
       
       // Explore the module structure to find any parse function
@@ -153,7 +180,7 @@ function findParseFunction(module: any): ((data: Uint8Array) => any) | null {
     console.log('[browserSafeParser] Found ParsedReplay, checking for parse method');
     if (typeof module.ParsedReplay.parse === 'function') {
       console.log('[browserSafeParser] Found static parse method on ParsedReplay');
-      return module.ParsedReplay.parse;
+      return (data: Uint8Array) => module.ParsedReplay.parse(data);
     }
     
     try {
@@ -168,30 +195,33 @@ function findParseFunction(module: any): ((data: Uint8Array) => any) | null {
     }
   }
   
-  // Check if the module itself has a parse function
-  if (typeof module.parse === 'function') {
-    console.log('[browserSafeParser] Found parse function at module root level');
-    return module.parse;
-  }
-  
-  // If we still don't have a parse function, check all properties recursively (one level deep)
-  for (const key in module) {
-    const prop = module[key];
-    
-    // Skip null/undefined properties and already checked ones
-    if (!prop || key === 'ReplayParser' || key === 'ParsedReplay') continue;
-    
-    if (typeof prop === 'function') {
-      console.log(`[browserSafeParser] Found function at ${key}, checking if it might be a parse function`);
-      // Try to determine if this function might be a parser
-      if (key.toLowerCase().includes('parse')) {
-        console.log(`[browserSafeParser] Function ${key} looks like it might be a parser based on name`);
-        return prop;
-      }
-    } else if (typeof prop === 'object') {
-      if (typeof prop.parse === 'function') {
+  // If module is an object, check all its properties for parse functions
+  if (typeof module === 'object' && module !== null) {
+    for (const key in module) {
+      const prop = module[key];
+      
+      // Skip null/undefined properties and already checked ones
+      if (!prop) continue;
+      
+      // Check if the property is an object with a parse function
+      if (typeof prop === 'object' && prop !== null && typeof prop.parse === 'function') {
         console.log(`[browserSafeParser] Found parse function in ${key} object`);
-        return prop.parse;
+        return (data: Uint8Array) => prop.parse(data);
+      }
+      
+      // Check if the property is a function that looks like a parser
+      if (typeof prop === 'function') {
+        const funcName = key.toLowerCase();
+        if (funcName.includes('parse') || funcName.includes('replay')) {
+          console.log(`[browserSafeParser] Found function named ${key} that might be a parser`);
+          
+          // Try the function directly
+          try {
+            return (data: Uint8Array) => prop(data);
+          } catch (e) {
+            console.error(`[browserSafeParser] Error using ${key} as parser:`, e);
+          }
+        }
       }
     }
   }
