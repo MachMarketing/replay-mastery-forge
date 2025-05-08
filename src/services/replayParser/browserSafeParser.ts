@@ -1,4 +1,3 @@
-
 /**
  * Browser-safe wrapper for screparsed replay parser
  */
@@ -24,16 +23,17 @@ export async function initBrowserSafeParser(): Promise<void> {
       const screparsed = await import('screparsed');
       console.log('[browserSafeParser] Screparsed import successful:', Object.keys(screparsed));
       
-      // APPROACH 1: Try Direct Parsing Methods
+      // APPROACH 1: Try Direct Parsing Methods with new keyword
       if (typeof (screparsed as any).ParsedReplay === 'function') {
         console.log('[browserSafeParser] Found ParsedReplay constructor function');
         parserInstance = {
           parse: (data: Uint8Array) => {
-            return (screparsed as any).ParsedReplay(data);
+            // Fixed: Use 'new' keyword when calling the constructor
+            return new (screparsed as any).ParsedReplay(data);
           }
         };
         isInitialized = true;
-        console.log('[browserSafeParser] ✅ Browser-safe parser initialized (using ParsedReplay constructor)');
+        console.log('[browserSafeParser] ✅ Browser-safe parser initialized (using ParsedReplay constructor with new)');
         return;
       }
 
@@ -127,7 +127,7 @@ export async function initBrowserSafeParser(): Promise<void> {
                 }
               };
             };
-
+            
             // Try several approaches with ReplayParser
             const readerObj = createEnhancedReader(buffer);
             
@@ -217,8 +217,17 @@ export async function initBrowserSafeParser(): Promise<void> {
         
         if (typeof screparsed.default === 'function') {
           console.log('[browserSafeParser] Using default as function');
+          // Fixed: Add 'new' keyword if it's a constructor
           parserInstance = {
-            parse: (data: Uint8Array) => (screparsed.default as any)(data)
+            parse: (data: Uint8Array) => {
+              try {
+                // Try with 'new' keyword first
+                return new (screparsed.default as any)(data);
+              } catch (e) {
+                // Fall back to regular function call if 'new' fails
+                return (screparsed.default as any)(data);
+              }
+            }
           };
           isInitialized = true;
           console.log('[browserSafeParser] ✅ Browser-safe parser initialized (using default as function)');
@@ -232,6 +241,19 @@ export async function initBrowserSafeParser(): Promise<void> {
           };
           isInitialized = true;
           console.log('[browserSafeParser] ✅ Browser-safe parser initialized (using default.parse)');
+          return;
+        }
+        
+        if (typeof (screparsed.default as any).ParsedReplay === 'function') {
+          console.log('[browserSafeParser] Using default.ParsedReplay with new');
+          parserInstance = {
+            parse: (data: Uint8Array) => {
+              // Use 'new' keyword for constructor
+              return new (screparsed.default as any).ParsedReplay(data);
+            }
+          };
+          isInitialized = true;
+          console.log('[browserSafeParser] ✅ Browser-safe parser initialized (using default.ParsedReplay with new)');
           return;
         }
       }
