@@ -82,10 +82,21 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
       
       // Parse the replay data
       console.log('[browserSafeParser] Parsing replay data:', data.length, 'bytes');
-      const result = parser.parseReplay(data);
-      console.log('[browserSafeParser] Parsing completed, result:', result);
       
-      resolve(result);
+      try {
+        const result = parser.parseReplay(data);
+        console.log('[browserSafeParser] Parsing completed, result:', result);
+        resolve(result);
+      } catch (parseError) {
+        console.error('[browserSafeParser] Error in parser.parseReplay():', parseError);
+        // Check if the error is a DOM event (which sometimes happens with WASM errors)
+        if (parseError && typeof parseError === 'object' && 'isTrusted' in parseError) {
+          console.error('[browserSafeParser] Received DOM event instead of error details. This might be a WASM error.');
+          reject(new Error('WASM execution error occurred during parsing. The replay might be incompatible.'));
+        } else {
+          reject(parseError);
+        }
+      }
     } catch (error) {
       console.error('[browserSafeParser] Parsing error:', error);
       reject(error);

@@ -106,51 +106,109 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
       
       console.log('[browserReplayParser] Raw parsed data:', parsedData);
       
-      // Transform the data into our application format
-      const transformedData: ParsedReplayData = {
-        primaryPlayer: {
-          name: parsedData.players?.[0]?.name || 'Player 1',
-          race: parsedData.players?.[0]?.race || 'Terran',
-          apm: parsedData.players?.[0]?.apm || 0,
-          eapm: parsedData.players?.[0]?.eapm || 0,
-          buildOrder: parsedData.players?.[0]?.buildOrder || [],
-          // Add required properties for PlayerData
-          strengths: [],
-          weaknesses: [],
-          recommendations: []
-        },
-        secondaryPlayer: {
-          name: parsedData.players?.[1]?.name || 'Player 2',
-          race: parsedData.players?.[1]?.race || 'Terran',
-          apm: parsedData.players?.[1]?.apm || 0,
-          eapm: parsedData.players?.[1]?.eapm || 0,
-          buildOrder: parsedData.players?.[1]?.buildOrder || [],
-          // Add required properties for PlayerData
-          strengths: [],
-          weaknesses: [],
-          recommendations: []
-        },
-        map: parsedData.map || 'Unknown Map',
-        matchup: parsedData.matchup || 'TvT',
-        duration: parsedData.duration || '0:00',
-        durationMS: parsedData.durationMS || 0,
-        date: parsedData.date || new Date().toISOString(),
-        result: parsedData.result || 'unknown',
-        strengths: ['Good resource management', 'Effective scouting'],
-        weaknesses: ['Slow building placement', 'Delayed expansion'],
-        recommendations: ['Focus on faster expansions', 'Improve unit micro'],
+      // Check if parsedData has the expected structure
+      // In screparsed, the player data might be in a different format than we expect
+      let transformedData: ParsedReplayData;
+      
+      // Try to access players data - different possible structures
+      if (parsedData.players && Array.isArray(parsedData.players) && parsedData.players.length >= 1) {
+        // screparsed standard format
+        transformedData = {
+          primaryPlayer: {
+            name: parsedData.players[0]?.name || 'Player 1',
+            race: parsedData.players[0]?.race || 'Terran',
+            apm: parsedData.players[0]?.apm || 0,
+            eapm: parsedData.players[0]?.eapm || 0,
+            buildOrder: parsedData.players[0]?.buildOrder || [],
+            // Add required properties for PlayerData
+            strengths: [],
+            weaknesses: [],
+            recommendations: []
+          },
+          secondaryPlayer: {
+            name: parsedData.players[1]?.name || 'Player 2',
+            race: parsedData.players[1]?.race || 'Terran',
+            apm: parsedData.players[1]?.apm || 0,
+            eapm: parsedData.players[1]?.eapm || 0,
+            buildOrder: parsedData.players[1]?.buildOrder || [],
+            // Add required properties for PlayerData
+            strengths: [],
+            weaknesses: [],
+            recommendations: []
+          },
+          map: parsedData.map || 'Unknown Map',
+          matchup: parsedData.matchup || 'TvT',
+          duration: parsedData.duration || '0:00',
+          durationMS: parsedData.durationMS || 0,
+          date: parsedData.date || new Date().toISOString(),
+          result: parsedData.result || 'unknown',
+          strengths: ['Good resource management', 'Effective scouting'],
+          weaknesses: ['Slow building placement', 'Delayed expansion'],
+          recommendations: ['Focus on faster expansions', 'Improve unit micro'],
+          
+          // Legacy properties
+          playerName: parsedData.players[0]?.name || 'Player 1',
+          opponentName: parsedData.players[1]?.name || 'Player 2',
+          playerRace: parsedData.players[0]?.race || 'Terran',
+          opponentRace: parsedData.players[1]?.race || 'Terran',
+          apm: parsedData.players[0]?.apm || 0,
+          eapm: parsedData.players[0]?.eapm || 0,
+          opponentApm: parsedData.players[1]?.apm || 0,
+          opponentEapm: parsedData.players[1]?.eapm || 0,
+          buildOrder: parsedData.players[0]?.buildOrder || []
+        };
+      } else {
+        // Try to access gameInfo and other screparsed properties
+        // This is a fallback for different module structure
+        console.log('[browserReplayParser] Non-standard data format, trying to extract from gameInfo');
         
-        // Legacy properties
-        playerName: parsedData.players?.[0]?.name || 'Player 1',
-        opponentName: parsedData.players?.[1]?.name || 'Player 2',
-        playerRace: parsedData.players?.[0]?.race || 'Terran',
-        opponentRace: parsedData.players?.[1]?.race || 'Terran',
-        apm: parsedData.players?.[0]?.apm || 0,
-        eapm: parsedData.players?.[0]?.eapm || 0,
-        opponentApm: parsedData.players?.[1]?.apm || 0,
-        opponentEapm: parsedData.players?.[1]?.eapm || 0,
-        buildOrder: parsedData.players?.[0]?.buildOrder || []
-      };
+        const gameInfo = parsedData.gameInfo || parsedData._gameInfo || {};
+        const playersInfo = parsedData.players || [];
+        const playerStructs = gameInfo.playerStructs || [];
+        
+        transformedData = {
+          primaryPlayer: {
+            name: playersInfo[0]?.name || playerStructs[0]?.name || 'Player 1',
+            race: playersInfo[0]?.race || 'Terran',
+            apm: playersInfo[0]?.apm || 0,
+            eapm: playersInfo[0]?.eapm || 0,
+            buildOrder: [],
+            strengths: ['Good resource management', 'Effective scouting'],
+            weaknesses: ['Slow building placement', 'Delayed expansion'],
+            recommendations: ['Focus on faster expansions', 'Improve unit micro']
+          },
+          secondaryPlayer: {
+            name: playersInfo[1]?.name || playerStructs[1]?.name || 'Player 2',
+            race: playersInfo[1]?.race || 'Terran',
+            apm: playersInfo[1]?.apm || 0,
+            eapm: playersInfo[1]?.eapm || 0,
+            buildOrder: [],
+            strengths: ['Good resource management', 'Effective scouting'],
+            weaknesses: ['Slow building placement', 'Delayed expansion'],
+            recommendations: ['Focus on faster expansions', 'Improve unit micro']
+          },
+          map: gameInfo.map || 'Unknown Map',
+          matchup: 'TvT',
+          duration: '00:00',
+          durationMS: gameInfo.frames ? gameInfo.frames * 42 : 0, // 42ms per frame in BW
+          date: gameInfo.startTime ? new Date(gameInfo.startTime).toISOString() : new Date().toISOString(),
+          result: 'unknown',
+          strengths: ['Good resource management', 'Effective scouting'],
+          weaknesses: ['Slow building placement', 'Delayed expansion'],
+          recommendations: ['Focus on faster expansions', 'Improve unit micro'],
+          
+          // Legacy properties
+          playerName: playersInfo[0]?.name || playerStructs[0]?.name || 'Player 1',
+          opponentName: playersInfo[1]?.name || playerStructs[1]?.name || 'Player 2',
+          playerRace: playersInfo[0]?.race || 'Terran',
+          opponentRace: playersInfo[1]?.race || 'Terran',
+          apm: playersInfo[0]?.apm || 0,
+          eapm: playersInfo[0]?.eapm || 0,
+          opponentApm: playersInfo[1]?.apm || 0,
+          opponentEapm: playersInfo[1]?.eapm || 0,
+          buildOrder: []
+        };
+      }
       
       // Normalize build orders for both players
       transformedData.primaryPlayer.buildOrder = normalizeBuildOrder(transformedData.primaryPlayer.buildOrder);
@@ -172,6 +230,18 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
       return transformedData;
     } catch (parserError) {
       console.error('[browserReplayParser] Error in screparsed parser:', parserError);
+      
+      // Check if this is a WASM error
+      if (parserError instanceof Error) {
+        if (parserError.message.includes('WASM') || 
+            parserError.message.includes('memory') || 
+            parserError.message.includes('execution')) {
+          console.warn('[browserReplayParser] WASM error detected, this might be a browser compatibility issue');
+        }
+      } else if (parserError && typeof parserError === 'object' && 'isTrusted' in parserError) {
+        console.warn('[browserReplayParser] Received DOM event as error, likely a WASM issue');
+      }
+      
       console.log('[browserReplayParser] Using fallback replay data');
       return createFallbackReplayData(file.name);
     }
