@@ -24,15 +24,15 @@ const ParserTest = () => {
     
     console.log = (...args) => {
       originalLog(...args);
-      setLogs(prev => [...prev, `[LOG] ${args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg).join(' ')}`]);
+      setLogs(prev => [...prev, `[LOG] ${safeStringify(args)}`]);
     };
     
     console.error = (...args) => {
       originalError(...args);
-      setLogs(prev => [...prev, `[ERROR] ${args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg).join(' ')}`]);
+      setLogs(prev => [...prev, `[ERROR] ${safeStringify(args)}`]);
       
       // Check for WASM errors
-      const errorString = args.join(' ');
+      const errorString = safeStringify(args);
       if (errorString.includes('WASM') || 
           errorString.includes('isTrusted') ||
           errorString.includes('execution error')) {
@@ -42,7 +42,7 @@ const ParserTest = () => {
     
     console.warn = (...args) => {
       originalWarn(...args);
-      setLogs(prev => [...prev, `[WARN] ${args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg).join(' ')}`]);
+      setLogs(prev => [...prev, `[WARN] ${safeStringify(args)}`]);
     };
     
     return () => {
@@ -51,6 +51,22 @@ const ParserTest = () => {
       console.warn = originalWarn;
     };
   }, []);
+  
+  // Helper function to safely stringify any value
+  const safeStringify = (args: any[]) => {
+    return args.map(arg => {
+      if (arg === null) return 'null';
+      if (arg === undefined) return 'undefined';
+      if (typeof arg === 'object') {
+        try {
+          return JSON.stringify(arg, null, 2);
+        } catch (e) {
+          return `[Object that couldn't be stringified]`;
+        }
+      }
+      return String(arg);
+    }).join(' ');
+  };
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {

@@ -90,22 +90,28 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
         
         // Temporary error handler to catch WASM errors
         window.onerror = function(message, source, lineno, colno, error) {
-          console.error('[browserSafeParser] WASM error caught by window.onerror:', { message, error });
-          wasmError = new Error(`WASM execution error: ${message}`);
+          console.error('[browserSafeParser] WASM error caught by window.onerror:', { 
+            message: String(message),
+            error: error ? String(error) : 'No error object' 
+          });
+          wasmError = new Error(`WASM execution error: ${String(message)}`);
           return true; // Prevents default error handling
         };
         
         // Try to parse with a timeout to catch hangs
-        setTimeout(() => {
+        const timeoutId = setTimeout(() => {
           if (wasmError === null) {
             wasmError = new Error('WASM parsing timeout');
+            // Restore original handler
+            window.onerror = originalOnError;
             reject(wasmError);
           }
-          // Restore original handler
-          window.onerror = originalOnError;
         }, 5000); // 5 second timeout
         
         const result = parser.parseReplay(data);
+        
+        // Clear timeout since parsing completed
+        clearTimeout(timeoutId);
         
         // Restore original error handler
         window.onerror = originalOnError;
@@ -118,7 +124,12 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
         console.log('[browserSafeParser] Parsing completed, result:', result);
         resolve(result);
       } catch (parseError) {
-        console.error('[browserSafeParser] Error in parser.parseReplay():', parseError);
+        console.error('[browserSafeParser] Error in parser.parseReplay():', 
+          typeof parseError === 'object' ? 
+            (parseError ? JSON.stringify(parseError) : 'null') : 
+            String(parseError)
+        );
+        
         // Check if the error is a DOM event (which sometimes happens with WASM errors)
         if (parseError && typeof parseError === 'object' && 'isTrusted' in parseError) {
           console.error('[browserSafeParser] Received DOM event instead of error details. This might be a WASM error.');
@@ -128,7 +139,11 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
         }
       }
     } catch (error) {
-      console.error('[browserSafeParser] Parsing error:', error);
+      console.error('[browserSafeParser] Parsing error:', 
+        typeof error === 'object' ? 
+          (error ? JSON.stringify(error) : 'null') : 
+          String(error)
+      );
       reject(error);
     }
   });
