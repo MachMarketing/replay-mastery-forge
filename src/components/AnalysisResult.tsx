@@ -157,7 +157,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
         <TabsContent value="overview" className="p-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Strengths */}
-            <div className="bg-secondary/10 rounded-lg p-4 border border-border hover:border-strength/40 transition-colors">
+            <div className="bg-secondary/10 rounded-lg p-4 border border-border hover:border-strength/40 transition-colors transform hover:translate-y-[-2px] hover:shadow-lg">
               <h3 className="text-lg font-medium mb-3 flex items-center text-strength">
                 <Trophy size={18} className="mr-2" />
                 Strengths
@@ -173,7 +173,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
             </div>
 
             {/* Weaknesses */}
-            <div className="bg-secondary/10 rounded-lg p-4 border border-border hover:border-weakness/40 transition-colors">
+            <div className="bg-secondary/10 rounded-lg p-4 border border-border hover:border-weakness/40 transition-colors transform hover:translate-y-[-2px] hover:shadow-lg">
               <h3 className="text-lg font-medium mb-3 flex items-center text-weakness">
                 <AlertTriangle size={18} className="mr-2" />
                 Weaknesses
@@ -189,7 +189,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
             </div>
 
             {/* Recommendations */}
-            <div className="bg-secondary/10 rounded-lg p-4 border border-border hover:border-improvement/40 transition-colors">
+            <div className="bg-secondary/10 rounded-lg p-4 border border-border hover:border-improvement/40 transition-colors transform hover:translate-y-[-2px] hover:shadow-lg">
               <h3 className="text-lg font-medium mb-3 flex items-center text-improvement">
                 <BarChart2 size={18} className="mr-2" />
                 Key Recommendations
@@ -300,7 +300,8 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
           
           <div className="space-y-4">
             <div className="border border-border rounded-lg overflow-hidden transition-colors hover:border-primary/50">
-              <button 
+              <Button 
+                variant="ghost"
                 className={`w-full flex justify-between items-center p-4 text-left ${
                   expandedSection === 'early' ? 'bg-secondary/50' : 'bg-card'
                 }`}
@@ -315,7 +316,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
                     expandedSection === 'early' ? 'rotate-180' : ''
                   }`} 
                 />
-              </button>
+              </Button>
               
               {expandedSection === 'early' && (
                 <div className="p-4 bg-secondary/10 border-t border-border">
@@ -344,7 +345,8 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
             </div>
             
             <div className="border border-border rounded-lg overflow-hidden transition-colors hover:border-primary/50">
-              <button 
+              <Button 
+                variant="ghost"
                 className={`w-full flex justify-between items-center p-4 text-left ${
                   expandedSection === 'mid' ? 'bg-secondary/50' : 'bg-card'
                 }`}
@@ -359,7 +361,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
                     expandedSection === 'mid' ? 'rotate-180' : ''
                   }`} 
                 />
-              </button>
+              </Button>
               
               {expandedSection === 'mid' && (
                 <div className="p-4 bg-secondary/10 border-t border-border">
@@ -388,7 +390,8 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
             </div>
             
             <div className="border border-border rounded-lg overflow-hidden transition-colors hover:border-primary/50">
-              <button 
+              <Button 
+                variant="ghost"
                 className={`w-full flex justify-between items-center p-4 text-left ${
                   expandedSection === 'late' ? 'bg-secondary/50' : 'bg-card'
                 }`}
@@ -403,7 +406,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
                     expandedSection === 'late' ? 'rotate-180' : ''
                   }`} 
                 />
-              </button>
+              </Button>
               
               {expandedSection === 'late' && (
                 <div className="p-4 bg-secondary/10 border-t border-border">

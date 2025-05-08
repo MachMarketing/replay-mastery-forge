@@ -1,4 +1,3 @@
-
 import { ParsedReplayData, ReplayAnalysis } from './types';
 
 // Database of 2025 meta strategies by matchup
@@ -272,7 +271,6 @@ const META_STRATEGIES: { [key: string]: MetaStrategy } = {
     keyUnits: ['Zergling', 'Mutalisk', 'Scourge', 'Queen'],
     earlyGoals: ['Zergling control', 'Deny scouting', 'Worker harassment'],
     midGameTransition: ['Mutalisk micro', 'Map control', 'Economy advantage'],
-    lateGameGoals: ['Spire upgrades', 'Guardian transition', 'Queen energy management'],
     timings: {
       'speedlingTiming': '3:30-4:00',
       'lair': '3:30-4:00',
@@ -309,48 +307,38 @@ export async function analyzeReplayData(replayData: ParsedReplayData): Promise<R
       const race = replayData.playerRace;
       const opponentRace = replayData.opponentRace;
       
-      // Build order analysis
+      // Build order analysis with detailed comparison to professional meta
       const buildOrderQuality = analyzeBuildOrderQuality(replayData.buildOrder, metaStrategy.buildOrder);
       
-      // Analyze macro management
+      // Analyze macro management with real data insights
       const macroScore = analyzeMacroManagement(replayData);
       
-      // Generate strengths based on real metrics and current meta
-      const strengths = generateStrengths(replayData, metaStrategy, {
+      // Enhanced analytics metrics
+      const metrics = {
         apmRating,
         gamePhase,
         race,
         opponentRace,
         buildOrderQuality,
-        macroScore
-      });
+        macroScore,
+        // Add new metrics specific to gameplay
+        buildOrderDeviation: calculateBuildOrderDeviation(replayData.buildOrder, metaStrategy.buildOrder),
+        timingHits: analyzeKeyTimings(replayData, metaStrategy),
+        unitComposition: analyzeUnitComposition(replayData),
+        expansionTiming: analyzeExpansionTiming(replayData)
+      };
       
-      // Generate weaknesses based on meta and replay data
-      const weaknesses = generateWeaknesses(replayData, metaStrategy, {
-        apmRating,
-        gamePhase,
-        race,
-        opponentRace,
-        buildOrderQuality,
-        macroScore
-      });
+      // Generate personalized strengths based on real gameplay data
+      const strengths = generatePersonalizedStrengths(replayData, metaStrategy, metrics);
       
-      // Generate matchup-specific recommendations
-      const recommendations = generateRecommendations(replayData, metaStrategy, {
-        apmRating,
-        gamePhase,
-        race,
-        opponentRace,
-        buildOrderQuality,
-        macroScore
-      });
+      // Generate personalized weaknesses based on real gameplay data
+      const weaknesses = generatePersonalizedWeaknesses(replayData, metaStrategy, metrics);
       
-      // Generate personalized training plan
-      const trainingPlan = generateTrainingPlan(race, matchup, metaStrategy, {
-        apmRating,
-        buildOrderQuality,
-        macroScore
-      });
+      // Generate matchup-specific recommendations based on actual gameplay
+      const recommendations = generatePersonalizedRecommendations(replayData, metaStrategy, metrics);
+      
+      // Generate personalized training plan based on identified weaknesses
+      const trainingPlan = generatePersonalizedTrainingPlan(race, matchup, metaStrategy, metrics);
       
       resolve({
         strengths,
@@ -360,6 +348,578 @@ export async function analyzeReplayData(replayData: ParsedReplayData): Promise<R
       });
     }, 300);
   });
+}
+
+/**
+ * Calculate how much the player's build order deviates from meta
+ */
+function calculateBuildOrderDeviation(
+  playerBuild: Array<{ time: string; supply: number; action: string }>,
+  metaBuild: string[]
+): { deviation: number; criticalMissing: string[] } {
+  if (!playerBuild || playerBuild.length === 0) {
+    return { deviation: 1, criticalMissing: ["No build order data available"] };
+  }
+  
+  // Extract key buildings/units to look for
+  const criticalItems = metaBuild.map(item => {
+    const parts = item.toLowerCase().split(' ');
+    return parts.slice(1).join(' '); // Remove supply number
+  }).filter(item => 
+    item.includes('factory') || 
+    item.includes('barracks') ||
+    item.includes('starport') || 
+    item.includes('gateway') || 
+    item.includes('nexus') ||
+    item.includes('hatchery') ||
+    item.includes('expansion')
+  );
+  
+  // Check if critical items appear in player build
+  const playerActions = playerBuild.map(item => item.action.toLowerCase());
+  const missingItems = criticalItems.filter(item => 
+    !playerActions.some(action => action.includes(item))
+  );
+  
+  // Calculate deviation score (0 = perfect, 1 = completely off)
+  const deviation = missingItems.length / criticalItems.length;
+  
+  return { 
+    deviation,
+    criticalMissing: missingItems.length > 0 ? missingItems : []
+  };
+}
+
+/**
+ * Analyze if player hit key timings compared to pro meta
+ */
+function analyzeKeyTimings(
+  replayData: ParsedReplayData,
+  metaStrategy: MetaStrategy
+): { 
+  onTime: string[],
+  delayed: { timing: string, expected: string, actual: string }[] 
+} {
+  const result = { 
+    onTime: [] as string[],
+    delayed: [] as { timing: string, expected: string, actual: string }[]
+  };
+  
+  if (!metaStrategy.timings || !replayData.buildOrder || replayData.buildOrder.length === 0) {
+    return result;
+  }
+  
+  // Check expansion timing
+  if (metaStrategy.timings['expansion']) {
+    const expectedTime = parseTimeString(metaStrategy.timings['expansion'].split('-')[0]);
+    const expansionBuild = replayData.buildOrder.find(item => 
+      item.action.toLowerCase().includes('expansion') || 
+      item.action.toLowerCase().includes('nexus') ||
+      item.action.toLowerCase().includes('command center') ||
+      item.action.toLowerCase().includes('hatchery')
+    );
+    
+    if (expansionBuild) {
+      const actualTime = parseTimeString(expansionBuild.time);
+      const timingDiff = actualTime - expectedTime;
+      
+      if (timingDiff <= 30) { // Within 30 seconds is on-time
+        result.onTime.push('expansion');
+      } else {
+        result.delayed.push({
+          timing: 'expansion',
+          expected: metaStrategy.timings['expansion'],
+          actual: expansionBuild.time
+        });
+      }
+    } else {
+      result.delayed.push({
+        timing: 'expansion',
+        expected: metaStrategy.timings['expansion'],
+        actual: 'Not found'
+      });
+    }
+  }
+  
+  // Add more timing checks as needed
+  
+  return result;
+}
+
+/**
+ * Analyze unit composition based on build order
+ */
+function analyzeUnitComposition(replayData: ParsedReplayData): {
+  balance: 'balanced'|'unbalanced',
+  dominant: string,
+  missing: string[]
+} {
+  // This would ideally use real unit count data, but we'll estimate from build order
+  const unitTypes = {
+    ground: 0,
+    air: 0,
+    caster: 0,
+    detection: 0,
+    production: 0
+  };
+  
+  const missingTypes = [];
+  
+  // Analyze build order to estimate unit composition
+  if (replayData.buildOrder && replayData.buildOrder.length > 0) {
+    replayData.buildOrder.forEach(item => {
+      const action = item.action.toLowerCase();
+      
+      // Detection
+      if (action.includes('observer') || action.includes('science vessel') || 
+          action.includes('overseer') || action.includes('detector')) {
+        unitTypes.detection++;
+      }
+      
+      // Air units
+      if (action.includes('mutalisk') || action.includes('wraith') || 
+          action.includes('carrier') || action.includes('scout')) {
+        unitTypes.air++;
+      }
+      
+      // Ground units
+      if (action.includes('marine') || action.includes('zealot') || 
+          action.includes('zergling') || action.includes('hydralisk')) {
+        unitTypes.ground++;
+      }
+      
+      // Spellcasters
+      if (action.includes('templar') || action.includes('defiler') || 
+          action.includes('science vessel') || action.includes('ghost')) {
+        unitTypes.caster++;
+      }
+      
+      // Production buildings
+      if (action.includes('barracks') || action.includes('gateway') || 
+          action.includes('factory') || action.includes('starport') || 
+          action.includes('hatchery')) {
+        unitTypes.production++;
+      }
+    });
+  }
+  
+  // Check for missing unit types
+  if (unitTypes.detection === 0) missingTypes.push('detection');
+  if (unitTypes.air === 0) missingTypes.push('air units');
+  if (unitTypes.ground === 0) missingTypes.push('ground units');
+  if (unitTypes.caster === 0) missingTypes.push('spellcasters');
+  
+  // Determine dominant unit type
+  let dominant = Object.entries(unitTypes)
+    .sort((a, b) => b[1] - a[1])[0][0];
+  
+  // Check if composition is balanced
+  const totalUnits = Object.values(unitTypes).reduce((sum, count) => sum + count, 0);
+  const balance = Object.values(unitTypes).some(count => count > totalUnits * 0.6) 
+    ? 'unbalanced' : 'balanced';
+  
+  return {
+    balance,
+    dominant,
+    missing: missingTypes
+  };
+}
+
+/**
+ * Analyze expansion timing and economy development
+ */
+function analyzeExpansionTiming(replayData: ParsedReplayData): {
+  expansionTiming: 'early'|'standard'|'late'|'none',
+  baseCount: number
+} {
+  let baseCount = 1; // Start with main base
+  let expansionTiming = 'none';
+  
+  if (replayData.buildOrder && replayData.buildOrder.length > 0) {
+    // Look for expansions in build order
+    const expansions = replayData.buildOrder.filter(item => 
+      item.action.toLowerCase().includes('expansion') || 
+      item.action.toLowerCase().includes('nexus') ||
+      item.action.toLowerCase().includes('command center') ||
+      item.action.toLowerCase().includes('hatchery')
+    );
+    
+    baseCount += expansions.length;
+    
+    // Determine timing of first expansion
+    if (expansions.length > 0) {
+      const firstExpTime = parseTimeString(expansions[0].time);
+      
+      if (firstExpTime < 240) { // 4 minutes
+        expansionTiming = 'early';
+      } else if (firstExpTime < 420) { // 7 minutes
+        expansionTiming = 'standard';
+      } else {
+        expansionTiming = 'late';
+      }
+    }
+  }
+  
+  return { expansionTiming, baseCount };
+}
+
+/**
+ * Parse time string in format "M:SS" to seconds
+ */
+function parseTimeString(timeStr: string): number {
+  if (!timeStr || typeof timeStr !== 'string') return 0;
+  
+  // Handle time ranges by taking the first value
+  if (timeStr.includes('-')) {
+    timeStr = timeStr.split('-')[0];
+  }
+  
+  const parts = timeStr.trim().split(':');
+  if (parts.length !== 2) return 0;
+  
+  const minutes = parseInt(parts[0], 10) || 0;
+  const seconds = parseInt(parts[1], 10) || 0;
+  
+  return minutes * 60 + seconds;
+}
+
+/**
+ * Generate personalized strengths based on real metrics
+ */
+function generatePersonalizedStrengths(
+  replayData: ParsedReplayData, 
+  metaStrategy: MetaStrategy,
+  metrics: any
+): string[] {
+  const strengths = [];
+  const { 
+    apmRating, gamePhase, race, opponentRace, 
+    buildOrderQuality, macroScore, timingHits, 
+    unitComposition, expansionTiming 
+  } = metrics;
+  
+  // APM-based strengths (keep existing but make personalized)
+  if (apmRating === 'professional') {
+    strengths.push(`Professional-level APM (${replayData.apm}) showing excellent mechanical execution`);
+  } else if (apmRating === 'high') {
+    strengths.push(`Strong mechanical speed with ${replayData.apm} APM, approaching competitive levels`);
+  } else if (apmRating === 'medium') {
+    strengths.push(`Solid APM foundation (${replayData.apm}) providing good multitasking capability`);
+  }
+  
+  // Build order strengths based on actual build
+  if (buildOrderQuality === 'excellent') {
+    strengths.push(`Perfect execution of the current meta ${race} vs ${opponentRace} build order`);
+  } else if (buildOrderQuality === 'good') {
+    strengths.push(`Strong adherence to current meta build timings for ${race} vs ${opponentRace}`);
+  }
+  
+  // Expansion timing
+  if (expansionTiming.expansionTiming === 'early' && replayData.result === 'win') {
+    strengths.push(`Excellent early economic focus with fast expansion at ${timingHits.onTime.includes('expansion') ? 'optimal timing' : 'good timing'}`);
+  } else if (expansionTiming.expansionTiming === 'standard' && timingHits.onTime.includes('expansion')) {
+    strengths.push(`Perfect standard expansion timing matching professional meta build`);
+  }
+  
+  // Unit composition
+  if (unitComposition.balance === 'balanced') {
+    strengths.push(`Well-balanced unit composition showing good strategic adaptability`);
+  }
+  
+  // Result-based strengths
+  if (replayData.result === 'win') {
+    if (gamePhase === 'early') {
+      strengths.push(`Excellent early game execution leading to quick victory in ${replayData.duration}`);
+    } else if (gamePhase === 'mid') {
+      strengths.push(`Strong mid-game transitions and effective timing attacks`);
+    } else {
+      strengths.push(`Superior late-game decision making and army control`);
+    }
+  }
+  
+  // Race-specific strengths
+  addRaceSpecificStrengths(strengths, race, opponentRace, metaStrategy);
+  
+  // Ensure we have at least 3 strengths
+  while (strengths.length < 3) {
+    strengths.push(getGenericStrength(race));
+  }
+  
+  // Limit to 5 strengths maximum but prioritize personalized ones
+  return strengths.slice(0, 5);
+}
+
+/**
+ * Generate personalized weaknesses based on real metrics
+ */
+function generatePersonalizedWeaknesses(
+  replayData: ParsedReplayData, 
+  metaStrategy: MetaStrategy,
+  metrics: any
+): string[] {
+  const weaknesses = [];
+  const { 
+    apmRating, gamePhase, race, opponentRace, 
+    buildOrderQuality, macroScore, 
+    buildOrderDeviation, timingHits, 
+    unitComposition, expansionTiming 
+  } = metrics;
+  
+  // APM-based weaknesses
+  if (apmRating === 'low') {
+    weaknesses.push(`APM (${replayData.apm}) below competitive standard, limiting multitasking potential`);
+  }
+  
+  // Build order weaknesses based on actual deviations
+  if (buildOrderDeviation.deviation > 0.3) {
+    if (buildOrderDeviation.criticalMissing.length > 0) {
+      weaknesses.push(`Missing key ${race} components in build: ${buildOrderDeviation.criticalMissing.slice(0, 2).join(', ')}`);
+    } else {
+      weaknesses.push(`Build order deviates significantly from optimal ${race} vs ${opponentRace} meta timings`);
+    }
+  }
+  
+  // Timing-based weaknesses
+  if (timingHits.delayed.length > 0) {
+    const delayed = timingHits.delayed[0];
+    weaknesses.push(`Delayed ${delayed.timing} timing (${delayed.actual} vs expected ${delayed.expected})`);
+  }
+  
+  // Unit composition weaknesses
+  if (unitComposition.balance === 'unbalanced') {
+    weaknesses.push(`Over-reliance on ${unitComposition.dominant} without proper support units`);
+  }
+  
+  if (unitComposition.missing.length > 0) {
+    weaknesses.push(`Missing ${unitComposition.missing.join(' and ')} in your composition`);
+  }
+  
+  // Expansion timing
+  if (expansionTiming.expansionTiming === 'late' || expansionTiming.expansionTiming === 'none') {
+    weaknesses.push(`${expansionTiming.expansionTiming === 'none' ? 'No expansion taken' : 'Delayed expansion'} limiting economic growth`);
+  }
+  
+  // Result-based weaknesses
+  if (replayData.result === 'loss') {
+    if (gamePhase === 'early') {
+      weaknesses.push(`Vulnerability to standard early game pressure builds`);
+    } else if (gamePhase === 'mid') {
+      weaknesses.push(`Mid-game army composition not optimized for the ${race} vs ${opponentRace} matchup`);
+    } else {
+      weaknesses.push(`Late-game army control and decision making need refinement`);
+    }
+  }
+  
+  // Race-specific weaknesses
+  addRaceSpecificWeaknesses(weaknesses, race, opponentRace, metaStrategy, gamePhase);
+  
+  // Ensure we have at least 3 weaknesses
+  while (weaknesses.length < 3) {
+    weaknesses.push(getGenericWeakness(race));
+  }
+  
+  // Limit to 5 weaknesses maximum
+  return weaknesses.slice(0, 5);
+}
+
+/**
+ * Generate personalized recommendations based on real metrics
+ */
+function generatePersonalizedRecommendations(
+  replayData: ParsedReplayData, 
+  metaStrategy: MetaStrategy,
+  metrics: any
+): string[] {
+  const recommendations = [];
+  const { 
+    apmRating, race, opponentRace, 
+    buildOrderQuality, macroScore,
+    buildOrderDeviation, timingHits, 
+    unitComposition, expansionTiming 
+  } = metrics;
+  
+  // APM recommendations
+  if (apmRating === 'low') {
+    recommendations.push(`Practice mechanical drills to improve your ${replayData.apm} APM to at least 150`);
+  }
+  
+  // Build order recommendations based on actual deviations
+  if (buildOrderDeviation.deviation > 0.3) {
+    if (buildOrderDeviation.criticalMissing.length > 0) {
+      recommendations.push(`Incorporate ${buildOrderDeviation.criticalMissing.slice(0, 2).join(' and ')} into your build order`);
+    } else {
+      recommendations.push(`Study and memorize the current ${race} vs ${opponentRace} meta build order`);
+    }
+  }
+  
+  // Timing recommendations
+  if (timingHits.delayed.length > 0) {
+    const delayed = timingHits.delayed[0];
+    recommendations.push(`Aim to hit your ${delayed.timing} timing closer to ${delayed.expected} (was ${delayed.actual})`);
+  }
+  
+  // Unit composition recommendations
+  if (unitComposition.missing.length > 0) {
+    recommendations.push(`Add ${unitComposition.missing.join(' and ')} to your unit composition`);
+  }
+  
+  // Expansion timing
+  if (expansionTiming.expansionTiming === 'late') {
+    recommendations.push(`Take your expansion earlier (around ${metaStrategy.timings['expansion'] || '4:30-5:00'})`);
+  } else if (expansionTiming.expansionTiming === 'none' && !replayData.duration.startsWith('0:')) {
+    recommendations.push(`Incorporate expansions into your gameplay for better economy`);
+  }
+  
+  // Counter recommendations
+  if (metaStrategy.counters) {
+    const counterKeys = Object.keys(metaStrategy.counters);
+    if (counterKeys.length > 0) {
+      const counterStrat = counterKeys[Math.floor(Math.random() * counterKeys.length)];
+      recommendations.push(`Against ${counterStrat}, use ${metaStrategy.counters[counterStrat][0]}`);
+    }
+  }
+  
+  // Race-specific recommendations
+  addRaceSpecificRecommendations(recommendations, race, opponentRace, metaStrategy);
+  
+  // Ensure we have at least 3 recommendations
+  while (recommendations.length < 3) {
+    recommendations.push(getGenericRecommendation(race));
+  }
+  
+  // Limit to 5 recommendations maximum
+  return recommendations.slice(0, 5);
+}
+
+/**
+ * Generate personalized training plan based on real metrics
+ */
+function generatePersonalizedTrainingPlan(
+  race: string, 
+  matchup: string,
+  metaStrategy: MetaStrategy,
+  metrics: any
+): Array<{ day: number; focus: string; drill: string }> {
+  const { 
+    apmRating, buildOrderQuality, macroScore,
+    buildOrderDeviation, timingHits, 
+    unitComposition, expansionTiming 
+  } = metrics;
+  
+  // Create training plan based on identified weaknesses
+  const trainingPlan = [];
+  
+  // First three days focus on biggest weaknesses
+  if (buildOrderDeviation.deviation > 0.3) {
+    trainingPlan.push({
+      day: 1,
+      focus: 'Build Order Refinement',
+      drill: `Practice the standard ${matchup} opening: ${metaStrategy.buildOrder.slice(0, 5).join(', ')}...`
+    });
+  } else {
+    trainingPlan.push({
+      day: 1,
+      focus: 'Build Order Optimization',
+      drill: `Fine-tune your build order timings against AI opponents with no pressure`
+    });
+  }
+  
+  // Expansion training
+  if (expansionTiming.expansionTiming === 'late' || expansionTiming.expansionTiming === 'none') {
+    trainingPlan.push({
+      day: 2,
+      focus: 'Expansion Timing',
+      drill: `Practice taking expansions at ${metaStrategy.timings['expansion'] || '4:30-5:00'} while maintaining production`
+    });
+  } else {
+    trainingPlan.push({
+      day: 2,
+      focus: 'Macro Management',
+      drill: 'Play 3 games focusing only on minimal resource floating and worker production'
+    });
+  }
+  
+  // Unit composition training
+  if (unitComposition.missing.length > 0) {
+    trainingPlan.push({
+      day: 3,
+      focus: 'Unit Composition Balance',
+      drill: `Practice incorporating ${unitComposition.missing.join(' and ')} into your army compositions`
+    });
+  } else {
+    trainingPlan.push({
+      day: 3,
+      focus: 'Scouting Timing',
+      drill: `Send scouts at key timings and practice identifying opponent tech paths`
+    });
+  }
+  
+  // APM training
+  if (apmRating === 'low' || apmRating === 'medium') {
+    trainingPlan.push({
+      day: 4,
+      focus: 'Mechanical Speed',
+      drill: 'Practice hotkey cycling and camera location hotkeys for 20 minutes'
+    });
+  } else {
+    trainingPlan.push({
+      day: 4,
+      focus: `${race} Unit Control`,
+      drill: `Practice microing ${metaStrategy.keyUnits.join(', ')} in custom games`
+    });
+  }
+  
+  // Race-specific training
+  if (race === 'Terran') {
+    trainingPlan.push({
+      day: 5,
+      focus: 'Terran Positioning',
+      drill: 'Practice siege tank leapfrogging and establishing defensive formations'
+    });
+  } else if (race === 'Protoss') {
+    trainingPlan.push({
+      day: 5,
+      focus: 'Protoss Spellcasting',
+      drill: 'Practice high templar positioning and storm placement'
+    });
+  } else {
+    trainingPlan.push({
+      day: 5,
+      focus: 'Zerg Multitasking',
+      drill: 'Practice multi-pronged attacks while maintaining macro'
+    });
+  }
+  
+  // Add final days for everyone
+  trainingPlan.push(
+    {
+      day: 6,
+      focus: `${matchup} Matchup Knowledge`,
+      drill: `Watch 3 recent pro ${matchup} replays and take notes on build orders and timings`
+    },
+    {
+      day: 7,
+      focus: 'Execution Speed',
+      drill: `Practice the first 6 minutes of your ${matchup} build with perfect worker production and no supply blocks`
+    },
+    {
+      day: 8,
+      focus: 'Adaptation',
+      drill: `Play 3 games where you scout and counter ${Object.keys(metaStrategy.counters)[0] || 'common builds'}`
+    },
+    {
+      day: 9,
+      focus: 'Positional Awareness',
+      drill: 'Practice controlling key map locations and denying opponent expansions'
+    },
+    {
+      day: 10,
+      focus: 'Full Implementation',
+      drill: `Apply all previous lessons in 5 ${matchup} games, focusing on one improvement area at a time`
+    }
+  );
+  
+  return trainingPlan;
 }
 
 /**
@@ -457,300 +1017,6 @@ function analyzeMacroManagement(replayData: ParsedReplayData): 'excellent' | 'go
   if (totalScore === 2) return 'good';
   if (totalScore === 1) return 'average';
   return 'poor';
-}
-
-/**
- * Generate strengths based on replay data and meta strategy
- */
-function generateStrengths(
-  replayData: ParsedReplayData,
-  metaStrategy: MetaStrategy,
-  metrics: {
-    apmRating: string;
-    gamePhase: string;
-    race: string;
-    opponentRace: string;
-    buildOrderQuality: string;
-    macroScore: string;
-  }
-): string[] {
-  const strengths = [];
-  const { apmRating, gamePhase, race, opponentRace, buildOrderQuality, macroScore } = metrics;
-  
-  // APM-based strengths
-  if (apmRating === 'professional') {
-    strengths.push('Professional-level APM with excellent mechanical execution');
-  } else if (apmRating === 'high') {
-    strengths.push('High APM with strong mechanical speed matching competitive play');
-  } else if (apmRating === 'medium') {
-    strengths.push('Solid APM showing good mechanical foundation');
-  }
-  
-  // Build order strengths
-  if (buildOrderQuality === 'excellent') {
-    strengths.push(`Perfect execution of the current ${race} vs ${opponentRace} meta build order`);
-  } else if (buildOrderQuality === 'good') {
-    strengths.push(`Strong adherence to current ${race} vs ${opponentRace} meta build order timing`);
-  } else if (buildOrderQuality === 'decent') {
-    strengths.push(`Reasonable build order following standard ${race} vs ${opponentRace} openings`);
-  }
-  
-  // Macro strengths
-  if (macroScore === 'excellent') {
-    strengths.push('Exceptional macro management with minimal resource floating');
-  } else if (macroScore === 'good') {
-    strengths.push('Effective resource management and production cycles');
-  }
-  
-  // Race and matchup specific strengths
-  if (replayData.result === 'win') {
-    if (gamePhase === 'early') {
-      strengths.push('Strong early game execution leading to victory');
-    } else if (gamePhase === 'mid') {
-      strengths.push('Effective mid-game transitions and timing attacks');
-    } else {
-      strengths.push('Excellent late-game decision making and army control');
-    }
-  }
-  
-  // Race-specific strengths
-  addRaceSpecificStrengths(strengths, race, opponentRace, metaStrategy);
-  
-  // Ensure we have at least 3 strengths
-  while (strengths.length < 3) {
-    strengths.push(getGenericStrength(race));
-  }
-  
-  // Limit to 5 strengths maximum
-  return strengths.slice(0, 5);
-}
-
-/**
- * Generate weaknesses based on replay data and meta strategy
- */
-function generateWeaknesses(
-  replayData: ParsedReplayData,
-  metaStrategy: MetaStrategy,
-  metrics: {
-    apmRating: string;
-    gamePhase: string;
-    race: string;
-    opponentRace: string;
-    buildOrderQuality: string;
-    macroScore: string;
-  }
-): string[] {
-  const weaknesses = [];
-  const { apmRating, gamePhase, race, opponentRace, buildOrderQuality, macroScore } = metrics;
-  
-  // APM-based weaknesses
-  if (apmRating === 'low') {
-    weaknesses.push('APM below competitive standard, limiting multitasking potential');
-  }
-  
-  // Build order weaknesses
-  if (buildOrderQuality === 'poor') {
-    weaknesses.push(`Build order deviates significantly from optimal ${race} vs ${opponentRace} meta timings`);
-  }
-  
-  // Macro weaknesses
-  if (macroScore === 'poor') {
-    weaknesses.push('Inefficient resource management with periods of high mineral/gas floating');
-  } else if (macroScore === 'average') {
-    weaknesses.push('Production cycles show room for improvement to maintain consistent economy');
-  }
-  
-  // Result-based weaknesses
-  if (replayData.result === 'loss') {
-    if (gamePhase === 'early') {
-      weaknesses.push('Vulnerability to standard early game pressure builds');
-    } else if (gamePhase === 'mid') {
-      weaknesses.push('Mid-game army composition not optimized for the matchup');
-    } else {
-      weaknesses.push('Late-game army control and decision making need refinement');
-    }
-  }
-  
-  // Race-specific weaknesses
-  addRaceSpecificWeaknesses(weaknesses, race, opponentRace, metaStrategy, gamePhase);
-  
-  // Ensure we have at least 3 weaknesses
-  while (weaknesses.length < 3) {
-    weaknesses.push(getGenericWeakness(race));
-  }
-  
-  // Limit to 5 weaknesses maximum
-  return weaknesses.slice(0, 5);
-}
-
-/**
- * Generate recommendations based on replay data and meta strategy
- */
-function generateRecommendations(
-  replayData: ParsedReplayData,
-  metaStrategy: MetaStrategy,
-  metrics: {
-    apmRating: string;
-    gamePhase: string;
-    race: string;
-    opponentRace: string;
-    buildOrderQuality: string;
-    macroScore: string;
-  }
-): string[] {
-  const recommendations = [];
-  const { apmRating, race, opponentRace, buildOrderQuality, macroScore } = metrics;
-  
-  // APM recommendations
-  if (apmRating === 'low') {
-    recommendations.push('Practice mechanical drills to improve APM efficiency');
-    recommendations.push('Focus on core hotkey usage to reduce wasted actions');
-  }
-  
-  // Build order recommendations
-  if (buildOrderQuality === 'poor' || buildOrderQuality === 'decent') {
-    recommendations.push(`Study and memorize the current ${race} vs ${opponentRace} meta build order`);
-    recommendations.push(`Practice the first 5 minutes of the standard ${race} vs ${opponentRace} build against AI`);
-  }
-  
-  // Macro recommendations
-  if (macroScore === 'poor' || macroScore === 'average') {
-    recommendations.push('Focus on maintaining consistent worker production throughout the game');
-    recommendations.push('Practice spending resources immediately and avoid floating minerals/gas');
-  }
-  
-  // Timing recommendations
-  if (metaStrategy.timings) {
-    const timingKeys = Object.keys(metaStrategy.timings);
-    if (timingKeys.length > 0) {
-      const timingKey = timingKeys[0];
-      recommendations.push(`Aim for the ${timingKey} timing at ${metaStrategy.timings[timingKey]} to match current meta`);
-    }
-  }
-  
-  // Counter recommendations
-  if (metaStrategy.counters) {
-    const counterKeys = Object.keys(metaStrategy.counters);
-    if (counterKeys.length > 0) {
-      const counterStrat = counterKeys[Math.floor(Math.random() * counterKeys.length)];
-      recommendations.push(`Against ${counterStrat}, use ${metaStrategy.counters[counterStrat][0]}`);
-    }
-  }
-  
-  // Race-specific recommendations
-  addRaceSpecificRecommendations(recommendations, race, opponentRace, metaStrategy);
-  
-  // Ensure we have at least 3 recommendations
-  while (recommendations.length < 3) {
-    recommendations.push(getGenericRecommendation(race));
-  }
-  
-  // Limit to 5 recommendations maximum
-  return recommendations.slice(0, 5);
-}
-
-/**
- * Generate a training plan based on race, matchup, and metrics
- */
-function generateTrainingPlan(
-  race: string, 
-  matchup: string,
-  metaStrategy: MetaStrategy,
-  metrics: {
-    apmRating: string;
-    buildOrderQuality: string;
-    macroScore: string;
-  }
-): Array<{ day: number; focus: string; drill: string }> {
-  const { apmRating, buildOrderQuality, macroScore } = metrics;
-  
-  // Base training plan
-  const trainingPlan = [
-    {
-      day: 1,
-      focus: 'Build Order Execution',
-      drill: `Practice the current ${matchup} meta opening: ${metaStrategy.buildOrder.slice(0, 5).join(', ')}...`
-    },
-    {
-      day: 2,
-      focus: 'Scouting Timing',
-      drill: `Send scouts at key timings: ${Object.keys(metaStrategy.timings)[0] || 'early game'}`
-    },
-    {
-      day: 3,
-      focus: 'Resource Management',
-      drill: 'Play 3 games focusing only on minimal resource floating and worker production'
-    }
-  ];
-  
-  // Add specific drills based on metrics
-  if (apmRating === 'low' || apmRating === 'medium') {
-    trainingPlan.push({
-      day: 4,
-      focus: 'Mechanical Speed',
-      drill: 'Practice hotkey cycling and camera location hotkeys for 20 minutes'
-    });
-  } else {
-    trainingPlan.push({
-      day: 4,
-      focus: `${race} Unit Control`,
-      drill: `Practice microing ${metaStrategy.keyUnits.join(', ')} in custom games`
-    });
-  }
-  
-  if (buildOrderQuality === 'poor' || buildOrderQuality === 'decent') {
-    trainingPlan.push({
-      day: 5,
-      focus: 'Build Order Refinement',
-      drill: `Practice hitting exact supply timings for ${race} vs ${opponentRaceFromMatchup(matchup)} opener`
-    });
-  } else {
-    trainingPlan.push({
-      day: 5,
-      focus: 'Multitasking',
-      drill: `Practice ${race === 'Terran' ? 'drops' : race === 'Protoss' ? 'Shuttle harassment' : 'Mutalisk harass'} while maintaining macro`
-    });
-  }
-  
-  if (macroScore === 'poor' || macroScore === 'average') {
-    trainingPlan.push({
-      day: 6,
-      focus: 'Production Cycles',
-      drill: 'Practice constant production while maintaining army control in 3 games'
-    });
-  } else {
-    trainingPlan.push({
-      day: 6,
-      focus: 'Countering Meta Strategies',
-      drill: `Practice against the common ${opponentRaceFromMatchup(matchup)} strategies: ${Object.keys(metaStrategy.counters).join(', ')}`
-    });
-  }
-  
-  // Add final days that are valuable for everyone
-  trainingPlan.push(
-    {
-      day: 7,
-      focus: `${matchup} Matchup Knowledge`,
-      drill: `Watch 3 recent pro ${matchup} replays from ASL/KSL and take notes on build orders and timings`
-    },
-    {
-      day: 8,
-      focus: 'Execution Speed',
-      drill: `Practice the first 5 minutes of your ${matchup} build with perfect worker production and no supply blocks`
-    },
-    {
-      day: 9,
-      focus: 'Adaptation',
-      drill: `Play 3 games where you scout and adjust to counter ${Object.keys(metaStrategy.counters)[0] || 'common builds'}`
-    },
-    {
-      day: 10,
-      focus: 'Full Implementation',
-      drill: `Apply all previous lessons in 5 ${matchup} games, focusing on one improvement area at a time`
-    }
-  );
-  
-  return trainingPlan;
 }
 
 /**
