@@ -19,31 +19,25 @@ export async function initBrowserSafeParser(): Promise<void> {
   try {
     console.log('[browserSafeParser] Attempting to initialize screparsed parser');
     
-    // Import screparsed dynamically
-    const screparsed = await import('screparsed');
-    console.log('[browserSafeParser] Screparsed import result:', screparsed);
-    
-    // Store the parser module for future use
-    parserModule = screparsed;
-    
-    // Check if the module was loaded correctly
-    if (!parserModule || !parserModule.default) {
-      console.log('[browserSafeParser] Parser structure:', parserModule);
-      throw new Error('screparsed module not found or invalid');
-    }
-    
-    // Create a test parser to verify functionality
+    // Import screparsed dynamically - this is the key part that's failing
     try {
-      console.log('[browserSafeParser] Creating test parser instance');
-      // Use the default export instead of Parser
-      const testParser = new parserModule.default();
-      console.log('[browserSafeParser] Test parser created successfully:', testParser);
+      // Import the module
+      const module = await import('screparsed');
+      console.log('[browserSafeParser] Screparsed import successful:', module);
       
+      // Check if the module has a default export (the parser constructor)
+      if (!module || typeof module.default !== 'function') {
+        console.error('[browserSafeParser] Invalid screparsed module structure:', module);
+        throw new Error('Invalid screparsed module structure - missing default export');
+      }
+      
+      // Store the module for future use
+      parserModule = module;
       isInitialized = true;
       console.log('[browserSafeParser] ✅ Browser-safe parser initialized successfully');
-    } catch (innerError) {
-      console.error('[browserSafeParser] Failed to create test parser instance:', innerError);
-      throw new Error(`Failed to create parser instance: ${innerError}`);
+    } catch (importError) {
+      console.error('[browserSafeParser] Failed to import screparsed module:', importError);
+      throw new Error(`Failed to import screparsed module: ${importError}`);
     }
   } catch (err) {
     console.error('[browserSafeParser] Failed to initialize browser-safe parser:', err);
@@ -68,7 +62,8 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
       }
       
       // Create a parser instance using the default export
-      const parser = new parserModule.default();
+      const ParserClass = parserModule.default;
+      const parser = new ParserClass();
       console.log('[browserSafeParser] Created screparsed Parser instance successfully');
       
       // Parse the replay data
