@@ -12,6 +12,7 @@ export interface PlayerData {
   apm: number;
   eapm: number;
   buildOrder: Array<{ time: string; supply: number; action: string }>;
+  // Add these properties to fix TypeScript errors
   strengths?: string[];
   weaknesses?: string[];
   recommendations?: string[];
@@ -69,4 +70,15 @@ export interface ParsedReplayData {
 export interface ParsedReplayResult extends ParsedReplayData {
   // Required training plan
   trainingPlan: Array<{ day: number; focus: string; drill: string }>;
+  
+  // Ensure legacy properties are also required for backward compatibility
+  playerName: string;
+  opponentName: string;
+  playerRace: string;
+  opponentRace: string;
+  apm: number;
+  eapm: number;
+  opponentApm: number;
+  opponentEapm: number;
+  buildOrder: Array<{ time: string; supply: number; action: string }>;
 }

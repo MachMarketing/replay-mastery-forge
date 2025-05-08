@@ -44,7 +44,7 @@ export async function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
 }
 
 /**
- * Read a file as Uint8Array (for testing)
+ * Read a file as Uint8Array
  */
 export async function readFileAsUint8Array(file: File): Promise<Uint8Array> {
   const buffer = await readFileAsArrayBuffer(file);
