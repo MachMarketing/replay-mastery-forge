@@ -60,7 +60,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
         console.log(`🛠 [browserReplayParser] Players structure (${parseId}):`, parsedResult.players ? 
           parsedResult.players.map((p: any) => Object.keys(p)) : 'none');
         
-        // Detailed player info for ALL players
+        // Process player data
         let processedPlayers = parsedResult.players || [];
         if (processedPlayers && processedPlayers.length > 0) {
           console.log(`🛠 [browserReplayParser] Found ${processedPlayers.length} players`);
@@ -112,14 +112,9 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
               console.log(`🛠 [browserReplayParser] Calculated APM for ${player.name}: ${player.apm}`);
             }
           });
-
-          // Instead of trying to modify the original parsed result directly,
-          // create a new processed data object that we'll pass to mapRawToParsed
-          parsedResult = {
-            ...parsedResult,
-            // We're treating players as a regular array property, not trying to modify
-            // the original ParsedReplay object structure
-          };
+          
+          // WICHTIG: Nicht versuchen, das ursprüngliche parsedResult zu modifizieren!
+          // Stattdessen direkt mit den verarbeiteten Daten für mapRawToParsed arbeiten
         }
         
         // Clear the timeout since parsing completed
@@ -145,8 +140,8 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
             Math.round(durationFrames / 24 / 60) + ' minutes' : 'Unknown'}`);
         }
         
-        // Format the data based on what we see in the result object
-        // We'll use a more adaptive approach instead of assuming specific properties
+        // Extrahiere relevante Daten in ein Format, das für mapRawToParsed geeignet ist
+        // Wir erstellen ein neues Objekt anstatt das parsedResult zu modifizieren
         const parsedData = {
           header: parsedResult.gameInfo || {},
           players: processedPlayers, // Use our processed player data
