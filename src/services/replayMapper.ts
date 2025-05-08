@@ -2,7 +2,7 @@
 /**
  * Maps raw parsed replay data to our application's format
  */
-import { ParsedReplayResult } from './replayParserService';
+import { ParsedReplayResult, PlayerData } from './replayParserService';
 
 /**
  * Maps the raw parsed replay data to our application's unified format
@@ -35,16 +35,27 @@ export function mapRawToParsed(parsedData: any): ParsedReplayResult {
     // Get player 2 (index 1) - the opponent
     const player2 = players.length > 1 ? players[1] : null;
     
-    // Extract player names
-    const playerName = player1?.name || 'Player';
-    const opponentName = player2?.name || 'Opponent';
+    // Extract primary player data
+    const primaryPlayer: PlayerData = {
+      name: player1?.name || 'Player',
+      race: standardizeRace(player1?.race || 'Unknown'),
+      apm: extractApm(player1),
+      eapm: calculateEapm(extractApm(player1))
+    };
     
-    // Extract races, standardized to full name
-    const playerRace = standardizeRace(player1?.race || 'Unknown');
-    const opponentRace = standardizeRace(player2?.race || 'Unknown');
+    // Extract secondary player data
+    const secondaryPlayer: PlayerData = {
+      name: player2?.name || 'Opponent',
+      race: standardizeRace(player2?.race || 'Unknown'),
+      apm: extractApm(player2),
+      eapm: calculateEapm(extractApm(player2))
+    };
+    
+    console.log('[replayMapper] Primary player:', primaryPlayer);
+    console.log('[replayMapper] Secondary player:', secondaryPlayer);
     
     // Calculate matchup
-    const matchup = `${playerRace[0]}v${opponentRace[0]}`;
+    const matchup = `${primaryPlayer.race[0]}v${secondaryPlayer.race[0]}`;
     
     // Get duration (in milliseconds and formatted string)
     let durationMS = 0;
@@ -65,62 +76,19 @@ export function mapRawToParsed(parsedData: any): ParsedReplayResult {
       const minutes = Math.floor(durationMS / 60000);
       const seconds = Math.floor((durationMS % 60000) / 1000);
       durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    } else if (parsedData.header?.frames) {
+      // Try using frames if available
+      durationMS = (parsedData.header.frames / 24) * 1000;
+      // Format duration string
+      const minutes = Math.floor(durationMS / 60000);
+      const seconds = Math.floor((durationMS % 60000) / 1000);
+      durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
     } else {
       console.warn('[replayMapper] No duration information available in replay');
       // Default to 10 minutes
       durationMS = 600000;
       durationStr = '10:00';
     }
-    
-    // Extract APM values for both players
-    let playerApm = 0;
-    let playerEapm = 0;
-    let opponentApm = 0;
-    let opponentEapm = 0;
-    
-    // Get APM for player 1
-    if (player1) {
-      // Try to get APM directly from the player object
-      if (typeof player1.apm === 'number') {
-        playerApm = player1.apm;
-      } 
-      // Try to calculate from actions
-      else if (player1.actions && Array.isArray(player1.actions)) {
-        const minutes = durationMS / 60000;
-        playerApm = Math.round(player1.actions.length / (minutes || 1));
-      } 
-      // Fallback
-      else {
-        playerApm = 150; // Default fallback
-      }
-      
-      // Calculate EAPM (effective APM) - typically ~75% of APM accounting for spam clicks
-      playerEapm = Math.round(playerApm * 0.75);
-    }
-    
-    // Get APM for player 2 (opponent)
-    if (player2) {
-      // Try to get APM directly from the player object
-      if (typeof player2.apm === 'number') {
-        opponentApm = player2.apm;
-      } 
-      // Try to calculate from actions
-      else if (player2.actions && Array.isArray(player2.actions)) {
-        const minutes = durationMS / 60000;
-        opponentApm = Math.round(player2.actions.length / (minutes || 1));
-      } 
-      // Fallback
-      else {
-        // Only use randomized fallback if we really have no data
-        opponentApm = 150; // Default fallback
-      }
-      
-      // Calculate EAPM (effective APM) - typically ~75% of APM accounting for spam clicks
-      opponentEapm = Math.round(opponentApm * 0.75);
-    }
-    
-    console.log('[replayMapper] Player APM/EAPM:', playerApm, playerEapm);
-    console.log('[replayMapper] Opponent APM/EAPM:', opponentApm, opponentEapm);
     
     // Parse build order for player 1
     let buildOrder: Array<{ time: string; supply: number; action: string }> = [];
@@ -146,24 +114,18 @@ export function mapRawToParsed(parsedData: any): ParsedReplayResult {
     const gameResult: 'win' | 'loss' = determineGameResult(parsedData);
     
     // Generate strengths, weaknesses, and recommendations based on race and build order
-    const analysis = generateAnalysis(playerRace, opponentRace, buildOrder, mapName);
+    const analysis = generateAnalysis(primaryPlayer.race, secondaryPlayer.race, buildOrder, mapName);
     
     // Map all data to our application format
     const result: ParsedReplayResult = {
-      playerName,
-      opponentName,
-      playerRace,
-      opponentRace,
+      primaryPlayer,
+      secondaryPlayer,
       map: mapName,
       matchup,
       duration: durationStr,
       durationMS,
       date: currentDate,
       result: gameResult,
-      apm: playerApm,
-      eapm: playerEapm,
-      opponentApm: opponentApm, // Add opponent APM
-      opponentEapm: opponentEapm, // Add opponent EAPM
       buildOrder,
       strengths: analysis.strengths,
       weaknesses: analysis.weaknesses,
@@ -171,11 +133,11 @@ export function mapRawToParsed(parsedData: any): ParsedReplayResult {
     };
     
     console.log('[replayMapper] Mapping complete', {
-      player: `${playerName} (${playerRace})`,
-      opponent: `${opponentName} (${opponentRace})`,
+      primaryPlayer: `${primaryPlayer.name} (${primaryPlayer.race})`,
+      secondaryPlayer: `${secondaryPlayer.name} (${secondaryPlayer.race})`,
       map: mapName,
-      apm: playerApm,
-      opponentApm
+      primaryApm: primaryPlayer.apm,
+      secondaryApm: secondaryPlayer.apm
     });
     
     return result;
@@ -184,26 +146,71 @@ export function mapRawToParsed(parsedData: any): ParsedReplayResult {
     
     // Return a minimal valid result on error
     return {
-      playerName: 'Error',
-      opponentName: 'Error',
-      playerRace: 'Terran',
-      opponentRace: 'Terran',
+      primaryPlayer: {
+        name: 'Error',
+        race: 'Terran',
+        apm: 0,
+        eapm: 0
+      },
+      secondaryPlayer: {
+        name: 'Error',
+        race: 'Terran',
+        apm: 0,
+        eapm: 0
+      },
       map: 'Parsing Error',
       matchup: 'TvT',
       duration: '0:00',
       durationMS: 0,
       date: new Date().toISOString().split('T')[0],
       result: 'loss',
-      apm: 0,
-      eapm: 0,
-      opponentApm: 0,
-      opponentEapm: 0,
       buildOrder: [],
       strengths: ['Could not parse replay data'],
       weaknesses: ['Replay file may be corrupted'],
       recommendations: ['Try uploading a different replay file']
     };
   }
+}
+
+/**
+ * Extract APM value from player data, with fallbacks
+ */
+function extractApm(player: any): number {
+  if (!player) return 0;
+  
+  // Direct APM value
+  if (typeof player.apm === 'number') {
+    return player.apm;
+  }
+  
+  // Calculate from actions if available
+  if (player.actions && Array.isArray(player.actions)) {
+    // Estimate game duration from last action
+    let gameDurationMinutes = 10; // Default
+    
+    if (player.actions.length > 0) {
+      const lastAction = player.actions[player.actions.length - 1];
+      if (lastAction && lastAction.frame) {
+        gameDurationMinutes = lastAction.frame / 24 / 60;
+      }
+    }
+    
+    // Ensure we don't divide by zero
+    if (gameDurationMinutes <= 0) gameDurationMinutes = 1;
+    
+    // Calculate APM
+    return Math.round(player.actions.length / gameDurationMinutes);
+  }
+  
+  return 150; // Default fallback value
+}
+
+/**
+ * Calculate EAPM from APM value
+ */
+function calculateEapm(apm: number): number {
+  // EAPM is typically around 75% of APM, accounting for spam clicks
+  return Math.round(apm * 0.75);
 }
 
 /**

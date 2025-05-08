@@ -3,21 +3,24 @@ import { ParsedReplayData } from './replayParser/types';
 import { parseReplayInBrowser } from './browserReplayParser';
 import { markBrowserAsHavingWasmIssues } from '@/utils/browserDetection';
 
+export interface PlayerData {
+  name: string;
+  race: string;
+  apm: number;
+  eapm: number;
+}
+
 export interface ParsedReplayResult {
-  playerName: string;
-  opponentName: string;
-  playerRace: string;
-  opponentRace: string;
+  // Primary player is the "local player" - the one being analyzed
+  primaryPlayer: PlayerData;
+  // Secondary player is the "opponent" - the one being compared against
+  secondaryPlayer: PlayerData;
   map: string;
   matchup: string;
   duration: string;
-  durationMS: number; // This field is required
+  durationMS: number;
   date: string;
   result: 'win' | 'loss';
-  apm: number;
-  eapm: number;
-  opponentApm?: number; // Added for opponent's APM
-  opponentEapm?: number; // Added for opponent's EAPM
   buildOrder: Array<{ time: string; supply: number; action: string }>;
   resourcesGraph?: Array<{ time: string; minerals: number; gas: number }>;
   strengths: string[];
@@ -59,20 +62,24 @@ function createEmergencyFallbackData(file: File): AnalyzedReplayResult {
   const filename = file.name.replace('.rep', '').replace(/_/g, ' ');
   
   return {
-    playerName: filename || 'Player',
-    opponentName: 'Opponent',
-    playerRace: 'Terran',
-    opponentRace: 'Protoss',
+    primaryPlayer: {
+      name: filename || 'Player',
+      race: 'Terran',
+      apm: 120,
+      eapm: 90
+    },
+    secondaryPlayer: {
+      name: 'Opponent',
+      race: 'Protoss',
+      apm: 110,
+      eapm: 85
+    },
     map: 'Error: Corrupted Replay File',
     matchup: 'TvP',
     duration: '10:00',
     durationMS: 600000,
     date: new Date().toISOString().split('T')[0],
     result: 'win',
-    apm: 120,
-    eapm: 90,
-    opponentApm: 110,
-    opponentEapm: 85,
     buildOrder: [],
     resourcesGraph: [],
     strengths: ['Konnte die Datei nicht analysieren'],
@@ -160,7 +167,7 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     }
     
     // Validate the parsed result
-    if (!result || !result.playerName) {
+    if (!result || !result.primaryPlayer || !result.primaryPlayer.name) {
       console.warn('[replayParserService] Invalid result from parser, using fallback');
       return createEmergencyFallbackData(file);
     }

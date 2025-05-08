@@ -1,3 +1,4 @@
+
 /**
  * This module provides a unified browser-based replay parser system 
  * that uses screparsed library for reliable replay parsing without server dependencies.
@@ -63,8 +64,11 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
         if (result.players && result.players.length > 0) {
           console.log(`🛠 [browserReplayParser] Found ${result.players.length} players`);
           
+          // Make sure players is mutable before modifying
+          const updatedPlayers = [...result.players];
+          
           // Log details for each player
-          result.players.forEach((player: any, index: number) => {
+          updatedPlayers.forEach((player: any, index: number) => {
             console.log(`🛠 [browserReplayParser] Player ${index + 1} details (${parseId}):`, {
               name: player.name,
               race: player.race,
@@ -100,7 +104,16 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
               console.log(`🛠 [browserReplayParser] Player ${index + 1} build order sample (${parseId}):`, 
                 playerObj.buildOrder.slice(0, 5));
             }
+            
+            // Calculate APM for each player if not provided by parser
+            if (!player.apm && player.actions) {
+              player.apm = calculateApmFromActions(player);
+              console.log(`🛠 [browserReplayParser] Calculated APM for ${player.name}: ${player.apm}`);
+            }
           });
+          
+          // Update players with the modified array
+          result.players = updatedPlayers;
         }
         
         // Clear the timeout since parsing completed
@@ -113,26 +126,17 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
           throw new Error('Parser returned empty data');
         }
         
-        // Calculate APM for each player if not provided by parser
-        if (result.players) {
-          result.players = result.players.map((player: any) => {
-            // If player already has APM, keep it
-            if (!player.apm && player.actions) {
-              player.apm = calculateApmFromActions(player);
-              console.log(`🛠 [browserReplayParser] Calculated APM for ${player.name}: ${player.apm}`);
-            }
-            return player;
-          });
-        }
-        
         // Log more detailed information about the parsed result structure
         console.log(`[browserReplayParser] Result keys (${parseId}): ${Object.keys(result).join(', ')}`);
         
         if (result.gameInfo) {
           console.log(`[browserReplayParser] Game info (${parseId}): Map: ${result.gameInfo.map || 'Unknown map'}`);
           console.log(`[browserReplayParser] Game frames (${parseId}): ${result.gameInfo.frames || 'Unknown'}`);
-          console.log(`[browserReplayParser] Game duration (${parseId}): ${result.gameInfo.durationFrames ? 
-            Math.round(result.gameInfo.durationFrames / 24 / 60) + ' minutes' : 'Unknown'}`);
+          
+          // Use frames as duration if durationFrames isn't available
+          const durationFrames = result.gameInfo.frames || 0;
+          console.log(`[browserReplayParser] Game duration (${parseId}): ${durationFrames ? 
+            Math.round(durationFrames / 24 / 60) + ' minutes' : 'Unknown'}`);
         }
         
         // Format the data based on what we see in the result object
