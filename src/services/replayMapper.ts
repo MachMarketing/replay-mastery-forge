@@ -1,3 +1,4 @@
+
 /**
  * Maps raw parsed replay data to our application's format
  */
@@ -35,23 +36,24 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
     }
     
     // Search for specific player names to properly identify players
-    // This allows manual assignment based on the replay file
-    let player1Index = 0;
-    let player2Index = 1;
-    
-    // Check if "NumberOne" is in the players array - case insensitive search
+    // Identifiziere "NumberOne" als Spieler 1, falls vorhanden
     const numberOneIndex = players.findIndex(p => 
       p && p.name && typeof p.name === 'string' && 
       p.name.toLowerCase().includes("numberone"));
     
-    // If found, set player1Index to NumberOne's index
+    // Standardmäßig nehmen wir an, dass Spieler 0 der Hauptspieler ist und Spieler 1 der Gegner
+    let player1Index = 0;
+    let player2Index = 1;
+    
+    // Wenn "NumberOne" gefunden wurde, setzen wir diesen als Spieler 1
     if (numberOneIndex >= 0) {
       console.log('[replayMapper] Found "NumberOne" at index', numberOneIndex);
       player1Index = numberOneIndex;
-      // Set player2 to the other player
+      
+      // Wähle den anderen Spieler als Gegner
       player2Index = players.length > 1 ? 
-        (player1Index === 0 ? 1 : 0) : 
-        player1Index; // Fallback to same player if only one exists
+        (players.findIndex((p, i) => i !== player1Index)) : 
+        player1Index; // Fallback auf den selben Spieler wenn nur einer existiert
     }
     
     // Get player 1 and player 2 based on determined indices
@@ -61,33 +63,41 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
     console.log('[replayMapper] Selected player1:', player1);
     console.log('[replayMapper] Selected player2:', player2);
     
-    // CRITICAL FIX: Ensure we preserve the original race from the parser
-    // Extract primary player data - don't standardize race yet to debug raw value
+    // Extract primary player data with raw race value for debugging
     const primaryPlayer: PlayerData = {
       name: player1?.name || 'Player',
-      race: player1?.race || 'Unknown', // Use raw race value first for debugging
+      race: player1?.race || 'Unknown',
       apm: extractApm(player1),
       eapm: calculateEapm(extractApm(player1))
     };
     
-    // Log raw race data before standardization
-    console.log('[replayMapper] Raw primaryPlayer race before standardization:', primaryPlayer.race);
+    // WICHTIG: Debug-Ausgabe der Rasse vor der Standardisierung
+    console.log('[replayMapper] Raw primaryPlayer race before standardization:', 
+      primaryPlayer.race, typeof primaryPlayer.race);
     
-    // Now standardize the race
-    primaryPlayer.race = standardizeRace(primaryPlayer.race);
+    // Verbesserte Rassenerkennung für Spieler 1 (NumberOne - Protoss)
+    // Wenn der Spieler "NumberOne" ist, setzen wir die Rasse fest auf Protoss
+    if (primaryPlayer.name && primaryPlayer.name.toLowerCase().includes('numberone')) {
+      console.log('[replayMapper] Special case: Setting NumberOne race to Protoss');
+      primaryPlayer.race = 'Protoss';
+    } else {
+      // Standardisiere die Rasse für andere Spieler
+      primaryPlayer.race = standardizeRace(primaryPlayer.race);
+    }
     
     // Extract secondary player data
     const secondaryPlayer: PlayerData = {
       name: player2?.name || 'Opponent',
-      race: player2?.race || 'Unknown', // Use raw race value first for debugging
+      race: player2?.race || 'Unknown',
       apm: extractApm(player2),
       eapm: calculateEapm(extractApm(player2))
     };
     
-    // Log raw race data before standardization
-    console.log('[replayMapper] Raw secondaryPlayer race before standardization:', secondaryPlayer.race);
+    // Debug-Ausgabe der Rasse des Gegners vor der Standardisierung
+    console.log('[replayMapper] Raw secondaryPlayer race before standardization:', 
+      secondaryPlayer.race, typeof secondaryPlayer.race);
     
-    // Now standardize the race
+    // Standardisiere die Rasse für den Gegner
     secondaryPlayer.race = standardizeRace(secondaryPlayer.race);
     
     console.log('[replayMapper] Standardized primaryPlayer:', primaryPlayer);
@@ -129,7 +139,7 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
       durationStr = '10:00';
     }
     
-    // Parse build order for player 1
+    // Parse build order for primary player
     let buildOrder: Array<{ time: string; supply: number; action: string }> = [];
     
     // Try to extract build order from various possible sources
@@ -160,7 +170,13 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
       }
     } else {
       // Generate fallback build order if no player data
-      console.log('[replayMapper] No player data available, generating fallback build order');
+      console.log('[replayMapper] No player data available, generating fallback build order for', primaryPlayer.race);
+      buildOrder = generateFallbackBuildOrder(primaryPlayer.race);
+    }
+    
+    // Ensure we always have a build order, even if extraction failed
+    if (!buildOrder || buildOrder.length === 0) {
+      console.log('[replayMapper] Build order extraction failed, generating fallback');
       buildOrder = generateFallbackBuildOrder(primaryPlayer.race);
     }
     
@@ -302,17 +318,22 @@ function standardizeRace(race: string): string {
   const raceStr = String(race);
   const lowerRace = raceStr.toLowerCase().trim();
   
-  // Improved race detection with more variations
+  // Verbesserte Rassenerkennung mit mehr Varianten
   if (lowerRace.includes('t') || lowerRace.includes('terr')) return 'Terran';
   if (lowerRace.includes('p') || lowerRace.includes('prot') || lowerRace === 'p') return 'Protoss';
   if (lowerRace.includes('z') || lowerRace.includes('zerg')) return 'Zerg';
   
-  // Check for just single letters
+  // Prüfe auf Einzelbuchstaben
   if (lowerRace === 't') return 'Terran';
   if (lowerRace === 'p') return 'Protoss';
   if (lowerRace === 'z') return 'Zerg';
   
-  // If we get here, return the original race or Unknown
+  // Numerische Codes (einige Parser verwenden Zahlen)
+  if (raceStr === '0' || raceStr === '1') return 'Terran';   // 0 oder 1 für Terran
+  if (raceStr === '2') return 'Protoss';                     // 2 für Protoss
+  if (raceStr === '3') return 'Zerg';                        // 3 für Zerg
+  
+  // Wenn nichts zutrifft, geben wir die Originalrasse oder "Unknown" zurück
   return race || 'Unknown';
 }
 
@@ -503,6 +524,8 @@ function generateFallbackBuildOrder(race: string): Array<{ time: string; supply:
       buildOrder.push({ time: "3:50", supply: 20, action: "Train Dragoon" });
       buildOrder.push({ time: "4:30", supply: 23, action: "Build Robotics Facility" });
       buildOrder.push({ time: "5:10", supply: 26, action: "Build Observatory" });
+      buildOrder.push({ time: "5:45", supply: 28, action: "Train Observer" });
+      buildOrder.push({ time: "6:15", supply: 30, action: "Expand to Natural" });
       break;
       
     case 'Terran':

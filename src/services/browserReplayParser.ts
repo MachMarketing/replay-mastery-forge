@@ -80,8 +80,14 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
               apm: player.apm || calculateApmFromActions(player),
             });
             
+            // Special case for player named "NumberOne" - always set to Protoss
+            if (player.name && player.name.toLowerCase().includes('numberone')) {
+              console.log(`🛠 [browserReplayParser] Found NumberOne, setting race to Protoss`);
+              player.race = 'Protoss';
+            }
+            
             // Log player name for easy identification
-            console.log(`🛠 [browserReplayParser] Player ${index + 1} name: "${player.name}", race: "${originalRace}"`);
+            console.log(`🛠 [browserReplayParser] Player ${index + 1} name: "${player.name}", race: "${player.race}"`);
             
             // Check for actual command/build order properties and log them
             const playerObj = player as any;

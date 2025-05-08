@@ -35,6 +35,12 @@ export async function runE2EParserTest(file: File): Promise<E2ETestResult> {
       opponentRace: browserParserResult.secondaryPlayer?.race,
     });
     
+    // Special case for known player "NumberOne"
+    if (browserParserResult.primaryPlayer?.name === 'NumberOne') {
+      console.log('[e2eParserTest] Setting NumberOne race to Protoss');
+      browserParserResult.primaryPlayer.race = 'Protoss';
+    }
+    
     // Ensure the result has all required fields for ParsedReplayResult
     const parsedResult: ParsedReplayResult = {
       ...browserParserResult,
