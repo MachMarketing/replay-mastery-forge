@@ -32,6 +32,9 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     
     console.log(`[browserReplayParser] File converted to ArrayBuffer (${fileData.byteLength} bytes)`);
     
+    // Generate unique parse ID for tracking
+    const parseId = Math.random().toString(36).substring(2, 10);
+    
     // Return a promise that will resolve with the parsed data
     return new Promise(async (resolve, reject) => {
       // Set a timeout
@@ -41,35 +44,46 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
       }, PARSER_TIMEOUT_MS);
       
       try {
-        console.log('[browserReplayParser] Creating parser from ArrayBuffer...');
+        console.log(`[browserReplayParser] Creating parser from ArrayBuffer (${parseId})...`);
         // Create the parser from the array buffer
         const parser = ReplayParser.fromArrayBuffer(fileData);
         
-        console.log('[browserReplayParser] Running parser.parse()...');
+        console.log(`[browserReplayParser] Running parser.parse() (${parseId})...`);
         // Actually run the parsing operation
         const result = await parser.parse();
         
         // Add the debugging log to see the exact structure
-        console.log('🛠 Full parsed object structure:', result);
+        console.log(`🛠 Full parsed object structure (${parseId}):`, result);
         
         // Dump the raw data structure to help with debugging
-        console.log('🛠 Game info structure:', result.gameInfo ? Object.keys(result.gameInfo) : 'none');
-        console.log('🛠 Players structure:', result.players ? 
+        console.log(`🛠 Game info structure (${parseId}):`, result.gameInfo ? Object.keys(result.gameInfo) : 'none');
+        console.log(`🛠 Players structure (${parseId}):`, result.players ? 
           result.players.map((p: any) => Object.keys(p)) : 'none');
         
         // Detailed player info
         if (result.players && result.players.length > 0) {
-          console.log('🛠 First player details:', {
+          console.log(`🛠 First player details (${parseId}):`, {
             name: result.players[0].name,
             race: result.players[0].race,
             // Log more player properties as needed
           });
+          
+          // Log build order info if available
+          if (result.players[0].commands) {
+            console.log(`🛠 First player commands sample (${parseId}):`, 
+              result.players[0].commands.slice(0, 5));
+          }
+          
+          if (result.players[0].units) {
+            console.log(`🛠 First player units sample (${parseId}):`, 
+              result.players[0].units.slice(0, 5));
+          }
         }
         
         // Clear the timeout since parsing completed
         clearTimeout(timeoutId);
         
-        console.log(`[browserReplayParser] Parsing complete, found data:`, 
+        console.log(`[browserReplayParser] Parsing complete (${parseId}), found data:`, 
           result ? 'Result found' : 'No result');
         
         if (!result) {
@@ -77,14 +91,15 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
         }
         
         // Log more detailed information about the parsed result structure
-        console.log(`[browserReplayParser] Result keys: ${Object.keys(result).join(', ')}`);
+        console.log(`[browserReplayParser] Result keys (${parseId}): ${Object.keys(result).join(', ')}`);
         
         if (result.gameInfo) {
-          console.log(`[browserReplayParser] Game info: ${result.gameInfo.map || 'Unknown map'}`);
+          console.log(`[browserReplayParser] Game info (${parseId}): ${result.gameInfo.map || 'Unknown map'}`);
+          console.log(`[browserReplayParser] Game frames (${parseId}): ${result.gameInfo.frames || 'Unknown'}`);
         }
         
         if (result.players) {
-          console.log(`[browserReplayParser] Players count: ${result.players.length || 0}`);
+          console.log(`[browserReplayParser] Players count (${parseId}): ${result.players.length || 0}`);
         }
         
         // Format the data based on what we see in the result object
@@ -93,11 +108,12 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
           header: result.gameInfo || {},
           players: result.players || [],
           mapName: result.gameInfo?.map || 'Unknown',
-          chat: result.chatMessages || []
+          chat: result.chatMessages || [],
+          fileHash: String(file.size) + '_' + parseId // Add a unique hash for this specific file
         };
         
         // Map the raw parsed data to our application format
-        console.log('[browserReplayParser] Mapping parsed data to application format...');
+        console.log(`[browserReplayParser] Mapping parsed data to application format (${parseId})...`);
         return resolve(mapRawToParsed(parsedData));
       } catch (error) {
         clearTimeout(timeoutId);

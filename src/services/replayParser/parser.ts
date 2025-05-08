@@ -28,6 +28,10 @@ export async function parseReplayFile(file: File): Promise<ParsedReplayData | nu
     const apiUrl = DEFAULT_SCREP_API_URL;
     console.log('🔍 [parser.ts] Using SCREP API URL:', apiUrl);
     
+    // Generate a unique identifier for this parse request to track logs
+    const parseId = Math.random().toString(36).substring(2, 10);
+    console.log(`🔍 [parser.ts] Parse request ID: ${parseId}`);
+    
     // Send the request to the SCREP API
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -39,17 +43,36 @@ export async function parseReplayFile(file: File): Promise<ParsedReplayData | nu
     // Check for HTTP errors
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('❌ [parser.ts] API error response:', errorText);
+      console.error(`❌ [parser.ts] API error response (${parseId}):`, errorText);
       throw new Error(`SCREP API error (${response.status}): ${errorText}`);
     }
     
     // Parse the JSON response
     const data = await response.json();
-    console.log('🔍 [parser.ts] SCREP API returned data:', data);
+    console.log(`🔍 [parser.ts] SCREP API returned data (${parseId}):`, data);
+    
+    // Verify we have actual data before continuing
+    if (!data || (data && Object.keys(data).length === 0)) {
+      console.error(`❌ [parser.ts] Received empty data from API (${parseId})`);
+      throw new Error('Received empty data from SCREP API');
+    }
     
     // If the API returns an error field, throw it
     if (data.error) {
       throw new Error(`API error: ${data.error}`);
+    }
+    
+    // Print data structure in logs to help with debugging
+    if (data.header) {
+      console.log(`🔍 [parser.ts] Replay header keys (${parseId}):`, Object.keys(data.header));
+      if (data.header.frames) {
+        console.log(`🔍 [parser.ts] Replay frames (${parseId}):`, data.header.frames);
+      }
+    }
+    
+    if (data.players && data.players.length > 0) {
+      console.log(`🔍 [parser.ts] Player data available (${parseId}):`, 
+        data.players.length, 'players');
     }
     
     return data;
