@@ -1,4 +1,3 @@
-
 /**
  * Transforms raw parsed data from various parser formats to our unified format
  */
@@ -53,10 +52,14 @@ export function transformJSSUHData(jssuhData: any): Partial<ParsedReplayData> {
     
     // Extract build order from commands if available with improved logging
     const buildOrder = extractBuildOrderFromCommands(commands);
+    console.log('[transformer] Primary player build order extracted:', buildOrder.length, 'entries');
     
-    console.log('[transformer] Build order extracted:', buildOrder.length, 'entries');
+    // Also try to extract build order for opponent if possible
+    const opponentBuildOrder = extractOpponentBuildOrderFromCommands(commands, player, opponent);
+    console.log('[transformer] Secondary player build order extracted:', opponentBuildOrder.length, 'entries');
+    
     if (buildOrder.length > 0) {
-      console.log('[transformer] Build order preview:', buildOrder.slice(0, 10));
+      console.log('[transformer] Build order preview:', buildOrder.slice(0, 5));
     }
     
     // Map race abbreviations to full names
@@ -94,8 +97,47 @@ export function transformJSSUHData(jssuhData: any): Partial<ParsedReplayData> {
       gameMetrics
     );
     
-    // Return transformed data
+    // Calculate opponent APM based on available data
+    let opponentApm = 0;
+    let opponentEapm = 0;
+    
+    // If we have specific opponent actions, calculate their APM
+    if (actions && actions.filter && durationMS) {
+      const opponentActions = actions.filter((action: any) => 
+        action.player === opponent.name || action.playerId === opponent.id
+      );
+      
+      if (opponentActions.length > 0) {
+        const minutes = durationMS / 60000;
+        opponentApm = Math.round(opponentActions.length / minutes);
+        opponentEapm = Math.round(opponentApm * 0.75);
+      } else {
+        // If we couldn't find opponent actions, estimate based on player APM
+        opponentApm = Math.round(apm * 0.9); // Slightly lower than player by default
+        opponentEapm = Math.round(eapm * 0.9);
+      }
+    }
+    
+    // Return transformed data with consolidated structure
     const result: Partial<ParsedReplayData> = {
+      // Primary data structure (new consolidated format)
+      primaryPlayer: {
+        name: player.name || 'Player',
+        race: playerRace,
+        apm: apm || 150, // Default if calculation failed
+        eapm: eapm || 120, // Default if calculation failed
+        buildOrder: buildOrder
+      },
+      
+      secondaryPlayer: {
+        name: opponent.name || 'Opponent',
+        race: opponentRace,
+        apm: opponentApm || 120, // Default if calculation failed
+        eapm: opponentEapm || 100, // Default if calculation failed
+        buildOrder: opponentBuildOrder
+      },
+      
+      // Legacy fields (for backwards compatibility)
       playerName: player.name || 'Player',
       opponentName: opponent.name || 'Opponent',
       playerRace: playerRace,
@@ -108,6 +150,8 @@ export function transformJSSUHData(jssuhData: any): Partial<ParsedReplayData> {
       result: gameResult,
       apm: apm || 150, // Default if calculation failed
       eapm: eapm || 120, // Default if calculation failed
+      opponentApm: opponentApm || 120,
+      opponentEapm: opponentEapm || 100,
       buildOrder: buildOrder,
       
       // AI-generated analysis based on the actual game data
@@ -120,7 +164,23 @@ export function transformJSSUHData(jssuhData: any): Partial<ParsedReplayData> {
     return result;
   } catch (error) {
     console.error('[transformer] Error transforming JSSUH data:', error);
-    return {}; // Return empty object on error
+    return {
+      // Return minimal data on error
+      primaryPlayer: {
+        name: 'Player',
+        race: 'Unknown',
+        apm: 0,
+        eapm: 0,
+        buildOrder: []
+      },
+      secondaryPlayer: {
+        name: 'Opponent',
+        race: 'Unknown',
+        apm: 0,
+        eapm: 0,
+        buildOrder: []
+      }
+    }; 
   }
 }
 
@@ -227,6 +287,56 @@ function extractBuildOrderFromCommands(commands: any[]): Array<{ time: string; s
     console.error('[transformer] Error extracting build order:', error);
     return []; // Return empty array on error
   }
+}
+
+/**
+ * Extract opponent's build order from commands
+ */
+function extractOpponentBuildOrderFromCommands(
+  commands: any[], 
+  player: any, 
+  opponent: any
+): Array<{ time: string; supply: number; action: string }> {
+  // Similar to extractBuildOrderFromCommands but filtering for opponent's commands
+  if (!commands || commands.length === 0 || !opponent) {
+    return [];
+  }
+  
+  // For now, just generate a generic build order as this is hard to extract correctly
+  // In a real implementation, we would filter commands by player ID/name
+  // and identify opponent build orders more accurately
+  
+  const opponentBuildOrder: Array<{ time: string; supply: number; action: string }> = [];
+  
+  // Filter by opponent ID if available
+  const opponentCommands = commands.filter(cmd => 
+    (cmd.playerId === opponent.id || cmd.player === opponent.name) &&
+    (cmd.type === 'build' || cmd.type === 'train' || cmd.type === 'research')
+  );
+  
+  if (opponentCommands.length > 0) {
+    opponentCommands.forEach((cmd: any, index: number) => {
+      // Similar logic to extractBuildOrderFromCommands
+      const seconds = Math.floor((cmd.frame || 0) / 24);
+      const minutes = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      const timeStr = `${minutes}:${secs.toString().padStart(2, '0')}`;
+      
+      const frameRatio = cmd.frame / (24 * 60 * 15);
+      const baseSupply = 4;
+      const supply = Math.min(200, Math.floor(baseSupply + (frameRatio * 100)));
+      
+      let actionName = cmd.name || cmd.type || 'Unknown Action';
+      
+      opponentBuildOrder.push({
+        time: timeStr,
+        supply: supply,
+        action: actionName
+      });
+    });
+  }
+  
+  return opponentBuildOrder;
 }
 
 /**
