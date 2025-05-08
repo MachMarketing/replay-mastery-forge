@@ -4,7 +4,8 @@
  */
 import { parseReplayInBrowser } from '@/services/browserReplayParser';
 import { readFileAsUint8Array } from '@/services/fileReader';
-import { ParsedReplayData, ParsedReplayResult } from '@/services/replayParser/types';
+import { ParsedReplayData } from '@/services/replayParser/types';
+import { ParsedReplayResult } from '@/services/replayParserService';
 
 interface E2ETestResult {
   success: boolean;

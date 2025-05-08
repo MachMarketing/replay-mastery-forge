@@ -1,4 +1,3 @@
-
 /**
  * This module provides a unified browser-based replay parser system 
  * that uses screparsed library for reliable replay parsing without server dependencies.

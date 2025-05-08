@@ -1,25 +1,9 @@
-import { ParsedReplayData, PlayerData, ReplayAnalysis } from './replayParser/types';
+import { ParsedReplayData, PlayerData, ReplayAnalysis, ParsedReplayResult } from './replayParser/types';
 import { parseReplayInBrowser } from './browserReplayParser';
 import { markBrowserAsHavingWasmIssues } from '@/utils/browserDetection';
 
 // Re-export PlayerData interface properly
-export type { PlayerData, ParsedReplayData, ReplayAnalysis };
-
-// This interface ensures backward compatibility with existing code
-// by making optional fields in ParsedReplayData required here
-export interface ParsedReplayResult extends ParsedReplayData {
-  // Ensure all legacy fields have proper typing and are required (not optional)
-  playerName: string;  // Aliased from primaryPlayer.name
-  opponentName: string; // Aliased from secondaryPlayer.name
-  playerRace: string;  // Aliased from primaryPlayer.race
-  opponentRace: string; // Aliased from secondaryPlayer.race
-  apm: number;         // Aliased from primaryPlayer.apm
-  eapm: number;        // Aliased from primaryPlayer.eapm
-  opponentApm: number; // Aliased from secondaryPlayer.apm
-  opponentEapm: number; // Aliased from secondaryPlayer.eapm
-  // Make trainingPlan required in this interface to match ReplayAnalysis
-  trainingPlan: Array<{ day: number; focus: string; drill: string }>;
-}
+export type { PlayerData, ParsedReplayData, ReplayAnalysis, ParsedReplayResult };
 
 // Create a merged type that satisfies both interfaces without conflicts
 export type AnalyzedReplayResult = ParsedReplayResult & Omit<ReplayAnalysis, keyof ParsedReplayResult>;

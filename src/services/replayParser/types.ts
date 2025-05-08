@@ -33,6 +33,40 @@ export interface ParsedReplayData {
   secondaryPlayer: PlayerData;
   
   // Legacy fields (for backwards compatibility)
+  playerName?: string;
+  opponentName?: string;
+  playerRace?: string;
+  opponentRace?: string;
+  apm?: number;
+  eapm?: number;
+  opponentApm?: number;
+  opponentEapm?: number;
+  
+  // Game info
+  map?: string;
+  matchup?: string;
+  duration?: string;
+  durationMS?: number;
+  date?: string;
+  result?: 'win' | 'loss' | 'unknown';
+  
+  // Build order data
+  buildOrder?: Array<{ time: string; supply: number; action: string }>;
+  
+  // Analysis results
+  strengths?: string[];
+  weaknesses?: string[];
+  recommendations?: string[];
+  
+  // Optional training plan (since it's added later in the process)
+  trainingPlan?: Array<{ day: number; focus: string; drill: string }>;
+}
+
+/**
+ * Mapped replay data with required fields guaranteed
+ */
+export interface ParsedReplayResult extends ParsedReplayData {
+  // Ensure all legacy fields have proper typing and are required (not optional)
   playerName: string;
   opponentName: string;
   playerRace: string;
@@ -41,23 +75,7 @@ export interface ParsedReplayData {
   eapm: number;
   opponentApm: number;
   opponentEapm: number;
-  
-  // Game info
-  map: string;
-  matchup: string;
-  duration: string;
-  durationMS: number;
-  date: string;
-  result: 'win' | 'loss' | 'unknown';
-  
-  // Build order data
-  buildOrder: Array<{ time: string; supply: number; action: string }>;
-  
-  // Analysis results
-  strengths: string[];
-  weaknesses: string[];
-  recommendations: string[];
-  
-  // Optional training plan (since it's added later in the process)
-  trainingPlan?: Array<{ day: number; focus: string; drill: string }>;
+  // Make trainingPlan required in this interface
+  trainingPlan: Array<{ day: number; focus: string; drill: string }>;
 }
+
