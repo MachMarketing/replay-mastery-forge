@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -96,46 +97,46 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
 
     const displayData = {
       primaryPlayer: {
-        name: selectedPlayerIndex === 1 ? 
-              actualOpponentName : 
-              actualPlayerName,
-        race: selectedPlayerIndex === 1 ? 
-              actualOpponentRace : 
-              actualPlayerRace,
-        apm: selectedPlayerIndex === 1 ? 
-             actualOpponentApm : 
-             actualPlayerApm,
-        eapm: selectedPlayerIndex === 1 ? 
-              actualOpponentEapm : 
-              actualPlayerEapm,
+        name: selectedPlayerIndex === 0 ? 
+              actualPlayerName : 
+              actualOpponentName,
+        race: selectedPlayerIndex === 0 ? 
+              actualPlayerRace : 
+              actualOpponentRace,
+        apm: selectedPlayerIndex === 0 ? 
+             actualPlayerApm : 
+             actualOpponentApm,
+        eapm: selectedPlayerIndex === 0 ? 
+              actualPlayerEapm : 
+              actualOpponentEapm,
         
         // WICHTIG: Use the correct build order based on actual parsed data
-        buildOrder: selectedPlayerIndex === 1 ? 
-                   secondaryPlayerBuildOrder : 
-                   primaryPlayerBuildOrder,
+        buildOrder: selectedPlayerIndex === 0 ? 
+                   primaryPlayerBuildOrder : 
+                   secondaryPlayerBuildOrder,
         
         strengths: ['Aggressiver Start', 'Gutes Makro'],
         weaknesses: ['Schwache Verteidigung', 'Ineffizientes Scouting'],
         recommendations: ['Fokus auf Early-Game-Defense', 'Verbessere das Scouting']
       },
       secondaryPlayer: {
-        name: selectedPlayerIndex === 1 ? 
-              actualPlayerName : 
-              actualOpponentName,
-        race: selectedPlayerIndex === 1 ? 
-              actualPlayerRace : 
-              actualOpponentRace,
-        apm: selectedPlayerIndex === 1 ? 
-             actualPlayerApm : 
-             actualOpponentApm,
-        eapm: selectedPlayerIndex === 1 ? 
-              actualPlayerEapm : 
-              actualOpponentEapm,
+        name: selectedPlayerIndex === 0 ? 
+              actualOpponentName : 
+              actualPlayerName,
+        race: selectedPlayerIndex === 0 ? 
+              actualOpponentRace : 
+              actualPlayerRace,
+        apm: selectedPlayerIndex === 0 ? 
+             actualOpponentApm : 
+             actualPlayerApm,
+        eapm: selectedPlayerIndex === 0 ? 
+              actualOpponentEapm : 
+              actualPlayerEapm,
         
         // WICHTIG: Use the correct build order based on actual parsed data
-        buildOrder: selectedPlayerIndex === 1 ? 
-                   primaryPlayerBuildOrder : 
-                   secondaryPlayerBuildOrder,
+        buildOrder: selectedPlayerIndex === 0 ? 
+                   secondaryPlayerBuildOrder : 
+                   primaryPlayerBuildOrder,
         
         strengths: ['Starke Mid-Game-Angriffe', 'Gutes Multitasking'],
         weaknesses: ['Spätes Spiel unsicher', 'Schlechtes Ressourcenmanagement'],
@@ -143,8 +144,8 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       }
     };
     
-    const selectedPlayerData = selectedPlayerIndex === 1 ? displayData.secondaryPlayer : displayData.primaryPlayer;
-    const otherPlayerData = selectedPlayerIndex === 1 ? displayData.primaryPlayer : displayData.secondaryPlayer;
+    const selectedPlayerData = selectedPlayerIndex === 0 ? displayData.primaryPlayer : displayData.secondaryPlayer;
+    const otherPlayerData = selectedPlayerIndex === 0 ? displayData.secondaryPlayer : displayData.primaryPlayer;
 
     return (
       <Card className="shadow-md">

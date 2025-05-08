@@ -1,3 +1,4 @@
+
 /**
  * Maps raw parsed replay data to our application's format
  */
@@ -178,10 +179,8 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
           primaryBuildOrder = extractBuildOrderFromActions(player1.actions);
           primaryPlayer.buildOrder = primaryBuildOrder;
         } else {
-          // Fallback: Generate placeholder build order for primaryPlayer
-          console.log('[replayMapper] Generating placeholder build order for primary player');
-          primaryBuildOrder = generatePlaceholderBuildOrder(primaryPlayer.race);
-          primaryPlayer.buildOrder = primaryBuildOrder;
+          // Log that we couldn't find build order data
+          console.warn('[replayMapper] No build order data found for primary player');
         }
       }
       
@@ -205,10 +204,8 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
           secondaryBuildOrder = extractBuildOrderFromActions(player2.actions);
           secondaryPlayer.buildOrder = secondaryBuildOrder;
         } else {
-          // Fallback: Generate placeholder build order for secondaryPlayer
-          console.log('[replayMapper] Generating placeholder build order for secondary player');
-          secondaryBuildOrder = generatePlaceholderBuildOrder(secondaryPlayer.race);
-          secondaryPlayer.buildOrder = secondaryBuildOrder;
+          // Log that we couldn't find build order data
+          console.warn('[replayMapper] No build order data found for secondary player');
         }
       }
       
@@ -218,11 +215,6 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
       });
     } catch (err) {
       console.warn('[replayMapper] Error extracting build orders:', err);
-      // Generate placeholder build orders as fallback
-      primaryBuildOrder = generatePlaceholderBuildOrder(primaryPlayer.race);
-      secondaryBuildOrder = generatePlaceholderBuildOrder(secondaryPlayer.race);
-      primaryPlayer.buildOrder = primaryBuildOrder;
-      secondaryPlayer.buildOrder = secondaryBuildOrder;
     }
     
     // Determine game result from replay data
@@ -526,66 +518,6 @@ function extractBuildOrderFromActions(actions: any[]): Array<{ time: string; sup
   }
   
   return result;
-}
-
-/**
- * Generate a placeholder build order based on race
- */
-function generatePlaceholderBuildOrder(race: string): Array<{ time: string; supply: number; action: string }> {
-  const buildOrder: Array<{ time: string; supply: number; action: string }> = [];
-  
-  // Standardisieren der Rasse für die Erstellung des Build-Orders
-  const standardizedRace = race.toLowerCase();
-  
-  // Allgemeine Build-Order-Schritte je nach Rasse
-  if (standardizedRace.includes('protoss')) {
-    buildOrder.push({ time: '0:00', supply: 4, action: 'Game Start' });
-    buildOrder.push({ time: '0:08', supply: 5, action: 'Build Pylon' });
-    buildOrder.push({ time: '0:20', supply: 5, action: 'Build Gateway' });
-    buildOrder.push({ time: '0:40', supply: 8, action: 'Build Assimilator' });
-    buildOrder.push({ time: '1:10', supply: 10, action: 'Build Cybernetics Core' });
-    buildOrder.push({ time: '1:25', supply: 12, action: 'Train Zealot' });
-    buildOrder.push({ time: '1:45', supply: 15, action: 'Build Pylon' });
-    buildOrder.push({ time: '2:00', supply: 16, action: 'Research Warp Gate' });
-    buildOrder.push({ time: '2:30', supply: 18, action: 'Train Stalker' });
-    buildOrder.push({ time: '3:00', supply: 22, action: 'Build Robotics Facility' });
-  } else if (standardizedRace.includes('terran')) {
-    buildOrder.push({ time: '0:00', supply: 4, action: 'Game Start' });
-    buildOrder.push({ time: '0:10', supply: 6, action: 'Build Supply Depot' });
-    buildOrder.push({ time: '0:25', supply: 8, action: 'Build Barracks' });
-    buildOrder.push({ time: '0:45', supply: 10, action: 'Build Refinery' });
-    buildOrder.push({ time: '1:00', supply: 11, action: 'Train Marine' });
-    buildOrder.push({ time: '1:20', supply: 13, action: 'Build Factory' });
-    buildOrder.push({ time: '1:40', supply: 14, action: 'Build Supply Depot' });
-    buildOrder.push({ time: '2:00', supply: 16, action: 'Train Marine' });
-    buildOrder.push({ time: '2:30', supply: 18, action: 'Build Starport' });
-    buildOrder.push({ time: '3:00', supply: 22, action: 'Build Command Center' });
-  } else if (standardizedRace.includes('zerg')) {
-    buildOrder.push({ time: '0:00', supply: 4, action: 'Game Start' });
-    buildOrder.push({ time: '0:15', supply: 6, action: 'Build Spawning Pool' });
-    buildOrder.push({ time: '0:25', supply: 7, action: 'Build Extractor' });
-    buildOrder.push({ time: '0:40', supply: 9, action: 'Train Zergling' });
-    buildOrder.push({ time: '1:00', supply: 10, action: 'Build Hatchery' });
-    buildOrder.push({ time: '1:20', supply: 12, action: 'Train Zergling' });
-    buildOrder.push({ time: '1:45', supply: 14, action: 'Build Roach Warren' });
-    buildOrder.push({ time: '2:10', supply: 16, action: 'Train Roach' });
-    buildOrder.push({ time: '2:30', supply: 18, action: 'Build Lair' });
-    buildOrder.push({ time: '3:00', supply: 22, action: 'Build Hydralisk Den' });
-  } else {
-    // Generic build order for unknown race
-    buildOrder.push({ time: '0:00', supply: 4, action: 'Game Start' });
-    buildOrder.push({ time: '0:15', supply: 6, action: 'Build Supply Structure' });
-    buildOrder.push({ time: '0:30', supply: 8, action: 'Build Production Structure' });
-    buildOrder.push({ time: '0:50', supply: 10, action: 'Build Resource Gatherer' });
-    buildOrder.push({ time: '1:10', supply: 12, action: 'Train Unit' });
-    buildOrder.push({ time: '1:30', supply: 14, action: 'Build Tech Structure' });
-    buildOrder.push({ time: '1:45', supply: 16, action: 'Build Supply Structure' });
-    buildOrder.push({ time: '2:00', supply: 18, action: 'Train Unit' });
-    buildOrder.push({ time: '2:30', supply: 20, action: 'Build Expansion' });
-    buildOrder.push({ time: '3:00', supply: 22, action: 'Train Advanced Unit' });
-  }
-  
-  return buildOrder;
 }
 
 /**
