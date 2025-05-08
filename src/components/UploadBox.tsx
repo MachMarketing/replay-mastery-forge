@@ -128,7 +128,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     
     try {
       console.log('[UploadBox] Starting parsing with unified browser parser:', file.name);
-      // Use the useReplayParser hook which now uses our unified approach
+      // Use the useReplayParser hook to parse the file
       const parsedData = await parseReplay(file);
       
       if (!parsedData) {

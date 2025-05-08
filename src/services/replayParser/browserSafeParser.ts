@@ -20,86 +20,100 @@ export async function initBrowserSafeParser(): Promise<void> {
     console.log('[browserSafeParser] Attempting to initialize screparsed parser');
     
     try {
-      // Import the screparsed module with proper typing
+      // Import the screparsed module
       const screparsedImport = await import('screparsed');
       console.log('[browserSafeParser] Screparsed import successful:', screparsedImport);
       
-      // The module structure might be different than expected
-      // Let's try various approaches to find a valid parser
+      // Due to variations in the module structure, we use a dynamic approach
+      // to find the right parser implementation
       
-      // Define a type for the parser module to avoid TS errors
-      interface ParserModule {
-        parse: (data: Uint8Array) => any;
+      // First check if the module exposes a parse function directly
+      if (typeof screparsedImport.parse === 'function') {
+        console.log('[browserSafeParser] Found parse function at module root level');
+        parserModule = {
+          parse: (data: Uint8Array) => screparsedImport.parse(data)
+        };
+        isInitialized = true;
+        console.log('[browserSafeParser] ✅ Browser-safe parser initialized successfully (using root parse)');
+        return;
       }
       
+      // Check for ReplayParser class
       if (typeof screparsedImport.ReplayParser === 'function') {
         console.log('[browserSafeParser] Found ReplayParser class in module');
         try {
-          // Create an instance of ReplayParser
-          const parser = new screparsedImport.ReplayParser();
+          // Try to create an instance using default constructor
+          const parser = new (screparsedImport.ReplayParser as any)();
+          
           if (typeof parser.parse === 'function') {
             parserModule = {
               parse: (data: Uint8Array) => parser.parse(data)
-            } as ParserModule;
+            };
             isInitialized = true;
             console.log('[browserSafeParser] ✅ Browser-safe parser initialized successfully (using ReplayParser)');
-          } else {
-            throw new Error('ReplayParser instance does not have a parse method');
+            return;
           }
         } catch (e) {
           console.error('[browserSafeParser] Error creating ReplayParser instance:', e);
-          throw e;
         }
-      } else if (typeof screparsedImport.ParsedReplay === 'function') {
+      }
+      
+      // Check for ParsedReplay class
+      if (typeof screparsedImport.ParsedReplay === 'function') {
         console.log('[browserSafeParser] Found ParsedReplay class in module');
         
-        if (typeof screparsedImport.ParsedReplay.parse === 'function') {
+        // Check for static parse method
+        if (typeof (screparsedImport.ParsedReplay as any).parse === 'function') {
           parserModule = {
-            parse: (data: Uint8Array) => screparsedImport.ParsedReplay.parse(data)
-          } as ParserModule;
+            parse: (data: Uint8Array) => (screparsedImport.ParsedReplay as any).parse(data)
+          };
           isInitialized = true;
           console.log('[browserSafeParser] ✅ Browser-safe parser initialized successfully (using ParsedReplay.parse)');
-        } else {
-          try {
-            // Try instantiating ParsedReplay
-            const parsedReplay = new screparsedImport.ParsedReplay();
-            if (typeof parsedReplay.parse === 'function') {
-              parserModule = {
-                parse: (data: Uint8Array) => parsedReplay.parse(data)
-              } as ParserModule;
-              isInitialized = true;
-              console.log('[browserSafeParser] ✅ Browser-safe parser initialized successfully (using ParsedReplay instance)');
-            } else {
-              throw new Error('ParsedReplay instance does not have a parse method');
-            }
-          } catch (e) {
-            console.error('[browserSafeParser] Error creating ParsedReplay instance:', e);
-            throw e;
-          }
+          return;
         }
-      } else if (screparsedImport.default && typeof screparsedImport.default.parse === 'function') {
+        
+        try {
+          // Try instantiating ParsedReplay
+          const parsedReplay = new (screparsedImport.ParsedReplay as any)();
+          if (typeof parsedReplay.parse === 'function') {
+            parserModule = {
+              parse: (data: Uint8Array) => parsedReplay.parse(data)
+            };
+            isInitialized = true;
+            console.log('[browserSafeParser] ✅ Browser-safe parser initialized successfully (using ParsedReplay instance)');
+            return;
+          }
+        } catch (e) {
+          console.error('[browserSafeParser] Error creating ParsedReplay instance:', e);
+        }
+      }
+      
+      // Check if the default export has a parse function
+      if (screparsedImport.default && typeof screparsedImport.default.parse === 'function') {
         console.log('[browserSafeParser] Using default export with parse function');
         parserModule = {
           parse: (data: Uint8Array) => screparsedImport.default.parse(data)
-        } as ParserModule;
+        };
         isInitialized = true;
         console.log('[browserSafeParser] ✅ Browser-safe parser initialized successfully (default export)');
-      } else {
-        // Explore the module structure to find any parse function
-        console.log('[browserSafeParser] Exploring module structure to find parse method:', Object.keys(screparsedImport));
-        
-        const parseFn = findParseFunction(screparsedImport);
-        if (parseFn) {
-          console.log('[browserSafeParser] Found parse function through exploration');
-          parserModule = { 
-            parse: parseFn 
-          } as ParserModule;
-          isInitialized = true;
-          console.log('[browserSafeParser] ✅ Browser-safe parser initialized successfully (custom parser)');
-        } else {
-          throw new Error('Could not find parse function in screparsed module');
-        }
+        return;
       }
+      
+      // Explore the module structure to find any parse function
+      console.log('[browserSafeParser] Exploring module structure to find parse method:', Object.keys(screparsedImport));
+      
+      const parseFn = findParseFunction(screparsedImport);
+      if (parseFn) {
+        console.log('[browserSafeParser] Found parse function through exploration');
+        parserModule = { 
+          parse: parseFn 
+        };
+        isInitialized = true;
+        console.log('[browserSafeParser] ✅ Browser-safe parser initialized successfully (custom parser)');
+        return;
+      }
+      
+      throw new Error('Could not find parse function in screparsed module');
     } catch (importError) {
       console.error('[browserSafeParser] Failed to import screparsed module:', importError);
       throw new Error(`Failed to import screparsed module: ${importError}`);
@@ -194,84 +208,74 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
     await initBrowserSafeParser();
   }
   
+  if (!parserModule) {
+    throw new Error('screparsed parser module not available');
+  }
+  
+  console.log('[browserSafeParser] Preparing to parse replay data');
+  console.log('[browserSafeParser] Parsing replay data:', data.length, 'bytes');
+  
   return new Promise((resolve, reject) => {
     try {
-      console.log('[browserSafeParser] Preparing to parse replay data');
+      // Set up an error handler for WASM errors
+      const originalOnError = window.onerror;
+      let wasmError: Error | null = null;
       
-      if (!parserModule) {
-        throw new Error('screparsed parser module not available');
-      }
+      // Temporary error handler to catch WASM errors
+      window.onerror = function(message, source, lineno, colno, error) {
+        const errorMsg = String(message);
+        console.error('[browserSafeParser] WASM error caught by window.onerror:', { 
+          message: errorMsg,
+          error: error ? String(error) : 'No error object' 
+        });
+        wasmError = new Error(`WASM execution error: ${errorMsg}`);
+        return true; // Prevents default error handling
+      };
       
-      console.log('[browserSafeParser] Parsing replay data:', data.length, 'bytes');
-      
-      try {
-        // Set up an error handler for WASM errors
-        const originalOnError = window.onerror;
-        let wasmError: Error | null = null;
-        
-        // Temporary error handler to catch WASM errors
-        window.onerror = function(message, source, lineno, colno, error) {
-          const errorMsg = String(message);
-          console.error('[browserSafeParser] WASM error caught by window.onerror:', { 
-            message: errorMsg,
-            error: error ? String(error) : 'No error object' 
-          });
-          wasmError = new Error(`WASM execution error: ${errorMsg}`);
-          return true; // Prevents default error handling
-        };
-        
-        // Try to parse with a timeout to catch hangs
-        const timeoutId = setTimeout(() => {
-          if (wasmError === null) {
-            wasmError = new Error('WASM parsing timeout');
-            // Restore original handler
-            window.onerror = originalOnError;
-            reject(wasmError);
-          }
-        }, 5000); // 5 second timeout
-        
-        // Use our parser module with the parse function
-        let result;
-        
-        console.log('[browserSafeParser] Calling parse function from parserModule');
-        result = parserModule.parse(data);
-        
-        // Clear timeout since parsing completed
-        clearTimeout(timeoutId);
-        
-        // Restore original error handler
-        window.onerror = originalOnError;
-        
-        if (wasmError) {
+      // Try to parse with a timeout to catch hangs
+      const timeoutId = setTimeout(() => {
+        if (wasmError === null) {
+          wasmError = new Error('WASM parsing timeout');
+          // Restore original handler
+          window.onerror = originalOnError;
           reject(wasmError);
-          return;
         }
-        
-        console.log('[browserSafeParser] Parsing completed, result:', 
-          typeof result === 'object' ? 'Object returned' : typeof result);
-        resolve(result);
-      } catch (parseError) {
-        console.error('[browserSafeParser] Error in parse function:', 
-          typeof parseError === 'object' ? 
-            (parseError ? JSON.stringify(parseError, Object.getOwnPropertyNames(parseError)) : 'null') : 
-            String(parseError)
-        );
-        
-        // Check if the error is a DOM event (which sometimes happens with WASM errors)
-        if (parseError && typeof parseError === 'object' && 'isTrusted' in parseError) {
-          console.error('[browserSafeParser] Received DOM event instead of error details. This might be a WASM error.');
-          reject(new Error('WASM execution error occurred during parsing. The replay might be incompatible or corrupted.'));
-        } else {
-          reject(parseError);
-        }
+      }, 5000); // 5 second timeout
+      
+      // Use our parser module with the parse function
+      let result;
+      
+      console.log('[browserSafeParser] Calling parse function from parserModule');
+      result = parserModule.parse(data);
+      
+      // Clear timeout since parsing completed
+      clearTimeout(timeoutId);
+      
+      // Restore original error handler
+      window.onerror = originalOnError;
+      
+      if (wasmError) {
+        reject(wasmError);
+        return;
       }
-    } catch (error) {
-      console.error('[browserSafeParser] Parsing error:', 
-        typeof error === 'object' ? 
-          (error ? JSON.stringify(error, Object.getOwnPropertyNames(error)) : 'null') : 
-          String(error)
+      
+      console.log('[browserSafeParser] Parsing completed, result:', 
+        typeof result === 'object' ? 'Object returned' : typeof result);
+      resolve(result);
+    } catch (parseError) {
+      console.error('[browserSafeParser] Error in parse function:', 
+        typeof parseError === 'object' ? 
+          (parseError ? JSON.stringify(parseError, Object.getOwnPropertyNames(parseError)) : 'null') : 
+          String(parseError)
       );
-      reject(error);
+      
+      // Check if the error is a DOM event (which sometimes happens with WASM errors)
+      if (parseError && typeof parseError === 'object' && 'isTrusted' in parseError) {
+        console.error('[browserSafeParser] Received DOM event instead of error details. This might be a WASM error.');
+        reject(new Error('WASM execution error occurred during parsing. The replay might be incompatible or corrupted.'));
+      } else {
+        reject(parseError);
+      }
     }
   });
 }

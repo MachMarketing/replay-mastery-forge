@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -83,11 +82,6 @@ const ParserTest = () => {
     try {
       const data = await parseReplay(selectedFile);
       setResult(data);
-      
-      // Check if we got fallback data
-      if (data && data.primaryPlayer && data.primaryPlayer.name === 'Player' && !data.primaryPlayer.buildOrder.length) {
-        setWasmError(true);
-      }
     } catch (err) {
       console.error('Parser test error:', err);
       if (err instanceof Error && 
@@ -158,7 +152,6 @@ const ParserTest = () => {
                         <span className="font-medium">Browser compatibility issue detected.</span> 
                         <br />
                         The WASM parser may not be fully compatible with your browser.
-                        Using fallback parser with limited functionality.
                       </AlertDescription>
                     </Alert>
                   )}

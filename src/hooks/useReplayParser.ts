@@ -25,10 +25,10 @@ export function useReplayParser(): ReplayParserResult {
   useEffect(() => {
     // If we already know there are WASM issues, show a warning toast
     if (hasBrowserWasmIssues()) {
-      console.warn('[useReplayParser] WASM issues detected, using fallback parser');
+      console.warn('[useReplayParser] WASM issues detected');
       toast({
         title: "Browser Compatibility Notice",
-        description: "Using fallback parser due to browser compatibility. Results may be limited.",
+        description: "Your browser may have limited support for replay parsing features.",
         variant: "default",
       });
     }
@@ -134,7 +134,7 @@ export function useReplayParser(): ReplayParserResult {
         secondaryBuildOrderItems: parsedData.secondaryPlayer.buildOrder.length
       });
       
-      // Ensure the result has the required fields
+      // Ensure the result has the required fields for the view
       const result: ParsedReplayResult = {
         ...parsedData,
         trainingPlan: parsedData.trainingPlan || [
@@ -183,19 +183,12 @@ export function useReplayParser(): ReplayParserResult {
           errorMessage.includes('runtime error') ||
           errorMessage.includes('out of bounds') ||
           errorMessage.includes('screparsed module'))) {
-        errorMessage = 'Browser-Kompatibilitätsproblem beim Parsen. Es wird ein Fallback verwendet.';
-        console.warn('[useReplayParser] Using fallback parser due to WASM compatibility issues');
+        errorMessage = 'Browser-Kompatibilitätsproblem beim Parsen.';
+        console.warn('[useReplayParser] WASM compatibility issues detected');
       }
       
       setError(errorMessage);
-      
       console.error('[useReplayParser] Replay parsing error:', err);
-      
-      toast({
-        title: 'Hinweis zur Verarbeitung',
-        description: 'Eingeschränkte Analyse verfügbar. Einige Details könnten fehlen.',
-        variant: 'default',
-      });
       
       // Clean up timeouts and intervals
       if (processingTimeoutRef.current) {
@@ -207,64 +200,11 @@ export function useReplayParser(): ReplayParserResult {
         progressIntervalRef.current = null;
       }
       
-      // We'll complete the process anyway, with limited data
       setIsProcessing(false);
       setProgress(100);
       
-      // Try to return some fallback data if we caught an error
-      try {
-        const fallbackData: ParsedReplayResult = {
-          primaryPlayer: {
-            name: 'Player',
-            race: 'Terran',
-            apm: 150,
-            eapm: 120,
-            buildOrder: [],
-            strengths: ['Good macro mechanics', 'Consistent worker production'],
-            weaknesses: ['Could improve scouting', 'Build order efficiency'],
-            recommendations: ['Practice scouting timings', 'Optimize build order']
-          },
-          secondaryPlayer: {
-            name: 'Opponent',
-            race: 'Protoss',
-            apm: 150,
-            eapm: 120,
-            buildOrder: [],
-            strengths: ['Good macro mechanics', 'Consistent worker production'],
-            weaknesses: ['Could improve scouting', 'Build order efficiency'],
-            recommendations: ['Practice scouting timings', 'Optimize build order']
-          },
-          map: 'Unknown Map',
-          matchup: 'TvP',
-          duration: '10:00',
-          durationMS: 600000,
-          date: new Date().toISOString(),
-          result: 'unknown',
-          playerName: 'Player',
-          opponentName: 'Opponent',
-          playerRace: 'Terran',
-          opponentRace: 'Protoss',
-          apm: 150,
-          eapm: 120,
-          opponentApm: 150,
-          opponentEapm: 120,
-          buildOrder: [],
-          strengths: ['Good macro mechanics', 'Consistent worker production'],
-          weaknesses: ['Could improve scouting', 'Build order efficiency'],
-          recommendations: ['Practice scouting timings', 'Optimize build order'],
-          trainingPlan: [
-            { day: 1, focus: "Macro Management", drill: "Constant worker production" },
-            { day: 2, focus: "Micro Control", drill: "Unit positioning practice" },
-            { day: 3, focus: "Build Order", drill: "Timing attack execution" }
-          ]
-        };
-        
-        console.log('[useReplayParser] Returning fallback data due to parser error');
-        return fallbackData;
-      } catch (fallbackErr) {
-        console.error('[useReplayParser] Error creating fallback data:', fallbackErr);
-        return null;
-      }
+      // Just throw the error to be handled by the UI
+      throw err;
     }
   }, [isProcessing, toast]);
 
