@@ -19,15 +19,13 @@ export async function initBrowserSafeParser(): Promise<void> {
   try {
     console.log('[browserSafeParser] Attempting to initialize screparsed parser');
     
-    // Import screparsed dynamically
     try {
-      // Import the module
-      const module = await import('screparsed');
-      console.log('[browserSafeParser] Screparsed import successful:', module);
+      // According to the screparsed npm docs, we need to import it properly
+      const { parse } = await import('screparsed');
+      console.log('[browserSafeParser] Screparsed import successful:', { parse });
       
-      // According to the npm docs, screparsed might export a Parser class directly
-      // or it might have a named export 'Parser', or it might be a default export
-      parserModule = module;
+      // Store the parse function directly
+      parserModule = { parse };
       isInitialized = true;
       console.log('[browserSafeParser] ✅ Browser-safe parser initialized successfully');
     } catch (importError) {
@@ -50,37 +48,12 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
   
   return new Promise((resolve, reject) => {
     try {
-      console.log('[browserSafeParser] Creating parser instance');
+      console.log('[browserSafeParser] Preparing to parse replay data');
       
-      if (!parserModule) {
-        throw new Error('screparsed module not available');
+      if (!parserModule || !parserModule.parse) {
+        throw new Error('screparsed parse function not available');
       }
       
-      // Try different ways to get the Parser class based on how screparsed is exported
-      let ParserClass;
-      
-      if (typeof parserModule.Parser === 'function') {
-        // Named export: { Parser: [Function] }
-        console.log('[browserSafeParser] Using named Parser export');
-        ParserClass = parserModule.Parser;
-      } else if (typeof parserModule.default === 'function') {
-        // Default export: { default: [Function] }
-        console.log('[browserSafeParser] Using default export');
-        ParserClass = parserModule.default;
-      } else if (typeof parserModule === 'function') {
-        // Direct export: [Function]
-        console.log('[browserSafeParser] Using direct function export');
-        ParserClass = parserModule;
-      } else {
-        console.error('[browserSafeParser] Could not find valid Parser constructor in module:', parserModule);
-        throw new Error('Invalid screparsed module structure - no usable Parser constructor found');
-      }
-      
-      // Create a parser instance
-      const parser = new ParserClass();
-      console.log('[browserSafeParser] Created screparsed Parser instance successfully');
-      
-      // Parse the replay data
       console.log('[browserSafeParser] Parsing replay data:', data.length, 'bytes');
       
       try {
@@ -108,7 +81,8 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
           }
         }, 5000); // 5 second timeout
         
-        const result = parser.parseReplay(data);
+        // Use the parse function directly, as documented in screparsed npm
+        const result = parserModule.parse(data);
         
         // Clear timeout since parsing completed
         clearTimeout(timeoutId);
@@ -124,7 +98,7 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
         console.log('[browserSafeParser] Parsing completed, result:', result);
         resolve(result);
       } catch (parseError) {
-        console.error('[browserSafeParser] Error in parser.parseReplay():', 
+        console.error('[browserSafeParser] Error in parse function:', 
           typeof parseError === 'object' ? 
             (parseError ? JSON.stringify(parseError) : 'null') : 
             String(parseError)
