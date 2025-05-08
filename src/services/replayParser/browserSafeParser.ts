@@ -19,19 +19,14 @@ export async function initBrowserSafeParser(): Promise<void> {
   try {
     console.log('[browserSafeParser] Attempting to initialize screparsed parser');
     
-    // Import screparsed dynamically - this is the key part that's failing
+    // Import screparsed dynamically
     try {
       // Import the module
       const module = await import('screparsed');
       console.log('[browserSafeParser] Screparsed import successful:', module);
       
-      // Check if the module has a default export (the parser constructor)
-      if (!module || typeof module.default !== 'function') {
-        console.error('[browserSafeParser] Invalid screparsed module structure:', module);
-        throw new Error('Invalid screparsed module structure - missing default export');
-      }
-      
-      // Store the module for future use
+      // According to the npm docs, screparsed might export a Parser class directly
+      // or it might have a named export 'Parser', or it might be a default export
       parserModule = module;
       isInitialized = true;
       console.log('[browserSafeParser] ✅ Browser-safe parser initialized successfully');
@@ -57,12 +52,31 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
     try {
       console.log('[browserSafeParser] Creating parser instance');
       
-      if (!parserModule || !parserModule.default) {
+      if (!parserModule) {
         throw new Error('screparsed module not available');
       }
       
-      // Create a parser instance using the default export
-      const ParserClass = parserModule.default;
+      // Try different ways to get the Parser class based on how screparsed is exported
+      let ParserClass;
+      
+      if (typeof parserModule.Parser === 'function') {
+        // Named export: { Parser: [Function] }
+        console.log('[browserSafeParser] Using named Parser export');
+        ParserClass = parserModule.Parser;
+      } else if (typeof parserModule.default === 'function') {
+        // Default export: { default: [Function] }
+        console.log('[browserSafeParser] Using default export');
+        ParserClass = parserModule.default;
+      } else if (typeof parserModule === 'function') {
+        // Direct export: [Function]
+        console.log('[browserSafeParser] Using direct function export');
+        ParserClass = parserModule;
+      } else {
+        console.error('[browserSafeParser] Could not find valid Parser constructor in module:', parserModule);
+        throw new Error('Invalid screparsed module structure - no usable Parser constructor found');
+      }
+      
+      // Create a parser instance
       const parser = new ParserClass();
       console.log('[browserSafeParser] Created screparsed Parser instance successfully');
       
