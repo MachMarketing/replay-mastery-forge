@@ -1,3 +1,4 @@
+
 /**
  * Maps raw parsed replay data to our application's format
  */
@@ -152,45 +153,66 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
       console.warn('[replayMapper] No duration information available in replay');
     }
     
-    // Parse build order for primary player
-    let buildOrder: Array<{ time: string; supply: number; action: string }> = [];
+    // Extract build orders for both players
+    let primaryBuildOrder: Array<{ time: string; supply: number; action: string }> = [];
+    let secondaryBuildOrder: Array<{ time: string; supply: number; action: string }> = [];
     
-    // Try to extract build order from various possible sources
-    if (player1) {
-      console.log('[replayMapper] Attempting to extract build order for', player1.name);
-      
-      // Log available data for debugging
-      if (player1.buildOrder) console.log('[replayMapper] buildOrder available:', player1.buildOrder.length);
-      if (player1.commands) console.log('[replayMapper] commands available:', player1.commands.length);
-      if (player1.actions) console.log('[replayMapper] actions available:', player1.actions.length);
-      
-      try {
+    try {
+      // Process primary player build order
+      if (player1) {
+        console.log('[replayMapper] Extracting build order for primary player:', player1.name);
+        
         if (Array.isArray(player1.buildOrder) && player1.buildOrder.length > 0) {
           // Direct build order data
-          console.log('[replayMapper] Using direct buildOrder data');
-          buildOrder = mapBuildOrderData(player1.buildOrder);
+          console.log('[replayMapper] Found direct buildOrder data for primary player');
+          primaryBuildOrder = mapBuildOrderData(player1.buildOrder);
+          primaryPlayer.buildOrder = primaryBuildOrder;
         } else if (Array.isArray(player1.commands) && player1.commands.length > 0) {
           // Extract from commands
-          console.log('[replayMapper] Extracting build order from commands');
-          buildOrder = extractBuildOrderFromCommands(player1.commands);
+          console.log('[replayMapper] Extracting build order from commands for primary player');
+          primaryBuildOrder = extractBuildOrderFromCommands(player1.commands);
+          primaryPlayer.buildOrder = primaryBuildOrder;
         } else if (Array.isArray(player1.actions) && player1.actions.length > 0) {
           // Extract from actions as last resort
-          console.log('[replayMapper] Extracting build order from actions');
-          buildOrder = extractBuildOrderFromActions(player1.actions);
-        } else {
-          console.warn('[replayMapper] No valid data sources for build order extraction');
-          // Instead of throwing, just use an empty array
-          buildOrder = [];
+          console.log('[replayMapper] Extracting build order from actions for primary player');
+          primaryBuildOrder = extractBuildOrderFromActions(player1.actions);
+          primaryPlayer.buildOrder = primaryBuildOrder;
         }
-      } catch (err) {
-        console.warn('[replayMapper] Error extracting build order:', err);
-        // Use empty array instead of throwing
-        buildOrder = [];
       }
+      
+      // Process secondary player build order
+      if (player2) {
+        console.log('[replayMapper] Extracting build order for secondary player:', player2.name);
+        
+        if (Array.isArray(player2.buildOrder) && player2.buildOrder.length > 0) {
+          // Direct build order data
+          console.log('[replayMapper] Found direct buildOrder data for secondary player');
+          secondaryBuildOrder = mapBuildOrderData(player2.buildOrder);
+          secondaryPlayer.buildOrder = secondaryBuildOrder;
+        } else if (Array.isArray(player2.commands) && player2.commands.length > 0) {
+          // Extract from commands
+          console.log('[replayMapper] Extracting build order from commands for secondary player');
+          secondaryBuildOrder = extractBuildOrderFromCommands(player2.commands);
+          secondaryPlayer.buildOrder = secondaryBuildOrder;
+        } else if (Array.isArray(player2.actions) && player2.actions.length > 0) {
+          // Extract from actions as last resort
+          console.log('[replayMapper] Extracting build order from actions for secondary player');
+          secondaryBuildOrder = extractBuildOrderFromActions(player2.actions);
+          secondaryPlayer.buildOrder = secondaryBuildOrder;
+        }
+      }
+      
+      console.log('[replayMapper] Build orders extracted:', {
+        primaryItems: primaryBuildOrder.length,
+        secondaryItems: secondaryBuildOrder.length
+      });
+    } catch (err) {
+      console.warn('[replayMapper] Error extracting build orders:', err);
+      // Continue execution - we'll use empty arrays as fallback
     }
     
     // Determine game result from replay data
-    const gameResult: 'win' | 'loss' = determineGameResult(parsedData);
+    const gameResult: 'win' | 'loss' | 'unknown' = determineGameResult(parsedData);
     
     // Map all data to our application format
     const result: ParsedReplayData = {
@@ -211,7 +233,8 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
       durationMS,
       date: currentDate,
       result: gameResult,
-      buildOrder,
+      // Use primary player's build order for legacy field
+      buildOrder: primaryBuildOrder,
       strengths: [],
       weaknesses: [],
       recommendations: []
@@ -223,7 +246,8 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
       map: mapName,
       primaryApm: primaryPlayer.apm,
       secondaryApm: secondaryPlayer.apm,
-      buildOrderItems: buildOrder.length
+      primaryBuildOrderItems: primaryBuildOrder.length,
+      secondaryBuildOrderItems: secondaryBuildOrder.length
     });
     
     return result;
@@ -308,7 +332,7 @@ function standardizeRace(race: string): string {
  */
 function mapBuildOrderData(rawBuildOrder: any[]): Array<{ time: string; supply: number; action: string }> {
   if (!rawBuildOrder || rawBuildOrder.length === 0) {
-    throw new Error('No raw build order data available');
+    return [];
   }
   
   return rawBuildOrder.map((item: any, index) => {

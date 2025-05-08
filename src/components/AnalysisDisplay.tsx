@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { Loader2, Upload, AlertCircle, Clock, Database } from 'lucide-react';
 import { AnalyzedReplayResult } from '@/services/replayParserService';
@@ -30,9 +29,6 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
   isPremium,
   onPlayerSelect
 }) => {
-  // State to keep track of build orders for both players
-  const [player1BuildOrder, setPlayer1BuildOrder] = useState<any[]>([]);
-  const [player2BuildOrder, setPlayer2BuildOrder] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState('analysis'); // Changed default tab to analysis
   
   // Debug rendering state
@@ -61,68 +57,6 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       }
     }
   }, [selectedPlayerIndex, analysisComplete, replayData, rawParsedData]);
-  
-  // Effect to process and separate build orders for both players
-  useEffect(() => {
-    if (analysisComplete && (replayData || rawParsedData)) {
-      const data = replayData || rawParsedData;
-      
-      // For player 1, use the original build order
-      if (Array.isArray(data?.buildOrder)) {
-        setPlayer1BuildOrder(data.buildOrder.map(item => ({
-          ...item,
-          // Keep original build order intact
-          action: item.action
-        })));
-      }
-      
-      // For player 2 (opponent), create inferred/estimated build order
-      // In a real app, this would come from actual opponent data
-      if (Array.isArray(data?.buildOrder)) {
-        const opponentRace = standardizeRaceName(data?.opponentRace || 'Unknown');
-        
-        // Create estimate of opponent build order based on race
-        let opponentBuild: any[] = [];
-        
-        if (opponentRace === 'Protoss') {
-          opponentBuild = [
-            { time: "0:00", supply: 4, action: "Start" },
-            { time: "0:50", supply: 8, action: "Pylon" },
-            { time: "1:45", supply: 10, action: "Gateway" },
-            { time: "2:20", supply: 12, action: "Assimilator" },
-            { time: "2:40", supply: 13, action: "Cybernetics Core" },
-            { time: "3:15", supply: 15, action: "Zealot" },
-            { time: "3:45", supply: 18, action: "Pylon" },
-            { time: "4:10", supply: 20, action: "Dragoon" }
-          ];
-        } else if (opponentRace === 'Zerg') {
-          opponentBuild = [
-            { time: "0:00", supply: 4, action: "Start" },
-            { time: "0:42", supply: 5, action: "Drone" },
-            { time: "1:15", supply: 8, action: "Spawning Pool" },
-            { time: "2:00", supply: 10, action: "6-Zergling" },
-            { time: "2:30", supply: 9, action: "Extractor" },
-            { time: "3:05", supply: 11, action: "Lair" },
-            { time: "3:45", supply: 15, action: "Spire" },
-            { time: "4:30", supply: 21, action: "Mutalisk" }
-          ];
-        } else { // Terran
-          opponentBuild = [
-            { time: "0:00", supply: 4, action: "Start" },
-            { time: "0:45", supply: 8, action: "Supply Depot" },
-            { time: "1:30", supply: 10, action: "Barracks" },
-            { time: "2:15", supply: 12, action: "Refinery" },
-            { time: "2:45", supply: 15, action: "Marine" },
-            { time: "3:10", supply: 16, action: "Factory" },
-            { time: "3:45", supply: 18, action: "Supply Depot" },
-            { time: "4:20", supply: 21, action: "Vulture" }
-          ];
-        }
-        
-        setPlayer2BuildOrder(opponentBuild);
-      }
-    }
-  }, [analysisComplete, replayData, rawParsedData]);
   
   // -- Render Logic --
 
@@ -223,17 +157,25 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       const playerApm = displayData.apm || 0;
       const opponentApm = displayData.opponentApm || 0;
       
-      // Ensure buildOrder is always an array
-      const buildOrder = Array.isArray(displayData.buildOrder) ? displayData.buildOrder : [];
+      // Get build orders for both players
+      const primaryPlayerBuildOrder = displayData.primaryPlayer?.buildOrder || [];
+      const secondaryPlayerBuildOrder = displayData.secondaryPlayer?.buildOrder || [];
+      
+      // Check if build orders are available
+      const hasPrimaryBuildOrder = primaryPlayerBuildOrder.length > 0;
+      const hasSecondaryBuildOrder = secondaryPlayerBuildOrder.length > 0;
       
       console.log('💡 AnalysisDisplay - Final display data:', {
         player: `${playerName} (${normalizedPlayerRace}) - APM: ${playerApm}`,
         opponent: `${opponentName} (${normalizedOpponentRace}) - APM: ${opponentApm}`,
-        buildOrderItems: buildOrder.length
+        primaryBuildOrderItems: primaryPlayerBuildOrder.length,
+        secondaryBuildOrderItems: secondaryPlayerBuildOrder.length
       });
       
       // Check if build order is missing
-      const hasBuildOrder = Array.isArray(displayData.buildOrder) && displayData.buildOrder.length > 0;
+      const hasBuildOrder = hasPrimaryBuildOrder || hasSecondaryBuildOrder || 
+                            (Array.isArray(displayData.buildOrder) && displayData.buildOrder.length > 0);
+      
       console.log('💡 AnalysisDisplay - Build order status:', hasBuildOrder ? 'Available' : 'Missing');
       
       // Create an adjusted version of the data for the selected player's perspective
@@ -266,29 +208,35 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
           apm: actualOpponentApm,
           eapm: actualOpponentEapm,
           
-          // IMPORTANT: Generate opponent-focused analysis content
-          strengths: [
-            'Effektive Gegenwehr gegen deine Strategie',
-            'Guter Einheitenmix gegen deine Komposition',
-            'Timing-basierte Angriffe gegen deine Schwachpunkte'
-          ],
-          weaknesses: [
-            'Angreifbare frühe Expansionsphase',
-            'Begrenzte Scout-Informationen über deine Basis',
-            'Verzögerter Tech-Übergang in der Mitte des Spiels'
-          ],
-          recommendations: [
-            'Nutze frühe Aggression, um Entwicklung zu stören',
-            'Setze auf mobile Einheiten für bessere Mapkontrolle',
-            'Scout regelmäßig für bessere Informationen'
-          ],
+          // IMPORTANT: Use the correct build order based on actual parsed data
+          buildOrder: selectedPlayerIndex === 0 ? 
+                      primaryPlayerBuildOrder : 
+                      secondaryPlayerBuildOrder,
           
-          // IMPORTANT: Use the proper build order for player 2
-          buildOrder: player2BuildOrder
+          // IMPORTANT: Generate opponent-focused analysis content
+          strengths: displayData.secondaryPlayer?.strengths || [
+            'Effektive Gegenwehr gegen deine Strategie',
+            'Guter Einheitenmix gegen deine Komposition'
+          ],
+          weaknesses: displayData.secondaryPlayer?.weaknesses || [
+            'Angreifbare frühe Expansionsphase',
+            'Begrenzte Scout-Informationen über deine Basis'
+          ],
+          recommendations: displayData.secondaryPlayer?.recommendations || [
+            'Nutze frühe Aggression, um Entwicklung zu stören',
+            'Setze auf mobile Einheiten für bessere Mapkontrolle'
+          ]
         };
       } else {
-        // For player 1, ensure we use the player1's build order
-        viewData.buildOrder = player1BuildOrder;
+        // For player 1 (primary player), ensure we use their actual build order
+        viewData.buildOrder = primaryPlayerBuildOrder.length > 0 ? 
+                              primaryPlayerBuildOrder : 
+                              displayData.buildOrder || [];
+        
+        // Use primary player's analysis content if available
+        viewData.strengths = displayData.primaryPlayer?.strengths || displayData.strengths || [];
+        viewData.weaknesses = displayData.primaryPlayer?.weaknesses || displayData.weaknesses || [];
+        viewData.recommendations = displayData.primaryPlayer?.recommendations || displayData.recommendations || [];
       }
       
       // Log the current APM values for debugging
@@ -529,16 +477,24 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
                         </tr>
                       </thead>
                       <tbody>
-                        {viewData.buildOrder?.map((item, index) => (
-                          <tr 
-                            key={`${item.time}-${index}`}
-                            className="border-b border-gray-800/50 hover:bg-gray-900/30 transition-colors"
-                          >
-                            <td className="py-3 px-4 font-mono text-blue-300">{item.time}</td>
-                            <td className="py-3 px-4 font-mono text-yellow-300">{item.supply}</td>
-                            <td className="py-3 px-4">{item.action}</td>
+                        {viewData.buildOrder && viewData.buildOrder.length > 0 ? (
+                          viewData.buildOrder.map((item, index) => (
+                            <tr 
+                              key={`${item.time}-${index}`}
+                              className="border-b border-gray-800/50 hover:bg-gray-900/30 transition-colors"
+                            >
+                              <td className="py-3 px-4 font-mono text-blue-300">{item.time}</td>
+                              <td className="py-3 px-4 font-mono text-yellow-300">{item.supply}</td>
+                              <td className="py-3 px-4">{item.action}</td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr className="border-b border-gray-800/50">
+                            <td colSpan={3} className="py-6 px-4 text-center text-gray-500">
+                              Keine Build Order Daten für diesen Spieler verfügbar
+                            </td>
                           </tr>
-                        ))}
+                        )}
                       </tbody>
                     </table>
                   </div>

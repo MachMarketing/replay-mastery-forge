@@ -127,8 +127,12 @@ export function useReplayParser(): ReplayParserResult {
       
       // Log the parsed data player and race information
       console.log('[useReplayParser] Parser returned player data:', {
-        player1: `${parsedData.primaryPlayer?.name} (${parsedData.primaryPlayer?.race})`,
-        player2: `${parsedData.secondaryPlayer?.name} (${parsedData.secondaryPlayer?.race})`
+        player1: parsedData.primaryPlayer ? 
+          `${parsedData.primaryPlayer.name} (${parsedData.primaryPlayer.race})` : 'Missing',
+        player2: parsedData.secondaryPlayer ? 
+          `${parsedData.secondaryPlayer.name} (${parsedData.secondaryPlayer.race})` : 'Missing',
+        primaryBuildOrderItems: parsedData.primaryPlayer?.buildOrder?.length || 0,
+        secondaryBuildOrderItems: parsedData.secondaryPlayer?.buildOrder?.length || 0
       });
       
       // Ensure the result has all required fields for ParsedReplayResult

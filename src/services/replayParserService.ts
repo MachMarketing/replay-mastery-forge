@@ -1,3 +1,4 @@
+
 import { ParsedReplayData, PlayerData } from './replayParser/types';
 import { parseReplayInBrowser } from './browserReplayParser';
 import { markBrowserAsHavingWasmIssues } from '@/utils/browserDetection';
@@ -43,54 +44,6 @@ export function abortActiveProcess(): void {
 export async function initParser(): Promise<void> {
   console.log('[replayParserService] Initializing screparsed parser');
   // Nothing to initialize, as browserReplayParser handles this internally
-}
-
-/**
- * Creates fallback data when parsing completely fails
- */
-function createEmergencyFallbackData(file: File): AnalyzedReplayResult {
-  const filename = file.name.replace('.rep', '').replace(/_/g, ' ');
-  
-  // Create primary player data
-  const primaryPlayer: PlayerData = {
-    name: filename || 'Player',
-    race: 'Terran',
-    apm: 120,
-    eapm: 90
-  };
-  
-  // Create secondary player data
-  const secondaryPlayer: PlayerData = {
-    name: 'Opponent',
-    race: 'Protoss',
-    apm: 110,
-    eapm: 85
-  };
-  
-  return {
-    primaryPlayer,
-    secondaryPlayer,
-    // Legacy fields for backwards compatibility
-    playerName: primaryPlayer.name,
-    opponentName: secondaryPlayer.name,
-    playerRace: primaryPlayer.race,
-    opponentRace: secondaryPlayer.race,
-    apm: primaryPlayer.apm,
-    eapm: primaryPlayer.eapm,
-    opponentApm: secondaryPlayer.apm,
-    opponentEapm: secondaryPlayer.eapm,
-    map: 'Error: Corrupted Replay File',
-    matchup: 'TvP',
-    duration: '10:00',
-    durationMS: 600000,
-    date: new Date().toISOString().split('T')[0],
-    result: 'win',
-    buildOrder: [],
-    resourcesGraph: [],
-    strengths: ['Konnte die Datei nicht analysieren'],
-    weaknesses: ['Die Datei scheint beschädigt zu sein'],
-    recommendations: ['Bitte lade eine andere Replay-Datei hoch']
-  };
 }
 
 /**
@@ -153,6 +106,15 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     let result: ParsedReplayData;
     try {
       result = await Promise.race([parsePromise, timeoutPromise]);
+      
+      console.log('[replayParserService] Got parsed result:', {
+        primaryPlayer: result.primaryPlayer ? 
+          `${result.primaryPlayer.name} (${result.primaryPlayer.race})` : 'Missing',
+        secondaryPlayer: result.secondaryPlayer ? 
+          `${result.secondaryPlayer.name} (${result.secondaryPlayer.race})` : 'Missing',
+        primaryBuildOrderItems: result.primaryPlayer?.buildOrder?.length || 0,
+        secondaryBuildOrderItems: result.secondaryPlayer?.buildOrder?.length || 0
+      });
       
       // Ensure backward compatibility by creating legacy field mappings
       const enhancedResult: AnalyzedReplayResult = {
