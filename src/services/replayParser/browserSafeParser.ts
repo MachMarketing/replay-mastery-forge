@@ -65,7 +65,6 @@ export async function initBrowserSafeParser(): Promise<void> {
               let parsedReplay;
               
               try {
-                // We need to handle the constructor differently to match expected arguments
                 // Create mock GameInfo to satisfy type requirements
                 const mockGameInfo: GameInfo = {
                   engine: "broodwar",
@@ -141,62 +140,54 @@ export async function initBrowserSafeParser(): Promise<void> {
       try {
         const ReplayParserClass = screparsed.ReplayParser;
         
-        // Create a parser instance that uses ReplayParser
+        // Create a parser instance that uses ReplayParser - handle possible constructor access issues
         parserInstance = {
           parse: (data: Uint8Array) => {
             try {
-              // Try different patterns to create and use the parser
+              // Different approach to avoid constructor access issues
+              console.log('[browserSafeParser] Trying static methods on ReplayParser');
               
-              // First check if ReplayParserClass has static methods we can use
-              if (ReplayParserClass.prototype && typeof ReplayParserClass.prototype.parse === 'function') {
-                try {
-                  // Create an instance first
-                  const parser = Object.create(ReplayParserClass.prototype);
-                  ReplayParserClass.apply(parser, []);
-                  
-                  // Call the instance method
-                  return parser.parse(data);
-                } catch (protoError) {
-                  console.warn('[browserSafeParser] Prototype approach failed:', protoError);
-                }
+              // Check for static methods first
+              if (typeof ReplayParserClass.parse === 'function') {
+                console.log('[browserSafeParser] Using static ReplayParser.parse method');
+                return ReplayParserClass.parse(data);
               }
               
-              // Try direct instantiation with new
-              try {
-                // Try with different argument patterns
-                const parser = new ReplayParserClass();
-                
-                // Try to use the parser instance
+              if (typeof ReplayParserClass.fromArrayBuffer === 'function') {
+                console.log('[browserSafeParser] Using static ReplayParser.fromArrayBuffer method');
+                const parser = ReplayParserClass.fromArrayBuffer(data.buffer);
                 if (typeof parser.parse === 'function') {
-                  return parser.parse(data);
-                } else if (typeof parser.parseReplay === 'function') {
-                  return parser.parseReplay(data);
+                  return parser.parse();
                 }
-              } catch (directInstError) {
-                console.warn('[browserSafeParser] Direct instantiation failed:', directInstError);
               }
               
-              // Try with config object
-              try {
-                const parser = new ReplayParserClass({ encoding: 'cp1252' });
-                
-                // Try to use the parser instance
+              if (typeof ReplayParserClass.fromUint8Array === 'function') {
+                console.log('[browserSafeParser] Using static ReplayParser.fromUint8Array method');
+                const parser = ReplayParserClass.fromUint8Array(data);
                 if (typeof parser.parse === 'function') {
-                  return parser.parse(data);
-                } else if (typeof parser.parseReplay === 'function') {
-                  return parser.parseReplay(data);
+                  return parser.parse();
                 }
-              } catch (configInstError) {
-                console.warn('[browserSafeParser] Config instantiation failed:', configInstError);
               }
               
-              // Last resort - try calling the class directly as a function
-              try {
-                return ReplayParserClass(data);
-              } catch (functionCallError) {
-                console.warn('[browserSafeParser] Function call approach failed:', functionCallError);
-                throw new Error('Could not use ReplayParser in any supported way');
+              // If no static methods worked, try a different approach
+              console.log('[browserSafeParser] No static methods available, attempting alternative approaches');
+              
+              // Create a factory function if available
+              if (typeof screparsed.createParser === 'function') {
+                console.log('[browserSafeParser] Using createParser factory function');
+                const parser = screparsed.createParser(data);
+                if (typeof parser.parse === 'function') {
+                  return parser.parse();
+                }
               }
+              
+              // Last resort - try direct function call
+              if (typeof screparsed.parseReplay === 'function') {
+                console.log('[browserSafeParser] Using direct parseReplay function');
+                return screparsed.parseReplay(data);
+              }
+              
+              throw new Error('No suitable parsing method found in ReplayParser');
             } catch (err) {
               console.error('[browserSafeParser] Error using ReplayParser:', err);
               throw err;
