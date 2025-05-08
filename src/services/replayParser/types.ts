@@ -21,6 +21,7 @@ export interface ReplayAnalysis {
   strengths: string[];
   weaknesses: string[];
   recommendations: string[];
+  trainingPlan: Array<{ day: number; focus: string; drill: string }>;
 }
 
 /**
