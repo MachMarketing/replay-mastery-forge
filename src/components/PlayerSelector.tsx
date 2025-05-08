@@ -23,28 +23,10 @@ const PlayerSelector: React.FC<PlayerSelectorProps> = ({
   // Helper function to get race-specific color
   const getRaceColor = (race: string): string => {
     const normalizedRace = race.toLowerCase();
-    if (normalizedRace.includes('terr')) return 'text-terran';
-    if (normalizedRace.includes('prot')) return 'text-protoss';
-    if (normalizedRace.includes('zerg')) return 'text-zerg';
+    if (normalizedRace.includes('terr')) return 'text-blue-400';
+    if (normalizedRace.includes('prot')) return 'text-yellow-300';
+    if (normalizedRace.includes('zerg')) return 'text-green-500';
     return '';
-  };
-  
-  // Helper function to get race-specific background color
-  const getRaceBgColor = (race: string): string => {
-    const normalizedRace = race.toLowerCase();
-    if (normalizedRace.includes('terr')) return 'bg-terran/5';
-    if (normalizedRace.includes('prot')) return 'bg-protoss/5';
-    if (normalizedRace.includes('zerg')) return 'bg-zerg/5';
-    return '';
-  };
-  
-  // Helper function to get race-specific border color
-  const getRaceBorderColor = (race: string): string => {
-    const normalizedRace = race.toLowerCase();
-    if (normalizedRace.includes('terr')) return 'border-terran/30';
-    if (normalizedRace.includes('prot')) return 'border-protoss/30';
-    if (normalizedRace.includes('zerg')) return 'border-zerg/30';
-    return 'border-primary/30';
   };
 
   // Handler with proper event handling
@@ -52,120 +34,87 @@ const PlayerSelector: React.FC<PlayerSelectorProps> = ({
     e.preventDefault();
     e.stopPropagation();
     onSelectPlayer(index);
-    console.log(`Selected player ${index + 1}`);
   };
 
   return (
-    <div className="mb-6 sc-metal-frame p-1">
-      <div className="mb-2 flex items-center justify-between px-3 pt-2">
-        <div className="text-sm text-blue-100 flex items-center">
-          <span className="sc-terminal-text tracking-wider uppercase">Perspektive</span>
-        </div>
+    <div className="mb-6 sc-metal-frame border-2 border-gray-900">
+      <div className="bg-black/80 px-4 py-2 border-b border-gray-800">
+        <h3 className="text-sm text-green-400 sc-terminal-text uppercase tracking-wider">Spielerperspektive</h3>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
-        {/* First player button - Enhanced clean style */}
+      <div className="grid grid-cols-2 gap-px bg-gray-900">
+        {/* First player button - StarCraft style */}
         <Button
           variant="ghost"
-          className={`h-auto relative flex items-start text-left transition-all duration-300 p-0 overflow-hidden
+          className={`group h-auto relative p-0 overflow-hidden rounded-none
             ${selectedPlayerIndex === 0 ? 
-              `hologram-frame ${getRaceBgColor(race1)} border-2` : 
-              "border border-gray-800/80 hover:border-gray-700/50"}
-            rounded-none`}
+              "bg-black/80 border-b-2 border-b-blue-500/60" : 
+              "bg-black/40 hover:bg-black/60"}`}
           onClick={handleSelectPlayer(0)}
           type="button"
         >
-          {/* Background subtle gradient */}
-          <div className={`absolute inset-0 ${getRaceBgColor(race1)} opacity-30 -z-10`}></div>
-          
-          {/* Clean selection indicator - subtle scan line when selected */}
+          {/* StarCraft style active selection indicator */}
           {selectedPlayerIndex === 0 && (
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-primary/5 to-transparent 
-                animate-[scan_3s_ease-in-out_infinite] opacity-40"></div>
-            </div>
+            <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"></div>
           )}
 
-          {/* Content with better spacing */}
-          <div className="w-full p-3">
-            <div className="flex flex-col space-y-1">
-              <div className="flex items-center justify-between w-full">
-                <div className={`font-bold sc-terminal-text text-lg tracking-wide ${getRaceColor(race1)}`}>
-                  {player1}
-                </div>
-                
-                <Badge variant="outline" className={`${getRaceColor(race1)} border-current font-medium uppercase`}>
-                  {race1}
-                </Badge>
+          {/* Content with StarCraft-style spacing */}
+          <div className="w-full p-3 text-left">
+            <div className="flex justify-between items-center">
+              <div className={`font-bold sc-terminal-text text-lg ${getRaceColor(race1)}`}>
+                {player1}
               </div>
               
-              <div className={`text-xs mt-1 ${selectedPlayerIndex === 0 ? "text-primary" : "text-muted-foreground"}`}>
-                {selectedPlayerIndex === 0 ? (
-                  <span className="font-medium">Aktuelle Perspektive</span>
-                ) : (
-                  <span>Klicken zum Wechseln</span>
-                )}
-              </div>
+              <Badge variant="outline" className={`${getRaceColor(race1)} border-current uppercase bg-black/50`}>
+                {race1}
+              </Badge>
+            </div>
+            
+            <div className="mt-1">
+              {selectedPlayerIndex === 0 ? (
+                <span className="text-xs text-green-400 font-medium">Aktuelle Perspektive</span>
+              ) : (
+                <span className="text-xs text-gray-400">Auswählen</span>
+              )}
             </div>
           </div>
-          
-          {/* Glowing bottom border for active selection */}
-          {selectedPlayerIndex === 0 && (
-            <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r 
-              from-transparent via-primary/80 to-transparent"></div>
-          )}
         </Button>
 
-        {/* Second player button - Enhanced clean style */}
+        {/* Second player button - StarCraft style */}
         <Button
           variant="ghost"
-          className={`h-auto relative flex items-start text-left transition-all duration-300 p-0 overflow-hidden
+          className={`group h-auto relative p-0 overflow-hidden rounded-none
             ${selectedPlayerIndex === 1 ? 
-              `hologram-frame ${getRaceBgColor(race2)} border-2` : 
-              "border border-gray-800/80 hover:border-gray-700/50"}
-            rounded-none`}
+              "bg-black/80 border-b-2 border-b-blue-500/60" : 
+              "bg-black/40 hover:bg-black/60"}`}
           onClick={handleSelectPlayer(1)}
           type="button"
         >
-          {/* Background subtle gradient */}
-          <div className={`absolute inset-0 ${getRaceBgColor(race2)} opacity-30 -z-10`}></div>
-          
-          {/* Clean selection indicator - subtle scan line when selected */}
+          {/* StarCraft style active selection indicator */}
           {selectedPlayerIndex === 1 && (
-            <div className="absolute inset-0 overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-primary/5 to-transparent 
-                animate-[scan_3s_ease-in-out_infinite] opacity-40"></div>
-            </div>
+            <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"></div>
           )}
 
-          {/* Content with better spacing */}
-          <div className="w-full p-3">
-            <div className="flex flex-col space-y-1">
-              <div className="flex items-center justify-between w-full">
-                <div className={`font-bold sc-terminal-text text-lg tracking-wide ${getRaceColor(race2)}`}>
-                  {player2}
-                </div>
-                
-                <Badge variant="outline" className={`${getRaceColor(race2)} border-current font-medium uppercase`}>
-                  {race2}
-                </Badge>
+          {/* Content with StarCraft-style spacing */}
+          <div className="w-full p-3 text-left">
+            <div className="flex justify-between items-center">
+              <div className={`font-bold sc-terminal-text text-lg ${getRaceColor(race2)}`}>
+                {player2}
               </div>
               
-              <div className={`text-xs mt-1 ${selectedPlayerIndex === 1 ? "text-primary" : "text-muted-foreground"}`}>
-                {selectedPlayerIndex === 1 ? (
-                  <span className="font-medium">Aktuelle Perspektive</span>
-                ) : (
-                  <span>Klicken zum Wechseln</span>
-                )}
-              </div>
+              <Badge variant="outline" className={`${getRaceColor(race2)} border-current uppercase bg-black/50`}>
+                {race2}
+              </Badge>
+            </div>
+            
+            <div className="mt-1">
+              {selectedPlayerIndex === 1 ? (
+                <span className="text-xs text-green-400 font-medium">Aktuelle Perspektive</span>
+              ) : (
+                <span className="text-xs text-gray-400">Auswählen</span>
+              )}
             </div>
           </div>
-          
-          {/* Glowing bottom border for active selection */}
-          {selectedPlayerIndex === 1 && (
-            <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r 
-              from-transparent via-primary/80 to-transparent"></div>
-          )}
         </Button>
       </div>
     </div>

@@ -1,11 +1,10 @@
-
-import React, { useState, useEffect } from 'react';
-import { AxiosError } from 'axios';
+import React, { useState } from 'react';
+import { Button } from "@/components/ui/button";
+import axios from 'axios';
 import { useDropzone } from 'react-dropzone';
 import { useReplayParser } from '@/hooks/useReplayParser';
 import { AnalyzedReplayResult } from '@/services/replayParserService';
 import { uploadReplayFile } from '@/services/uploadService';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
