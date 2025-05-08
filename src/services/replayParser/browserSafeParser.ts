@@ -23,42 +23,49 @@ export async function initBrowserSafeParser(): Promise<void> {
     const screparsed = await import('screparsed');
     console.log('[browserSafeParser] Screparsed import successful:', Object.keys(screparsed));
     
-    // According to documentation, we should be able to use the ParsedReplay constructor directly
-    // The constructor expects 3 arguments: data, options, and mapData
-    if (typeof screparsed.ParsedReplay === 'function') {
+    // According to documentation, we need to use the parse method first
+    if (typeof screparsed.parse === 'function') {
       parserInstance = {
         parse: (data: Uint8Array) => {
-          // Use 'new' keyword when calling the constructor with default options and empty mapData
-          // Based on the TypeScript error, we need to provide 3 arguments
-          return new screparsed.ParsedReplay(
-            data,          // Binary data (Uint8Array)
-            { },           // Options object (empty for default settings)
-            { }            // Map data object (empty for now)
-          );
+          // First parse the binary data
+          const gameInfo = screparsed.parse(data);
+          console.log('[browserSafeParser] Game info parsed:', gameInfo ? 'success' : 'failed');
+          
+          // Then use the parsed gameInfo with ParsedReplay
+          if (gameInfo) {
+            return new screparsed.ParsedReplay(gameInfo, {}, {});
+          }
+          
+          throw new Error('Failed to parse replay data');
         }
       };
       isInitialized = true;
-      console.log('[browserSafeParser] ✅ Parser initialized using ParsedReplay constructor');
+      console.log('[browserSafeParser] ✅ Parser initialized using parse and ParsedReplay');
       return;
     }
     
     // Fallback to default export if it exists
-    if (screparsed.default && typeof screparsed.default.ParsedReplay === 'function') {
+    if (screparsed.default && typeof screparsed.default.parse === 'function') {
       parserInstance = {
         parse: (data: Uint8Array) => {
-          return new screparsed.default.ParsedReplay(
-            data,          // Binary data (Uint8Array)
-            { },           // Options object (empty for default settings)
-            { }            // Map data object (empty for now)
-          );
+          // First parse the binary data
+          const gameInfo = screparsed.default.parse(data);
+          console.log('[browserSafeParser] Game info parsed (default):', gameInfo ? 'success' : 'failed');
+          
+          // Then use the parsed gameInfo with ParsedReplay
+          if (gameInfo) {
+            return new screparsed.default.ParsedReplay(gameInfo, {}, {});
+          }
+          
+          throw new Error('Failed to parse replay data');
         }
       };
       isInitialized = true;
-      console.log('[browserSafeParser] ✅ Parser initialized using default.ParsedReplay');
+      console.log('[browserSafeParser] ✅ Parser initialized using default.parse and default.ParsedReplay');
       return;
     }
     
-    console.error('[browserSafeParser] Could not find ParsedReplay constructor');
+    console.error('[browserSafeParser] Could not find parse method in screparsed module');
     throw new Error('Compatible parser not found in screparsed module');
     
   } catch (err) {
