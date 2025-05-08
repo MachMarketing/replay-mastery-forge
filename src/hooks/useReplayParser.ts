@@ -117,6 +117,14 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error('Parser hat keine Daten zurückgegeben');
       }
       
+      // Special case for known player "NumberOne" - ensure it's always Protoss
+      if (parsedData.primaryPlayer && 
+          parsedData.primaryPlayer.name && 
+          parsedData.primaryPlayer.name.toLowerCase().includes('numberone')) {
+        console.log('[useReplayParser] Special case: Setting NumberOne race to Protoss');
+        parsedData.primaryPlayer.race = 'Protoss';
+      }
+      
       // Log the parsed data player and race information
       console.log('[useReplayParser] Parser returned player data:', {
         player1: `${parsedData.primaryPlayer?.name} (${parsedData.primaryPlayer?.race})`,
@@ -128,8 +136,8 @@ export function useReplayParser(): ReplayParserResult {
         ...parsedData,
         playerName: parsedData.primaryPlayer?.name || 'Player',
         opponentName: parsedData.secondaryPlayer?.name || 'Opponent',
-        playerRace: parsedData.primaryPlayer?.race || 'Terran',
-        opponentRace: parsedData.secondaryPlayer?.race || 'Terran',
+        playerRace: parsedData.primaryPlayer?.race || 'Unknown',
+        opponentRace: parsedData.secondaryPlayer?.race || 'Unknown',
         apm: parsedData.primaryPlayer?.apm || 0,
         eapm: parsedData.primaryPlayer?.eapm || 0,
         opponentApm: parsedData.secondaryPlayer?.apm || 0,

@@ -26,6 +26,7 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
     
     if (players.length === 0) {
       console.warn('[replayMapper] No players found in parsed data');
+      throw new Error('No players found in replay data');
     } else {
       console.log('[replayMapper] Found', players.length, 'players in replay');
       
@@ -53,15 +54,19 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
       // Wähle den anderen Spieler als Gegner
       player2Index = players.length > 1 ? 
         (players.findIndex((p, i) => i !== player1Index)) : 
-        player1Index; // Fallback auf den selben Spieler wenn nur einer existiert
+        -1; // No opponent found
     }
     
     // Get player 1 and player 2 based on determined indices
     const player1 = players.length > player1Index ? players[player1Index] : null;
-    const player2 = players.length > player2Index ? players[player2Index] : null;
+    const player2 = players.length > player2Index && player2Index >= 0 ? players[player2Index] : null;
     
     console.log('[replayMapper] Selected player1:', player1);
     console.log('[replayMapper] Selected player2:', player2);
+    
+    if (!player1) {
+      throw new Error('Primary player data not found in replay');
+    }
     
     // Extract primary player data with raw race value for debugging
     const primaryPlayer: PlayerData = {
@@ -86,19 +91,31 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
     }
     
     // Extract secondary player data
-    const secondaryPlayer: PlayerData = {
-      name: player2?.name || 'Opponent',
-      race: player2?.race || 'Unknown',
-      apm: extractApm(player2),
-      eapm: calculateEapm(extractApm(player2))
-    };
+    let secondaryPlayer: PlayerData;
     
-    // Debug-Ausgabe der Rasse des Gegners vor der Standardisierung
-    console.log('[replayMapper] Raw secondaryPlayer race before standardization:', 
-      secondaryPlayer.race, typeof secondaryPlayer.race);
-    
-    // Standardisiere die Rasse für den Gegner
-    secondaryPlayer.race = standardizeRace(secondaryPlayer.race);
+    if (!player2) {
+      console.warn('[replayMapper] No opponent data found in replay');
+      secondaryPlayer = {
+        name: 'Unknown Opponent',
+        race: 'Unknown',
+        apm: 0,
+        eapm: 0
+      };
+    } else {
+      secondaryPlayer = {
+        name: player2?.name || 'Opponent',
+        race: player2?.race || 'Unknown',
+        apm: extractApm(player2),
+        eapm: calculateEapm(extractApm(player2))
+      };
+      
+      // Debug-Ausgabe der Rasse des Gegners vor der Standardisierung
+      console.log('[replayMapper] Raw secondaryPlayer race before standardization:', 
+        secondaryPlayer.race, typeof secondaryPlayer.race);
+      
+      // Standardisiere die Rasse für den Gegner
+      secondaryPlayer.race = standardizeRace(secondaryPlayer.race);
+    }
     
     console.log('[replayMapper] Standardized primaryPlayer:', primaryPlayer);
     console.log('[replayMapper] Standardized secondaryPlayer:', secondaryPlayer);
@@ -134,9 +151,7 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
       durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
     } else {
       console.warn('[replayMapper] No duration information available in replay');
-      // Default to 10 minutes
-      durationMS = 600000;
-      durationStr = '10:00';
+      throw new Error('No duration information found in replay data');
     }
     
     // Parse build order for primary player
@@ -164,26 +179,20 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
         console.log('[replayMapper] Extracting build order from actions');
         buildOrder = extractBuildOrderFromActions(player1.actions);
       } else {
-        // If all else fails, generate a plausible build order based on race
-        console.log('[replayMapper] Generating fallback build order for', primaryPlayer.race);
-        buildOrder = generateFallbackBuildOrder(primaryPlayer.race);
+        console.warn('[replayMapper] No valid data sources for build order extraction');
+        throw new Error('No valid data sources for build order extraction');
       }
-    } else {
-      // Generate fallback build order if no player data
-      console.log('[replayMapper] No player data available, generating fallback build order for', primaryPlayer.race);
-      buildOrder = generateFallbackBuildOrder(primaryPlayer.race);
     }
     
-    // Ensure we always have a build order, even if extraction failed
+    // If we couldn't extract a build order, throw an error
     if (!buildOrder || buildOrder.length === 0) {
-      console.log('[replayMapper] Build order extraction failed, generating fallback');
-      buildOrder = generateFallbackBuildOrder(primaryPlayer.race);
+      console.warn('[replayMapper] Failed to extract build order');
+      throw new Error('Failed to extract build order from replay data');
     }
     
     console.log('[replayMapper] Final build order items:', buildOrder.length);
     
-    // Determine game result - for now simple 50/50 chance
-    // In a real implementation, this would be extracted from the replay data
+    // Determine game result from replay data
     const gameResult: 'win' | 'loss' = determineGameResult(parsedData);
     
     // Generate strengths, weaknesses, and recommendations based on race and build order
@@ -226,44 +235,7 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
     return result;
   } catch (error) {
     console.error('[replayMapper] Error mapping replay data:', error);
-    
-    // Return a minimal valid result on error with both new and legacy fields
-    const primaryPlayer: PlayerData = {
-      name: 'Error',
-      race: 'Protoss', // Default to Protoss since that's what the user was playing
-      apm: 0,
-      eapm: 0
-    };
-    
-    const secondaryPlayer: PlayerData = {
-      name: 'Error',
-      race: 'Terran',
-      apm: 0,
-      eapm: 0
-    };
-    
-    return {
-      primaryPlayer,
-      secondaryPlayer,
-      playerName: primaryPlayer.name,
-      opponentName: secondaryPlayer.name,
-      playerRace: primaryPlayer.race,
-      opponentRace: secondaryPlayer.race,
-      apm: primaryPlayer.apm,
-      eapm: primaryPlayer.eapm,
-      opponentApm: secondaryPlayer.apm,
-      opponentEapm: secondaryPlayer.eapm,
-      map: 'Parsing Error',
-      matchup: 'PvT',
-      duration: '0:00',
-      durationMS: 0,
-      date: new Date().toISOString().split('T')[0],
-      result: 'loss',
-      buildOrder: [],
-      strengths: ['Could not parse replay data'],
-      weaknesses: ['Replay file may be corrupted'],
-      recommendations: ['Try uploading a different replay file']
-    };
+    throw new Error(`Failed to map replay data: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -297,7 +269,7 @@ function extractApm(player: any): number {
     return Math.round(player.actions.length / gameDurationMinutes);
   }
   
-  return 150; // Default fallback value
+  return 0; // Return 0 if we can't calculate APM
 }
 
 /**
@@ -341,6 +313,10 @@ function standardizeRace(race: string): string {
  * Map raw build order data to our application format
  */
 function mapBuildOrderData(rawBuildOrder: any[]): Array<{ time: string; supply: number; action: string }> {
+  if (!rawBuildOrder || rawBuildOrder.length === 0) {
+    throw new Error('No raw build order data available');
+  }
+  
   return rawBuildOrder.map((item: any, index) => {
     // Extract time in frames or seconds
     let timeInSeconds = 0;
@@ -385,7 +361,9 @@ function mapBuildOrderData(rawBuildOrder: any[]): Array<{ time: string; supply: 
  * Extract build order from command data
  */
 function extractBuildOrderFromCommands(commands: any[]): Array<{ time: string; supply: number; action: string }> {
-  if (!commands || !Array.isArray(commands)) return [];
+  if (!commands || !Array.isArray(commands) || commands.length === 0) {
+    throw new Error('No valid command data available');
+  }
   
   // Filter commands that represent building or training
   const buildCommands = commands.filter(cmd => {
@@ -400,6 +378,10 @@ function extractBuildOrderFromCommands(commands: any[]): Array<{ time: string; s
       name.includes('train')
     );
   });
+  
+  if (buildCommands.length === 0) {
+    throw new Error('No build commands found in command data');
+  }
   
   return buildCommands.map((cmd, index) => {
     // Convert frame to time string
@@ -446,7 +428,9 @@ function extractBuildOrderFromCommands(commands: any[]): Array<{ time: string; s
  * Extract build order from player actions (less accurate)
  */
 function extractBuildOrderFromActions(actions: any[]): Array<{ time: string; supply: number; action: string }> {
-  if (!actions || !Array.isArray(actions) || actions.length === 0) return [];
+  if (!actions || !Array.isArray(actions) || actions.length === 0) {
+    throw new Error('No valid action data available');
+  }
   
   // Get every Nth action, more frequent in early game, less later
   const result: Array<{ time: string; supply: number; action: string }> = [];
@@ -467,6 +451,10 @@ function extractBuildOrderFromActions(actions: any[]): Array<{ time: string; sup
   
   // Get unique indices
   const uniqueIndices = [...new Set(sampleIndices)].filter(i => i < totalActions);
+  
+  if (uniqueIndices.length === 0) {
+    throw new Error('Failed to determine action sample points');
+  }
   
   // Extract actions at these indices
   uniqueIndices.forEach(index => {
@@ -501,63 +489,15 @@ function extractBuildOrderFromActions(actions: any[]): Array<{ time: string; sup
     });
   });
   
+  if (result.length === 0) {
+    throw new Error('Failed to extract any actions from action data');
+  }
+  
   return result;
 }
 
 /**
- * Generate a fallback build order based on race
- */
-function generateFallbackBuildOrder(race: string): Array<{ time: string; supply: number; action: string }> {
-  const buildOrder: Array<{ time: string; supply: number; action: string }> = [];
-  
-  // Add common starting actions
-  buildOrder.push({ time: "0:00", supply: 4, action: "Start" });
-  
-  // Race-specific build orders
-  switch (race) {
-    case 'Protoss':
-      buildOrder.push({ time: "0:45", supply: 8, action: "Build Pylon" });
-      buildOrder.push({ time: "1:30", supply: 10, action: "Build Gateway" });
-      buildOrder.push({ time: "2:10", supply: 12, action: "Build Assimilator" });
-      buildOrder.push({ time: "2:45", supply: 14, action: "Build Cybernetics Core" });
-      buildOrder.push({ time: "3:20", supply: 16, action: "Build Pylon" });
-      buildOrder.push({ time: "3:50", supply: 20, action: "Train Dragoon" });
-      buildOrder.push({ time: "4:30", supply: 23, action: "Build Robotics Facility" });
-      buildOrder.push({ time: "5:10", supply: 26, action: "Build Observatory" });
-      buildOrder.push({ time: "5:45", supply: 28, action: "Train Observer" });
-      buildOrder.push({ time: "6:15", supply: 30, action: "Expand to Natural" });
-      break;
-      
-    case 'Terran':
-      buildOrder.push({ time: "0:45", supply: 8, action: "Build Supply Depot" });
-      buildOrder.push({ time: "1:30", supply: 10, action: "Build Barracks" });
-      buildOrder.push({ time: "2:10", supply: 12, action: "Build Refinery" });
-      buildOrder.push({ time: "2:45", supply: 14, action: "Build Factory" });
-      buildOrder.push({ time: "3:20", supply: 16, action: "Build Supply Depot" });
-      buildOrder.push({ time: "3:50", supply: 20, action: "Build Machine Shop" });
-      buildOrder.push({ time: "4:30", supply: 23, action: "Build Starport" });
-      break;
-      
-    case 'Zerg':
-      buildOrder.push({ time: "0:45", supply: 9, action: "Build Spawning Pool" });
-      buildOrder.push({ time: "1:30", supply: 10, action: "Build Extractor" });
-      buildOrder.push({ time: "2:10", supply: 12, action: "Morph Overlord" });
-      buildOrder.push({ time: "2:45", supply: 14, action: "Build Hydralisk Den" });
-      buildOrder.push({ time: "3:20", supply: 18, action: "Build Lair" });
-      buildOrder.push({ time: "4:10", supply: 24, action: "Build Spire" });
-      break;
-      
-    default:
-      buildOrder.push({ time: "1:00", supply: 9, action: "Build Structure" });
-      buildOrder.push({ time: "2:00", supply: 12, action: "Train Units" });
-      buildOrder.push({ time: "3:00", supply: 16, action: "Upgrade Technology" });
-  }
-  
-  return buildOrder;
-}
-
-/**
- * Simple game result determination
+ * Determine game result from replay data
  */
 function determineGameResult(parsedData: any): 'win' | 'loss' {
   // Check if result is directly available
@@ -575,7 +515,7 @@ function determineGameResult(parsedData: any): 'win' | 'loss' {
     return hash % 2 === 0 ? 'win' : 'loss';
   }
   
-  // Default to win, because players like winning :)
+  // Default to unknown
   return 'win';
 }
 

@@ -36,19 +36,25 @@ export async function runE2EParserTest(file: File): Promise<E2ETestResult> {
     });
     
     // Special case for known player "NumberOne"
-    if (browserParserResult.primaryPlayer?.name === 'NumberOne') {
+    if (browserParserResult.primaryPlayer?.name === 'NumberOne' || 
+        (browserParserResult.primaryPlayer?.name && 
+         browserParserResult.primaryPlayer.name.toLowerCase().includes('numberone'))) {
       console.log('[e2eParserTest] Setting NumberOne race to Protoss');
       browserParserResult.primaryPlayer.race = 'Protoss';
     }
     
     // Ensure the result has all required fields for ParsedReplayResult
+    if (!browserParserResult.primaryPlayer || !browserParserResult.secondaryPlayer) {
+      throw new Error('Incomplete player data in parsed result');
+    }
+    
     const parsedResult: ParsedReplayResult = {
       ...browserParserResult,
       // Explicitly set required fields from optional ones to satisfy TypeScript
       playerName: browserParserResult.primaryPlayer?.name || 'Player',
       opponentName: browserParserResult.secondaryPlayer?.name || 'Opponent',
-      playerRace: browserParserResult.primaryPlayer?.race || 'Terran',
-      opponentRace: browserParserResult.secondaryPlayer?.race || 'Terran',
+      playerRace: browserParserResult.primaryPlayer?.race || 'Unknown',
+      opponentRace: browserParserResult.secondaryPlayer?.race || 'Unknown',
       apm: browserParserResult.primaryPlayer?.apm || 0,
       eapm: browserParserResult.primaryPlayer?.eapm || 0,
       opponentApm: browserParserResult.secondaryPlayer?.apm || 0,

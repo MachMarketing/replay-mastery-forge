@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import axios, { AxiosError } from 'axios';
@@ -13,44 +14,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import AnalysisResult from '@/components/AnalysisResult';
-
-// Mock data for testing
-const mockReplayData: Partial<AnalyzedReplayResult> = {
-  playerName: "TestPlayer",
-  opponentName: "TestOpponent",
-  playerRace: "Terran",
-  opponentRace: "Protoss",
-  map: "Fighting Spirit",
-  matchup: "TvP",
-  duration: "15:42",
-  durationMS: 942000,
-  date: "2023-05-10",
-  result: "win",
-  apm: 180,
-  eapm: 150,
-  buildOrder: [
-    { time: "0:00", supply: 4, action: "Start" },
-    { time: "0:42", supply: 9, action: "Supply Depot" },
-    { time: "1:30", supply: 12, action: "Barracks" },
-    { time: "2:15", supply: 15, action: "Marine" }
-  ],
-  strengths: [
-    "Good early game scouting",
-    "Consistent worker production"
-  ],
-  weaknesses: [
-    "Supply blocks at key moments",
-    "Late game unit composition"
-  ],
-  recommendations: [
-    "Focus on maintaining constant worker production",
-    "Scout more aggressively in mid-game"
-  ],
-  trainingPlan: [
-    { day: 1, focus: "Build order optimization", drill: "Practice standard opening 10 times" },
-    { day: 2, focus: "Crisis management", drill: "Defend against early rush strategies" }
-  ]
-};
 
 const ParserTestPage: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -73,17 +36,6 @@ const ParserTestPage: React.FC = () => {
       }
     }
   });
-
-  // For mock testing
-  const handleUseMockData = () => {
-    setParsingStatus('complete');
-    setParsedReplayData(mockReplayData as AnalyzedReplayResult);
-    setParsedOutput(JSON.stringify(mockReplayData, null, 2));
-    toast({
-      title: "Mock data loaded",
-      description: "Using test data for development",
-    });
-  };
 
   const handleFileSelection = async (selectedFile: File) => {
     try {
@@ -263,15 +215,6 @@ const ParserTestPage: React.FC = () => {
                     </AlertDescription>
                   </Alert>
                 )}
-                
-                <div className="flex space-x-2">
-                  <Button 
-                    onClick={handleUseMockData}
-                    variant="outline"
-                  >
-                    Use Test Data
-                  </Button>
-                </div>
               </CardContent>
             </Card>
             
