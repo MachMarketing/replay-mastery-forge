@@ -1,278 +1,131 @@
 
 /**
- * This module provides a browser-safe implementation of the replay parser
- * using JSSUH library that works in the browser environment
+ * Browser-safe wrapper for JSSUH replay parser
  */
-// Import the correct type definition and our JSSUH loader
-import { ParsedReplayResult } from '../replayParserService';
-// Import JSSUH using our dedicated loader
-import JSSUH, { getReplayParserConstructor } from './jssuhLoader';
-// Import Readable for stream-based parsing
-import { Readable } from 'stream-browserify';
-import { Buffer } from 'buffer';
 
-// Define timeout for parser operations
-const PARSER_TIMEOUT_MS = 60000; // 60 seconds
+import { ReplayParser } from 'jssuh';
 
-// Flag to track if parser has been initialized
-let parserInitialized = false;
-let ReplayParserClass: any = null;
+// Track initialization state
+let isInitialized = false;
+let replayParserConstructor: any = null;
 
 /**
  * Initialize the browser-safe parser
  */
 export async function initBrowserSafeParser(): Promise<void> {
-  console.log('[browserSafeParser] Initializing browser-safe parser');
+  if (isInitialized) {
+    console.log('[browserSafeParser] Parser already initialized');
+    return;
+  }
   
   try {
-    // Apply global polyfills
-    console.log('[browserSafeParser] Starting global polyfills');
-    applyGlobalPolyfills();
-
-    // Get the ReplayParser constructor from our loader
-    console.log('[browserSafeParser] Getting ReplayParser constructor');
-    ReplayParserClass = await getReplayParserConstructor();
-    
-    if (!ReplayParserClass) {
-      console.error('[browserSafeParser] Failed to get ReplayParser constructor');
-      throw new Error('Failed to get ReplayParser constructor');
+    // Get the ReplayParser constructor
+    if (!ReplayParser) {
+      throw new Error('JSSUH ReplayParser not found');
     }
     
     console.log('[browserSafeParser] Successfully obtained ReplayParser constructor');
     
-    // Test creating an instance with proper encoding option
-    const testParser = new ReplayParserClass({ encoding: 'cp1252' });
+    // Test that we can create an instance
+    const testParser = new ReplayParser({ encoding: "cp1252" });
+    console.log('[browserSafeParser] Test parser has these methods:', Object.keys(testParser));
     
-    if (!testParser) {
-      throw new Error('Failed to create ReplayParser instance');
+    // Check if necessary methods exist
+    if (!testParser._pipeChk) {
+      throw new Error('Required parser methods not found');
     }
     
-    console.log('[browserSafeParser] Test parser has these methods:', 
-      Object.keys(testParser).filter(k => typeof (testParser as any)[k] === 'function'));
+    console.log('[browserSafeParser] ✅ pipeChk method found on parser');
     
-    // Specifically check if pipeChk exists
-    if (typeof testParser.pipeChk !== 'function') {
-      console.warn('[browserSafeParser] Warning: pipeChk method not found on parser');
-    } else {
-      console.log('[browserSafeParser] ✅ pipeChk method found on parser');
-    }
+    // Store the constructor for future use
+    replayParserConstructor = ReplayParser;
+    isInitialized = true;
     
-    // Mark as initialized if everything worked
-    parserInitialized = true;
     console.log('[browserSafeParser] Browser-safe parser initialized successfully');
-    
-    // Store the constructor globally for reuse
-    (window as any).__JSSUH_ReplayParser = ReplayParserClass;
-    
-  } catch (error) {
-    console.error('[browserSafeParser] Error initializing browser-safe parser:', error);
-    throw new Error(`Failed to initialize browser-safe parser: ${error instanceof Error ? error.message : String(error)}`);
+  } catch (err) {
+    console.error('[browserSafeParser] Failed to initialize browser-safe parser:', err);
+    throw new Error(`Failed to initialize replay parser: ${err}`);
   }
 }
 
 /**
- * Apply necessary global polyfills for JSSUH
- */
-function applyGlobalPolyfills(): void {
-  // 1) Create a single process object with nextTick
-  const proc: any = {
-    env: {},
-    browser: true,
-    nextTick(cb: Function, ...args: any[]) {
-      queueMicrotask(() => cb(...args));
-    },
-  };
-  // Some modules do `import p from 'process'`, so p.default must exist
-  proc.default = proc;
-
-  // 2) Install it in every place JSSUH might look
-  (globalThis as any).process = proc;
-  (globalThis as any).process2 = proc;
-  (globalThis as any).process3 = proc;
-  if (typeof window !== 'undefined') {
-    (window as any).process = proc;
-    (window as any).process2 = proc;
-    (window as any).process3 = proc;
-  }
-
-  console.log('[browserSafeParser] ✅ Polyfilled process/process2/process3.nextTick');
-
-  // 3) Shim Readable.from for stream-browserify
-  if (typeof Readable.from !== 'function') {
-    Readable.from = function<T>(iterable: Iterable<T>) {
-      const it = iterable[Symbol.iterator]();
-      return new Readable({
-        objectMode: true,
-        read() {
-          const { value, done } = it.next();
-          if (done) {
-            this.push(null);
-          } else {
-            this.push(value);
-          }
-        },
-      });
-    } as any;
-    console.log('[browserSafeParser] ✅ Shimmed Readable.from');
-  }
-  
-  // Verify process.nextTick implementation
-  console.log('[browserSafeParser] process.nextTick verification:', typeof (globalThis as any).process.nextTick);
-  console.log('[browserSafeParser] process2.nextTick verification:', typeof (globalThis as any).process2?.nextTick);
-  console.log('[browserSafeParser] process3.nextTick verification:', typeof (globalThis as any).process3?.nextTick);
-  
-  // Test process.nextTick is working
-  console.log('[browserSafeParser] process.nextTick test initiated, waiting for callback');
-  (globalThis as any).process.nextTick(() => {
-    console.log('[browserSafeParser] ✅ process.nextTick test successful');
-  });
-}
-
-/**
- * Parse replay data using the browser-safe parser
+ * Parse a replay file using the browser-safe JSSUH parser
  */
 export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promise<any> {
-  console.log(`[browserSafeParser] Parsing replay data (${data.length} bytes)`);
-  
-  if (!parserInitialized) {
-    console.log('[browserSafeParser] Parser not initialized, initializing now');
+  if (!isInitialized || !replayParserConstructor) {
     await initBrowserSafeParser();
   }
   
-  try {
-    // Return a promise that will resolve with the parsed data
-    return new Promise(async (resolve, reject) => {
-      // Set a timeout
-      const timeoutId = setTimeout(() => {
-        console.error(`[browserSafeParser] Parsing timed out after ${PARSER_TIMEOUT_MS/1000} seconds`);
-        reject(new Error('Parsing timed out'));
-      }, PARSER_TIMEOUT_MS);
+  return new Promise((resolve, reject) => {
+    try {
+      console.log('[browserSafeParser] Parsing replay data (' + data.length + ' bytes)');
+      console.log('[browserSafeParser] Creating parser instance');
       
-      // Declare fallbackTimeout at this scope level so it's available to all handlers
-      // Use ReturnType<typeof setTimeout> to match the setTimeout return type
-      let fallbackTimeout: ReturnType<typeof setTimeout> | null = null;
+      // Create a parser instance
+      const parser = new replayParserConstructor({ encoding: "cp1252" });
+      console.log('[browserSafeParser] Created ReplayParser instance with options:', { encoding: "cp1252" });
       
-      try {
-        console.log('[browserSafeParser] Creating parser instance');
-        
-        // Use the cached ReplayParser class
-        if (!ReplayParserClass) {
-          ReplayParserClass = (window as any).__JSSUH_ReplayParser;
-          
-          if (!ReplayParserClass) {
-            console.error('[browserSafeParser] ReplayParser class not available');
-            reject(new Error('ReplayParser class not available'));
-            return;
-          }
-        }
-        
-        // Create parser with proper encoding option from jssuh docs
-        const parser = new ReplayParserClass({ encoding: 'cp1252' });
-        console.log('[browserSafeParser] Created ReplayParser instance with options: { encoding: "cp1252" }');
-        
-        // Collected data
-        let header: any = null;
-        const commands: any[] = [];
-        
-        // Listen for the replay header event
-        parser.on('replayHeader', (replayHeader: any) => {
-          console.log('[browserSafeParser] Received replay header:', 
-            replayHeader ? `version ${replayHeader.version}, type ${replayHeader.type}` : 'null');
-          header = replayHeader;
-        });
-        
-        // Listen for command data
-        parser.on('command', (command: any) => {
-          commands.push(command);
-          
-          // Log progress occasionally
-          if (commands.length % 500 === 0) {
-            console.log(`[browserSafeParser] Parsed ${commands.length} commands`);
-          }
-        });
-        
-        // Listen for the end event
-        parser.on('end', () => {
-          console.log(`[browserSafeParser] Parser finished, parsed ${commands.length} commands`);
-          
-          clearTimeout(timeoutId);
-          if (fallbackTimeout !== null) {
-            clearTimeout(fallbackTimeout);
-          }
-          
-          const players = header?.players || [];
-          const mapName = header?.mapName || 'Unknown';
-          
-          console.log(`[browserSafeParser] Found ${players.length} players on map: ${mapName}`);
-          
-          resolve({
-            header,
-            commands,
-            players,
-            mapName,
-          });
-        });
-        
-        // Listen for errors
-        parser.on('error', (err: any) => {
-          console.error('[browserSafeParser] Parser error:', err);
-          clearTimeout(timeoutId);
-          if (fallbackTimeout !== null) {
-            clearTimeout(fallbackTimeout);
-          }
-          reject(err);
-        });
-
-        try {
-          console.log('[browserSafeParser] Creating Readable.from([data])');
-          const buf = Buffer.from(data);  
-          const src = Readable.from([buf]);
-
-          // Tell JSSUH where to read the checksum‐block bytes from:
-          parser.pipeChk(src);
-
-          // Pipe ALL data into the parser transform itself:
-          src.pipe(parser);
-
-          console.log('[browserSafeParser] Streaming data into parser with pipe() + pipeChk()');
-
-          // Fallback if nothing ever fires after 10s:
-          fallbackTimeout = setTimeout(() => {
-            console.warn('[browserSafeParser] No events after 10s—falling back to write/end');
-            try {
-              parser.write(buf);
-              parser.end();
-              console.log('[browserSafeParser] Fallback write/end completed');
-            } catch (e: any) {
-              console.error('[browserSafeParser] Fallback write/end error:', e.message, e.stack);
-              reject(e);
-            }
-          }, 10000);
-          
-        } catch (pipeError) {
-          console.error('[browserSafeParser] Error in streaming approach:', pipeError);
-          
-          // Immediate fallback to manual chunk writing if streaming fails
-          console.log('[browserSafeParser] Immediately falling back to direct write+end approach');
-          try {
-            parser.write(data);
-            console.log('[browserSafeParser] Successfully wrote data, calling end()');
-            parser.end();
-            console.log('[browserSafeParser] Called end(), waiting for events');
-          } catch (writeError: any) {
-            console.error('[browserSafeParser] Error in direct write approach:', writeError.message, writeError.stack);
-            clearTimeout(timeoutId);
-            reject(writeError);
-          }
-        }
-      } catch (error) {
-        console.error('[browserSafeParser] Error in parser setup:', error);
-        clearTimeout(timeoutId);
+      // Create collectors for the parsed data
+      let headerData: any = null;
+      let commandsData: any[] = [];
+      let chatMessagesData: any[] = [];
+      let playersData: any[] = [];
+      
+      // Event listeners to collect data
+      parser.on('header', (header: any) => {
+        headerData = header;
+      });
+      
+      parser.on('player', (player: any) => {
+        playersData.push(player);
+      });
+      
+      parser.on('command', (command: any) => {
+        commandsData.push(command);
+      });
+      
+      parser.on('chatmessage', (message: any) => {
+        chatMessagesData.push(message);
+      });
+      
+      parser.on('error', (error: any) => {
+        console.error('[browserSafeParser] Parser error:', error);
         reject(error);
-      }
-    });
-  } catch (error) {
-    console.error('[browserSafeParser] Error in parseReplayWithBrowserSafeParser:', error);
-    throw error;
-  }
+      });
+      
+      parser.on('end', () => {
+        console.log('[browserSafeParser] Parsing completed');
+        
+        // Assemble the full data object
+        const parsedData = {
+          header: headerData,
+          players: playersData,
+          commands: commandsData,
+          chatMessages: chatMessagesData
+        };
+        
+        resolve(parsedData);
+      });
+      
+      // We can't use streaming in the browser, we need to use direct write
+      console.log('[browserSafeParser] Using direct write approach for browser compatibility');
+      
+      // Use setTimeout to prevent blocking
+      setTimeout(() => {
+        try {
+          // Write all data at once to the parser
+          parser.write(data);
+          // Signal the end of the data
+          parser.end();
+        } catch (error) {
+          console.error('[browserSafeParser] Error processing replay data:', error);
+          reject(error);
+        }
+      }, 0);
+      
+    } catch (error) {
+      console.error('[browserSafeParser] Parsing error:', error);
+      reject(error);
+    }
+  });
 }
