@@ -1,6 +1,7 @@
+
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import { useDropzone } from 'react-dropzone';
 import { useReplayParser } from '@/hooks/useReplayParser';
 import { AnalyzedReplayResult } from '@/services/replayParserService';
