@@ -1,9 +1,7 @@
 
 import React from 'react';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Users } from 'lucide-react';
 
 interface PlayerSelectorProps {
   player1: string;
@@ -58,25 +56,22 @@ const PlayerSelector: React.FC<PlayerSelectorProps> = ({
   };
 
   return (
-    <div className="mb-6 relative">
-      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/5 to-transparent -z-10"></div>
-      
-      <div className="mb-3 flex items-center justify-between">
-        <div className="text-sm text-muted-foreground flex items-center">
-          <Users className="inline-block w-4 h-4 mr-1" /> 
-          <span>Wähle deine Perspektive für die Analyse:</span>
+    <div className="mb-6 sc-metal-frame p-1">
+      <div className="mb-2 flex items-center justify-between px-3 pt-2">
+        <div className="text-sm text-blue-100 flex items-center">
+          <span className="sc-terminal-text tracking-wider uppercase">Perspektive</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* First player card - Clean Blizzard-inspired design */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
+        {/* First player button - Enhanced clean style */}
         <Button
           variant="ghost"
           className={`h-auto relative flex items-start text-left transition-all duration-300 p-0 overflow-hidden
             ${selectedPlayerIndex === 0 ? 
-              `border-2 ${getRaceBorderColor(race1)} sc-panel` : 
-              "border border-border/40 hover:bg-secondary/10"}
-            rounded-lg`}
+              `hologram-frame ${getRaceBgColor(race1)} border-2` : 
+              "border border-gray-800/80 hover:border-gray-700/50"}
+            rounded-none`}
           onClick={handleSelectPlayer(0)}
           type="button"
         >
@@ -92,43 +87,43 @@ const PlayerSelector: React.FC<PlayerSelectorProps> = ({
           )}
 
           {/* Content with better spacing */}
-          <div className="w-full p-4">
+          <div className="w-full p-3">
             <div className="flex flex-col space-y-1">
               <div className="flex items-center justify-between w-full">
                 <div className={`font-bold sc-terminal-text text-lg tracking-wide ${getRaceColor(race1)}`}>
                   {player1}
                 </div>
                 
-                <Badge variant="outline" className={`${getRaceColor(race1)} border-current font-medium`}>
+                <Badge variant="outline" className={`${getRaceColor(race1)} border-current font-medium uppercase`}>
                   {race1}
                 </Badge>
               </div>
               
-              <div className={`text-sm ${selectedPlayerIndex === 0 ? "text-foreground" : "text-muted-foreground"}`}>
+              <div className={`text-xs mt-1 ${selectedPlayerIndex === 0 ? "text-primary" : "text-muted-foreground"}`}>
                 {selectedPlayerIndex === 0 ? (
                   <span className="font-medium">Aktuelle Perspektive</span>
                 ) : (
-                  <span>Klicken um zu dieser Perspektive zu wechseln</span>
+                  <span>Klicken zum Wechseln</span>
                 )}
               </div>
             </div>
           </div>
           
-          {/* Bottom border glow effect - subtle */}
+          {/* Glowing bottom border for active selection */}
           {selectedPlayerIndex === 0 && (
             <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r 
               from-transparent via-primary/80 to-transparent"></div>
           )}
         </Button>
 
-        {/* Second player card - Clean Blizzard-inspired design */}
+        {/* Second player button - Enhanced clean style */}
         <Button
           variant="ghost"
           className={`h-auto relative flex items-start text-left transition-all duration-300 p-0 overflow-hidden
             ${selectedPlayerIndex === 1 ? 
-              `border-2 ${getRaceBorderColor(race2)} sc-panel` : 
-              "border border-border/40 hover:bg-secondary/10"}
-            rounded-lg`}
+              `hologram-frame ${getRaceBgColor(race2)} border-2` : 
+              "border border-gray-800/80 hover:border-gray-700/50"}
+            rounded-none`}
           onClick={handleSelectPlayer(1)}
           type="button"
         >
@@ -144,38 +139,35 @@ const PlayerSelector: React.FC<PlayerSelectorProps> = ({
           )}
 
           {/* Content with better spacing */}
-          <div className="w-full p-4">
+          <div className="w-full p-3">
             <div className="flex flex-col space-y-1">
               <div className="flex items-center justify-between w-full">
                 <div className={`font-bold sc-terminal-text text-lg tracking-wide ${getRaceColor(race2)}`}>
                   {player2}
                 </div>
                 
-                <Badge variant="outline" className={`${getRaceColor(race2)} border-current font-medium`}>
+                <Badge variant="outline" className={`${getRaceColor(race2)} border-current font-medium uppercase`}>
                   {race2}
                 </Badge>
               </div>
               
-              <div className={`text-sm ${selectedPlayerIndex === 1 ? "text-foreground" : "text-muted-foreground"}`}>
+              <div className={`text-xs mt-1 ${selectedPlayerIndex === 1 ? "text-primary" : "text-muted-foreground"}`}>
                 {selectedPlayerIndex === 1 ? (
                   <span className="font-medium">Aktuelle Perspektive</span>
                 ) : (
-                  <span>Klicken um zu dieser Perspektive zu wechseln</span>
+                  <span>Klicken zum Wechseln</span>
                 )}
               </div>
             </div>
           </div>
           
-          {/* Bottom border glow effect - subtle */}
+          {/* Glowing bottom border for active selection */}
           {selectedPlayerIndex === 1 && (
             <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r 
               from-transparent via-primary/80 to-transparent"></div>
           )}
         </Button>
       </div>
-      
-      {/* Add subtle StarCraft-inspired decorative element */}
-      <div className="w-full h-[1px] bg-gradient-to-r from-transparent via-border/50 to-transparent mt-2"></div>
     </div>
   );
 };

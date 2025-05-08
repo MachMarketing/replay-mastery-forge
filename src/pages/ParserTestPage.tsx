@@ -1,490 +1,344 @@
+
 import React, { useState, useEffect } from 'react';
+import { AxiosError } from 'axios';
+import { useDropzone } from 'react-dropzone';
+import { useReplayParser } from '@/hooks/useReplayParser';
+import { AnalyzedReplayResult } from '@/services/replayParserService';
+import { uploadReplayFile } from '@/services/uploadService';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
+import { Progress } from '@/components/ui/progress';
+import { useToast } from '@/hooks/use-toast';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Separator } from '@/components/ui/separator';
-import { runBrowserParserTest } from '@/test/parserTest';
-import { runE2EParserTest } from '@/test/e2eParserTest';
-import { Badge } from '@/components/ui/badge';
-import { createMockFileFromUint8Array } from '@/services/fileReader';
-import { Loader2, CheckCircle, AlertCircle, FileUp, RefreshCcw, ChevronDown, ChevronUp, BarChart2 } from 'lucide-react';
-import { analyzeReplayData } from '@/services/replayParser/analyzer';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ParsedReplayData } from '@/services/replayParser/types';
 
-const ParserTestPage = () => {
-  const [isLoading, setIsLoading] = useState(false);
-  const [testResults, setTestResults] = useState<any | null>(null);
-  const [e2eResults, setE2eResults] = useState<any | null>(null);
-  const [analysisResults, setAnalysisResults] = useState<any | null>(null);
+// Mock data for testing
+const mockReplayData: Partial<AnalyzedReplayResult> = {
+  playerName: "TestPlayer",
+  opponentName: "TestOpponent",
+  playerRace: "Terran",
+  opponentRace: "Protoss",
+  map: "Fighting Spirit",
+  matchup: "TvP",
+  duration: "15:42",
+  durationMS: 942000,
+  date: "2023-05-10",
+  result: "win",
+  apm: 180,
+  eapm: 150,
+  buildOrder: [
+    { time: "0:00", supply: 4, action: "Start" },
+    { time: "0:42", supply: 9, action: "Supply Depot" },
+    { time: "1:30", supply: 12, action: "Barracks" },
+    { time: "2:15", supply: 15, action: "Marine" }
+  ],
+  strengths: [
+    "Good early game scouting",
+    "Consistent worker production"
+  ],
+  weaknesses: [
+    "Supply blocks at key moments",
+    "Late game unit composition"
+  ],
+  recommendations: [
+    "Focus on maintaining constant worker production",
+    "Scout more aggressively in mid-game"
+  ],
+  trainingPlan: [
+    { day: 1, focus: "Build order optimization", drill: "Practice standard opening 10 times" },
+    { day: 2, focus: "Crisis management", drill: "Defend against early rush strategies" }
+  ]
+};
+
+const ParserTestPage: React.FC = () => {
+  const [file, setFile] = useState<File | null>(null);
+  const [parsingStatus, setParsingStatus] = useState<'idle' | 'uploading' | 'parsing' | 'complete' | 'error'>('idle');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [parsedReplayData, setParsedReplayData] = useState<AnalyzedReplayResult | null>(null);
+  const [parsedOutput, setParsedOutput] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [logs, setLogs] = useState<string[]>([]);
-  const [isE2eTestRunning, setIsE2eTestRunning] = useState(false);
-  const [isAnalysisRunning, setIsAnalysisRunning] = useState(false);
+  const { parseReplay } = useReplayParser();
+  const { toast } = useToast();
 
-  // Create mock test data to test the parser without a real file
-  const createMockReplayData = () => {
-    // This creates a very simple binary structure that mimics a .rep file header
-    // Real replay files are more complex, but this helps test the parsing flow
-    const mockData = new Uint8Array([
-      0x28, 0x42, 0x29, 0x77, 0x31, 0x2e, 0x31, 0x36, 0x2e, 0x31, 0x20, 0x72, 
-      0x65, 0x70, 0x6c, 0x61, 0x79, 0x20, 0x75, 0x62, 0x64, 0x00, 0x00, 0x00
-    ]);
-    return createMockFileFromUint8Array(mockData, 'test_mock.rep');
-  };
-
-  // Capture console logs
-  useEffect(() => {
-    const originalConsoleLog = console.log;
-    const originalConsoleError = console.error;
-    const originalConsoleWarn = console.warn;
-    
-    console.log = (...args) => {
-      originalConsoleLog(...args);
-      setLogs(prev => [...prev, `[LOG] ${args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ')}`]);
-    };
-    
-    console.error = (...args) => {
-      originalConsoleError(...args);
-      setLogs(prev => [...prev, `[ERROR] ${args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ')}`]);
-    };
-    
-    console.warn = (...args) => {
-      originalConsoleWarn(...args);
-      setLogs(prev => [...prev, `[WARN] ${args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ')}`]);
-    };
-    
-    return () => {
-      console.log = originalConsoleLog;
-      console.error = originalConsoleError;
-      console.warn = originalConsoleWarn;
-    };
-  }, []);
-  
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files.length > 0) {
-      setSelectedFile(event.target.files[0]);
-      setE2eResults(null); // Reset E2E results when file changes
-      setAnalysisResults(null); // Reset analysis results when file changes
-    }
-  };
-  
-  const runTest = async (file: File) => {
-    setIsLoading(true);
-    setError(null);
-    setTestResults(null);
-    setLogs([]);
-    
-    try {
-      console.log(`Running unified browser parser test with file: ${file.name} (${file.size} bytes)`);
-      const results = await runBrowserParserTest(file);
-      setTestResults(results);
-      console.log('Test completed successfully!');
-    } catch (err) {
-      console.error('Test failed:', err);
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleRunTest = async () => {
-    if (selectedFile) {
-      runTest(selectedFile);
-    } else {
-      console.log('No file selected, running with mock data');
-      const mockFile = createMockReplayData();
-      runTest(mockFile);
-    }
-  };
-  
-  // Add E2E test function
-  const handleRunE2ETest = async () => {
-    if (!selectedFile) {
-      console.error('No file selected for E2E test');
-      return;
-    }
-    
-    setIsE2eTestRunning(true);
-    setE2eResults(null);
-    
-    try {
-      console.log('Running E2E parser flow comparison test...');
-      const results = await runE2EParserTest(selectedFile);
-      setE2eResults(results);
-      console.log('E2E test results:', results);
-      
-      if (results.success) {
-        console.log('✅ E2E test successful - parser flows produce identical results');
-      } else {
-        console.error('❌ E2E test failed - parser flows produce different results:', results.differences);
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    accept: {
+      'application/octet-stream': ['.rep']
+    },
+    maxFiles: 1,
+    onDrop: async (acceptedFiles) => {
+      if (acceptedFiles.length > 0) {
+        handleFileSelection(acceptedFiles[0]);
       }
-    } catch (err) {
-      console.error('E2E test error:', err);
-      setE2eResults({
-        success: false,
-        message: `Test fehgeschlagen: ${err instanceof Error ? err.message : String(err)}`
+    }
+  });
+
+  // For mock testing
+  const handleUseMockData = () => {
+    setParsingStatus('complete');
+    setParsedReplayData(mockReplayData as AnalyzedReplayResult);
+    setParsedOutput(JSON.stringify(mockReplayData, null, 2));
+    toast({
+      title: "Mock data loaded",
+      description: "Using test data for development",
+    });
+  };
+
+  const handleFileSelection = async (selectedFile: File) => {
+    try {
+      setFile(selectedFile);
+      setError(null);
+      setParsedReplayData(null);
+      setParsedOutput('');
+      setParsingStatus('uploading');
+      
+      // Start with upload progress simulation
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          const newProgress = prev + Math.random() * 15;
+          return newProgress > 90 ? 90 : newProgress;
+        });
+      }, 200);
+      
+      try {
+        // Upload file first
+        const fileData = await uploadReplayFile(selectedFile);
+        clearInterval(progressInterval);
+        setUploadProgress(100);
+        
+        // Now parse the replay
+        setParsingStatus('parsing');
+        const result = await parseReplay(selectedFile);
+        
+        if (!result) {
+          throw new Error("Failed to parse replay - no result returned");
+        }
+        
+        setParsedReplayData(result);
+        setParsedOutput(JSON.stringify(result, null, 2));
+        setParsingStatus('complete');
+        
+        toast({
+          title: "Replay parsed successfully",
+          description: `Analyzed: ${result.playerName} vs ${result.opponentName}`,
+        });
+      } catch (e) {
+        clearInterval(progressInterval);
+        throw e;
+      }
+    } catch (e) {
+      setParsingStatus('error');
+      const errorMessage = e instanceof AxiosError 
+        ? e.response?.data?.message || e.message
+        : e instanceof Error 
+          ? e.message 
+          : 'Unknown error occurred';
+      
+      setError(errorMessage);
+      toast({
+        title: "Error parsing replay",
+        description: errorMessage,
+        variant: "destructive"
       });
-    } finally {
-      setIsE2eTestRunning(false);
     }
   };
-  
-  // Handle running meta-aware analysis
-  const handleRunAnalysis = async () => {
-    if (!testResults) {
-      console.error('No replay data available for analysis');
-      return;
-    }
-    
-    setIsAnalysisRunning(true);
-    setAnalysisResults(null);
-    
-    try {
-      console.log('Running meta-aware replay analysis...');
-      
-      // Create the input data structure expected by the analyzer with proper type casting
-      const analysisInput: ParsedReplayData = {
-        playerName: testResults.playerName || 'Player',
-        opponentName: testResults.opponentName || 'Opponent',
-        playerRace: testResults.playerRace || 'Terran',
-        opponentRace: testResults.opponentRace || 'Terran',
-        map: testResults.map || 'Unknown',
-        duration: testResults.duration || '10:00',
-        durationMS: testResults.durationMS || 600000,
-        result: testResults.result || 'win',
-        apm: testResults.apm || 120,
-        eapm: testResults.eapm || 110,
-        date: testResults.date || new Date().toISOString(),
-        matchup: testResults.matchup || 'TvT', 
-        buildOrder: testResults.buildOrder || [],
-        replayVersion: testResults.replayVersion || '1.16.1'
-      };
-      
-      const analysis = await analyzeReplayData(analysisInput);
-      setAnalysisResults(analysis);
-      console.log('Analysis results:', analysis);
-      
-    } catch (err) {
-      console.error('Analysis error:', err);
-      setError(`Analysis failed: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setIsAnalysisRunning(false);
+
+  const renderProgressStatus = () => {
+    switch (parsingStatus) {
+      case 'uploading':
+        return (
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span>Uploading replay file...</span>
+              <span>{Math.round(uploadProgress)}%</span>
+            </div>
+            <Progress value={uploadProgress} className="h-2" />
+          </div>
+        );
+      case 'parsing':
+        return (
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span>Parsing replay data...</span>
+              <div className="flex items-center">
+                <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse"></div>
+                <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse ml-1" style={{ animationDelay: '0.2s' }}></div>
+                <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse ml-1" style={{ animationDelay: '0.4s' }}></div>
+              </div>
+            </div>
+            <Progress value={100} className="h-2 animate-pulse" />
+          </div>
+        );
+      case 'complete':
+        return (
+          <div className="text-sm text-green-500 flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            Parsing complete
+          </div>
+        );
+      case 'error':
+        return (
+          <div className="text-sm text-red-500 flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            Error occurred
+          </div>
+        );
+      default:
+        return null;
     }
   };
 
   return (
-    <div className="flex flex-col min-h-screen">
+    <>
       <Navbar />
-      
-      <main className="flex-1 py-16 mt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-3xl font-bold">Unified Parser Test Page</h1>
-          </div>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="container mx-auto px-4 py-8 mt-16">
+        <h1 className="text-2xl font-bold mb-6">Replay Parser Test Page</h1>
+        
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Replay Parser Test</CardTitle>
-                <CardDescription>
-                  Test the unified StarCraft replay parser directly in your browser
-                </CardDescription>
+                <CardTitle>Upload Replay</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex flex-col space-y-2">
-                    <label htmlFor="replayFile" className="text-sm font-medium">
-                      Select a replay file
-                    </label>
-                    <input
-                      id="replayFile"
-                      type="file"
-                      accept=".rep"
-                      onChange={handleFileChange}
-                      className="border border-input rounded-md px-3 py-2"
-                    />
-                  </div>
-                  
-                  <div className="flex items-center">
-                    <Badge variant="outline" className="mr-2">
-                      {selectedFile ? selectedFile.name : 'No file selected (will use mock data)'}
-                    </Badge>
-                  </div>
-                  
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <Button 
-                      onClick={handleRunTest}
-                      disabled={isLoading}
-                      className="flex-1"
-                    >
-                      {isLoading ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Processing...
-                        </>
-                      ) : (
-                        <>
-                          <FileUp className="mr-2 h-4 w-4" />
-                          Run Parser Test
-                        </>
-                      )}
-                    </Button>
-                    
-                    {selectedFile && testResults && (
-                      <Button 
-                        onClick={handleRunE2ETest}
-                        disabled={isE2eTestRunning || !selectedFile}
-                        variant="outline"
-                        className="flex-1"
-                      >
-                        {isE2eTestRunning ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Running E2E Test...
-                          </>
-                        ) : (
-                          <>
-                            <RefreshCcw className="mr-2 h-4 w-4" />
-                            Run E2E Parser Flow Test
-                          </>
-                        )}
-                      </Button>
-                    )}
-                  </div>
-                  
-                  {testResults && (
-                    <Button 
-                      onClick={handleRunAnalysis}
-                      disabled={isAnalysisRunning || !testResults}
-                      variant="secondary"
-                      className="w-full mt-2"
-                    >
-                      {isAnalysisRunning ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Analyzing Meta Strategy...
-                        </>
-                      ) : (
-                        <>
-                          <BarChart2 className="mr-2 h-4 w-4" />
-                          Run Meta-Aware Analysis
-                        </>
-                      )}
-                    </Button>
+              <CardContent className="space-y-4">
+                <div 
+                  {...getRootProps()} 
+                  className={`border-2 border-dashed rounded-md p-8 text-center cursor-pointer
+                    ${isDragActive ? 'border-primary bg-primary/5' : 'border-gray-300'}`}
+                >
+                  <input {...getInputProps()} />
+                  {isDragActive ? (
+                    <p>Drop the replay file here...</p>
+                  ) : (
+                    <p>Drag & drop a replay file here, or click to select</p>
                   )}
-                  
-                  {/* E2E Test Results */}
-                  {e2eResults && (
-                    <div className={`mt-4 p-3 rounded-md border ${e2eResults.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                      <div className="flex items-start">
-                        {e2eResults.success ? (
-                          <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 mr-2" />
-                        ) : (
-                          <AlertCircle className="h-5 w-5 text-red-500 mt-0.5 mr-2" />
-                        )}
-                        <div>
-                          <p className={`text-sm font-medium ${e2eResults.success ? 'text-green-700' : 'text-red-700'}`}>
-                            {e2eResults.message}
-                          </p>
-                          
-                          {e2eResults.differences && Object.keys(e2eResults.differences).length > 0 && (
-                            <details className="mt-2">
-                              <summary className="text-xs font-medium cursor-pointer">
-                                Show Differences
-                              </summary>
-                              <div className="mt-2 text-xs bg-black/5 p-2 rounded overflow-auto max-h-40">
-                                <pre>
-                                  {JSON.stringify(e2eResults.differences, null, 2)}
-                                </pre>
-                              </div>
-                            </details>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  <p className="text-sm text-gray-500 mt-2">Only .rep files are accepted</p>
                 </div>
-              </CardContent>
-            </Card>
-            
-            {/* Results Tabs */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Parser Results</CardTitle>
-                <CardDescription>
-                  {isLoading ? 'Running test...' : error 
-                    ? 'Test failed with errors' 
-                    : testResults ? 'Test completed successfully' : 'Waiting to run test'}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {isLoading ? (
-                  <div className="flex flex-col items-center justify-center h-40">
-                    <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-                    <p>Processing replay file...</p>
+                
+                {file && (
+                  <div className="text-sm flex items-center">
+                    <span className="font-medium mr-2">Selected file:</span>
+                    <span className="flex-1 truncate">{file.name}</span>
+                    <span className="text-gray-500 ml-2">({(file.size / 1024).toFixed(1)} KB)</span>
                   </div>
-                ) : error ? (
+                )}
+                
+                {renderProgressStatus()}
+                
+                {error && (
                   <Alert variant="destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Error</AlertTitle>
                     <AlertDescription>
                       {error}
                     </AlertDescription>
                   </Alert>
-                ) : testResults ? (
-                  <Tabs defaultValue="raw" className="w-full">
-                    <TabsList className="grid grid-cols-2">
-                      <TabsTrigger value="raw">Raw Data</TabsTrigger>
-                      <TabsTrigger value="analysis" disabled={!analysisResults}>Meta Analysis</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="raw">
-                      <div className="space-y-4">
-                        <div className="flex items-start space-x-2">
-                          <CheckCircle className="h-5 w-5 text-green-500 mt-0.5" />
-                          <div>
-                            <h3 className="font-medium">Test completed successfully</h3>
-                            <p className="text-sm text-gray-500">
-                              The parser was able to process the replay file
-                            </p>
-                          </div>
-                        </div>
-                        
-                        <Separator />
-                        
-                        <div className="space-y-2">
-                          <h3 className="font-medium">Parsed Data:</h3>
-                          <div className="bg-secondary/20 p-3 rounded-md overflow-auto max-h-60">
-                            <pre className="text-xs whitespace-pre-wrap">
-                              {JSON.stringify(testResults, null, 2)}
-                            </pre>
-                          </div>
-                        </div>
-                      </div>
-                    </TabsContent>
-                    <TabsContent value="analysis">
-                      {analysisResults ? (
-                        <div className="space-y-4">
-                          <div className="flex items-start space-x-2">
-                            <CheckCircle className="h-5 w-5 text-green-500 mt-0.5" />
-                            <div>
-                              <h3 className="font-medium">Meta analysis completed</h3>
-                              <p className="text-sm text-gray-500">
-                                Analysis based on 2025 professional meta strategies
-                              </p>
-                            </div>
-                          </div>
-                          
-                          <Separator />
-                          
-                          {/* Strengths Section */}
-                          <div className="space-y-2">
-                            <h3 className="font-medium text-green-600">Strengths:</h3>
-                            <ul className="list-disc pl-5 space-y-1">
-                              {analysisResults.strengths.map((strength: string, index: number) => (
-                                <li key={`strength-${index}`} className="text-sm">
-                                  {strength}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          
-                          {/* Weaknesses Section */}
-                          <div className="space-y-2">
-                            <h3 className="font-medium text-red-600">Areas for Improvement:</h3>
-                            <ul className="list-disc pl-5 space-y-1">
-                              {analysisResults.weaknesses.map((weakness: string, index: number) => (
-                                <li key={`weakness-${index}`} className="text-sm">
-                                  {weakness}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          
-                          {/* Recommendations Section */}
-                          <div className="space-y-2">
-                            <h3 className="font-medium text-blue-600">Recommendations:</h3>
-                            <ul className="list-disc pl-5 space-y-1">
-                              {analysisResults.recommendations.map((rec: string, index: number) => (
-                                <li key={`rec-${index}`} className="text-sm">
-                                  {rec}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          
-                          {/* Training Plan Section */}
-                          <div className="space-y-2">
-                            <details>
-                              <summary className="font-medium text-purple-600 cursor-pointer flex items-center">
-                                10-Day Training Plan
-                                <ChevronDown className="inline-block ml-1 h-4 w-4" />
-                              </summary>
-                              <div className="mt-2 border rounded-md p-2 bg-secondary/10">
-                                <ul className="divide-y">
-                                  {analysisResults.trainingPlan.map((day: any, index: number) => (
-                                    <li key={`day-${index}`} className="py-2">
-                                      <div className="font-medium text-xs">Day {day.day}: {day.focus}</div>
-                                      <div className="text-xs mt-1">{day.drill}</div>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            </details>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center h-40 text-gray-500">
-                          <p>Run the meta analysis to see insights</p>
-                        </div>
-                      )}
-                    </TabsContent>
-                  </Tabs>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-40 text-gray-500">
-                    <p>Ready to run test</p>
-                  </div>
                 )}
+                
+                <div className="flex space-x-2">
+                  <Button 
+                    onClick={handleUseMockData}
+                    variant="outline"
+                  >
+                    Use Mock Data
+                  </Button>
+                </div>
               </CardContent>
             </Card>
+            
+            {parsedReplayData && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Parsed Result</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm font-medium">Player</p>
+                        <p>{parsedReplayData.playerName} ({parsedReplayData.playerRace})</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">Opponent</p>
+                        <p>{parsedReplayData.opponentName} ({parsedReplayData.opponentRace})</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">Map</p>
+                        <p>{parsedReplayData.map}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">Duration</p>
+                        <p>{parsedReplayData.duration}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">APM</p>
+                        <p>{parsedReplayData.apm}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">Result</p>
+                        <p className={parsedReplayData.result === 'win' ? 'text-green-500' : 'text-red-500'}>
+                          {parsedReplayData.result === 'win' ? 'Victory' : 'Defeat'}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <p className="text-sm font-medium mb-2">Strengths</p>
+                      <ul className="list-disc list-inside">
+                        {parsedReplayData.strengths?.map((strength, index) => (
+                          <li key={index}>{strength}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    
+                    <div>
+                      <p className="text-sm font-medium mb-2">Build Order (First Few Items)</p>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                          <thead>
+                            <tr>
+                              <th className="text-left">Time</th>
+                              <th className="text-left">Supply</th>
+                              <th className="text-left">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {parsedReplayData.buildOrder?.slice(0, 5).map((item, index) => (
+                              <tr key={index}>
+                                <td>{item.time}</td>
+                                <td>{item.supply}</td>
+                                <td>{item.action}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
           
-          {/* Console Logs */}
-          <Card className="mt-8">
+          <Card>
             <CardHeader>
-              <CardTitle>Debug Logs</CardTitle>
-              <CardDescription>
-                Console output from the parser process
-              </CardDescription>
+              <CardTitle>JSON Output</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="bg-black text-green-400 font-mono p-4 rounded-md overflow-auto h-96">
-                {logs.length > 0 ? (
-                  logs.map((log, index) => (
-                    <div key={index} className={`text-xs mb-1 ${
-                      log.includes('[ERROR]') 
-                        ? 'text-red-400' 
-                        : log.includes('[WARN]') 
-                          ? 'text-yellow-400' 
-                          : 'text-green-400'
-                    }`}>
-                      {log}
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-gray-500">No logs yet. Run a test to see output.</p>
-                )}
-              </div>
+              <Textarea 
+                className="font-mono text-xs h-[600px] bg-gray-100 dark:bg-gray-800"
+                value={parsedOutput} 
+                readOnly
+              />
             </CardContent>
           </Card>
         </div>
-      </main>
-      
+      </div>
       <Footer />
-    </div>
+    </>
   );
 };
 
