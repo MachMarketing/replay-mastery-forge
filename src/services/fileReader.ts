@@ -27,6 +27,29 @@ export async function readFileAsUint8Array(file: File): Promise<Uint8Array> {
 }
 
 /**
+ * Read a file as ArrayBuffer
+ */
+export async function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Failed to read file as ArrayBuffer'));
+      }
+    };
+    
+    reader.onerror = () => {
+      reject(reader.error || new Error('Error reading file'));
+    };
+    
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+/**
  * Read a file as text
  */
 export async function readFileAsText(file: File): Promise<string> {
