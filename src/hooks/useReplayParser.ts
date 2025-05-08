@@ -117,6 +117,19 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error('Parser hat keine Daten zurückgegeben');
       }
       
+      // Ensure the result has all required fields for ParsedReplayResult
+      const result: ParsedReplayResult = {
+        ...parsedData,
+        playerName: parsedData.primaryPlayer?.name || 'Player',
+        opponentName: parsedData.secondaryPlayer?.name || 'Opponent',
+        playerRace: parsedData.primaryPlayer?.race || 'Terran',
+        opponentRace: parsedData.secondaryPlayer?.race || 'Terran',
+        apm: parsedData.primaryPlayer?.apm || 0,
+        eapm: parsedData.primaryPlayer?.eapm || 0,
+        opponentApm: parsedData.secondaryPlayer?.apm || 0,
+        opponentEapm: parsedData.secondaryPlayer?.eapm || 0,
+      };
+      
       // Final progress update
       setProgress(100);
       
@@ -136,7 +149,7 @@ export function useReplayParser(): ReplayParserResult {
       setIsProcessing(false);
       console.log('[useReplayParser] Successfully parsed replay file');
       
-      return parsedData;
+      return result;
     } catch (err) {
       let errorMessage = err instanceof Error ? err.message : 'Fehler beim Parsen der Replay-Datei';
       

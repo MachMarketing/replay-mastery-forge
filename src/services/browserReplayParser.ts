@@ -50,22 +50,22 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
         
         console.log(`[browserReplayParser] Running parser.parse() (${parseId})...`);
         // Actually run the parsing operation
-        const result = await parser.parse();
+        let parsedResult = await parser.parse();
         
         // Add the debugging log to see the exact structure
-        console.log(`🛠 [browserReplayParser] Full parsed object structure (${parseId}):`, result);
+        console.log(`🛠 [browserReplayParser] Full parsed object structure (${parseId}):`, parsedResult);
         
         // Dump the raw data structure to help with debugging
-        console.log(`🛠 [browserReplayParser] Game info structure (${parseId}):`, result.gameInfo ? Object.keys(result.gameInfo) : 'none');
-        console.log(`🛠 [browserReplayParser] Players structure (${parseId}):`, result.players ? 
-          result.players.map((p: any) => Object.keys(p)) : 'none');
+        console.log(`🛠 [browserReplayParser] Game info structure (${parseId}):`, parsedResult.gameInfo ? Object.keys(parsedResult.gameInfo) : 'none');
+        console.log(`🛠 [browserReplayParser] Players structure (${parseId}):`, parsedResult.players ? 
+          parsedResult.players.map((p: any) => Object.keys(p)) : 'none');
         
         // Detailed player info for ALL players
-        if (result.players && result.players.length > 0) {
-          console.log(`🛠 [browserReplayParser] Found ${result.players.length} players`);
+        if (parsedResult.players && parsedResult.players.length > 0) {
+          console.log(`🛠 [browserReplayParser] Found ${parsedResult.players.length} players`);
           
           // Make sure players is mutable before modifying
-          const updatedPlayers = [...result.players];
+          const updatedPlayers = [...parsedResult.players];
           
           // Log details for each player
           updatedPlayers.forEach((player: any, index: number) => {
@@ -113,34 +113,31 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
           });
           
           // Create a copy of the result with updated players array
-          const updatedResult = { 
-            ...result,
+          parsedResult = { 
+            ...parsedResult,
             players: updatedPlayers 
           };
-          
-          // Use the updated result from now on
-          result = updatedResult;
         }
         
         // Clear the timeout since parsing completed
         clearTimeout(timeoutId);
         
         console.log(`[browserReplayParser] Parsing complete (${parseId}), found data:`, 
-          result ? 'Result found' : 'No result');
+          parsedResult ? 'Result found' : 'No result');
         
-        if (!result) {
+        if (!parsedResult) {
           throw new Error('Parser returned empty data');
         }
         
         // Log more detailed information about the parsed result structure
-        console.log(`[browserReplayParser] Result keys (${parseId}): ${Object.keys(result).join(', ')}`);
+        console.log(`[browserReplayParser] Result keys (${parseId}): ${Object.keys(parsedResult).join(', ')}`);
         
-        if (result.gameInfo) {
-          console.log(`[browserReplayParser] Game info (${parseId}): Map: ${result.gameInfo.map || 'Unknown map'}`);
-          console.log(`[browserReplayParser] Game frames (${parseId}): ${result.gameInfo.frames || 'Unknown'}`);
+        if (parsedResult.gameInfo) {
+          console.log(`[browserReplayParser] Game info (${parseId}): Map: ${parsedResult.gameInfo.map || 'Unknown map'}`);
+          console.log(`[browserReplayParser] Game frames (${parseId}): ${parsedResult.gameInfo.frames || 'Unknown'}`);
           
           // Use frames as duration if durationFrames isn't available
-          const durationFrames = result.gameInfo.frames || 0;
+          const durationFrames = parsedResult.gameInfo.frames || 0;
           console.log(`[browserReplayParser] Game duration (${parseId}): ${durationFrames ? 
             Math.round(durationFrames / 24 / 60) + ' minutes' : 'Unknown'}`);
         }
@@ -148,10 +145,10 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
         // Format the data based on what we see in the result object
         // We'll use a more adaptive approach instead of assuming specific properties
         const parsedData = {
-          header: result.gameInfo || {},
-          players: result.players || [],
-          mapName: result.gameInfo?.map || 'Unknown',
-          chat: result.chatMessages || [],
+          header: parsedResult.gameInfo || {},
+          players: parsedResult.players || [],
+          mapName: parsedResult.gameInfo?.map || 'Unknown',
+          chat: parsedResult.chatMessages || [],
           fileHash: String(file.size) + '_' + parseId, // Add a unique hash for this specific file
           fileDate: new Date().toISOString(),
           fileName: file.name

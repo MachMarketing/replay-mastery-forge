@@ -3,8 +3,8 @@ import { ParsedReplayData, PlayerData } from './replayParser/types';
 import { parseReplayInBrowser } from './browserReplayParser';
 import { markBrowserAsHavingWasmIssues } from '@/utils/browserDetection';
 
-// Re-export PlayerData interface
-export { PlayerData };
+// Re-export PlayerData interface properly
+export type { PlayerData };
 
 export interface ParsedReplayResult extends ParsedReplayData {
   // Ensure all legacy fields have proper typing
