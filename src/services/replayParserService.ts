@@ -1,10 +1,9 @@
-
-import { ParsedReplayData, PlayerData } from './replayParser/types';
+import { ParsedReplayData, PlayerData, ReplayAnalysis } from './replayParser/types';
 import { parseReplayInBrowser } from './browserReplayParser';
 import { markBrowserAsHavingWasmIssues } from '@/utils/browserDetection';
 
 // Re-export PlayerData interface properly
-export type { PlayerData, ParsedReplayData };
+export type { PlayerData, ParsedReplayData, ReplayAnalysis };
 
 // This interface ensures backward compatibility with existing code
 // by making optional fields in ParsedReplayData required here
@@ -20,8 +19,8 @@ export interface ParsedReplayResult extends ParsedReplayData {
   opponentEapm: number; // Aliased from secondaryPlayer.eapm
 }
 
-export interface AnalyzedReplayResult extends ParsedReplayResult {
-  // All properties are now inherited from ParsedReplayResult
+export interface AnalyzedReplayResult extends ParsedReplayResult, ReplayAnalysis {
+  // All properties are now inherited from ParsedReplayResult and ReplayAnalysis
 }
 
 // Track active parsing process for potential abort
