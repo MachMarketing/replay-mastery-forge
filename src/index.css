@@ -53,204 +53,150 @@
 }
 
 @layer utilities {
-  .text-terran {
-    color: hsl(var(--terran));
-  }
-  .text-protoss {
-    color: hsl(var(--protoss));
-  }
-  .text-zerg {
-    color: hsl(var(--zerg));
-  }
-  .text-strength {
-    color: hsl(var(--strength));
-  }
-  .text-weakness {
-    color: hsl(var(--weakness));
-  }
-  .text-improvement {
-    color: hsl(var(--improvement));
-  }
-  
-  .bg-terran {
-    background-color: hsl(var(--terran));
-  }
-  .bg-protoss {
-    background-color: hsl(var(--protoss));
-  }
-  .bg-zerg {
-    background-color: hsl(var(--zerg));
-  }
-  
-  .bg-gradient-race {
-    background: linear-gradient(
-      to right, 
-      hsl(var(--terran)), 
-      hsl(var(--protoss)), 
-      hsl(var(--zerg))
-    );
-  }
-  
+  /* ... keep existing code (race color utility classes) */
+
   /* Hero section styles */
-  .hero-bg {
-    background-image: linear-gradient(to bottom, 
-      rgba(0, 0, 0, 0.8), 
-      rgba(0, 0, 0, 0.7)
-    ),
-    url('/background.jpg');
-    background-size: cover;
-    background-position: center;
-  }
+  /* ... keep existing code (hero section styles) */
   
   /* Futuristic glow */
-  .text-glow {
-    text-shadow: 0 0 8px hsl(var(--primary) / 0.5);
+  /* ... keep existing code (futuristic glow styles) */
+  
+  /* Feature card */
+  /* ... keep existing code (feature card styles) */
+  
+  /* Floating animation */
+  /* ... keep existing code (floating animation styles) */
+  
+  /* Highlight text */
+  /* ... keep existing code (highlight text styles) */
+  
+  /* Hacker effect for banner */
+  /* ... keep existing code (hacker text styles) */
+  
+  /* Upload animation */
+  /* ... keep existing code (upload animation styles) */
+
+  /* Button with futuristic style */
+  /* ... keep existing code (button futuristic styles) */
+
+  /* Shield logo glow effect */
+  /* ... keep existing code (shield glow styles) */
+  
+  /* Replay parsing animation */
+  /* ... keep existing code (parsing animation styles) */
+
+  /* StarCraft-inspired scanning effect */
+  @keyframes scan {
+    0% {
+      transform: translateY(-100%);
+      opacity: 0;
+    }
+    50% {
+      opacity: 0.5;
+    }
+    100% {
+      transform: translateY(100%);
+      opacity: 0;
+    }
   }
   
-  .glow-border {
+  /* Custom fade-in animation */
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(5px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  .animate-fade-in {
+    animation: fade-in 0.3s ease forwards;
+  }
+  
+  /* Pulse animation for selected elements */
+  @keyframes ping {
+    0% {
+      transform: scale(1);
+      opacity: 0.6;
+    }
+    50% {
+      transform: scale(1.1);
+      opacity: 0.3;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 0.6;
+    }
+  }
+  
+  /* StarCraft HUD style elements */
+  .sc-terminal-text {
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 0.05em;
+    text-shadow: 0 0 5px hsl(var(--primary) / 0.5);
+  }
+  
+  .sc-panel {
+    @apply bg-black/40 border border-primary/30 backdrop-blur-sm;
+    box-shadow: inset 0 0 15px rgba(37,99,235,0.1),
+                0 0 5px rgba(37,99,235,0.3);
+  }
+  
+  .sc-button {
+    @apply bg-gradient-to-b from-secondary to-secondary/50 
+      border border-primary/20 hover:border-primary/40
+      text-primary-foreground shadow-md
+      transition-all duration-300;
+  }
+  
+  .sc-button:hover {
     box-shadow: 0 0 10px hsl(var(--primary) / 0.3);
   }
   
-  .feature-card {
-    @apply relative border bg-card shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden;
+  /* Game-like victory/defeat banners */
+  .victory-banner {
+    @apply bg-gradient-to-r from-strength-dark via-strength to-strength-dark 
+      text-white font-bold text-center py-2 px-4 rounded-md relative overflow-hidden;
   }
   
-  .feature-card::before {
+  .defeat-banner {
+    @apply bg-gradient-to-r from-weakness/80 via-weakness to-weakness/80 
+      text-white font-bold text-center py-2 px-4 rounded-md relative overflow-hidden;
+  }
+  
+  .victory-banner::before,
+  .defeat-banner::before {
     content: '';
-    @apply absolute inset-0 bg-gradient-to-br from-primary/20 to-transparent opacity-0 transition-opacity duration-300;
+    @apply absolute inset-0 bg-white/20;
+    animation: scan 2s linear infinite;
   }
   
-  .feature-card:hover::before {
-    @apply opacity-100;
+  /* Premium elements */
+  .premium-frame {
+    @apply border-2 rounded-lg overflow-hidden relative;
+    border-image: linear-gradient(45deg, #f59e0b, #fde047, #f59e0b) 1;
+    box-shadow: 0 0 15px rgba(245,158,11,0.3);
   }
   
-  .feature-icon {
-    @apply relative h-12 w-12 rounded-full bg-primary/20 flex items-center justify-center p-2;
+  .premium-badge {
+    @apply bg-gradient-to-r from-amber-500 to-amber-300
+      text-black font-bold py-1 px-3 rounded-full
+      flex items-center gap-1 shadow-lg;
+    text-shadow: 0 0 2px rgba(255,255,255,0.5);
   }
   
-  .feature-icon::before {
+  /* Gamification elements */
+  .xp-progress {
+    @apply h-1 rounded-full bg-gradient-to-r from-primary/50 via-primary to-primary/50
+      overflow-hidden relative;
+  }
+  
+  .xp-progress::after {
     content: '';
-    @apply absolute inset-0 rounded-full bg-primary/10 animate-ping opacity-75;
-    animation-duration: 3s;
-  }
-  
-  .feature-icon::after {
-    content: '';
-    @apply absolute inset-[-2px] rounded-full border border-primary/30;
-  }
-  
-  /* Floating animation */
-  .float-animation {
-    animation: floating 3s ease-in-out infinite;
-  }
-  
-  @keyframes floating {
-    0%, 100% {
-      transform: translateY(0);
-    }
-    50% {
-      transform: translateY(-10px);
-    }
-  }
-  
-  /* Highlight text */
-  .text-highlight {
-    @apply relative inline-block;
-  }
-  
-  .text-highlight::after {
-    content: '';
-    @apply absolute left-0 right-0 bottom-0 h-[2px] bg-primary/60 transform;
-  }
-  
-  /* Hacker effect for banner */
-  .hacker-text {
-    font-family: 'Courier New', monospace;
-    overflow: hidden;
-    white-space: nowrap;
-    animation: typing 3.5s steps(40, end);
-  }
-  
-  @keyframes typing {
-    from { width: 0 }
-    to { width: 100% }
-  }
-  
-  /* Upload animation */
-  .upload-pulse {
-    animation: upload-pulsate 2s ease-in-out infinite;
-  }
-  
-  @keyframes upload-pulsate {
-    0%, 100% {
-      opacity: 1;
-      transform: scale(1);
-    }
-    50% {
-      opacity: 0.9;
-      transform: scale(1.01);
-    }
-  }
-
-  /* Button with futuristic style */
-  .button-futuristic {
-    @apply relative overflow-hidden bg-background border border-primary/50 text-foreground;
-  }
-  
-  .button-futuristic::before {
-    content: '';
-    @apply absolute inset-0 bg-gradient-to-r from-primary/20 to-primary/40 opacity-0 transition-opacity duration-300;
-  }
-  
-  .button-futuristic:hover::before {
-    @apply opacity-100;
-  }
-
-  /* Shield logo glow effect */
-  .shield-glow {
-    filter: drop-shadow(0 0 8px theme('colors.primary.DEFAULT'));
-    animation: shield-pulse 3s ease-in-out infinite;
-  }
-
-  @keyframes shield-pulse {
-    0%, 100% {
-      filter: drop-shadow(0 0 5px theme('colors.primary.DEFAULT'));
-      opacity: 0.9;
-    }
-    50% {
-      filter: drop-shadow(0 0 12px theme('colors.primary.DEFAULT'));
-      opacity: 1;
-    }
-  }
-  
-  /* Replay parsing animation */
-  .parsing-animation {
-    position: relative;
-    overflow: hidden;
-  }
-  
-  .parsing-animation::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 50%;
-    height: 100%;
-    background: linear-gradient(
-      to right,
-      transparent 0%,
-      rgba(var(--primary) / 0.2) 50%,
-      transparent 100%
-    );
-    animation: parsing-shine 2s infinite;
-  }
-  
-  @keyframes parsing-shine {
-    0% {
-      left: -100%;
-    }
-    100% {
-      left: 200%;
-    }
+    @apply absolute inset-0 bg-white/30;
+    animation: scan 1.5s ease-in-out infinite;
   }
 }
