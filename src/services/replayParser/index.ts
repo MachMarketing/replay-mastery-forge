@@ -67,8 +67,20 @@ export function safeStringify(obj: any, indent = 2): string {
       }
       return value;
     }, indent);
-    return str;
+    return str || '{}'; // Return empty object if stringify returns empty string
   } catch (err) {
-    return `[Object that couldn't be stringified: ${err}]`;
+    // If JSON stringify fails, try a simpler approach
+    try {
+      // For arrays, stringify each element separately
+      if (Array.isArray(obj)) {
+        return `[Array with ${obj.length} elements]`;
+      }
+      
+      // For objects, show keys
+      const keys = Object.keys(obj);
+      return `{Object with keys: ${keys.join(', ')}}`;
+    } catch (nestedErr) {
+      return `[Object that couldn't be stringified]`;
+    }
   }
 }

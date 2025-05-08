@@ -24,21 +24,28 @@ export async function initBrowserSafeParser(): Promise<void> {
       const screparsed = await import('screparsed');
       console.log('[browserSafeParser] Screparsed import successful:', screparsed);
       
-      // Check if we have a ReplayParser class as shown in the documentation
+      // The module structure might be different than expected
+      // Let's try various approaches to find a valid parser
+      
       if (screparsed.ReplayParser) {
-        console.log('[browserSafeParser] Found ReplayParser in module');
-        // Store the module for later use
+        console.log('[browserSafeParser] Found ReplayParser class in module');
         parserModule = screparsed;
         isInitialized = true;
-        console.log('[browserSafeParser] ✅ Browser-safe parser initialized successfully');
+        console.log('[browserSafeParser] ✅ Browser-safe parser initialized successfully (using ReplayParser)');
+      } else if (screparsed.ParsedReplay) {
+        console.log('[browserSafeParser] Found ParsedReplay class in module');
+        parserModule = screparsed;
+        isInitialized = true;
+        console.log('[browserSafeParser] ✅ Browser-safe parser initialized successfully (using ParsedReplay)');
       } else if (screparsed.default && typeof screparsed.default.parse === 'function') {
-        // Try alternative structure where parse might be in default export
         console.log('[browserSafeParser] Using default export with parse function');
         parserModule = screparsed.default;
         isInitialized = true;
         console.log('[browserSafeParser] ✅ Browser-safe parser initialized successfully (default export)');
       } else {
-        // Last resort - check if there's any parse function anywhere
+        // Explore the module structure to find any parse function
+        console.log('[browserSafeParser] Exploring module structure to find parse method:', Object.keys(screparsed));
+        
         const parseFn = findParseFunction(screparsed);
         if (parseFn) {
           console.log('[browserSafeParser] Found parse function through exploration');
@@ -66,29 +73,67 @@ function findParseFunction(module: any): Function | null {
   console.log('[browserSafeParser] Searching for parse function in module structure');
   
   // Try to find a parse method on ReplayParser
-  if (module.ReplayParser && module.ReplayParser.prototype && typeof module.ReplayParser.prototype.parse === 'function') {
-    console.log('[browserSafeParser] Found parse method on ReplayParser.prototype');
-    // Create an instance of ReplayParser
-    const parser = new module.ReplayParser();
-    // Return a wrapper function that calls parse on the instance
-    return (data: Uint8Array) => parser.parse(data);
+  if (module.ReplayParser && typeof module.ReplayParser === 'function') {
+    console.log('[browserSafeParser] Found ReplayParser class');
+    try {
+      // Create an instance of ReplayParser
+      const parser = new module.ReplayParser();
+      console.log('[browserSafeParser] Created ReplayParser instance, checking for parse method:', 
+        typeof parser.parse === 'function' ? 'Found' : 'Not found');
+      
+      // If the instance has a parse method, return a wrapper function
+      if (typeof parser.parse === 'function') {
+        return (data: Uint8Array) => parser.parse(data);
+      }
+    } catch (e) {
+      console.error('[browserSafeParser] Error creating ReplayParser instance:', e);
+    }
   }
   
-  // Check if ParsedReplay has a static parse method
-  if (module.ParsedReplay && typeof module.ParsedReplay.parse === 'function') {
-    console.log('[browserSafeParser] Found static parse method on ParsedReplay');
-    return module.ParsedReplay.parse;
+  // Check if ParsedReplay has a parse method
+  if (module.ParsedReplay) {
+    console.log('[browserSafeParser] Found ParsedReplay, checking for parse method');
+    if (typeof module.ParsedReplay.parse === 'function') {
+      console.log('[browserSafeParser] Found static parse method on ParsedReplay');
+      return module.ParsedReplay.parse;
+    }
+    
+    try {
+      // Try instantiating ParsedReplay
+      const parsedReplay = new module.ParsedReplay();
+      if (typeof parsedReplay.parse === 'function') {
+        console.log('[browserSafeParser] Found instance parse method on ParsedReplay');
+        return (data: Uint8Array) => parsedReplay.parse(data);
+      }
+    } catch (e) {
+      console.error('[browserSafeParser] Error creating ParsedReplay instance:', e);
+    }
   }
   
-  // If we still don't have a parse function, check all properties for any function called parse
+  // Check if the module itself has a parse function
+  if (typeof module.parse === 'function') {
+    console.log('[browserSafeParser] Found parse function at module root level');
+    return module.parse;
+  }
+  
+  // If we still don't have a parse function, check all properties recursively (one level deep)
   for (const key in module) {
-    if (key === 'parse' && typeof module[key] === 'function') {
-      console.log(`[browserSafeParser] Found parse function at root level`);
-      return module[key];
-    } else if (typeof module[key] === 'object' && module[key] !== null) {
-      if (typeof module[key].parse === 'function') {
+    const prop = module[key];
+    
+    // Skip null/undefined properties and already checked ones
+    if (!prop || key === 'ReplayParser' || key === 'ParsedReplay') continue;
+    
+    if (typeof prop === 'function') {
+      console.log(`[browserSafeParser] Found function at ${key}, checking if it might be a parse function`);
+      // Try to determine if this function might be a parser
+      if (key.toLowerCase().includes('parse')) {
+        console.log(`[browserSafeParser] Function ${key} looks like it might be a parser based on name`);
+        return prop;
+      }
+    } else if (typeof prop === 'object') {
+      if (typeof prop.parse === 'function') {
         console.log(`[browserSafeParser] Found parse function in ${key} object`);
-        return module[key].parse;
+        return prop.parse;
       }
     }
   }
@@ -143,16 +188,27 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
         
         // Determine how to call the parser based on what we found
         let result;
+        
+        console.log('[browserSafeParser] Parser module type check:', {
+          hasReplayParser: !!parserModule.ReplayParser,
+          hasReplayParserTypeofClass: parserModule.ReplayParser ? typeof parserModule.ReplayParser : 'N/A',
+          hasParsedReplay: !!parserModule.ParsedReplay,
+          hasParse: typeof parserModule.parse === 'function',
+        });
+        
         if (parserModule.ReplayParser && typeof parserModule.ReplayParser === 'function') {
           // If we have a ReplayParser class, create an instance and call parse
           const parser = new parserModule.ReplayParser();
+          console.log('[browserSafeParser] Created ReplayParser instance, calling parse');
           result = parser.parse(data);
-        } else if (typeof parserModule.parse === 'function') {
-          // If we found a parse function, call it directly
-          result = parserModule.parse(data);
         } else if (parserModule.ParsedReplay && typeof parserModule.ParsedReplay.parse === 'function') {
           // Try the ParsedReplay.parse static method
+          console.log('[browserSafeParser] Calling ParsedReplay.parse');
           result = parserModule.ParsedReplay.parse(data);
+        } else if (typeof parserModule.parse === 'function') {
+          // If we found a parse function, call it directly
+          console.log('[browserSafeParser] Calling direct parse function');
+          result = parserModule.parse(data);
         } else {
           throw new Error('No valid parse function found in the screparsed module');
         }
