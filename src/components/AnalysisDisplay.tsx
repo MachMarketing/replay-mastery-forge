@@ -209,9 +209,9 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
           eapm: actualOpponentEapm,
           
           // IMPORTANT: Use the correct build order based on actual parsed data
-          buildOrder: selectedPlayerIndex === 0 ? 
-                      primaryPlayerBuildOrder : 
-                      secondaryPlayerBuildOrder,
+          buildOrder: selectedPlayerIndex === 1 ? 
+                      secondaryPlayerBuildOrder : 
+                      primaryPlayerBuildOrder,
           
           // IMPORTANT: Generate opponent-focused analysis content
           strengths: displayData.secondaryPlayer?.strengths || [

@@ -8,7 +8,20 @@ export interface PlayerData {
   apm: number;
   eapm: number;
   buildOrder?: Array<{ time: string; supply: number; action: string }>;
+  strengths?: string[];
+  weaknesses?: string[];
+  recommendations?: string[];
   // Add additional player-specific fields as needed
+}
+
+/**
+ * Interface for replay analysis results
+ */
+export interface ReplayAnalysis {
+  strengths: string[];
+  weaknesses: string[];
+  recommendations: string[];
+  trainingPlan?: Array<{ day: number; focus: string; drill: string }>;
 }
 
 /**
