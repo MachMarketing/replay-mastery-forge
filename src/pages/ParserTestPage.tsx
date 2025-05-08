@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import axios, { AxiosError } from 'axios';
@@ -13,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import AnalysisResult from '@/components/AnalysisResult';
 
 // Mock data for testing
 const mockReplayData: Partial<AnalyzedReplayResult> = {
@@ -197,10 +197,36 @@ const ParserTestPage: React.FC = () => {
     <>
       <Navbar />
       <div className="container mx-auto px-4 py-8 mt-16">
-        <h1 className="text-2xl font-bold mb-6">Replay Parser Test Page</h1>
+        <h1 className="text-2xl font-bold mb-6">Replay Analyzer</h1>
         
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="space-y-6">
+        {parsedReplayData ? (
+          <div className="mb-8">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">Game Analysis</h2>
+              <Button variant="outline" onClick={() => setParsedReplayData(null)}>
+                Upload Another Replay
+              </Button>
+            </div>
+            <AnalysisResult data={parsedReplayData as any} isPremium={true} />
+            
+            {/* Debug JSON Output (hidden by default, can be toggled) */}
+            <div className="mt-8">
+              <details className="border rounded-md">
+                <summary className="p-2 font-medium cursor-pointer">
+                  Show Raw JSON Data (Debug)
+                </summary>
+                <div className="p-4 border-t">
+                  <Textarea 
+                    className="font-mono text-xs h-[300px] bg-gray-100 dark:bg-gray-800"
+                    value={parsedOutput} 
+                    readOnly
+                  />
+                </div>
+              </details>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
               <CardHeader>
                 <CardTitle>Upload Replay</CardTitle>
@@ -243,99 +269,53 @@ const ParserTestPage: React.FC = () => {
                     onClick={handleUseMockData}
                     variant="outline"
                   >
-                    Use Mock Data
+                    Use Test Data
                   </Button>
                 </div>
               </CardContent>
             </Card>
             
-            {parsedReplayData && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Parsed Result</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-sm font-medium">Player</p>
-                        <p>{parsedReplayData.playerName} ({parsedReplayData.playerRace})</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">Opponent</p>
-                        <p>{parsedReplayData.opponentName} ({parsedReplayData.opponentRace})</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">Map</p>
-                        <p>{parsedReplayData.map}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">Duration</p>
-                        <p>{parsedReplayData.duration}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">APM</p>
-                        <p>{parsedReplayData.apm}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium">Result</p>
-                        <p className={parsedReplayData.result === 'win' ? 'text-green-500' : 'text-red-500'}>
-                          {parsedReplayData.result === 'win' ? 'Victory' : 'Defeat'}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <p className="text-sm font-medium mb-2">Strengths</p>
-                      <ul className="list-disc list-inside">
-                        {parsedReplayData.strengths?.map((strength, index) => (
-                          <li key={index}>{strength}</li>
-                        ))}
-                      </ul>
-                    </div>
-                    
-                    <div>
-                      <p className="text-sm font-medium mb-2">Build Order (First Few Items)</p>
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full text-sm">
-                          <thead>
-                            <tr>
-                              <th className="text-left">Time</th>
-                              <th className="text-left">Supply</th>
-                              <th className="text-left">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {parsedReplayData.buildOrder?.slice(0, 5).map((item, index) => (
-                              <tr key={index}>
-                                <td>{item.time}</td>
-                                <td>{item.supply}</td>
-                                <td>{item.action}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
+            <Card>
+              <CardHeader>
+                <CardTitle>How It Works</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <p>Upload your Starcraft: Brood War replay file to get professional-level analysis including:</p>
+                  
+                  <ul className="list-disc list-inside space-y-2 ml-2">
+                    <li>Detailed build order analysis</li>
+                    <li>Key strengths and weaknesses in your gameplay</li>
+                    <li>Strategic recommendations from pro-level coaches</li>
+                    <li>Personalized training plan to improve your skills</li>
+                    <li>Matchup-specific insights and counter strategies</li>
+                  </ul>
+                  
+                  <div className="bg-primary/10 p-4 rounded-md mt-4">
+                    <h3 className="font-medium mb-2">Why Use Our Analyzer?</h3>
+                    <p className="text-sm">Our analysis engine is built using insights from professional Brood War players and coaches, 
+                    designed to identify the specific patterns and mistakes that hold players back. Get the same level of 
+                    feedback that pros receive, customized to your gameplay.</p>
                   </div>
-                </CardContent>
-              </Card>
-            )}
+                </div>
+              </CardContent>
+            </Card>
           </div>
-          
-          <Card>
+        )}
+        
+        {/* Debug Console - Only visible in development mode */}
+        {process.env.NODE_ENV === 'development' && !parsedReplayData && (
+          <Card className="mt-8">
             <CardHeader>
-              <CardTitle>JSON Output</CardTitle>
+              <CardTitle>Debug Console</CardTitle>
             </CardHeader>
             <CardContent>
-              <Textarea 
-                className="font-mono text-xs h-[600px] bg-gray-100 dark:bg-gray-800"
-                value={parsedOutput} 
-                readOnly
-              />
+              <div className="bg-black text-green-400 font-mono p-4 rounded-md h-64 overflow-auto">
+                <p className="text-sm text-gray-500">No logs yet. Parse a file to see debug output.</p>
+              </div>
             </CardContent>
           </Card>
-        </div>
+        )}
       </div>
       <Footer />
     </>

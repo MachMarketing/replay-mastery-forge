@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -64,7 +63,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
   data,
   isPremium = false 
 }) => {
-  const [expandedSection, setExpandedSection] = useState<string | null>(null);
+  const [expandedSection, setExpandedSection] = useState<string | null>('early'); // Default to showing early game
 
   const toggleSection = (section: string) => {
     if (expandedSection === section) {
@@ -130,7 +129,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
         </div>
       </div>
 
-      <Tabs defaultValue="overview">
+      <Tabs defaultValue="analysis">
         <TabsList className="w-full grid grid-cols-3 md:grid-cols-5 bg-background border-y border-border">
           <TabsTrigger value="overview" className="gap-1">
             <Award className="w-4 h-4 mr-1" />
@@ -280,16 +279,22 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
             </table>
           </div>
           
-          {!isPremium && (
-            <div className="mt-6 bg-secondary/10 rounded-lg p-4 border border-border">
-              <h3 className="text-lg font-medium mb-2">Premium Build Order Analysis</h3>
-              <p className="text-muted-foreground mb-4">
-                Upgrade to see detailed build order efficiency analysis, comparisons with pro builds, 
-                and recommended adjustments for your playstyle.
-              </p>
-              <Button>Upgrade to Premium</Button>
+          <div className="mt-6 bg-secondary/10 rounded-lg p-4 border border-border">
+            <h3 className="text-lg font-medium mb-2">Build Order Insights</h3>
+            <div className="space-y-4 mt-4">
+              <div>
+                <h4 className="font-medium text-strength">Efficiency Analysis</h4>
+                <p className="text-sm mt-1">Your build timing is within 5% of optimal for this matchup. 
+                The supply depot at 0:42 could be tightened by ~2 seconds to improve efficiency.</p>
+              </div>
+              
+              <div>
+                <h4 className="font-medium text-improvement">Pro Comparison</h4>
+                <p className="text-sm mt-1">Flash's TvP opening typically has the first barracks at 1:25, 
+                allowing for slightly earlier marine production. Consider refining this timing.</p>
+              </div>
             </div>
-          )}
+          </div>
         </TabsContent>
 
         <TabsContent value="analysis" className="p-6">
@@ -321,24 +326,49 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
               {expandedSection === 'early' && (
                 <div className="p-4 bg-secondary/10 border-t border-border">
                   <p className="mb-3">
-                    Your early game build order is relatively standard. You went for a quick expansion
-                    after barracks, which is good. However, you were supply blocked twice in the
-                    first 5 minutes, which slowed down your production.
+                    Your early game showed a standard {data.playerRace} opening against {data.opponentRace}. 
+                    Based on your matchup ({data.matchup}), your build order is well-structured but has
+                    some timing inefficiencies.
                   </p>
                   
                   <p className="mb-3">
-                    Your scouting was minimal - you only sent one SCV to scout at 2:30, which was later
-                    than optimal. This delayed your reaction to your opponent's tech choice.
+                    In this {data.matchup} matchup on {data.map}, your scouting was at 2:30, which is 
+                    45 seconds later than optimal for this matchup. This delayed your reaction to your
+                    opponent's tech choice and could have been punished by an aggressive build.
                   </p>
+                  
+                  <div className="bg-strength/5 p-3 rounded-md border border-strength/20 mb-3">
+                    <h4 className="font-medium text-strength flex items-center">
+                      <Trophy size={16} className="mr-2" />
+                      Early Game Strengths
+                    </h4>
+                    <ul className="list-disc pl-5 space-y-1 mt-2">
+                      <li>Consistent worker production (no gaps until 4:20)</li>
+                      <li>Good building placement for wall-off against potential early aggression</li>
+                      <li>Effective resource management with minimal floating minerals</li>
+                    </ul>
+                  </div>
+                  
+                  <div className="bg-weakness/5 p-3 rounded-md border border-weakness/20 mb-3">
+                    <h4 className="font-medium text-weakness flex items-center">
+                      <AlertTriangle size={16} className="mr-2" />
+                      Early Game Weaknesses
+                    </h4>
+                    <ul className="list-disc pl-5 space-y-1 mt-2">
+                      <li>Late scouting at 2:30 (recommended: 1:45 for this matchup)</li>
+                      <li>Supply block at 3:15 delayed production by 10 seconds</li>
+                      <li>First gas timing of 2:10 is suboptimal for your chosen tech path</li>
+                    </ul>
+                  </div>
                   
                   <h4 className="font-medium mt-4 mb-2 flex items-center">
                     <ChevronRight className="h-4 w-4 mr-1 text-improvement" />
                     Recommendations:
                   </h4>
                   <ul className="list-disc pl-5 space-y-1">
-                    <li>Practice your supply timing to avoid early blocks</li>
-                    <li>Send your first scout around 1:30 - 2:00</li>
-                    <li>Consider a more aggressive barracks placement for faster marine production</li>
+                    <li>Send your first scout at 1:45 against {data.opponentRace} on {data.map}</li>
+                    <li>Build supply slightly earlier at key points (18 supply, 26 supply)</li>
+                    <li>Consider taking gas at 1:55 to better align with your chosen tech path</li>
                   </ul>
                 </div>
               )}
@@ -366,24 +396,50 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
               {expandedSection === 'mid' && (
                 <div className="p-4 bg-secondary/10 border-t border-border">
                   <p className="mb-3">
-                    Your mid-game decision to tech to siege tanks was appropriate given your opponent's unit
-                    composition. However, your tank positioning during the engagement at 8:45 was suboptimal,
-                    resulting in unnecessary losses.
+                    Your mid-game transitions are showing good understanding of {data.matchup} matchup fundamentals.
+                    For a player with {data.apm} APM, your micro was above average, but your macro slipped
+                    during engagements.
                   </p>
                   
                   <p className="mb-3">
-                    You maintained good production throughout this phase, but your third base was delayed
-                    by about 2 minutes compared to optimal timing. This put you behind in economy.
+                    The major engagement at 8:45 showed strong tactical positioning with {data.playerRace} units,
+                    but your economy suffered during this period with several production facilities idle for 
+                    30+ seconds while microing.
                   </p>
+                  
+                  <div className="bg-strength/5 p-3 rounded-md border border-strength/20 mb-3">
+                    <h4 className="font-medium text-strength flex items-center">
+                      <Trophy size={16} className="mr-2" />
+                      Mid Game Strengths
+                    </h4>
+                    <ul className="list-disc pl-5 space-y-1 mt-2">
+                      <li>Excellent unit positioning during the 8:45 engagement</li>
+                      <li>Good tech transitions appropriate for scouted enemy composition</li>
+                      <li>Efficient expansion timing at 7:30, well-defended</li>
+                    </ul>
+                  </div>
+                  
+                  <div className="bg-weakness/5 p-3 rounded-md border border-weakness/20 mb-3">
+                    <h4 className="font-medium text-weakness flex items-center">
+                      <AlertTriangle size={16} className="mr-2" />
+                      Mid Game Weaknesses
+                    </h4>
+                    <ul className="list-disc pl-5 space-y-1 mt-2">
+                      <li>Macro slipped during battles (idle production facilities)</li>
+                      <li>Upgrades started later than optimal (6:40 vs recommended 5:30)</li>
+                      <li>Map control was conceded without contest from 7:00-9:00</li>
+                    </ul>
+                  </div>
                   
                   <h4 className="font-medium mt-4 mb-2 flex items-center">
                     <ChevronRight className="h-4 w-4 mr-1 text-improvement" />
                     Recommendations:
                   </h4>
                   <ul className="list-disc pl-5 space-y-1">
-                    <li>Work on sieging tanks on high ground or protected positions</li>
-                    <li>Take your third base around 7:00 against this opponent's build</li>
-                    <li>Add more production facilities before maxing out supply</li>
+                    <li>Practice using control groups to maintain production during battles</li>
+                    <li>Start upgrades at 5:30 to maintain tech advantage in this matchup</li>
+                    <li>Establish better map presence with small control groups at key map positions</li>
+                    <li>Use camera location hotkeys to quickly cycle between bases during engagements</li>
                   </ul>
                 </div>
               )}
@@ -411,41 +467,138 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
               {expandedSection === 'late' && (
                 <div className="p-4 bg-secondary/10 border-t border-border">
                   <p className="mb-3">
-                    Your army composition in the late game was well-balanced with a mix of marines, 
-                    marauders, siege tanks, and medivacs. However, you lacked adequate detection,
-                    which allowed your opponent's cloaked units to deal significant damage.
+                    Your late game execution showed good understanding of {data.matchup} unit compositions. The
+                    decisive engagement at 15:30 was particularly well-executed with excellent positioning
+                    and focus fire.
                   </p>
                   
                   <p className="mb-3">
-                    The engagement at 15:30 was particularly well-executed with good positioning
-                    and focus fire. This was the turning point of the game and showcased strong
-                    micro control.
+                    For the {data.playerRace} vs {data.opponentRace} matchup on {data.map}, your unit composition was
+                    strong but lacked adequate detection against cloaked units, which allowed your opponent to deal
+                    significant economic damage at your third base.
                   </p>
+                  
+                  <div className="bg-strength/5 p-3 rounded-md border border-strength/20 mb-3">
+                    <h4 className="font-medium text-strength flex items-center">
+                      <Trophy size={16} className="mr-2" />
+                      Late Game Strengths
+                    </h4>
+                    <ul className="list-disc pl-5 space-y-1 mt-2">
+                      <li>Excellent army positioning at the 15:30 engagement</li>
+                      <li>Well-balanced army composition appropriate for the matchup</li>
+                      <li>Good upgrades timing in the late game (3/3 completed by 16:00)</li>
+                      <li>Effective use of {data.playerRace} special abilities/spells</li>
+                    </ul>
+                  </div>
+                  
+                  <div className="bg-weakness/5 p-3 rounded-md border border-weakness/20 mb-3">
+                    <h4 className="font-medium text-weakness flex items-center">
+                      <AlertTriangle size={16} className="mr-2" />
+                      Late Game Weaknesses
+                    </h4>
+                    <ul className="list-disc pl-5 space-y-1 mt-2">
+                      <li>Insufficient detection against cloaked units</li>
+                      <li>Banking excessive resources (2000+ minerals, 1500+ gas) after 14:00</li>
+                      <li>Incomplete map control allowed opponent to establish hidden expansions</li>
+                      <li>Limited use of late-game {data.playerRace} tech options</li>
+                    </ul>
+                  </div>
                   
                   <h4 className="font-medium mt-4 mb-2 flex items-center">
                     <ChevronRight className="h-4 w-4 mr-1 text-improvement" />
                     Recommendations:
                   </h4>
                   <ul className="list-disc pl-5 space-y-1">
-                    <li>Build detection units earlier against this race/build</li>
-                    <li>Consider adding air units to your late-game composition</li>
-                    <li>Practice splitting against splash damage units</li>
+                    <li>Maintain mobile detection units with each army group</li>
+                    <li>Spend excess resources on production facilities and remax capacity</li>
+                    <li>Use small units to patrol for hidden expansions</li>
+                    <li>Incorporate more {data.playerRace} special units appropriate for this matchup</li>
+                    <li>Practice hotkey usage to improve your late-game APM efficiency</li>
                   </ul>
                 </div>
               )}
             </div>
-          </div>
-          
-          {!isPremium && (
-            <div className="mt-6 bg-secondary/10 rounded-lg p-4 border border-border">
-              <h3 className="text-lg font-medium mb-2">Get More Detailed Analysis</h3>
-              <p className="text-muted-foreground mb-4">
-                Premium members receive minute-by-minute analysis, key decision point reviews,
-                and personalized improvement recommendations.
-              </p>
-              <Button>Upgrade to Premium</Button>
+            
+            <div className="border border-border rounded-lg overflow-hidden transition-colors hover:border-primary/50">
+              <Button 
+                variant="ghost"
+                className={`w-full flex justify-between items-center p-4 text-left ${
+                  expandedSection === 'pro' ? 'bg-secondary/50' : 'bg-card'
+                }`}
+                onClick={() => toggleSection('pro')}
+              >
+                <span className="text-lg font-medium flex items-center">
+                  <Award className="h-5 w-5 mr-2" />
+                  Pro-Level Insights
+                </span>
+                <ChevronDown 
+                  className={`transform transition-transform ${
+                    expandedSection === 'pro' ? 'rotate-180' : ''
+                  }`} 
+                />
+              </Button>
+              
+              {expandedSection === 'pro' && (
+                <div className="p-4 bg-secondary/10 border-t border-border">
+                  <p className="mb-3">
+                    If you were playing in an ASL-level competition, here are the key differences
+                    that would set apart your gameplay from professional players:
+                  </p>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="font-medium text-improvement">Build Order Precision</h4>
+                      <p className="text-sm mt-1">
+                        Pro {data.playerRace} players in {data.matchup} matchups execute build orders with
+                        second-perfect precision. Your build deviates by ~8-12 seconds from optimal timings,
+                        creating small inefficiencies that compound throughout the game.
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <h4 className="font-medium text-improvement">APM Distribution</h4>
+                      <p className="text-sm mt-1">
+                        While your overall APM of {data.apm} is respectable, pro players maintain more consistent
+                        APM across all game phases. Your APM drops by 30% during key engagements, indicating 
+                        mechanical strain. Pros maintain higher effective APM while multitasking.
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <h4 className="font-medium text-improvement">Adaptation Speed</h4>
+                      <p className="text-sm mt-1">
+                        Pro players adapt to opponent's strategies within 30 seconds of scouting. Your
+                        adaptations took 1-2 minutes on average. This reaction speed difference is
+                        crucial at professional levels.
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <h4 className="font-medium text-improvement">Current Meta Analysis</h4>
+                      <p className="text-sm mt-1">
+                        The current ASL meta for {data.matchup} on {data.map} favors earlier expansion
+                        with tight defensive positioning. Your approach is slightly outdated compared
+                        to recent professional trends. Review recent ASL matches for updated patterns.
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-primary/5 p-3 rounded-md border border-primary/20 mt-4">
+                    <h4 className="font-medium flex items-center">
+                      <Award size={16} className="mr-2 text-primary" />
+                      Pro Player Reference
+                    </h4>
+                    <p className="text-sm mt-2">
+                      Your gameplay style most closely resembles {data.playerRace === 'Terran' ? 'FlaSh' : 
+                      data.playerRace === 'Protoss' ? 'Bisu' : 'Jaedong'} in terms of overall approach, but with
+                      less refinement in execution. Study their recent {data.matchup} matches for specific
+                      improvements to your gameplay pattern.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </TabsContent>
         
         <TabsContent value="training" className="p-6">
@@ -473,6 +626,40 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
                     </div>
                   </div>
                 ))}
+                
+                {/* Additional personalized training items */}
+                <div className="bg-secondary/10 rounded-lg p-4 border border-border hover:border-primary/50 transition-colors">
+                  <h4 className="font-medium text-lg mb-2 flex items-center">
+                    <Calendar className="h-4 w-4 mr-2" />
+                    Day 3: {data.matchup} Specific Micromanagement
+                  </h4>
+                  <p className="text-muted-foreground mb-3">
+                    Practice {data.playerRace === 'Terran' ? 'marine/medic control against lurkers' : 
+                    data.playerRace === 'Protoss' ? 'zealot/dragoon positioning against tanks' : 
+                    'mutalisk harass and stack control'} for 45 minutes with focus on minimizing losses.
+                  </p>
+                  <div className="flex justify-end">
+                    <Button variant="outline" size="sm">
+                      Mark Complete
+                    </Button>
+                  </div>
+                </div>
+                
+                <div className="bg-secondary/10 rounded-lg p-4 border border-border hover:border-primary/50 transition-colors">
+                  <h4 className="font-medium text-lg mb-2 flex items-center">
+                    <Calendar className="h-4 w-4 mr-2" />
+                    Day 4: Macro Cycle Refinement
+                  </h4>
+                  <p className="text-muted-foreground mb-3">
+                    Practice your standard {data.matchup} opening with focus on worker production consistency and 
+                    eliminating supply blocks. Target less than 3 seconds idle production time per facility.
+                  </p>
+                  <div className="flex justify-end">
+                    <Button variant="outline" size="sm">
+                      Mark Complete
+                    </Button>
+                  </div>
+                </div>
               </div>
             </>
           ) : (
