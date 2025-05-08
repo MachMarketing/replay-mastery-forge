@@ -24,11 +24,17 @@ export async function initBrowserSafeParser(): Promise<void> {
     console.log('[browserSafeParser] Screparsed import successful:', Object.keys(screparsed));
     
     // According to documentation, we should be able to use the ParsedReplay constructor directly
+    // The constructor expects 3 arguments: data, options, and mapData
     if (typeof screparsed.ParsedReplay === 'function') {
       parserInstance = {
         parse: (data: Uint8Array) => {
-          // Use 'new' keyword when calling the constructor
-          return new screparsed.ParsedReplay(data);
+          // Use 'new' keyword when calling the constructor with default options and empty mapData
+          // Based on the TypeScript error, we need to provide 3 arguments
+          return new screparsed.ParsedReplay(
+            data,          // Binary data (Uint8Array)
+            { },           // Options object (empty for default settings)
+            { }            // Map data object (empty for now)
+          );
         }
       };
       isInitialized = true;
@@ -40,7 +46,11 @@ export async function initBrowserSafeParser(): Promise<void> {
     if (screparsed.default && typeof screparsed.default.ParsedReplay === 'function') {
       parserInstance = {
         parse: (data: Uint8Array) => {
-          return new screparsed.default.ParsedReplay(data);
+          return new screparsed.default.ParsedReplay(
+            data,          // Binary data (Uint8Array)
+            { },           // Options object (empty for default settings)
+            { }            // Map data object (empty for now)
+          );
         }
       };
       isInitialized = true;
