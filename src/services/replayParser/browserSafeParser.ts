@@ -23,49 +23,75 @@ export async function initBrowserSafeParser(): Promise<void> {
     const screparsed = await import('screparsed');
     console.log('[browserSafeParser] Screparsed import successful:', Object.keys(screparsed));
     
-    // According to documentation, we need to use the parse method first
-    if (typeof screparsed.parse === 'function') {
+    // According to documentation, we should use the ReplayParser class
+    if (screparsed.ReplayParser) {
+      console.log('[browserSafeParser] Found ReplayParser class');
       parserInstance = {
         parse: (data: Uint8Array) => {
-          // First parse the binary data
-          const gameInfo = screparsed.parse(data);
-          console.log('[browserSafeParser] Game info parsed:', gameInfo ? 'success' : 'failed');
+          // Create a new parser instance
+          const parser = new screparsed.ReplayParser();
+          // Parse the replay data
+          const result = parser.parse(data);
+          console.log('[browserSafeParser] Replay parsed:', result ? 'success' : 'failed');
           
-          // Then use the parsed gameInfo with ParsedReplay
-          if (gameInfo) {
-            return new screparsed.ParsedReplay(gameInfo, {}, {});
+          if (!result) {
+            throw new Error('Failed to parse replay data');
           }
           
-          throw new Error('Failed to parse replay data');
+          return result;
         }
       };
       isInitialized = true;
-      console.log('[browserSafeParser] ✅ Parser initialized using parse and ParsedReplay');
+      console.log('[browserSafeParser] ✅ Parser initialized using ReplayParser');
       return;
     }
     
     // Fallback to default export if it exists
-    if (screparsed.default && typeof screparsed.default.parse === 'function') {
+    if (screparsed.default && screparsed.default.ReplayParser) {
+      console.log('[browserSafeParser] Found default.ReplayParser class');
       parserInstance = {
         parse: (data: Uint8Array) => {
-          // First parse the binary data
-          const gameInfo = screparsed.default.parse(data);
-          console.log('[browserSafeParser] Game info parsed (default):', gameInfo ? 'success' : 'failed');
+          // Create a new parser instance
+          const parser = new screparsed.default.ReplayParser();
+          // Parse the replay data
+          const result = parser.parse(data);
+          console.log('[browserSafeParser] Replay parsed (default):', result ? 'success' : 'failed');
           
-          // Then use the parsed gameInfo with ParsedReplay
-          if (gameInfo) {
-            return new screparsed.default.ParsedReplay(gameInfo, {}, {});
+          if (!result) {
+            throw new Error('Failed to parse replay data');
           }
           
-          throw new Error('Failed to parse replay data');
+          return result;
         }
       };
       isInitialized = true;
-      console.log('[browserSafeParser] ✅ Parser initialized using default.parse and default.ParsedReplay');
+      console.log('[browserSafeParser] ✅ Parser initialized using default.ReplayParser');
       return;
     }
     
-    console.error('[browserSafeParser] Could not find parse method in screparsed module');
+    // Try using ParsedReplay as a fallback
+    if (screparsed.ParsedReplay) {
+      console.log('[browserSafeParser] Found ParsedReplay class, trying direct constructor');
+      parserInstance = {
+        parse: (data: Uint8Array) => {
+          try {
+            // Try to use ParsedReplay directly with the binary data
+            // This might not work as expected but we'll try it as a last resort
+            const replay = new screparsed.ParsedReplay(data, [], {});
+            console.log('[browserSafeParser] Direct ParsedReplay construction:', replay ? 'success' : 'failed');
+            return replay;
+          } catch (error) {
+            console.error('[browserSafeParser] Error using ParsedReplay directly:', error);
+            throw new Error('Failed to parse replay data: ' + (error as Error).message);
+          }
+        }
+      };
+      isInitialized = true;
+      console.log('[browserSafeParser] ✅ Parser initialized using ParsedReplay directly');
+      return;
+    }
+    
+    console.error('[browserSafeParser] Could not find compatible parser class in screparsed module');
     throw new Error('Compatible parser not found in screparsed module');
     
   } catch (err) {
