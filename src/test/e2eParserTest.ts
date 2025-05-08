@@ -1,11 +1,10 @@
 
-
 /**
  * End-to-end test for comparing parser implementations
  */
 import { parseReplayInBrowser } from '@/services/browserReplayParser';
 import { readFileAsUint8Array } from '@/services/fileReader';
-import { ParsedReplayData, ParsedReplayResult } from '@/services/replayParser';
+import { ParsedReplayData, ParsedReplayResult } from '@/services/replayParser/types';
 
 interface E2ETestResult {
   success: boolean;
@@ -83,4 +82,3 @@ export async function runE2EParserTest(file: File): Promise<E2ETestResult> {
     };
   }
 }
-

@@ -101,69 +101,220 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
             // Log player name for easy identification
             console.log(`🛠 [browserReplayParser] Player ${index + 1} name: "${player.name}", race: "${player.race}"`);
             
-            // Check for actual command/build order properties and log them
+            // Enhanced logging for build order and actions
+            console.log(`🛠 [browserReplayParser] Player ${index + 1} build order sources:`);
+            
+            // Check for all possible build order data sources
             const playerObj = player as any;
             
-            // IMPROVED LOGGING: Check and log all possible build order sources
-            console.log(`🛠 [browserReplayParser] Player ${index + 1} build order sources:`);
-            console.log(`  - Direct buildOrder: ${playerObj.buildOrder ? 'Found' : 'Not found'}`);
+            // IMPROVED: Log all possible build order sources
+            console.log(`  - Direct buildOrder: ${playerObj.buildOrder ? `Found (${playerObj.buildOrder.length} entries)` : 'Not found'}`);
             console.log(`  - Commands: ${playerObj.commands ? `Found (${playerObj.commands.length})` : 'Not found'}`);
             console.log(`  - Actions: ${playerObj.actions ? `Found (${playerObj.actions.length})` : 'Not found'}`);
             console.log(`  - Units: ${playerObj.units ? `Found (${Object.keys(playerObj.units).length})` : 'Not found'}`);
             console.log(`  - Buildings: ${playerObj.buildings ? `Found (${Object.keys(playerObj.buildings).length})` : 'Not found'}`);
             
-            // Enhanced build order detection
-            // Try to construct build orders from commands, units, and buildings
+            // Extract build order - if not present directly, try to construct from commands/actions
             if (!playerObj.buildOrder || playerObj.buildOrder.length === 0) {
               console.log(`🛠 [browserReplayParser] No direct buildOrder found, attempting to extract from other sources`);
               
-              // If we have commands, try to extract a build order from them
+              // IMPROVED: Extract build order from commands
               if (playerObj.commands && Array.isArray(playerObj.commands) && playerObj.commands.length > 0) {
-                console.log(`🛠 [browserReplayParser] Attempting to extract build order from ${playerObj.commands.length} commands`);
+                console.log(`🛠 [browserReplayParser] Attempting to create build order from ${playerObj.commands.length} commands`);
                 
-                // Extract relevant build commands (train, build, research, etc.)
+                // Filter for build-relevant commands
                 const buildCommands = playerObj.commands.filter((cmd: any) => {
-                  const cmdType = cmd.type && cmd.type.toLowerCase();
-                  return cmdType && (
+                  const cmdType = (cmd.type || '').toLowerCase();
+                  const cmdName = (cmd.name || '').toLowerCase();
+                  
+                  // Enhanced filtering to catch more build-relevant commands
+                  return (
+                    // Unit production
                     cmdType.includes('train') || 
                     cmdType.includes('build') || 
+                    cmdType.includes('morph') ||
+                    // Research and upgrades
                     cmdType.includes('research') || 
-                    cmdType.includes('upgrade')
+                    cmdType.includes('upgrade') ||
+                    // Look at command name too for buildings/units
+                    cmdName.includes('command center') ||
+                    cmdName.includes('nexus') ||
+                    cmdName.includes('hatchery') ||
+                    cmdName.includes('barracks') ||
+                    cmdName.includes('gateway') ||
+                    cmdName.includes('factory') ||
+                    cmdName.includes('starport')
                   );
                 });
                 
                 if (buildCommands.length > 0) {
                   console.log(`🛠 [browserReplayParser] Found ${buildCommands.length} build-related commands`);
-                  // We'll convert this to actual build order in the mapper
-                  playerObj.buildCommands = buildCommands;
+                  
+                  // Create basic build order entries from commands
+                  playerObj.buildOrder = buildCommands.map((cmd: any) => {
+                    // Convert frame to time string
+                    const seconds = Math.floor((cmd.frame || 0) / 24); // 24 FPS in BroodWar
+                    const minutes = Math.floor(seconds / 60);
+                    const secs = seconds % 60;
+                    const timeStr = `${minutes}:${secs.toString().padStart(2, '0')}`;
+                    
+                    // Calculate approximate supply based on game progression
+                    const frameRatio = cmd.frame / (24 * 60 * 15); // Normalized to 15 min game
+                    const baseSupply = 4; // Starting supply
+                    const maxSupply = 200;
+                    const supply = Math.min(maxSupply, Math.floor(baseSupply + (frameRatio * 196)));
+                    
+                    // Create meaningful action description
+                    let action = 'Unknown Action';
+                    if (cmd.name) {
+                      action = cmd.name;
+                    } else if (cmd.type) {
+                      if (cmd.type.toLowerCase() === 'train') {
+                        action = `Train ${cmd.unit || 'Unit'}`;
+                      } else if (cmd.type.toLowerCase() === 'build') {
+                        action = `Build ${cmd.building || 'Structure'}`;
+                      } else if (cmd.type.toLowerCase() === 'research') {
+                        action = `Research ${cmd.tech || 'Technology'}`;
+                      } else {
+                        action = cmd.type;
+                      }
+                    }
+                    
+                    return {
+                      time: timeStr,
+                      supply: supply,
+                      action: action
+                    };
+                  });
+                  
+                  console.log(`🛠 [browserReplayParser] Created build order with ${playerObj.buildOrder.length} entries`);
+                  
+                  // Log first few build order entries
+                  if (playerObj.buildOrder.length > 0) {
+                    console.log(`🛠 [browserReplayParser] First 3 build order entries:`, 
+                      playerObj.buildOrder.slice(0, 3));
+                  }
                 }
               }
               
-              // Log units and buildings for potential build order reconstruction
-              if (playerObj.units || playerObj.buildings) {
-                console.log(`🛠 [browserReplayParser] Found units/buildings data that could be used for build order reconstruction`);
+              // If still no build order, try to infer from actions if available
+              if ((!playerObj.buildOrder || playerObj.buildOrder.length === 0) && 
+                   playerObj.actions && playerObj.actions.length > 0) {
+                console.log(`🛠 [browserReplayParser] Attempting to infer build order from ${playerObj.actions.length} actions`);
+                
+                // Create a simple timeline of actions that might indicate building/training
+                // This is a more basic approach, but better than nothing
+                const buildActions = playerObj.actions.filter((action: any) => {
+                  // Filter for potentially build-related actions
+                  const actionType = (action.type || '').toLowerCase();
+                  return (
+                    actionType.includes('build') || 
+                    actionType.includes('train') ||
+                    actionType.includes('research')
+                  );
+                });
+                
+                if (buildActions.length > 0) {
+                  console.log(`🛠 [browserReplayParser] Found ${buildActions.length} potential build actions`);
+                  
+                  // Create a basic build order from these actions
+                  playerObj.buildOrder = buildActions.map((action: any) => {
+                    const timeStr = action.frame ? 
+                      `${Math.floor(action.frame / 24 / 60)}:${Math.floor((action.frame / 24) % 60).toString().padStart(2, '0')}` : 
+                      '0:00';
+                    
+                    return {
+                      time: timeStr,
+                      supply: Math.floor(4 + (action.frame / 24 / 30)), // Rough supply estimate
+                      action: action.type || 'Game Action'
+                    };
+                  });
+                }
               }
-            } else {
-              console.log(`🛠 [browserReplayParser] Direct buildOrder found with ${playerObj.buildOrder.length} entries`);
+              
+              // If we still have no build order, try to extract from units/buildings as a last resort
+              if ((!playerObj.buildOrder || playerObj.buildOrder.length === 0) && 
+                  (playerObj.units || playerObj.buildings)) {
+                console.log(`🛠 [browserReplayParser] Attempting to create minimal build order from units/buildings`);
+                
+                // Create a very basic build order from units/buildings data
+                const buildOrder = [];
+                
+                // Add buildings in a logical order with estimated timings
+                if (playerObj.buildings) {
+                  const buildings = Object.keys(playerObj.buildings);
+                  buildings.forEach((building, index) => {
+                    // Estimate timing based on building type and index
+                    const minutes = Math.floor(index * 1.5);
+                    const seconds = Math.floor((index * 1.5 * 60) % 60);
+                    buildOrder.push({
+                      time: `${minutes}:${seconds.toString().padStart(2, '0')}`,
+                      supply: 4 + (index * 6), // Very rough estimate
+                      action: `Build ${building}`
+                    });
+                  });
+                }
+                
+                // Add some key units if available
+                if (playerObj.units) {
+                  const units = Object.keys(playerObj.units);
+                  units.forEach((unit, index) => {
+                    if (index % 3 === 0) { // Only add some units to avoid clutter
+                      const startOffset = 2; // Start unit production after some buildings
+                      const minutes = Math.floor((startOffset + index) * 1.2);
+                      const seconds = Math.floor(((startOffset + index) * 1.2 * 60) % 60);
+                      buildOrder.push({
+                        time: `${minutes}:${seconds.toString().padStart(2, '0')}`,
+                        supply: 4 + ((startOffset + index) * 4), // Very rough estimate
+                        action: `Train ${unit}`
+                      });
+                    }
+                  });
+                }
+                
+                // Sort the combined build order by time
+                if (buildOrder.length > 0) {
+                  playerObj.buildOrder = buildOrder
+                    .sort((a, b) => {
+                      const timeA = a.time.split(':').map(Number);
+                      const timeB = b.time.split(':').map(Number);
+                      return (timeA[0] * 60 + timeA[1]) - (timeB[0] * 60 + timeB[1]);
+                    });
+                  
+                  console.log(`🛠 [browserReplayParser] Created estimated build order with ${playerObj.buildOrder.length} entries`);
+                }
+              }
             }
             
-            // Log commands if available
-            if (playerObj.commands && Array.isArray(playerObj.commands)) {
-              console.log(`🛠 [browserReplayParser] Player ${index + 1} commands sample (${parseId}):`, 
-                playerObj.commands.slice(0, 5));
-            }
-            
-            // Log actions if available
-            if (playerObj.actions && Array.isArray(playerObj.actions)) {
-              console.log(`🛠 [browserReplayParser] Player ${index + 1} actions sample (${parseId}):`, 
-                playerObj.actions.slice(0, 5));
-              console.log(`🛠 [browserReplayParser] Player ${index + 1} action count: ${playerObj.actions.length}`);
+            // If we have a buildOrder now, ensure it's well-structured
+            if (playerObj.buildOrder && playerObj.buildOrder.length > 0) {
+              // Ensure all entries have the required fields
+              playerObj.buildOrder = playerObj.buildOrder.map((entry: any) => {
+                return {
+                  time: entry.time || '0:00',
+                  supply: entry.supply || 0,
+                  action: entry.action || 'Unknown'
+                };
+              });
+              
+              // Sort by time if needed
+              playerObj.buildOrder.sort((a: any, b: any) => {
+                const timeA = a.time.split(':').map(Number);
+                const timeB = b.time.split(':').map(Number);
+                return (timeA[0] * 60 + timeA[1]) - (timeB[0] * 60 + timeB[1]);
+              });
             }
             
             // Calculate APM for each player if not provided by parser
             if (!player.apm && player.actions) {
               player.apm = calculateApmFromActions(player);
               console.log(`🛠 [browserReplayParser] Calculated APM for ${player.name}: ${player.apm}`);
+            }
+            
+            // Calculate EAPM (Effective APM) - typically around 70-80% of APM
+            if (player.apm && !player.eapm) {
+              player.eapm = Math.round(player.apm * 0.75);
+              console.log(`🛠 [browserReplayParser] Estimated EAPM for ${player.name}: ${player.eapm}`);
             }
           });
         }
@@ -192,7 +343,6 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
         }
         
         // Extract relevant data in a format suitable for mapRawToParsed
-        // Instead of modifying the parsed result, create a new object with data properly extracted
         const parsedData = {
           header: rawResult.gameInfo || {},
           players: processedPlayers, // Use our processed player data

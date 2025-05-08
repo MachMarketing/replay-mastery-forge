@@ -1,19 +1,10 @@
 
 /**
- * Helper utility for file creation and reading
+ * File reading utilities for binary and text processing
  */
 
 /**
- * Create a File object from a Uint8Array
- */
-export function createMockFileFromUint8Array(data: Uint8Array, filename = 'test.rep'): File {
-  // In browsers, we need to use a Blob to create a File
-  const blob = new Blob([data]);
-  return new File([blob], filename, { type: 'application/octet-stream' });
-}
-
-/**
- * Read a File as a Uint8Array
+ * Read a file as Uint8Array for binary processing
  */
 export async function readFileAsUint8Array(file: File): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
@@ -28,9 +19,55 @@ export async function readFileAsUint8Array(file: File): Promise<Uint8Array> {
     };
     
     reader.onerror = () => {
-      reject(reader.error);
+      reject(reader.error || new Error('Error reading file'));
     };
     
     reader.readAsArrayBuffer(file);
+  });
+}
+
+/**
+ * Read a file as text
+ */
+export async function readFileAsText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Failed to read file as text'));
+      }
+    };
+    
+    reader.onerror = () => {
+      reject(reader.error || new Error('Error reading file'));
+    };
+    
+    reader.readAsText(file);
+  });
+}
+
+/**
+ * Read file as data URL (for images, etc)
+ */
+export async function readFileAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Failed to read file as data URL'));
+      }
+    };
+    
+    reader.onerror = () => {
+      reject(reader.error || new Error('Error reading file'));
+    };
+    
+    reader.readAsDataURL(file);
   });
 }
