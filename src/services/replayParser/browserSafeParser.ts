@@ -84,7 +84,37 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
       console.log('[browserSafeParser] Parsing replay data:', data.length, 'bytes');
       
       try {
+        // Set up an error handler for WASM errors
+        const originalOnError = window.onerror;
+        let wasmError: Error | null = null;
+        
+        // Temporary error handler to catch WASM errors
+        window.onerror = function(message, source, lineno, colno, error) {
+          console.error('[browserSafeParser] WASM error caught by window.onerror:', { message, error });
+          wasmError = new Error(`WASM execution error: ${message}`);
+          return true; // Prevents default error handling
+        };
+        
+        // Try to parse with a timeout to catch hangs
+        setTimeout(() => {
+          if (wasmError === null) {
+            wasmError = new Error('WASM parsing timeout');
+            reject(wasmError);
+          }
+          // Restore original handler
+          window.onerror = originalOnError;
+        }, 5000); // 5 second timeout
+        
         const result = parser.parseReplay(data);
+        
+        // Restore original error handler
+        window.onerror = originalOnError;
+        
+        if (wasmError) {
+          reject(wasmError);
+          return;
+        }
+        
         console.log('[browserSafeParser] Parsing completed, result:', result);
         resolve(result);
       } catch (parseError) {
@@ -92,7 +122,7 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
         // Check if the error is a DOM event (which sometimes happens with WASM errors)
         if (parseError && typeof parseError === 'object' && 'isTrusted' in parseError) {
           console.error('[browserSafeParser] Received DOM event instead of error details. This might be a WASM error.');
-          reject(new Error('WASM execution error occurred during parsing. The replay might be incompatible.'));
+          reject(new Error('WASM execution error occurred during parsing. The replay might be incompatible or corrupted.'));
         } else {
           reject(parseError);
         }

@@ -7,12 +7,13 @@ import { Button } from '@/components/ui/button';
 import { useReplayParser } from '@/hooks/useReplayParser';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, AlertCircle, FileUp } from 'lucide-react';
+import { Loader2, AlertCircle, FileUp, Info } from 'lucide-react';
 
 const ParserTest = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [result, setResult] = useState<any | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  const [wasmError, setWasmError] = useState<boolean>(false);
   const { parseReplay, isProcessing, error } = useReplayParser();
   
   // Capture console logs for debugging
@@ -29,6 +30,14 @@ const ParserTest = () => {
     console.error = (...args) => {
       originalError(...args);
       setLogs(prev => [...prev, `[ERROR] ${args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg).join(' ')}`]);
+      
+      // Check for WASM errors
+      const errorString = args.join(' ');
+      if (errorString.includes('WASM') || 
+          errorString.includes('isTrusted') ||
+          errorString.includes('execution error')) {
+        setWasmError(true);
+      }
     };
     
     console.warn = (...args) => {
@@ -54,11 +63,22 @@ const ParserTest = () => {
     
     setLogs([]);
     setResult(null);
+    setWasmError(false);
     try {
       const data = await parseReplay(selectedFile);
       setResult(data);
+      
+      // Check if we got fallback data
+      if (data && data.primaryPlayer && data.primaryPlayer.name === 'Player' && !data.primaryPlayer.buildOrder.length) {
+        setWasmError(true);
+      }
     } catch (err) {
       console.error('Parser test error:', err);
+      if (err instanceof Error && 
+         (err.message.includes('WASM') || 
+          err.message.includes('execution'))) {
+        setWasmError(true);
+      }
     }
   };
   
@@ -114,6 +134,18 @@ const ParserTest = () => {
                       </>
                     )}
                   </Button>
+                  
+                  {wasmError && (
+                    <Alert className="mt-4 bg-yellow-50 border-yellow-200">
+                      <Info className="h-4 w-4 text-yellow-600" />
+                      <AlertDescription className="text-yellow-800">
+                        <span className="font-medium">Browser compatibility issue detected.</span> 
+                        <br />
+                        The WASM parser may not be fully compatible with your browser.
+                        Using fallback parser with limited functionality.
+                      </AlertDescription>
+                    </Alert>
+                  )}
                 </div>
               </CardContent>
             </Card>
