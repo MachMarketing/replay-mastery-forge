@@ -19,6 +19,7 @@ export interface ParsedReplayData {
   secondaryPlayer: PlayerData;
   
   // Backward compatibility fields for existing code
+  // These are optional in the ParsedReplayData but required in ParsedReplayResult
   playerName?: string;
   opponentName?: string;
   playerRace?: string;

@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ParsedReplayResult } from '@/services/replayParserService';
+import { ParsedReplayResult, ParsedReplayData } from '@/services/replayParserService';
 import { useToast } from '@/hooks/use-toast';
 import { parseReplayInBrowser } from '@/services/browserReplayParser';
 import { hasBrowserWasmIssues } from '@/utils/browserDetection';
@@ -111,7 +111,7 @@ export function useReplayParser(): ReplayParserResult {
       // Parse using our unified approach
       console.log('[useReplayParser] Calling parseReplayInBrowser with file:', file.name);
       
-      const parsedData = await parseReplayInBrowser(file);
+      const parsedData: ParsedReplayData = await parseReplayInBrowser(file);
       
       if (!parsedData) {
         throw new Error('Parser hat keine Daten zurückgegeben');

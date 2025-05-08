@@ -61,14 +61,15 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
           parsedResult.players.map((p: any) => Object.keys(p)) : 'none');
         
         // Detailed player info for ALL players
-        if (parsedResult.players && parsedResult.players.length > 0) {
-          console.log(`🛠 [browserReplayParser] Found ${parsedResult.players.length} players`);
+        let processedPlayers = parsedResult.players || [];
+        if (processedPlayers && processedPlayers.length > 0) {
+          console.log(`🛠 [browserReplayParser] Found ${processedPlayers.length} players`);
           
-          // Make sure players is mutable before modifying
-          const updatedPlayers = [...parsedResult.players];
+          // Make a copy of players to work with
+          processedPlayers = [...processedPlayers];
           
           // Log details for each player
-          updatedPlayers.forEach((player: any, index: number) => {
+          processedPlayers.forEach((player: any, index: number) => {
             console.log(`🛠 [browserReplayParser] Player ${index + 1} details (${parseId}):`, {
               name: player.name,
               race: player.race,
@@ -111,11 +112,11 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
               console.log(`🛠 [browserReplayParser] Calculated APM for ${player.name}: ${player.apm}`);
             }
           });
-          
-          // Create a copy of the result with updated players array
-          parsedResult = { 
+
+          // Instead of trying to modify the original parsed result, create a new object
+          parsedResult = {
             ...parsedResult,
-            players: updatedPlayers 
+            players: processedPlayers
           };
         }
         

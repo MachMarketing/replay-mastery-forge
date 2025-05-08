@@ -1,13 +1,12 @@
-
 import { ParsedReplayData, PlayerData } from './replayParser/types';
 import { parseReplayInBrowser } from './browserReplayParser';
 import { markBrowserAsHavingWasmIssues } from '@/utils/browserDetection';
 
 // Re-export PlayerData interface properly
-export type { PlayerData };
+export type { PlayerData, ParsedReplayData };
 
 export interface ParsedReplayResult extends ParsedReplayData {
-  // Ensure all legacy fields have proper typing
+  // Ensure all legacy fields have proper typing and are required (not optional)
   playerName: string;  // Aliased from primaryPlayer.name
   opponentName: string; // Aliased from secondaryPlayer.name
   playerRace: string;  // Aliased from primaryPlayer.race
