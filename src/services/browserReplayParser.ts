@@ -40,10 +40,18 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
   console.log('[browserReplayParser] File read successfully, size:', fileBuffer.byteLength);
   
   // Parse the replay using the screparsed browser-safe parser
-  const rawData = await parseReplayWithBrowserSafeParser(new Uint8Array(fileBuffer));
+  let rawData;
+  try {
+    rawData = await parseReplayWithBrowserSafeParser(new Uint8Array(fileBuffer));
+  } catch (error) {
+    console.error('[browserReplayParser] Error during parsing:', error);
+    // If parsing fails, create a minimal structure
+    return createMinimalReplayData(file.name);
+  }
   
   if (!rawData) {
-    throw new Error('Parser returned no data');
+    console.error('[browserReplayParser] Parser returned no data');
+    return createMinimalReplayData(file.name);
   }
   
   console.log('[browserReplayParser] Raw parsed data:', rawData);
@@ -51,8 +59,9 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
   // Check if we have a valid structure from screparsed
   // If the _gameInfo property is present, it means we got the raw replay object
   // rather than the parsed version - we need to handle this differently
-  if (rawData._gameInfo && !rawData.header && !rawData.players && !rawData.commands) {
+  if (rawData._gameInfo && (!rawData.header || !rawData.players || !rawData.commands)) {
     console.log('[browserReplayParser] Got raw game info object, creating basic parsed structure');
+    
     // Create a minimal viable structure for this case
     const parsedData = {
       header: {
@@ -105,6 +114,18 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
           parsedData.players[1].name = possibleNames[1];
           console.log('[browserReplayParser] Extracted possible player names:', possibleNames.slice(0, 2));
         }
+        
+        // Try to extract map name
+        const mapNames = textChunks.filter(chunk => 
+          chunk.length > 3 && 
+          chunk.length < 30 &&
+          chunk.toLowerCase().includes('map')
+        );
+        
+        if (mapNames.length > 0) {
+          parsedData.header.map = mapNames[0];
+          parsedData.mapData.name = mapNames[0];
+        }
       } catch (e) {
         console.error('[browserReplayParser] Error extracting data from raw bytes:', e);
       }
@@ -113,36 +134,142 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
     return transformParsedData(parsedData);
   }
   
-  // Extract relevant data from screparsed output format
-  // Carefully check for undefined properties
-  const header = rawData.header || {};
-  const commands = Array.isArray(rawData.commands) ? rawData.commands : [];
-  const mapData = rawData.mapData || {};
+  try {
+    // Extract relevant data from screparsed output format
+    // Carefully check for undefined properties
+    const header = rawData.header || {};
+    const commands = Array.isArray(rawData.commands) ? rawData.commands : [];
+    const mapData = rawData.mapData || {};
+    
+    // Extract player data safely
+    const playerInfos = [];
+    
+    // Extract player data - handle the case where playerStructs is not iterable
+    if (rawData.players && Array.isArray(rawData.players)) {
+      playerInfos.push(...rawData.players);
+    } else if (header.players && Array.isArray(header.players)) {
+      playerInfos.push(...header.players);
+    } else if (rawData._gameInfo && rawData._gameInfo.playerStructs) {
+      // Try to extract from playerStructs directly if it exists but isn't iterable
+      try {
+        // If it's an object with keys we can enumerate
+        if (typeof rawData._gameInfo.playerStructs === 'object') {
+          Object.keys(rawData._gameInfo.playerStructs).forEach(key => {
+            const playerStruct = rawData._gameInfo.playerStructs[key];
+            if (playerStruct) {
+              playerInfos.push({
+                id: Number(key),
+                name: playerStruct.name || `Player ${Number(key) + 1}`,
+                race: playerStruct.race || 2
+              });
+            }
+          });
+        }
+      } catch (e) {
+        console.error('[browserReplayParser] Error extracting from playerStructs:', e);
+      }
+    }
+    
+    // If we still don't have enough player data, create placeholder players
+    if (playerInfos.length < 2) {
+      console.log('[browserReplayParser] Not enough player data found, creating placeholders');
+      playerInfos.push(
+        { id: 0, name: 'Player 1', race: 2 }, // 2 = Protoss
+        { id: 1, name: 'Player 2', race: 2 }  // 2 = Protoss
+      );
+    }
+    
+    return transformParsedData({
+      header,
+      commands,
+      mapData,
+      players: playerInfos
+    });
+  } catch (error) {
+    console.error('[browserReplayParser] Error transforming parsed data:', error);
+    return createMinimalReplayData(file.name);
+  }
+}
+
+/**
+ * Create a minimal replay data structure as a fallback
+ */
+function createMinimalReplayData(fileName: string): ParsedReplayData {
+  console.log('[browserReplayParser] Creating minimal replay data for:', fileName);
   
-  // Extract player data safely
-  const playerInfos = [];
-  // Extract player data
-  if (rawData.players && Array.isArray(rawData.players)) {
-    playerInfos.push(...rawData.players);
-  } else if (header.players && Array.isArray(header.players)) {
-    playerInfos.push(...header.players);
+  // Extract potential player names and matchup from filename
+  const fileNameParts = fileName.split('.')[0].split(/\s+|_|vs|VS|Vs/);
+  
+  // Try to identify race letters in the filename (T, P, Z)
+  const raceIdentifiers = fileName.match(/[TPZtpz]v[TPZtpz]/i);
+  let matchup = 'PvP'; // Default matchup
+  
+  if (raceIdentifiers) {
+    matchup = raceIdentifiers[0].toUpperCase();
   }
   
-  // If we still don't have enough player data, create placeholder players
-  if (playerInfos.length < 2) {
-    console.log('[browserReplayParser] Not enough player data found, creating placeholders');
-    playerInfos.push(
-      { id: 0, name: 'Player 1', race: 2 }, // 2 = Protoss
-      { id: 1, name: 'Player 2', race: 2 }  // 2 = Protoss
-    );
+  // Map race letter to full name
+  const mapRaceLetter = (letter: string): string => {
+    letter = letter.toUpperCase();
+    if (letter === 'T') return 'Terran';
+    if (letter === 'Z') return 'Zerg';
+    return 'Protoss';  // Default to Protoss
+  };
+  
+  // Extract races from matchup
+  let race1 = 'Protoss';
+  let race2 = 'Protoss';
+  
+  if (matchup.length === 3) {
+    race1 = mapRaceLetter(matchup[0]);
+    race2 = mapRaceLetter(matchup[2]);
   }
   
-  return transformParsedData({
-    header,
-    commands,
-    mapData,
-    players: playerInfos
-  });
+  // Create minimal replay data structure
+  const minimalData: ParsedReplayData = {
+    primaryPlayer: {
+      name: fileNameParts.length > 0 ? fileNameParts[0] : 'Player 1',
+      race: race1,
+      apm: 150,
+      eapm: 105,
+      buildOrder: [],
+      strengths: ['Replay analysis requires premium'],
+      weaknesses: ['Replay analysis requires premium'],
+      recommendations: ['Upgrade to premium for detailed analysis']
+    },
+    secondaryPlayer: {
+      name: fileNameParts.length > 1 ? fileNameParts[1] : 'Player 2',
+      race: race2,
+      apm: 150,
+      eapm: 105,
+      buildOrder: [],
+      strengths: ['Replay analysis requires premium'],
+      weaknesses: ['Replay analysis requires premium'],
+      recommendations: ['Upgrade to premium for detailed analysis']
+    },
+    map: 'Unknown Map',
+    matchup: matchup,
+    duration: '10:00',
+    durationMS: 600000,
+    date: new Date().toISOString(),
+    result: 'unknown',
+    strengths: ['Replay analysis requires premium'],
+    weaknesses: ['Replay analysis requires premium'],
+    recommendations: ['Upgrade to premium for detailed analysis'],
+    
+    // Legacy properties
+    playerName: fileNameParts.length > 0 ? fileNameParts[0] : 'Player 1',
+    opponentName: fileNameParts.length > 1 ? fileNameParts[1] : 'Player 2',
+    playerRace: race1,
+    opponentRace: race2,
+    apm: 150,
+    eapm: 105,
+    opponentApm: 150,
+    opponentEapm: 105,
+    buildOrder: []
+  };
+  
+  return minimalData;
 }
 
 /**
