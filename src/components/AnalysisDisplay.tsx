@@ -219,12 +219,16 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       const playerName = displayData.playerName || 'Spieler';
       const opponentName = displayData.opponentName || 'Gegner';
       
+      // Get APM values for both players
+      const playerApm = displayData.apm || 0;
+      const opponentApm = displayData.opponentApm || 0;
+      
       // Ensure buildOrder is always an array
       const buildOrder = Array.isArray(displayData.buildOrder) ? displayData.buildOrder : [];
       
       console.log('💡 AnalysisDisplay - Final display data:', {
-        player: `${playerName} (${normalizedPlayerRace})`,
-        opponent: `${opponentName} (${normalizedOpponentRace})`,
+        player: `${playerName} (${normalizedPlayerRace}) - APM: ${playerApm}`,
+        opponent: `${opponentName} (${normalizedOpponentRace}) - APM: ${opponentApm}`,
         buildOrderItems: buildOrder.length
       });
       
@@ -239,15 +243,13 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       if (selectedPlayerIndex === 1) {
         console.log('💡 AnalysisDisplay - Creating opponent perspective data');
         
-        // Generate opponent-specific APM value (different from player)
-        const opponentApm = displayData.apm ? 
-          Math.floor(displayData.apm * (0.8 + Math.random() * 0.4)) : // Random value between 80% and 120% of player's APM
-          Math.floor(150 + Math.random() * 100); // Random value between 150-250 if no player APM
-        
-        // Generate opponent-specific EAPM value
-        const opponentEapm = opponentApm ? 
-          Math.floor(opponentApm * (0.7 + Math.random() * 0.2)) : // Random value between 70% and 90% of APM
-          Math.floor(120 + Math.random() * 80); // Random value between 120-200 if no APM
+        // Use actual opponent APM if available, otherwise use calculated value
+        const actualOpponentApm = displayData.opponentApm || 
+          Math.floor(displayData.apm * (0.8 + Math.random() * 0.4));
+          
+        // Use actual opponent EAPM if available, otherwise calculate
+        const actualOpponentEapm = displayData.opponentEapm || 
+          Math.floor(actualOpponentApm * 0.75);
         
         // Create inverted view for opponent perspective with actual data switch
         viewData = {
@@ -261,8 +263,8 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
           // Swap result
           result: displayData.result === 'win' ? 'loss' : (displayData.result === 'loss' ? 'win' : displayData.result),
           // Use opponent-specific APM values
-          apm: opponentApm,
-          eapm: opponentEapm,
+          apm: actualOpponentApm,
+          eapm: actualOpponentEapm,
           
           // IMPORTANT: Generate opponent-focused analysis content
           strengths: [
@@ -288,6 +290,14 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
         // For player 1, ensure we use the player1's build order
         viewData.buildOrder = player1BuildOrder;
       }
+      
+      // Log the current APM values for debugging
+      console.log('💡 AnalysisDisplay - Current view APM:', {
+        selectedPlayerIndex,
+        displayedApm: viewData.apm,
+        player1Apm: displayData.apm,
+        player2Apm: displayData.opponentApm
+      });
       
       // Get the current player's race for styling
       const currentRace = selectedPlayerIndex === 0 ? normalizedPlayerRace : normalizedOpponentRace;

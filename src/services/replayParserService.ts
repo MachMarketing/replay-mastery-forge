@@ -16,6 +16,8 @@ export interface ParsedReplayResult {
   result: 'win' | 'loss';
   apm: number;
   eapm: number;
+  opponentApm?: number; // Added for opponent's APM
+  opponentEapm?: number; // Added for opponent's EAPM
   buildOrder: Array<{ time: string; supply: number; action: string }>;
   resourcesGraph?: Array<{ time: string; minerals: number; gas: number }>;
   strengths: string[];
@@ -69,6 +71,8 @@ function createEmergencyFallbackData(file: File): AnalyzedReplayResult {
     result: 'win',
     apm: 120,
     eapm: 90,
+    opponentApm: 110,
+    opponentEapm: 85,
     buildOrder: [],
     resourcesGraph: [],
     strengths: ['Konnte die Datei nicht analysieren'],

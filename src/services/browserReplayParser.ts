@@ -1,4 +1,3 @@
-
 /**
  * This module provides a unified browser-based replay parser system 
  * that uses screparsed library for reliable replay parsing without server dependencies.
@@ -53,44 +52,55 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
         const result = await parser.parse();
         
         // Add the debugging log to see the exact structure
-        console.log(`🛠 Full parsed object structure (${parseId}):`, result);
+        console.log(`🛠 [browserReplayParser] Full parsed object structure (${parseId}):`, result);
         
         // Dump the raw data structure to help with debugging
-        console.log(`🛠 Game info structure (${parseId}):`, result.gameInfo ? Object.keys(result.gameInfo) : 'none');
-        console.log(`🛠 Players structure (${parseId}):`, result.players ? 
+        console.log(`🛠 [browserReplayParser] Game info structure (${parseId}):`, result.gameInfo ? Object.keys(result.gameInfo) : 'none');
+        console.log(`🛠 [browserReplayParser] Players structure (${parseId}):`, result.players ? 
           result.players.map((p: any) => Object.keys(p)) : 'none');
         
-        // Detailed player info
+        // Detailed player info for ALL players
         if (result.players && result.players.length > 0) {
-          console.log(`🛠 First player details (${parseId}):`, {
-            name: result.players[0].name,
-            race: result.players[0].race,
-            // Log more player properties as needed
+          console.log(`🛠 [browserReplayParser] Found ${result.players.length} players`);
+          
+          // Log details for each player
+          result.players.forEach((player: any, index: number) => {
+            console.log(`🛠 [browserReplayParser] Player ${index + 1} details (${parseId}):`, {
+              name: player.name,
+              race: player.race,
+              apm: player.apm || calculateApmFromActions(player),
+              // Log more player properties
+            });
+            
+            // Check for actual command/build order properties and log them
+            // Use typecasting and safe access to prevent errors
+            const playerObj = player as any;
+            
+            // Log commands if available
+            if (playerObj.commands && Array.isArray(playerObj.commands)) {
+              console.log(`🛠 [browserReplayParser] Player ${index + 1} commands sample (${parseId}):`, 
+                playerObj.commands.slice(0, 5));
+            }
+            
+            // Log actions if available
+            if (playerObj.actions && Array.isArray(playerObj.actions)) {
+              console.log(`🛠 [browserReplayParser] Player ${index + 1} actions sample (${parseId}):`, 
+                playerObj.actions.slice(0, 5));
+              console.log(`🛠 [browserReplayParser] Player ${index + 1} action count: ${playerObj.actions.length}`);
+            }
+            
+            // Log units if available
+            if (playerObj.units && Array.isArray(playerObj.units)) {
+              console.log(`🛠 [browserReplayParser] Player ${index + 1} units sample (${parseId}):`, 
+                playerObj.units.slice(0, 5));
+            }
+            
+            // Log build order if available
+            if (playerObj.buildOrder && Array.isArray(playerObj.buildOrder)) {
+              console.log(`🛠 [browserReplayParser] Player ${index + 1} build order sample (${parseId}):`, 
+                playerObj.buildOrder.slice(0, 5));
+            }
           });
-          
-          // Check for actual command/build order properties and log them
-          // Use typecasting and safe access to prevent errors
-          const firstPlayer = result.players[0] as any;
-          
-          if (firstPlayer.commands && Array.isArray(firstPlayer.commands)) {
-            console.log(`🛠 First player commands sample (${parseId}):`, 
-              firstPlayer.commands.slice(0, 5));
-          }
-          
-          if (firstPlayer.actions && Array.isArray(firstPlayer.actions)) {
-            console.log(`🛠 First player actions sample (${parseId}):`, 
-              firstPlayer.actions.slice(0, 5));
-          }
-          
-          if (firstPlayer.units && Array.isArray(firstPlayer.units)) {
-            console.log(`🛠 First player units sample (${parseId}):`, 
-              firstPlayer.units.slice(0, 5));
-          }
-          
-          if (firstPlayer.buildOrder && Array.isArray(firstPlayer.buildOrder)) {
-            console.log(`🛠 First player build order sample (${parseId}):`, 
-              firstPlayer.buildOrder.slice(0, 5));
-          }
         }
         
         // Clear the timeout since parsing completed
@@ -103,16 +113,26 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
           throw new Error('Parser returned empty data');
         }
         
+        // Calculate APM for each player if not provided by parser
+        if (result.players) {
+          result.players = result.players.map((player: any) => {
+            // If player already has APM, keep it
+            if (!player.apm && player.actions) {
+              player.apm = calculateApmFromActions(player);
+              console.log(`🛠 [browserReplayParser] Calculated APM for ${player.name}: ${player.apm}`);
+            }
+            return player;
+          });
+        }
+        
         // Log more detailed information about the parsed result structure
         console.log(`[browserReplayParser] Result keys (${parseId}): ${Object.keys(result).join(', ')}`);
         
         if (result.gameInfo) {
-          console.log(`[browserReplayParser] Game info (${parseId}): ${result.gameInfo.map || 'Unknown map'}`);
+          console.log(`[browserReplayParser] Game info (${parseId}): Map: ${result.gameInfo.map || 'Unknown map'}`);
           console.log(`[browserReplayParser] Game frames (${parseId}): ${result.gameInfo.frames || 'Unknown'}`);
-        }
-        
-        if (result.players) {
-          console.log(`[browserReplayParser] Players count (${parseId}): ${result.players.length || 0}`);
+          console.log(`[browserReplayParser] Game duration (${parseId}): ${result.gameInfo.durationFrames ? 
+            Math.round(result.gameInfo.durationFrames / 24 / 60) + ' minutes' : 'Unknown'}`);
         }
         
         // Format the data based on what we see in the result object
@@ -122,7 +142,9 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
           players: result.players || [],
           mapName: result.gameInfo?.map || 'Unknown',
           chat: result.chatMessages || [],
-          fileHash: String(file.size) + '_' + parseId // Add a unique hash for this specific file
+          fileHash: String(file.size) + '_' + parseId, // Add a unique hash for this specific file
+          fileDate: new Date().toISOString(),
+          fileName: file.name
         };
         
         // Map the raw parsed data to our application format
@@ -138,6 +160,35 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
     console.error('[browserReplayParser] Error parsing replay:', error);
     throw error;
   }
+}
+
+/**
+ * Calculate APM from player actions if not provided by parser
+ */
+function calculateApmFromActions(player: any): number {
+  if (!player || !player.actions || !Array.isArray(player.actions)) {
+    return 0;
+  }
+  
+  // Get game duration from last action timestamp or use default
+  let gameDurationMinutes = 10; // Default 10 minutes if we can't determine
+  
+  if (player.actions.length > 0) {
+    // Try to determine game duration from the last action's timestamp
+    const lastAction = player.actions[player.actions.length - 1];
+    if (lastAction && lastAction.frame) {
+      // Convert frames to minutes (24 frames per second)
+      gameDurationMinutes = lastAction.frame / 24 / 60;
+    }
+  }
+  
+  // Ensure we don't divide by zero
+  if (gameDurationMinutes <= 0) gameDurationMinutes = 1;
+  
+  // Calculate APM: actions count / game duration in minutes
+  const apm = Math.round(player.actions.length / gameDurationMinutes);
+  
+  return apm;
 }
 
 /**
