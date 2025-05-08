@@ -1,6 +1,10 @@
 
 /**
- * Base player data interface
+ * TypeScript definitions for replay parser data
+ */
+
+/**
+ * Player data in a parsed replay
  */
 export interface PlayerData {
   name: string;
@@ -8,31 +12,36 @@ export interface PlayerData {
   apm: number;
   eapm: number;
   buildOrder?: Array<{ time: string; supply: number; action: string }>;
-  strengths?: string[];
-  weaknesses?: string[];
-  recommendations?: string[];
-  // Add additional player-specific fields as needed
 }
 
 /**
- * Interface for replay analysis results
+ * Main replay analysis interface - contains all structured data from a parsed replay
  */
 export interface ReplayAnalysis {
   strengths: string[];
   weaknesses: string[];
   recommendations: string[];
-  trainingPlan?: Array<{ day: number; focus: string; drill: string }>;
 }
 
 /**
- * Unified format for parsed replay data
+ * Raw parsed replay data structure
  */
 export interface ParsedReplayData {
-  // Player data
+  // Primary data structure
   primaryPlayer: PlayerData;
   secondaryPlayer: PlayerData;
   
-  // Game metadata
+  // Legacy fields (for backwards compatibility)
+  playerName: string;
+  opponentName: string;
+  playerRace: string;
+  opponentRace: string;
+  apm: number;
+  eapm: number;
+  opponentApm: number;
+  opponentEapm: number;
+  
+  // Game info
   map: string;
   matchup: string;
   duration: string;
@@ -40,20 +49,11 @@ export interface ParsedReplayData {
   date: string;
   result: 'win' | 'loss' | 'unknown';
   
-  // Legacy fields for backward compatibility
-  playerName?: string;
-  opponentName?: string;
-  playerRace?: string;
-  opponentRace?: string;
-  apm?: number;
-  eapm?: number;
-  opponentApm?: number;
-  opponentEapm?: number;
+  // Build order data
+  buildOrder: Array<{ time: string; supply: number; action: string }>;
   
-  // Game analysis
-  buildOrder?: Array<{ time: string; supply: number; action: string }>;
-  resourcesGraph?: any[];
-  strengths?: string[];
-  weaknesses?: string[];
-  recommendations?: string[];
+  // Analysis results
+  strengths: string[];
+  weaknesses: string[];
+  recommendations: string[];
 }

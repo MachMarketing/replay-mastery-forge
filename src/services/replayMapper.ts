@@ -68,6 +68,12 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
       throw new Error('Primary player data not found in replay');
     }
     
+    // VERBESSERTE LOGGING: Dump the entire player object structure to help debugging
+    console.log('[replayMapper] Full player1 object structure:', JSON.stringify(player1, null, 2));
+    if (player2) {
+      console.log('[replayMapper] Full player2 object structure:', JSON.stringify(player2, null, 2));
+    }
+    
     // Extract primary player data with raw race value for debugging
     const primaryPlayer: PlayerData = {
       name: player1?.name || 'Player',
@@ -114,7 +120,6 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
         secondaryPlayer.race, typeof secondaryPlayer.race);
       
       // Standardisiere die Rasse für den Gegner
-      // WICHTIG: Hier war der Fehler - wir behalten die originale Kleinschreibung des Strings bei
       secondaryPlayer.race = standardizeRace(secondaryPlayer.race);
     }
     
@@ -163,23 +168,41 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
       if (player1) {
         console.log('[replayMapper] Extracting build order for primary player:', player1.name);
         
+        // VERBESSERTE BUILD ORDER EXTRAKTION
+        // Überprüfen und Loggen aller möglichen Build Order Quellen
+        console.log('[replayMapper] Checking available build order sources:');
+        console.log('- Direct buildOrder:', player1.buildOrder ? 'Available' : 'Not available');
+        console.log('- Commands:', player1.commands ? `Available (${player1.commands?.length || 0} items)` : 'Not available');
+        console.log('- Actions:', player1.actions ? `Available (${player1.actions?.length || 0} items)` : 'Not available');
+        console.log('- Units:', player1.units ? `Available (${Object.keys(player1.units || {}).length} items)` : 'Not available');
+        console.log('- Buildings:', player1.buildings ? `Available (${Object.keys(player1.buildings || {}).length} items)` : 'Not available');
+        
+        // 1. Versuch: Direkte Build Order Daten
         if (Array.isArray(player1.buildOrder) && player1.buildOrder.length > 0) {
-          // Direct build order data
           console.log('[replayMapper] Found direct buildOrder data for primary player');
           primaryBuildOrder = mapBuildOrderData(player1.buildOrder);
           primaryPlayer.buildOrder = primaryBuildOrder;
-        } else if (Array.isArray(player1.commands) && player1.commands.length > 0) {
-          // Extract from commands
+        } 
+        // 2. Versuch: Aus Commands extrahieren
+        else if (Array.isArray(player1.commands) && player1.commands.length > 0) {
           console.log('[replayMapper] Extracting build order from commands for primary player');
           primaryBuildOrder = extractBuildOrderFromCommands(player1.commands);
           primaryPlayer.buildOrder = primaryBuildOrder;
-        } else if (Array.isArray(player1.actions) && player1.actions.length > 0) {
-          // Extract from actions as last resort
+        } 
+        // 3. Versuch: Aus Actions extrahieren
+        else if (Array.isArray(player1.actions) && player1.actions.length > 0) {
           console.log('[replayMapper] Extracting build order from actions for primary player');
           primaryBuildOrder = extractBuildOrderFromActions(player1.actions);
           primaryPlayer.buildOrder = primaryBuildOrder;
-        } else {
-          // Log that we couldn't find build order data
+        }
+        // 4. Versuch: Aus Units/Buildings extrahieren (neue Methode)
+        else if (player1.units || player1.buildings) {
+          console.log('[replayMapper] Attempting to extract build order from units/buildings for primary player');
+          primaryBuildOrder = extractBuildOrderFromUnitsAndBuildings(player1);
+          primaryPlayer.buildOrder = primaryBuildOrder;
+        }
+        else {
+          // Keine Build Order Daten gefunden
           console.warn('[replayMapper] No build order data found for primary player');
         }
       }
@@ -188,23 +211,41 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
       if (player2) {
         console.log('[replayMapper] Extracting build order for secondary player:', player2.name);
         
+        // VERBESSERTE BUILD ORDER EXTRAKTION für zweiten Spieler
+        // Überprüfen und Loggen aller möglichen Build Order Quellen
+        console.log('[replayMapper] Checking available build order sources for secondary player:');
+        console.log('- Direct buildOrder:', player2.buildOrder ? 'Available' : 'Not available');
+        console.log('- Commands:', player2.commands ? `Available (${player2.commands?.length || 0} items)` : 'Not available');
+        console.log('- Actions:', player2.actions ? `Available (${player2.actions?.length || 0} items)` : 'Not available');
+        console.log('- Units:', player2.units ? `Available (${Object.keys(player2.units || {}).length} items)` : 'Not available');
+        console.log('- Buildings:', player2.buildings ? `Available (${Object.keys(player2.buildings || {}).length} items)` : 'Not available');
+        
+        // 1. Versuch: Direkte Build Order Daten
         if (Array.isArray(player2.buildOrder) && player2.buildOrder.length > 0) {
-          // Direct build order data
           console.log('[replayMapper] Found direct buildOrder data for secondary player');
           secondaryBuildOrder = mapBuildOrderData(player2.buildOrder);
           secondaryPlayer.buildOrder = secondaryBuildOrder;
-        } else if (Array.isArray(player2.commands) && player2.commands.length > 0) {
-          // Extract from commands
+        } 
+        // 2. Versuch: Aus Commands extrahieren
+        else if (Array.isArray(player2.commands) && player2.commands.length > 0) {
           console.log('[replayMapper] Extracting build order from commands for secondary player');
           secondaryBuildOrder = extractBuildOrderFromCommands(player2.commands);
           secondaryPlayer.buildOrder = secondaryBuildOrder;
-        } else if (Array.isArray(player2.actions) && player2.actions.length > 0) {
-          // Extract from actions as last resort
+        } 
+        // 3. Versuch: Aus Actions extrahieren
+        else if (Array.isArray(player2.actions) && player2.actions.length > 0) {
           console.log('[replayMapper] Extracting build order from actions for secondary player');
           secondaryBuildOrder = extractBuildOrderFromActions(player2.actions);
           secondaryPlayer.buildOrder = secondaryBuildOrder;
-        } else {
-          // Log that we couldn't find build order data
+        }
+        // 4. Versuch: Aus Units/Buildings extrahieren (neue Methode)
+        else if (player2.units || player2.buildings) {
+          console.log('[replayMapper] Attempting to extract build order from units/buildings for secondary player');
+          secondaryBuildOrder = extractBuildOrderFromUnitsAndBuildings(player2);
+          secondaryPlayer.buildOrder = secondaryBuildOrder;
+        }
+        else {
+          // Keine Build Order Daten gefunden
           console.warn('[replayMapper] No build order data found for secondary player');
         }
       }
@@ -341,6 +382,9 @@ function mapBuildOrderData(rawBuildOrder: any[]): Array<{ time: string; supply: 
     return [];
   }
   
+  // Log the raw build order structure to help debugging
+  console.log('[replayMapper] Raw build order sample:', rawBuildOrder.slice(0, 2));
+  
   return rawBuildOrder.map((item: any, index) => {
     // Extract time in frames or seconds
     let timeInSeconds = 0;
@@ -371,6 +415,10 @@ function mapBuildOrderData(rawBuildOrder: any[]): Array<{ time: string; supply: 
       action = item.name;
     } else if (item.type) {
       action = item.type;
+    } else if (item.objectName) {
+      action = `Build ${item.objectName}`;
+    } else if (item.target) {
+      action = `Target ${item.target}`;
     }
     
     return {
@@ -386,25 +434,55 @@ function mapBuildOrderData(rawBuildOrder: any[]): Array<{ time: string; supply: 
  */
 function extractBuildOrderFromCommands(commands: any[]): Array<{ time: string; supply: number; action: string }> {
   if (!commands || !Array.isArray(commands) || commands.length === 0) {
-    throw new Error('No valid command data available');
+    console.warn('[replayMapper] No valid command data available');
+    return [];
   }
+  
+  // Log command sample for debugging
+  console.log('[replayMapper] Commands sample:', commands.slice(0, 3));
   
   // Filter commands that represent building or training
   const buildCommands = commands.filter(cmd => {
-    const type = (cmd.type || '').toLowerCase();
-    const name = (cmd.name || '').toLowerCase();
+    // Skip null commands
+    if (!cmd) return false;
+    
+    const type = String(cmd.type || '').toLowerCase();
+    const name = String(cmd.name || '').toLowerCase();
+    const target = String(cmd.target || '').toLowerCase();
     
     return (
       type.includes('train') || 
       type.includes('build') || 
       type.includes('research') ||
+      type.includes('produce') ||
+      type.includes('construct') ||
+      type.includes('create') ||
       name.includes('build') ||
-      name.includes('train')
+      name.includes('train') ||
+      name.includes('produce') ||
+      name.includes('create') ||
+      name.includes('upgrade') ||
+      // Look for specific buildings or units
+      name.includes('nexus') ||
+      name.includes('pylon') ||
+      name.includes('gateway') ||
+      name.includes('barracks') ||
+      name.includes('factory') ||
+      name.includes('command') ||
+      name.includes('center') ||
+      name.includes('hatchery') ||
+      target.includes('nexus') ||
+      target.includes('pylon') ||
+      target.includes('gateway') ||
+      target.includes('barracks')
     );
   });
   
+  console.log('[replayMapper] Filtered build commands:', buildCommands.length);
+  
   if (buildCommands.length === 0) {
-    throw new Error('No build commands found in command data');
+    console.warn('[replayMapper] No build commands found in command data');
+    return [];
   }
   
   return buildCommands.map((cmd, index) => {
@@ -414,6 +492,8 @@ function extractBuildOrderFromCommands(commands: any[]): Array<{ time: string; s
       timeInSeconds = Math.round(cmd.frame / 24); // 24 frames per second
     } else if (typeof cmd.time === 'number') {
       timeInSeconds = cmd.time;
+    } else if (typeof cmd.timestamp === 'number') {
+      timeInSeconds = cmd.timestamp;
     }
     
     // Format time as mm:ss
@@ -424,8 +504,9 @@ function extractBuildOrderFromCommands(commands: any[]): Array<{ time: string; s
     // Estimate supply based on timing
     const supply = 4 + Math.floor(timeInSeconds / 15); // Start at 4, increase by ~1 every 15 seconds
     
-    // Extract action name
+    // Extract action name with improved detection
     let action = 'Unknown Action';
+    
     if (cmd.action) {
       action = cmd.action;
     } else if (cmd.name) {
@@ -435,9 +516,13 @@ function extractBuildOrderFromCommands(commands: any[]): Array<{ time: string; s
         action = `Train ${cmd.unit}`;
       } else if (cmd.type.toLowerCase().includes('build') && cmd.building) {
         action = `Build ${cmd.building}`;
+      } else if (cmd.target) {
+        action = `${cmd.type} ${cmd.target}`;
       } else {
         action = cmd.type;
       }
+    } else if (cmd.target) {
+      action = `Build ${cmd.target}`;
     }
     
     return {
@@ -453,44 +538,117 @@ function extractBuildOrderFromCommands(commands: any[]): Array<{ time: string; s
  */
 function extractBuildOrderFromActions(actions: any[]): Array<{ time: string; supply: number; action: string }> {
   if (!actions || !Array.isArray(actions) || actions.length === 0) {
-    throw new Error('No valid action data available');
+    console.warn('[replayMapper] No valid action data available');
+    return [];
   }
   
-  // Get every Nth action, more frequent in early game, less later
-  const result: Array<{ time: string; supply: number; action: string }> = [];
-  const totalActions = actions.length;
+  // Log action sample for debugging
+  console.log('[replayMapper] Actions sample:', actions.slice(0, 3));
   
-  // Take samples at key points
-  const sampleIndices = [
-    // Early game - more samples
-    5, 15, 25, 40, 
-    // Mid game - fewer samples
-    Math.floor(totalActions * 0.2),
-    Math.floor(totalActions * 0.3),
-    Math.floor(totalActions * 0.4),
-    // Late game - sparse samples
-    Math.floor(totalActions * 0.6),
-    Math.floor(totalActions * 0.8)
-  ];
-  
-  // Get unique indices
-  const uniqueIndices = [...new Set(sampleIndices)].filter(i => i < totalActions);
-  
-  if (uniqueIndices.length === 0) {
-    throw new Error('Failed to determine action sample points');
-  }
-  
-  // Extract actions at these indices
-  uniqueIndices.forEach(index => {
-    const action = actions[index];
-    if (!action) return;
+  // Filter actions that are likely related to building or unit production
+  const buildActions = actions.filter(action => {
+    if (!action) return false;
     
+    const type = String(action.type || '').toLowerCase();
+    const name = String(action.name || '').toLowerCase();
+    const target = String(action.target || '').toLowerCase();
+    
+    return (
+      type.includes('build') ||
+      type.includes('train') ||
+      type.includes('create') ||
+      type.includes('produce') ||
+      type.includes('construct') ||
+      type.includes('right_click') && (
+        target.includes('probe') ||
+        target.includes('scv') ||
+        target.includes('drone')
+      ) ||
+      name.includes('build') ||
+      name.includes('create') ||
+      type === 'build' ||
+      type === 'train'
+    );
+  });
+  
+  console.log('[replayMapper] Filtered build actions:', buildActions.length);
+  
+  // If we don't have enough filtered build actions, sample from all actions
+  if (buildActions.length < 10) {
+    // Get every Nth action, more frequent in early game, less later
+    const result: Array<{ time: string; supply: number; action: string }> = [];
+    const totalActions = actions.length;
+    
+    // Take samples at key points
+    const sampleIndices = [
+      // Early game - more samples
+      5, 15, 25, 40, 
+      // Mid game - fewer samples
+      Math.floor(totalActions * 0.2),
+      Math.floor(totalActions * 0.3),
+      Math.floor(totalActions * 0.4),
+      // Late game - sparse samples
+      Math.floor(totalActions * 0.6),
+      Math.floor(totalActions * 0.8)
+    ];
+    
+    // Get unique indices
+    const uniqueIndices = [...new Set(sampleIndices)].filter(i => i < totalActions);
+    
+    if (uniqueIndices.length === 0) {
+      console.warn('[replayMapper] Failed to determine action sample points');
+      return [];
+    }
+    
+    // Extract actions at these indices
+    uniqueIndices.forEach(index => {
+      const action = actions[index];
+      if (!action) return;
+      
+      // Convert frame to time
+      let timeInSeconds = 0;
+      if (typeof action.frame === 'number') {
+        timeInSeconds = Math.round(action.frame / 24); // 24 frames per second
+      } else if (typeof action.time === 'number') {
+        timeInSeconds = action.time;
+      }
+      
+      // Format time
+      const minutes = Math.floor(timeInSeconds / 60);
+      const seconds = timeInSeconds % 60;
+      const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+      
+      // Estimate supply
+      const supply = 4 + Math.floor(timeInSeconds / 15); // Start at 4, increase by ~1 every 15 seconds
+      
+      // Create action description based on type or available info
+      let actionText = 'Game Action';
+      if (action.type) actionText = action.type;
+      if (action.name) actionText = action.name;
+      if (action.targetName) actionText = `${actionText} ${action.targetName}`;
+      
+      result.push({
+        time: timeStr,
+        supply: Math.min(supply, 200),
+        action: actionText
+      });
+    });
+    
+    if (result.length > 0) {
+      return result;
+    }
+  }
+  
+  // Process the filtered build actions
+  return buildActions.map((action, index) => {
     // Convert frame to time
     let timeInSeconds = 0;
     if (typeof action.frame === 'number') {
       timeInSeconds = Math.round(action.frame / 24); // 24 frames per second
     } else if (typeof action.time === 'number') {
       timeInSeconds = action.time;
+    } else if (typeof action.timestamp === 'number') {
+      timeInSeconds = action.timestamp;
     }
     
     // Format time
@@ -501,29 +659,118 @@ function extractBuildOrderFromActions(actions: any[]): Array<{ time: string; sup
     // Estimate supply
     const supply = 4 + Math.floor(timeInSeconds / 15); // Start at 4, increase by ~1 every 15 seconds
     
-    // Create action description based on type or available info
+    // Create action description with improved detail
     let actionText = 'Game Action';
-    if (action.type) actionText = action.type;
-    if (action.name) actionText = action.name;
     
-    result.push({
+    if (action.type && action.target) {
+      actionText = `${action.type} ${action.target}`;
+    } else if (action.name && action.target) {
+      actionText = `${action.name} ${action.target}`;
+    } else if (action.type) {
+      actionText = action.type;
+    } else if (action.name) {
+      actionText = action.name;
+    }
+    
+    if (action.targetName && !actionText.includes(action.targetName)) {
+      actionText = `${actionText} ${action.targetName}`;
+    }
+    
+    return {
       time: timeStr,
       supply: Math.min(supply, 200),
       action: actionText
-    });
+    };
   });
+}
+
+/**
+ * NEW FUNCTION: Extract build order from units and buildings data
+ * Some parsers provide this information instead of commands/actions
+ */
+function extractBuildOrderFromUnitsAndBuildings(player: any): Array<{ time: string; supply: number; action: string }> {
+  const result: Array<{ time: string; supply: number; action: string }> = [];
   
-  if (result.length === 0) {
-    throw new Error('Failed to extract any actions from action data');
+  try {
+    console.log('[replayMapper] Attempting to extract build order from units and buildings');
+    
+    // Extract units data
+    if (player.units && typeof player.units === 'object') {
+      console.log('[replayMapper] Found units data:', Object.keys(player.units).length, 'unit types');
+      
+      Object.entries(player.units).forEach(([unitType, unitData]: [string, any]) => {
+        if (Array.isArray(unitData)) {
+          unitData.forEach((unit: any) => {
+            if (unit.birthTime || unit.created) {
+              const timeInSeconds = unit.birthTime || unit.created || 0;
+              const minutes = Math.floor(timeInSeconds / 60);
+              const seconds = timeInSeconds % 60;
+              const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+              
+              // Estimate supply
+              const supply = 4 + Math.floor(timeInSeconds / 15);
+              
+              result.push({
+                time: timeStr,
+                supply: Math.min(supply, 200),
+                action: `Train ${unitType}`
+              });
+            }
+          });
+        }
+      });
+    }
+    
+    // Extract buildings data
+    if (player.buildings && typeof player.buildings === 'object') {
+      console.log('[replayMapper] Found buildings data:', Object.keys(player.buildings).length, 'building types');
+      
+      Object.entries(player.buildings).forEach(([buildingType, buildingData]: [string, any]) => {
+        if (Array.isArray(buildingData)) {
+          buildingData.forEach((building: any) => {
+            if (building.startTime || building.created) {
+              const timeInSeconds = building.startTime || building.created || 0;
+              const minutes = Math.floor(timeInSeconds / 60);
+              const seconds = timeInSeconds % 60;
+              const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+              
+              // Estimate supply
+              const supply = 4 + Math.floor(timeInSeconds / 15);
+              
+              result.push({
+                time: timeStr,
+                supply: Math.min(supply, 200),
+                action: `Build ${buildingType}`
+              });
+            }
+          });
+        }
+      });
+    }
+    
+    // Sort by time
+    result.sort((a, b) => {
+      const [aMin, aSec] = a.time.split(':').map(Number);
+      const [bMin, bSec] = b.time.split(':').map(Number);
+      
+      const aSeconds = aMin * 60 + aSec;
+      const bSeconds = bMin * 60 + bSec;
+      
+      return aSeconds - bSeconds;
+    });
+    
+    console.log('[replayMapper] Extracted', result.length, 'build order items from units/buildings');
+    return result;
+  } catch (error) {
+    console.error('[replayMapper] Error extracting build order from units/buildings:', error);
+    return [];
   }
-  
-  return result;
 }
 
 /**
  * Determine game result from replay data
  */
-function determineGameResult(parsedData: any): 'win' | 'loss' {
+function determineGameResult(parsedData: any): 'win' | 'loss' | 'unknown' {
   // Check if result is directly available
   if (parsedData && parsedData.header && parsedData.header.result) {
     return parsedData.header.result === 'victory' ? 'win' : 'loss';

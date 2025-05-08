@@ -92,6 +92,14 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
             // Check for actual command/build order properties and log them
             const playerObj = player as any;
             
+            // IMPROVED LOGGING: Check and log all possible build order sources
+            console.log(`🛠 [browserReplayParser] Player ${index + 1} build order sources:`);
+            console.log(`  - Direct buildOrder: ${playerObj.buildOrder ? 'Found' : 'Not found'}`);
+            console.log(`  - Commands: ${playerObj.commands ? `Found (${playerObj.commands.length})` : 'Not found'}`);
+            console.log(`  - Actions: ${playerObj.actions ? `Found (${playerObj.actions.length})` : 'Not found'}`);
+            console.log(`  - Units: ${playerObj.units ? `Found (${Object.keys(playerObj.units).length})` : 'Not found'}`);
+            console.log(`  - Buildings: ${playerObj.buildings ? `Found (${Object.keys(playerObj.buildings).length})` : 'Not found'}`);
+            
             // Log commands if available
             if (playerObj.commands && Array.isArray(playerObj.commands)) {
               console.log(`🛠 [browserReplayParser] Player ${index + 1} commands sample (${parseId}):`, 
