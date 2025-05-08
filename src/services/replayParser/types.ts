@@ -28,7 +28,7 @@ export interface ReplayAnalysis {
  * Raw parsed replay data structure
  */
 export interface ParsedReplayData {
-  // Primary data structure
+  // Primary data structure (new consolidated format)
   primaryPlayer: PlayerData;
   secondaryPlayer: PlayerData;
   
