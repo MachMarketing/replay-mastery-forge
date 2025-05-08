@@ -80,6 +80,20 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       );
     }
     
+    console.log("AnalysisDisplay - Rendering with data:", {
+      selectedPlayerIndex,
+      replayData: {
+        players: `${replayData.playerName} (${replayData.playerRace}) vs ${replayData.opponentName} (${replayData.opponentRace})`,
+        buildOrderLength: replayData.buildOrder?.length || 0
+      },
+      rawParsedData: {
+        primaryPlayer: rawParsedData.primaryPlayer ? 
+          `${rawParsedData.primaryPlayer.name} with ${rawParsedData.primaryPlayer.buildOrder?.length || 0} build order items` : 'missing',
+        secondaryPlayer: rawParsedData.secondaryPlayer ?
+          `${rawParsedData.secondaryPlayer.name} with ${rawParsedData.secondaryPlayer.buildOrder?.length || 0} build order items` : 'missing'
+      }
+    });
+    
     // Extract data from replayData
     const {
       playerName: actualPlayerName,
@@ -90,10 +104,23 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       eapm: actualPlayerEapm,
       opponentApm: actualOpponentApm,
       opponentEapm: actualOpponentEapm,
-      buildOrder: primaryPlayerBuildOrder,
     } = replayData;
     
-    const { buildOrder: secondaryPlayerBuildOrder } = rawParsedData;
+    // Get build orders from the correct sources:
+    // For primary player: first try primaryPlayer.buildOrder, then fall back to the legacy buildOrder
+    const primaryPlayerBuildOrder = (rawParsedData.primaryPlayer?.buildOrder && rawParsedData.primaryPlayer.buildOrder.length > 0)
+      ? rawParsedData.primaryPlayer.buildOrder
+      : (replayData.buildOrder && Array.isArray(replayData.buildOrder)) ? replayData.buildOrder : [];
+      
+    // For secondary player: use secondaryPlayer.buildOrder or empty array
+    const secondaryPlayerBuildOrder = (rawParsedData.secondaryPlayer?.buildOrder && rawParsedData.secondaryPlayer.buildOrder.length > 0)
+      ? rawParsedData.secondaryPlayer.buildOrder
+      : [];
+    
+    console.log("AnalysisDisplay - Build orders:", {
+      primaryPlayerBuildOrder: primaryPlayerBuildOrder.length,
+      secondaryPlayerBuildOrder: secondaryPlayerBuildOrder.length
+    });
 
     const displayData = {
       primaryPlayer: {
@@ -110,7 +137,7 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
               actualPlayerEapm : 
               actualOpponentEapm,
         
-        // WICHTIG: Use the correct build order based on actual parsed data
+        // Use the correct build order based on selected player
         buildOrder: selectedPlayerIndex === 0 ? 
                    primaryPlayerBuildOrder : 
                    secondaryPlayerBuildOrder,
@@ -133,7 +160,7 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
               actualOpponentEapm : 
               actualPlayerEapm,
         
-        // WICHTIG: Use the correct build order based on actual parsed data
+        // Use the correct build order based on selected player
         buildOrder: selectedPlayerIndex === 0 ? 
                    secondaryPlayerBuildOrder : 
                    primaryPlayerBuildOrder,

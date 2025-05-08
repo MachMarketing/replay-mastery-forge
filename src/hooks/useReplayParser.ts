@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ParsedReplayData, AnalyzedReplayResult } from '@/services/replayParserService';
 import { useToast } from '@/hooks/use-toast';
@@ -134,6 +135,21 @@ export function useReplayParser(): ReplayParserResult {
         secondaryBuildOrderItems: parsedData.secondaryPlayer?.buildOrder?.length || 0
       });
       
+      // Make sure both build orders are arrays
+      if (!Array.isArray(parsedData.primaryPlayer?.buildOrder)) {
+        console.warn('[useReplayParser] Primary player buildOrder is not an array, fixing');
+        if (parsedData.primaryPlayer) {
+          parsedData.primaryPlayer.buildOrder = [];
+        }
+      }
+      
+      if (!Array.isArray(parsedData.secondaryPlayer?.buildOrder)) {
+        console.warn('[useReplayParser] Secondary player buildOrder is not an array, fixing');
+        if (parsedData.secondaryPlayer) {
+          parsedData.secondaryPlayer.buildOrder = [];
+        }
+      }
+      
       // Ensure the result has all required fields for AnalyzedReplayResult
       const result: AnalyzedReplayResult = {
         ...parsedData,
@@ -145,6 +161,7 @@ export function useReplayParser(): ReplayParserResult {
         eapm: parsedData.primaryPlayer?.eapm || 0,
         opponentApm: parsedData.secondaryPlayer?.apm || 0,
         opponentEapm: parsedData.secondaryPlayer?.eapm || 0,
+        buildOrder: parsedData.primaryPlayer?.buildOrder || [],
         // Add trainingPlan property to satisfy the ReplayAnalysis interface
         trainingPlan: parsedData.trainingPlan || [
           { day: 1, focus: "Macro Management", drill: "Constant worker production" },
@@ -155,6 +172,12 @@ export function useReplayParser(): ReplayParserResult {
         weaknesses: parsedData.weaknesses || [],
         recommendations: parsedData.recommendations || []
       };
+      
+      console.log('[useReplayParser] Final processed data with build orders:', {
+        primaryBuildOrderItems: result.buildOrder?.length || 0,
+        playerName: result.playerName,
+        opponentName: result.opponentName
+      });
       
       // Final progress update
       setProgress(100);

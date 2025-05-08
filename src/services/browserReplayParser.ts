@@ -53,16 +53,42 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
     // Ensure the buildOrder is normalized for the primaryPlayer
     if (transformedData.primaryPlayer && transformedData.primaryPlayer.buildOrder) {
       transformedData.primaryPlayer.buildOrder = normalizeBuildOrder(transformedData.primaryPlayer.buildOrder);
+      console.log('[browserReplayParser] Normalized primary player build order:', 
+        transformedData.primaryPlayer.buildOrder.length, 'items');
+    } else {
+      console.log('[browserReplayParser] No build order found for primary player');
+      transformedData.primaryPlayer = transformedData.primaryPlayer || { 
+        name: 'Unknown', 
+        race: 'Unknown', 
+        apm: 0, 
+        eapm: 0, 
+        buildOrder: [] 
+      };
     }
     
     // Ensure the buildOrder is normalized for the secondaryPlayer
     if (transformedData.secondaryPlayer && transformedData.secondaryPlayer.buildOrder) {
       transformedData.secondaryPlayer.buildOrder = normalizeBuildOrder(transformedData.secondaryPlayer.buildOrder);
+      console.log('[browserReplayParser] Normalized secondary player build order:', 
+        transformedData.secondaryPlayer.buildOrder.length, 'items');
+    } else {
+      console.log('[browserReplayParser] No build order found for secondary player');
+      transformedData.secondaryPlayer = transformedData.secondaryPlayer || { 
+        name: 'Unknown', 
+        race: 'Unknown', 
+        apm: 0, 
+        eapm: 0,
+        buildOrder: [] 
+      };
     }
     
     // Also normalize legacy buildOrder field if it exists
     if (transformedData.buildOrder) {
       transformedData.buildOrder = normalizeBuildOrder(transformedData.buildOrder);
+      console.log('[browserReplayParser] Normalized legacy build order:', 
+        transformedData.buildOrder.length, 'items');
+    } else {
+      console.log('[browserReplayParser] No legacy build order found');
     }
     
     // Make sure proper fields exist
