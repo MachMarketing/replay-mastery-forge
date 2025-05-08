@@ -50,3 +50,25 @@ export function debugReplayData(data: Partial<ParsedReplayData>): void {
     console.log('- First few build order items:', data.primaryPlayer.buildOrder.slice(0, 3));
   }
 }
+
+// Safe stringify helper for handling circular references in objects
+export function safeStringify(obj: any, indent = 2): string {
+  if (obj === null) return 'null';
+  if (obj === undefined) return 'undefined';
+  if (typeof obj !== 'object') return String(obj);
+  
+  try {
+    // Handle circular references
+    const cache: any[] = [];
+    const str = JSON.stringify(obj, (key, value) => {
+      if (typeof value === 'object' && value !== null) {
+        if (cache.includes(value)) return '[Circular]';
+        cache.push(value);
+      }
+      return value;
+    }, indent);
+    return str;
+  } catch (err) {
+    return `[Object that couldn't be stringified: ${err}]`;
+  }
+}
