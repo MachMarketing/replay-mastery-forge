@@ -33,7 +33,11 @@ export function mapRawToParsed(rawData: any): ParsedReplayData {
       race: primaryPlayerRaw.race || 'Terran',
       apm: primaryPlayerRaw.apm || 0,
       eapm: primaryPlayerRaw.eapm || 0,
-      buildOrder: processBuildOrder(primaryPlayerRaw.buildOrder || [])
+      buildOrder: processBuildOrder(primaryPlayerRaw.buildOrder || []),
+      // Add the required properties
+      strengths: [],
+      weaknesses: [],
+      recommendations: []
     };
     
     // Get secondary player (player 1 or empty default)
@@ -43,7 +47,11 @@ export function mapRawToParsed(rawData: any): ParsedReplayData {
       race: secondaryPlayerRaw.race || 'Terran',
       apm: secondaryPlayerRaw.apm || 0,
       eapm: secondaryPlayerRaw.eapm || 0,
-      buildOrder: processBuildOrder(secondaryPlayerRaw.buildOrder || [])
+      buildOrder: processBuildOrder(secondaryPlayerRaw.buildOrder || []),
+      // Add the required properties
+      strengths: [],
+      weaknesses: [],
+      recommendations: []
     };
     
     // Log what we found
@@ -197,14 +205,22 @@ function createDefaultReplayData(playerName: string, opponentName: string): Pars
       race: 'Terran',
       apm: 150,
       eapm: 120,
-      buildOrder: []
+      buildOrder: [],
+      // Add required properties
+      strengths: ['Good macro mechanics', 'Consistent worker production'],
+      weaknesses: ['Could improve scouting', 'Resource management could be optimized'],
+      recommendations: ['Focus on early game scouting', 'Practice build order efficiency']
     },
     secondaryPlayer: {
       name: opponentName,
       race: 'Terran',
       apm: 150,
       eapm: 120,
-      buildOrder: []
+      buildOrder: [],
+      // Add required properties
+      strengths: ['Good macro mechanics', 'Consistent worker production'],
+      weaknesses: ['Could improve scouting', 'Resource management could be optimized'],
+      recommendations: ['Focus on early game scouting', 'Practice build order efficiency']
     },
     
     map: 'Unknown',
