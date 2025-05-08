@@ -3,7 +3,7 @@
  * This module provides a unified browser-based replay parser system 
  * that uses screparsed library for reliable replay parsing without server dependencies.
  */
-import { ParsedReplayResult } from './replayParserService';
+import { ParsedReplayData, PlayerData } from './replayParser/types';
 import { mapRawToParsed } from './replayMapper';
 import { ReplayParser } from 'screparsed';
 
@@ -23,7 +23,7 @@ export async function initBrowserParser(): Promise<void> {
  * Parse a replay file using the browser-based parser
  * This is the main entry point for replay parsing in the browser
  */
-export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResult> {
+export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData> {
   console.log(`[browserReplayParser] Starting to parse file: ${file.name} (${file.size} bytes)`);
   
   try {
@@ -112,8 +112,14 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayResu
             }
           });
           
-          // Update players with the modified array
-          result.players = updatedPlayers;
+          // Create a copy of the result with updated players array
+          const updatedResult = { 
+            ...result,
+            players: updatedPlayers 
+          };
+          
+          // Use the updated result from now on
+          result = updatedResult;
         }
         
         // Clear the timeout since parsing completed

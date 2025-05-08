@@ -1,32 +1,21 @@
 
-import { ParsedReplayData } from './replayParser/types';
+import { ParsedReplayData, PlayerData } from './replayParser/types';
 import { parseReplayInBrowser } from './browserReplayParser';
 import { markBrowserAsHavingWasmIssues } from '@/utils/browserDetection';
 
-export interface PlayerData {
-  name: string;
-  race: string;
-  apm: number;
-  eapm: number;
-}
+// Re-export PlayerData interface
+export { PlayerData };
 
-export interface ParsedReplayResult {
-  // Primary player is the "local player" - the one being analyzed
-  primaryPlayer: PlayerData;
-  // Secondary player is the "opponent" - the one being compared against
-  secondaryPlayer: PlayerData;
-  map: string;
-  matchup: string;
-  duration: string;
-  durationMS: number;
-  date: string;
-  result: 'win' | 'loss';
-  buildOrder: Array<{ time: string; supply: number; action: string }>;
-  resourcesGraph?: Array<{ time: string; minerals: number; gas: number }>;
-  strengths: string[];
-  weaknesses: string[];
-  recommendations: string[];
-  trainingPlan?: Array<{ day: number; focus: string; drill: string }>;
+export interface ParsedReplayResult extends ParsedReplayData {
+  // Ensure all legacy fields have proper typing
+  playerName: string;  // Aliased from primaryPlayer.name
+  opponentName: string; // Aliased from secondaryPlayer.name
+  playerRace: string;  // Aliased from primaryPlayer.race
+  opponentRace: string; // Aliased from secondaryPlayer.race
+  apm: number;         // Aliased from primaryPlayer.apm
+  eapm: number;        // Aliased from primaryPlayer.eapm
+  opponentApm: number; // Aliased from secondaryPlayer.apm
+  opponentEapm: number; // Aliased from secondaryPlayer.eapm
 }
 
 export interface AnalyzedReplayResult extends ParsedReplayResult {
@@ -61,19 +50,34 @@ export async function initParser(): Promise<void> {
 function createEmergencyFallbackData(file: File): AnalyzedReplayResult {
   const filename = file.name.replace('.rep', '').replace(/_/g, ' ');
   
+  // Create primary player data
+  const primaryPlayer: PlayerData = {
+    name: filename || 'Player',
+    race: 'Terran',
+    apm: 120,
+    eapm: 90
+  };
+  
+  // Create secondary player data
+  const secondaryPlayer: PlayerData = {
+    name: 'Opponent',
+    race: 'Protoss',
+    apm: 110,
+    eapm: 85
+  };
+  
   return {
-    primaryPlayer: {
-      name: filename || 'Player',
-      race: 'Terran',
-      apm: 120,
-      eapm: 90
-    },
-    secondaryPlayer: {
-      name: 'Opponent',
-      race: 'Protoss',
-      apm: 110,
-      eapm: 85
-    },
+    primaryPlayer,
+    secondaryPlayer,
+    // Legacy fields for backwards compatibility
+    playerName: primaryPlayer.name,
+    opponentName: secondaryPlayer.name,
+    playerRace: primaryPlayer.race,
+    opponentRace: secondaryPlayer.race,
+    apm: primaryPlayer.apm,
+    eapm: primaryPlayer.eapm,
+    opponentApm: secondaryPlayer.apm,
+    opponentEapm: secondaryPlayer.eapm,
     map: 'Error: Corrupted Replay File',
     matchup: 'TvP',
     duration: '10:00',
@@ -145,9 +149,24 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     // Parse using our unified browser parsing approach
     const parsePromise = parseReplayInBrowser(file);
     
-    let result: AnalyzedReplayResult;
+    let result: ParsedReplayData;
     try {
       result = await Promise.race([parsePromise, timeoutPromise]);
+      
+      // Ensure backward compatibility by creating legacy field mappings
+      const enhancedResult: AnalyzedReplayResult = {
+        ...result,
+        playerName: result.primaryPlayer?.name || 'Player',
+        opponentName: result.secondaryPlayer?.name || 'Opponent',
+        playerRace: result.primaryPlayer?.race || 'Terran',
+        opponentRace: result.secondaryPlayer?.race || 'Terran',
+        apm: result.primaryPlayer?.apm || 0,
+        eapm: result.primaryPlayer?.eapm || 0,
+        opponentApm: result.secondaryPlayer?.apm || 0,
+        opponentEapm: result.secondaryPlayer?.eapm || 0,
+      };
+      
+      return enhancedResult;
     } catch (error) {
       console.error('[replayParserService] Parsing error:', error);
       
@@ -171,8 +190,6 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
       console.warn('[replayParserService] Invalid result from parser, using fallback');
       return createEmergencyFallbackData(file);
     }
-    
-    return result;
   } catch (error) {
     console.error('[replayParserService] Error:', error);
     const errorMessage = error instanceof Error ? error.message : String(error);

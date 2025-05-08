@@ -2,14 +2,14 @@
 /**
  * Maps raw parsed replay data to our application's format
  */
-import { ParsedReplayResult, PlayerData } from './replayParserService';
+import { ParsedReplayData, PlayerData } from './replayParser/types';
 
 /**
  * Maps the raw parsed replay data to our application's unified format
  * @param parsedData The raw parsed data from the parser
  * @returns The mapped data in our application's format
  */
-export function mapRawToParsed(parsedData: any): ParsedReplayResult {
+export function mapRawToParsed(parsedData: any): ParsedReplayData {
   console.log('[replayMapper] Mapping parsed data to application format', parsedData);
   
   try {
@@ -117,9 +117,18 @@ export function mapRawToParsed(parsedData: any): ParsedReplayResult {
     const analysis = generateAnalysis(primaryPlayer.race, secondaryPlayer.race, buildOrder, mapName);
     
     // Map all data to our application format
-    const result: ParsedReplayResult = {
+    const result: ParsedReplayData = {
       primaryPlayer,
       secondaryPlayer,
+      // Add legacy fields for backwards compatibility
+      playerName: primaryPlayer.name,
+      opponentName: secondaryPlayer.name, 
+      playerRace: primaryPlayer.race,
+      opponentRace: secondaryPlayer.race,
+      apm: primaryPlayer.apm,
+      eapm: primaryPlayer.eapm,
+      opponentApm: secondaryPlayer.apm,
+      opponentEapm: secondaryPlayer.eapm,
       map: mapName,
       matchup,
       duration: durationStr,
@@ -144,20 +153,32 @@ export function mapRawToParsed(parsedData: any): ParsedReplayResult {
   } catch (error) {
     console.error('[replayMapper] Error mapping replay data:', error);
     
-    // Return a minimal valid result on error
+    // Return a minimal valid result on error with both new and legacy fields
+    const primaryPlayer: PlayerData = {
+      name: 'Error',
+      race: 'Terran',
+      apm: 0,
+      eapm: 0
+    };
+    
+    const secondaryPlayer: PlayerData = {
+      name: 'Error',
+      race: 'Terran',
+      apm: 0,
+      eapm: 0
+    };
+    
     return {
-      primaryPlayer: {
-        name: 'Error',
-        race: 'Terran',
-        apm: 0,
-        eapm: 0
-      },
-      secondaryPlayer: {
-        name: 'Error',
-        race: 'Terran',
-        apm: 0,
-        eapm: 0
-      },
+      primaryPlayer,
+      secondaryPlayer,
+      playerName: primaryPlayer.name,
+      opponentName: secondaryPlayer.name,
+      playerRace: primaryPlayer.race,
+      opponentRace: secondaryPlayer.race,
+      apm: primaryPlayer.apm,
+      eapm: primaryPlayer.eapm,
+      opponentApm: secondaryPlayer.apm,
+      opponentEapm: secondaryPlayer.eapm,
       map: 'Parsing Error',
       matchup: 'TvT',
       duration: '0:00',

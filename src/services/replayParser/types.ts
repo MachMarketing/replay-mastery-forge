@@ -17,6 +17,17 @@ export interface ParsedReplayData {
   primaryPlayer: PlayerData;
   // Secondary player (the opponent)
   secondaryPlayer: PlayerData;
+  
+  // Backward compatibility fields for existing code
+  playerName?: string;
+  opponentName?: string;
+  playerRace?: string;
+  opponentRace?: string;
+  apm?: number;
+  eapm?: number;
+  opponentApm?: number;
+  opponentEapm?: number;
+  
   map: string;
   matchup: string;
   duration: string;
