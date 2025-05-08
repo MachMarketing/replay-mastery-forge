@@ -3,7 +3,9 @@ import { parseReplayWithBrowserSafeParser, initBrowserSafeParser } from './repla
 import { transformJSSUHData } from './replayParser/transformer';
 import { normalizeBuildOrder, debugReplayData } from './replayParser/index';
 import { ParsedReplayData } from './replayParser/types';
-import { readFileAsArrayBuffer } from './fileReader';
+
+// Import readFileAsArrayBuffer
+import { readFileAsArrayBuffer } from '../services/fileReader';
 
 // Track if the parser has been initialized
 let parserInitialized = false;
@@ -50,70 +52,14 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
     // Transform the data into our application format
     const transformedData = transformJSSUHData(jssuhData);
     
-    // Ensure the buildOrder is normalized for the primaryPlayer
-    if (transformedData.primaryPlayer && transformedData.primaryPlayer.buildOrder) {
-      transformedData.primaryPlayer.buildOrder = normalizeBuildOrder(transformedData.primaryPlayer.buildOrder);
-      console.log('[browserReplayParser] Normalized primary player build order:', 
-        transformedData.primaryPlayer.buildOrder.length, 'items');
-    } else {
-      console.log('[browserReplayParser] No build order found for primary player');
-      transformedData.primaryPlayer = transformedData.primaryPlayer || { 
-        name: 'Unknown', 
-        race: 'Unknown', 
-        apm: 0, 
-        eapm: 0, 
-        buildOrder: [] 
-      };
-    }
-    
-    // Ensure the buildOrder is normalized for the secondaryPlayer
-    if (transformedData.secondaryPlayer && transformedData.secondaryPlayer.buildOrder) {
-      transformedData.secondaryPlayer.buildOrder = normalizeBuildOrder(transformedData.secondaryPlayer.buildOrder);
-      console.log('[browserReplayParser] Normalized secondary player build order:', 
-        transformedData.secondaryPlayer.buildOrder.length, 'items');
-    } else {
-      console.log('[browserReplayParser] No build order found for secondary player');
-      transformedData.secondaryPlayer = transformedData.secondaryPlayer || { 
-        name: 'Unknown', 
-        race: 'Unknown', 
-        apm: 0, 
-        eapm: 0,
-        buildOrder: [] 
-      };
-    }
-    
-    // Also normalize legacy buildOrder field if it exists
-    if (transformedData.buildOrder) {
-      transformedData.buildOrder = normalizeBuildOrder(transformedData.buildOrder);
-      console.log('[browserReplayParser] Normalized legacy build order:', 
-        transformedData.buildOrder.length, 'items');
-    } else {
-      console.log('[browserReplayParser] No legacy build order found');
-    }
-    
-    // Make sure proper fields exist
-    const parsedData = {
-      ...transformedData,
-      primaryPlayer: {
-        name: transformedData.playerName || transformedData.primaryPlayer?.name || 'Player',
-        race: transformedData.playerRace || transformedData.primaryPlayer?.race || 'Unknown',
-        apm: transformedData.apm || transformedData.primaryPlayer?.apm || 0,
-        eapm: transformedData.eapm || transformedData.primaryPlayer?.eapm || 0,
-        buildOrder: transformedData.primaryPlayer?.buildOrder || transformedData.buildOrder || []
-      },
-      secondaryPlayer: {
-        name: transformedData.opponentName || transformedData.secondaryPlayer?.name || 'Opponent',
-        race: transformedData.opponentRace || transformedData.secondaryPlayer?.race || 'Unknown',
-        apm: transformedData.opponentApm || transformedData.secondaryPlayer?.apm || 0, 
-        eapm: transformedData.opponentEapm || transformedData.secondaryPlayer?.eapm || 0,
-        buildOrder: transformedData.secondaryPlayer?.buildOrder || []
-      }
-    } as ParsedReplayData;
+    // Normalize build orders for both players
+    transformedData.primaryPlayer.buildOrder = normalizeBuildOrder(transformedData.primaryPlayer.buildOrder);
+    transformedData.secondaryPlayer.buildOrder = normalizeBuildOrder(transformedData.secondaryPlayer.buildOrder);
     
     // Debug the final parsed data
-    debugReplayData(parsedData);
+    debugReplayData(transformedData);
     
-    return parsedData;
+    return transformedData;
   } catch (error) {
     console.error('[browserReplayParser] Error parsing replay:', error);
     throw error;

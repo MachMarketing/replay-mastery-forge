@@ -6,11 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useReplays, Replay } from '@/hooks/useReplays';
 import { useToast } from '@/hooks/use-toast';
 import { useReplayParser } from '@/hooks/useReplayParser';
-import { AnalyzedReplayResult } from '@/services/replayParserService';
+import { ParsedReplayResult } from '@/services/replayParser/types';
 import AnalysisDisplay from '@/components/AnalysisDisplay';
-import { standardizeRaceName } from '@/lib/replayUtils';
 
-interface ReplayData extends AnalyzedReplayResult {
+interface ReplayData extends ParsedReplayResult {
   id: string;
 }
 
@@ -20,7 +19,7 @@ const UploadPage = () => {
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const [isPremium] = useState(false);
   const [replayData, setReplayData] = useState<ReplayData | null>(null);
-  const [rawParsedData, setRawParsedData] = useState<AnalyzedReplayResult | null>(null);
+  const [rawParsedData, setRawParsedData] = useState<ParsedReplayResult | null>(null);
   const [selectedPlayerIndex, setSelectedPlayerIndex] = useState<number>(0);
   const { replays, fetchReplays } = useReplays();
   const { toast } = useToast();
@@ -59,8 +58,8 @@ const UploadPage = () => {
     });
   }, [isAnalyzing, analysisComplete, rawParsedData, replayData, selectedPlayerIndex]);
   
-  // Handler for when upload is complete - now with improved data handling
-  const handleUploadComplete = async (uploadedFile: File, parsedReplayData: AnalyzedReplayResult) => {
+  // Handler for when upload is complete
+  const handleUploadComplete = async (uploadedFile: File, parsedReplayData: ParsedReplayResult) => {
     console.log("🚀 Upload complete with data:", parsedReplayData);
     
     if (!parsedReplayData) {
@@ -77,33 +76,19 @@ const UploadPage = () => {
     setIsAnalyzing(true);
     
     try {
-      // Make sure race information is properly standardized before setting state
-      const standardizedData = {
-        ...parsedReplayData,
-        playerRace: standardizeRaceName(parsedReplayData.playerRace || 'Terran'),
-        opponentRace: standardizeRaceName(parsedReplayData.opponentRace || 'Terran'),
-        playerName: parsedReplayData.playerName || 'Spieler',
-        opponentName: parsedReplayData.opponentName || 'Gegner',
-        buildOrder: Array.isArray(parsedReplayData.buildOrder) ? parsedReplayData.buildOrder : [],
-        matchup: parsedReplayData.matchup || `${parsedReplayData.playerRace.charAt(0)}v${parsedReplayData.opponentRace.charAt(0)}`,
-      };
-      
       // Set the raw parsed data first
-      setRawParsedData(standardizedData);
+      setRawParsedData(parsedReplayData);
       
-      // Log race information after standardization
-      console.log("🚀 Upload - Race information after standardization:", {
-        playerRace: standardizedData.playerRace,
-        opponentRace: standardizedData.opponentRace,
-        playerName: standardizedData.playerName,
-        opponentName: standardizedData.opponentName,
-        buildOrderItems: standardizedData.buildOrder?.length || 0
+      // Log player information
+      console.log("🚀 Upload - Player information:", {
+        primaryPlayer: parsedReplayData.primaryPlayer,
+        secondaryPlayer: parsedReplayData.secondaryPlayer
       });
       
-      // Pass the data directly to handlePlayerSelection with standardized races after small delay
+      // Pass the data directly to handlePlayerSelection after small delay
       setTimeout(() => {
         // This sets replayData and analysisComplete = true
-        handlePlayerSelection(0, standardizedData);
+        handlePlayerSelection(0, parsedReplayData);
       }, 1000); // Short delay for smoother UX
     } catch (error) {
       console.error('⛔ Analysis error:', error);
@@ -117,8 +102,8 @@ const UploadPage = () => {
     }
   };
 
-  // Handle player perspective selection with enhanced race handling and error prevention
-  const handlePlayerSelection = (playerIndex: number, data: AnalyzedReplayResult = rawParsedData!) => {
+  // Handle player perspective selection
+  const handlePlayerSelection = (playerIndex: number, data: ParsedReplayResult = rawParsedData!) => {
     console.log("🎮 Processing player selection:", playerIndex);
     
     if (!data) {
@@ -127,44 +112,33 @@ const UploadPage = () => {
       return;
     }
     
-    // Important: Update the selected player index
+    // Update the selected player index
     setSelectedPlayerIndex(playerIndex);
     
-    // Log race information before processing
-    console.log("🎮 Race information before processing:", {
-      playerRace: data.playerRace,
-      opponentRace: data.opponentRace
-    });
-    
     try {
-      // For both player perspectives, we create a valid ReplayData object
-      // The actual perspective switching happens in the AnalysisDisplay component
+      // Create a ReplayData object with an ID
       const extendedData: ReplayData = {
         ...JSON.parse(JSON.stringify(data)), // Deep copy to avoid reference issues
         id: crypto.randomUUID(),
       };
       
-      // Set the replay data - AnalysisDisplay will handle the perspective
+      // Set the replay data
       setReplayData(extendedData);
       
-      // Ensure analysis complete flag is set
+      // Set analysis complete flag
       setAnalysisComplete(true);
       
-      // Finally set analyzing to false
+      // Set analyzing to false
       setIsAnalyzing(false);
       
       // Add a success toast to give user feedback on selection
-      if (playerIndex === 0) {
-        toast({
-          title: `Viewing ${data.playerName}'s Perspective`,
-          description: `Analyzing from ${data.playerRace} player's view`,
-        });
-      } else {
-        toast({
-          title: `Viewing ${data.opponentName}'s Perspective`,
-          description: `Analyzing from ${data.opponentRace} player's view`,
-        });
-      }
+      const viewingPlayer = playerIndex === 0 ? data.primaryPlayer.name : data.secondaryPlayer.name;
+      const viewingRace = playerIndex === 0 ? data.primaryPlayer.race : data.secondaryPlayer.race;
+      
+      toast({
+        title: `Viewing ${viewingPlayer}'s Perspective`,
+        description: `Analyzing from ${viewingRace} player's view`,
+      });
       
     } catch (error) {
       console.error('⛔ Error creating player perspective:', error);
@@ -175,15 +149,8 @@ const UploadPage = () => {
       });
     }
   };
-  
-  // Helper for result normalization
-  const normalizeResult = (result: string): 'win' | 'loss' => {
-    if (!result) return 'win';
-    const normalizedResult = result.toLowerCase();
-    return normalizedResult.includes('win') ? 'win' : 'loss';
-  };
 
-  // Get recent uploads from replays list with proper error handling
+  // Get recent uploads from replays list
   const recentReplays = isLoading ? [] : replays.slice(0, 3);
 
   return (

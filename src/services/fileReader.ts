@@ -1,53 +1,7 @@
 
 /**
- * File reading utilities for binary and text processing
+ * Utilities for reading files in the browser
  */
-
-/**
- * Read a file as Uint8Array for binary processing
- */
-export async function readFileAsUint8Array(file: File): Promise<Uint8Array> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    
-    reader.onload = () => {
-      if (reader.result instanceof ArrayBuffer) {
-        resolve(new Uint8Array(reader.result));
-      } else {
-        reject(new Error('Failed to read file as ArrayBuffer'));
-      }
-    };
-    
-    reader.onerror = () => {
-      reject(reader.error || new Error('Error reading file'));
-    };
-    
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-/**
- * Read a file as ArrayBuffer
- */
-export async function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    
-    reader.onload = () => {
-      if (reader.result instanceof ArrayBuffer) {
-        resolve(reader.result);
-      } else {
-        reject(new Error('Failed to read file as ArrayBuffer'));
-      }
-    };
-    
-    reader.onerror = () => {
-      reject(reader.error || new Error('Error reading file'));
-    };
-    
-    reader.readAsArrayBuffer(file);
-  });
-}
 
 /**
  * Read a file as text
@@ -55,42 +9,36 @@ export async function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
 export async function readFileAsText(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        resolve(reader.result);
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        resolve(event.target.result as string);
       } else {
-        reject(new Error('Failed to read file as text'));
+        reject(new Error('Failed to read file'));
       }
     };
-    
-    reader.onerror = () => {
-      reject(reader.error || new Error('Error reading file'));
+    reader.onerror = (error) => {
+      reject(error);
     };
-    
     reader.readAsText(file);
   });
 }
 
 /**
- * Read file as data URL (for images, etc)
+ * Read a file as an ArrayBuffer
  */
-export async function readFileAsDataURL(file: File): Promise<string> {
+export async function readFileAsArrayBuffer(file: File): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        resolve(reader.result);
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        resolve(event.target.result as ArrayBuffer);
       } else {
-        reject(new Error('Failed to read file as data URL'));
+        reject(new Error('Failed to read file as ArrayBuffer'));
       }
     };
-    
-    reader.onerror = () => {
-      reject(reader.error || new Error('Error reading file'));
+    reader.onerror = (error) => {
+      reject(error);
     };
-    
-    reader.readAsDataURL(file);
+    reader.readAsArrayBuffer(file);
   });
 }

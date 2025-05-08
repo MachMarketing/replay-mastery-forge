@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -20,16 +19,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { AnalyzedReplayResult } from '@/services/replayParserService';
+import { ParsedReplayResult } from '@/services/replayParser/types';
 
 interface AnalysisDisplayProps {
   isAnalyzing: boolean;
   analysisComplete: boolean;
-  replayData: AnalyzedReplayResult | null;
-  rawParsedData: AnalyzedReplayResult | null;
+  replayData: ParsedReplayResult | null;
+  rawParsedData: ParsedReplayResult | null;
   selectedPlayerIndex: number;
   isPremium: boolean;
-  onPlayerSelect: (playerIndex: number, data: AnalyzedReplayResult) => void;
+  onPlayerSelect: (playerIndex: number, data: ParsedReplayResult) => void;
 }
 
 const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
@@ -80,99 +79,29 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       );
     }
     
+    // Log data for debugging
     console.log("AnalysisDisplay - Rendering with data:", {
       selectedPlayerIndex,
       replayData: {
-        players: `${replayData.playerName} (${replayData.playerRace}) vs ${replayData.opponentName} (${replayData.opponentRace})`,
-        buildOrderLength: replayData.buildOrder?.length || 0
-      },
-      rawParsedData: {
-        primaryPlayer: rawParsedData.primaryPlayer ? 
-          `${rawParsedData.primaryPlayer.name} with ${rawParsedData.primaryPlayer.buildOrder?.length || 0} build order items` : 'missing',
-        secondaryPlayer: rawParsedData.secondaryPlayer ?
-          `${rawParsedData.secondaryPlayer.name} with ${rawParsedData.secondaryPlayer.buildOrder?.length || 0} build order items` : 'missing'
+        primaryPlayer: replayData.primaryPlayer,
+        secondaryPlayer: replayData.secondaryPlayer,
+        primaryBuildOrderItems: replayData.primaryPlayer.buildOrder.length,
+        secondaryBuildOrderItems: replayData.secondaryPlayer.buildOrder.length
       }
     });
     
-    // Extract data from replayData
-    const {
-      playerName: actualPlayerName,
-      opponentName: actualOpponentName,
-      playerRace: actualPlayerRace,
-      opponentRace: actualOpponentRace,
-      apm: actualPlayerApm,
-      eapm: actualPlayerEapm,
-      opponentApm: actualOpponentApm,
-      opponentEapm: actualOpponentEapm,
-    } = replayData;
-    
-    // Get build orders from the correct sources:
-    // For primary player: first try primaryPlayer.buildOrder, then fall back to the legacy buildOrder
-    const primaryPlayerBuildOrder = (rawParsedData.primaryPlayer?.buildOrder && rawParsedData.primaryPlayer.buildOrder.length > 0)
-      ? rawParsedData.primaryPlayer.buildOrder
-      : (replayData.buildOrder && Array.isArray(replayData.buildOrder)) ? replayData.buildOrder : [];
+    // Determine which player data to show based on selected index
+    const primaryPlayerData = selectedPlayerIndex === 0 
+      ? replayData.primaryPlayer
+      : replayData.secondaryPlayer;
       
-    // For secondary player: use secondaryPlayer.buildOrder or empty array
-    const secondaryPlayerBuildOrder = (rawParsedData.secondaryPlayer?.buildOrder && rawParsedData.secondaryPlayer.buildOrder.length > 0)
-      ? rawParsedData.secondaryPlayer.buildOrder
-      : [];
-    
-    console.log("AnalysisDisplay - Build orders:", {
-      primaryPlayerBuildOrder: primaryPlayerBuildOrder.length,
-      secondaryPlayerBuildOrder: secondaryPlayerBuildOrder.length
-    });
-
-    const displayData = {
-      primaryPlayer: {
-        name: selectedPlayerIndex === 0 ? 
-              actualPlayerName : 
-              actualOpponentName,
-        race: selectedPlayerIndex === 0 ? 
-              actualPlayerRace : 
-              actualOpponentRace,
-        apm: selectedPlayerIndex === 0 ? 
-             actualPlayerApm : 
-             actualOpponentApm,
-        eapm: selectedPlayerIndex === 0 ? 
-              actualPlayerEapm : 
-              actualOpponentEapm,
-        
-        // Use the correct build order based on selected player
-        buildOrder: selectedPlayerIndex === 0 ? 
-                   primaryPlayerBuildOrder : 
-                   secondaryPlayerBuildOrder,
-        
-        strengths: ['Aggressiver Start', 'Gutes Makro'],
-        weaknesses: ['Schwache Verteidigung', 'Ineffizientes Scouting'],
-        recommendations: ['Fokus auf Early-Game-Defense', 'Verbessere das Scouting']
-      },
-      secondaryPlayer: {
-        name: selectedPlayerIndex === 0 ? 
-              actualOpponentName : 
-              actualPlayerName,
-        race: selectedPlayerIndex === 0 ? 
-              actualOpponentRace : 
-              actualPlayerRace,
-        apm: selectedPlayerIndex === 0 ? 
-             actualOpponentApm : 
-             actualPlayerApm,
-        eapm: selectedPlayerIndex === 0 ? 
-              actualOpponentEapm : 
-              actualPlayerEapm,
-        
-        // Use the correct build order based on selected player
-        buildOrder: selectedPlayerIndex === 0 ? 
-                   secondaryPlayerBuildOrder : 
-                   primaryPlayerBuildOrder,
-        
-        strengths: ['Starke Mid-Game-Angriffe', 'Gutes Multitasking'],
-        weaknesses: ['Spätes Spiel unsicher', 'Schlechtes Ressourcenmanagement'],
-        recommendations: ['Übe Late-Game-Übergänge', 'Optimiere Ressourcen']
-      }
-    };
-    
-    const selectedPlayerData = selectedPlayerIndex === 0 ? displayData.primaryPlayer : displayData.secondaryPlayer;
-    const otherPlayerData = selectedPlayerIndex === 0 ? displayData.secondaryPlayer : displayData.primaryPlayer;
+    const secondaryPlayerData = selectedPlayerIndex === 0
+      ? replayData.secondaryPlayer
+      : replayData.primaryPlayer;
+      
+    // Use the data directly from the selected player
+    const selectedPlayerData = primaryPlayerData;
+    const otherPlayerData = secondaryPlayerData;
 
     return (
       <Card className="shadow-md">
@@ -214,13 +143,13 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
                 variant={selectedPlayerIndex === 0 ? "secondary" : "outline"} 
                 onClick={() => onPlayerSelect(0, rawParsedData)}
               >
-                {actualPlayerName} ({actualPlayerRace})
+                {replayData.primaryPlayer.name} ({replayData.primaryPlayer.race})
               </Button>
               <Button 
                 variant={selectedPlayerIndex === 1 ? "secondary" : "outline"} 
                 onClick={() => onPlayerSelect(1, rawParsedData)}
               >
-                {actualOpponentName} ({actualOpponentRace})
+                {replayData.secondaryPlayer.name} ({replayData.secondaryPlayer.race})
               </Button>
             </div>
           </div>
@@ -239,7 +168,7 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {selectedPlayerData.buildOrder && selectedPlayerData.buildOrder.length > 0 ? (
+                    {selectedPlayerData.buildOrder.length > 0 ? (
                       selectedPlayerData.buildOrder.map((item, index) => (
                         <TableRow key={index}>
                           <TableCell className="font-medium">{item.time}</TableCell>

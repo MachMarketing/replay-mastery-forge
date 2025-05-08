@@ -1,12 +1,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ParsedReplayData, AnalyzedReplayResult } from '@/services/replayParserService';
+import { ParsedReplayData, ParsedReplayResult } from '@/services/replayParser/types';
 import { useToast } from '@/hooks/use-toast';
 import { parseReplayInBrowser } from '@/services/browserReplayParser';
 import { hasBrowserWasmIssues } from '@/utils/browserDetection';
 
 interface ReplayParserResult {
-  parseReplay: (file: File) => Promise<AnalyzedReplayResult | null>;
+  parseReplay: (file: File) => Promise<ParsedReplayResult | null>;
   isProcessing: boolean;
   error: string | null;
   clearError: () => void;
@@ -44,7 +44,7 @@ export function useReplayParser(): ReplayParserResult {
     setProgress(0);
   }, []);
 
-  const parseReplay = useCallback(async (file: File): Promise<AnalyzedReplayResult | null> => {
+  const parseReplay = useCallback(async (file: File): Promise<ParsedReplayResult | null> => {
     if (isProcessing) {
       console.log('[useReplayParser] Already processing a file, aborting');
       toast({
@@ -113,10 +113,6 @@ export function useReplayParser(): ReplayParserResult {
       
       const parsedData: ParsedReplayData = await parseReplayInBrowser(file);
       
-      if (!parsedData) {
-        throw new Error('Parser hat keine Daten zurückgegeben');
-      }
-      
       // Special case for known player "NumberOne" - ensure it's always Protoss
       if (parsedData.primaryPlayer && 
           parsedData.primaryPlayer.name && 
@@ -127,57 +123,21 @@ export function useReplayParser(): ReplayParserResult {
       
       // Log the parsed data player and race information
       console.log('[useReplayParser] Parser returned player data:', {
-        player1: parsedData.primaryPlayer ? 
-          `${parsedData.primaryPlayer.name} (${parsedData.primaryPlayer.race})` : 'Missing',
-        player2: parsedData.secondaryPlayer ? 
-          `${parsedData.secondaryPlayer.name} (${parsedData.secondaryPlayer.race})` : 'Missing',
-        primaryBuildOrderItems: parsedData.primaryPlayer?.buildOrder?.length || 0,
-        secondaryBuildOrderItems: parsedData.secondaryPlayer?.buildOrder?.length || 0
+        player1: `${parsedData.primaryPlayer.name} (${parsedData.primaryPlayer.race})`,
+        player2: `${parsedData.secondaryPlayer.name} (${parsedData.secondaryPlayer.race})`,
+        primaryBuildOrderItems: parsedData.primaryPlayer.buildOrder.length,
+        secondaryBuildOrderItems: parsedData.secondaryPlayer.buildOrder.length
       });
       
-      // Make sure both build orders are arrays
-      if (!Array.isArray(parsedData.primaryPlayer?.buildOrder)) {
-        console.warn('[useReplayParser] Primary player buildOrder is not an array, fixing');
-        if (parsedData.primaryPlayer) {
-          parsedData.primaryPlayer.buildOrder = [];
-        }
-      }
-      
-      if (!Array.isArray(parsedData.secondaryPlayer?.buildOrder)) {
-        console.warn('[useReplayParser] Secondary player buildOrder is not an array, fixing');
-        if (parsedData.secondaryPlayer) {
-          parsedData.secondaryPlayer.buildOrder = [];
-        }
-      }
-      
-      // Ensure the result has all required fields for AnalyzedReplayResult
-      const result: AnalyzedReplayResult = {
+      // Ensure the result has the required trainingPlan field
+      const result: ParsedReplayResult = {
         ...parsedData,
-        playerName: parsedData.primaryPlayer?.name || 'Player',
-        opponentName: parsedData.secondaryPlayer?.name || 'Opponent',
-        playerRace: parsedData.primaryPlayer?.race || 'Unknown',
-        opponentRace: parsedData.secondaryPlayer?.race || 'Unknown',
-        apm: parsedData.primaryPlayer?.apm || 0,
-        eapm: parsedData.primaryPlayer?.eapm || 0,
-        opponentApm: parsedData.secondaryPlayer?.apm || 0,
-        opponentEapm: parsedData.secondaryPlayer?.eapm || 0,
-        buildOrder: parsedData.primaryPlayer?.buildOrder || [],
-        // Add trainingPlan property to satisfy the ReplayAnalysis interface
         trainingPlan: parsedData.trainingPlan || [
           { day: 1, focus: "Macro Management", drill: "Constant worker production" },
           { day: 2, focus: "Micro Control", drill: "Unit positioning practice" },
           { day: 3, focus: "Build Order", drill: "Timing attack execution" }
-        ],
-        strengths: parsedData.strengths || [],
-        weaknesses: parsedData.weaknesses || [],
-        recommendations: parsedData.recommendations || []
+        ]
       };
-      
-      console.log('[useReplayParser] Final processed data with build orders:', {
-        primaryBuildOrderItems: result.buildOrder?.length || 0,
-        playerName: result.playerName,
-        opponentName: result.opponentName
-      });
       
       // Final progress update
       setProgress(100);

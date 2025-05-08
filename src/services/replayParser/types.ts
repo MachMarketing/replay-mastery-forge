@@ -11,7 +11,7 @@ export interface PlayerData {
   race: string;
   apm: number;
   eapm: number;
-  buildOrder?: Array<{ time: string; supply: number; action: string }>;
+  buildOrder: Array<{ time: string; supply: number; action: string }>;
 }
 
 /**
@@ -28,37 +28,24 @@ export interface ReplayAnalysis {
  * Raw parsed replay data structure
  */
 export interface ParsedReplayData {
-  // Primary data structure (new consolidated format)
+  // Primary data structure
   primaryPlayer: PlayerData;
   secondaryPlayer: PlayerData;
   
-  // Legacy fields (for backwards compatibility)
-  playerName?: string;
-  opponentName?: string;
-  playerRace?: string;
-  opponentRace?: string;
-  apm?: number;
-  eapm?: number;
-  opponentApm?: number;
-  opponentEapm?: number;
-  
   // Game info
-  map?: string;
-  matchup?: string;
-  duration?: string;
-  durationMS?: number;
-  date?: string;
-  result?: 'win' | 'loss' | 'unknown';
-  
-  // Build order data
-  buildOrder?: Array<{ time: string; supply: number; action: string }>;
+  map: string;
+  matchup: string;
+  duration: string;
+  durationMS: number;
+  date: string;
+  result: 'win' | 'loss' | 'unknown';
   
   // Analysis results
-  strengths?: string[];
-  weaknesses?: string[];
-  recommendations?: string[];
+  strengths: string[];
+  weaknesses: string[];
+  recommendations: string[];
   
-  // Optional training plan (since it's added later in the process)
+  // Optional training plan
   trainingPlan?: Array<{ day: number; focus: string; drill: string }>;
 }
 
@@ -66,15 +53,6 @@ export interface ParsedReplayData {
  * Mapped replay data with required fields guaranteed
  */
 export interface ParsedReplayResult extends ParsedReplayData {
-  // Ensure all legacy fields have proper typing and are required (not optional)
-  playerName: string;
-  opponentName: string;
-  playerRace: string;
-  opponentRace: string;
-  apm: number;
-  eapm: number;
-  opponentApm: number;
-  opponentEapm: number;
-  // Make trainingPlan required in this interface
+  // Required training plan
   trainingPlan: Array<{ day: number; focus: string; drill: string }>;
 }

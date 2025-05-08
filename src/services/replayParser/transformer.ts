@@ -6,7 +6,7 @@ import { ParsedReplayData } from './types';
 /**
  * Transform JSSUH parsed data to our application format
  */
-export function transformJSSUHData(jssuhData: any): Partial<ParsedReplayData> {
+export function transformJSSUHData(jssuhData: any): ParsedReplayData {
   console.log('[transformer] Transforming JSSUH data');
   
   try {
@@ -30,9 +30,9 @@ export function transformJSSUHData(jssuhData: any): Partial<ParsedReplayData> {
       `Duration: ${durationMS}ms`
     );
     
-    // Find main player and opponent (simple approach: player 0 vs player 1)
-    const player = players && players.length > 0 ? players[0] : { name: 'Player', race: 'U' };
-    const opponent = players && players.length > 1 ? players[1] : { name: 'Opponent', race: 'U' };
+    // Find main player and opponent (player 0 vs player 1)
+    const player = players && players.length > 0 ? players[0] : { name: 'Player', race: 'T' };
+    const opponent = players && players.length > 1 ? players[1] : { name: 'Opponent', race: 'P' };
     
     // Calculate APM if we have actions and duration
     let apm = 0;
@@ -50,26 +50,22 @@ export function transformJSSUHData(jssuhData: any): Partial<ParsedReplayData> {
     const seconds = Math.floor((durationMS % 60000) / 1000);
     const durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
     
-    // Extract build order from commands if available with improved logging
+    // Extract build order from commands if available
     const buildOrder = extractBuildOrderFromCommands(commands);
     console.log('[transformer] Primary player build order extracted:', buildOrder.length, 'entries');
     
-    // Also try to extract build order for opponent if possible
+    // Also extract build order for opponent
     const opponentBuildOrder = extractOpponentBuildOrderFromCommands(commands, player, opponent);
     console.log('[transformer] Secondary player build order extracted:', opponentBuildOrder.length, 'entries');
     
-    if (buildOrder.length > 0) {
-      console.log('[transformer] Build order preview:', buildOrder.slice(0, 5));
-    }
-    
     // Map race abbreviations to full names
     const mapRaceToFull = (race: string) => {
-      if (!race) return 'Unknown';
+      if (!race) return 'Terran';
       const r = race.toUpperCase();
       if (r === 'T' || r === 'TERRAN') return 'Terran';
       if (r === 'P' || r === 'PROTOSS') return 'Protoss';
       if (r === 'Z' || r === 'ZERG') return 'Zerg';
-      return race;
+      return 'Terran';
     };
     
     const playerRace = mapRaceToFull(player.race);
@@ -119,8 +115,8 @@ export function transformJSSUHData(jssuhData: any): Partial<ParsedReplayData> {
     }
     
     // Return transformed data with consolidated structure
-    const result: Partial<ParsedReplayData> = {
-      // Primary data structure (new consolidated format)
+    return {
+      // Primary data structure
       primaryPlayer: {
         name: player.name || 'Player',
         race: playerRace,
@@ -137,50 +133,22 @@ export function transformJSSUHData(jssuhData: any): Partial<ParsedReplayData> {
         buildOrder: opponentBuildOrder
       },
       
-      // Legacy fields (for backwards compatibility)
-      playerName: player.name || 'Player',
-      opponentName: opponent.name || 'Opponent',
-      playerRace: playerRace,
-      opponentRace: opponentRace,
+      // Game info
       map: mapName || 'Unknown Map',
       matchup: matchup,
       duration: durationStr,
       durationMS: durationMS,
       date: currentDate,
       result: gameResult,
-      apm: apm || 150, // Default if calculation failed
-      eapm: eapm || 120, // Default if calculation failed
-      opponentApm: opponentApm || 120,
-      opponentEapm: opponentEapm || 100,
-      buildOrder: buildOrder,
       
       // AI-generated analysis based on the actual game data
       strengths: gameAnalysis.strengths,
       weaknesses: gameAnalysis.weaknesses,
       recommendations: gameAnalysis.recommendations
     };
-    
-    console.log('[transformer] Transformation complete with AI analysis');
-    return result;
   } catch (error) {
     console.error('[transformer] Error transforming JSSUH data:', error);
-    return {
-      // Return minimal data on error
-      primaryPlayer: {
-        name: 'Player',
-        race: 'Unknown',
-        apm: 0,
-        eapm: 0,
-        buildOrder: []
-      },
-      secondaryPlayer: {
-        name: 'Opponent',
-        race: 'Unknown',
-        apm: 0,
-        eapm: 0,
-        buildOrder: []
-      }
-    }; 
+    throw error;
   }
 }
 
