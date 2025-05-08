@@ -59,6 +59,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
         apm: parsedData.players?.[0]?.apm || 0,
         eapm: parsedData.players?.[0]?.eapm || 0,
         buildOrder: parsedData.players?.[0]?.buildOrder || [],
+        // Add required properties for PlayerData
         strengths: [],
         weaknesses: [],
         recommendations: []
@@ -69,6 +70,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
         apm: parsedData.players?.[1]?.apm || 0,
         eapm: parsedData.players?.[1]?.eapm || 0,
         buildOrder: parsedData.players?.[1]?.buildOrder || [],
+        // Add required properties for PlayerData
         strengths: [],
         weaknesses: [],
         recommendations: []

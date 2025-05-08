@@ -3,9 +3,6 @@
  * Browser-safe wrapper for screparsed replay parser
  */
 
-// Import necessary types from screparsed
-import { Parser } from 'screparsed';
-
 // Track initialization state
 let isInitialized = false;
 let parserModule: any = null;
@@ -29,14 +26,17 @@ export async function initBrowserSafeParser(): Promise<void> {
     // Store the parser module for future use
     parserModule = screparsed;
     
-    if (!parserModule || !parserModule.Parser) {
-      throw new Error('screparsed Parser not found');
+    // Check if the module was loaded correctly
+    if (!parserModule || !parserModule.default) {
+      console.log('[browserSafeParser] Parser structure:', parserModule);
+      throw new Error('screparsed module not found or invalid');
     }
     
     // Create a test parser to verify functionality
     try {
       console.log('[browserSafeParser] Creating test parser instance');
-      const testParser = new parserModule.Parser();
+      // Use the default export instead of Parser
+      const testParser = new parserModule.default();
       console.log('[browserSafeParser] Test parser created successfully:', testParser);
       
       isInitialized = true;
@@ -63,12 +63,12 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
     try {
       console.log('[browserSafeParser] Creating parser instance');
       
-      if (!parserModule || !parserModule.Parser) {
-        throw new Error('screparsed Parser not available');
+      if (!parserModule || !parserModule.default) {
+        throw new Error('screparsed module not available');
       }
       
-      // Create a parser instance
-      const parser = new parserModule.Parser();
+      // Create a parser instance using the default export
+      const parser = new parserModule.default();
       console.log('[browserSafeParser] Created screparsed Parser instance successfully');
       
       // Parse the replay data
