@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ParsedReplayData, ParsedReplayResult } from '@/services/replayParser/types';
 import { useToast } from '@/hooks/use-toast';
@@ -128,7 +129,7 @@ export function useReplayParser(): ReplayParserResult {
         secondaryBuildOrderItems: parsedData.secondaryPlayer.buildOrder.length
       });
       
-      // Ensure the result has the required trainingPlan field
+      // Ensure the result has the required fields
       const result: ParsedReplayResult = {
         ...parsedData,
         trainingPlan: parsedData.trainingPlan || [
@@ -137,15 +138,15 @@ export function useReplayParser(): ReplayParserResult {
           { day: 3, focus: "Build Order", drill: "Timing attack execution" }
         ],
         // Ensure legacy properties are populated for backward compatibility
-        playerName: parsedData.primaryPlayer.name,
-        opponentName: parsedData.secondaryPlayer.name,
-        playerRace: parsedData.primaryPlayer.race,
-        opponentRace: parsedData.secondaryPlayer.race,
-        apm: parsedData.primaryPlayer.apm,
-        eapm: parsedData.primaryPlayer.eapm,
-        opponentApm: parsedData.secondaryPlayer.apm,
-        opponentEapm: parsedData.secondaryPlayer.eapm,
-        buildOrder: parsedData.primaryPlayer.buildOrder
+        playerName: parsedData.playerName || parsedData.primaryPlayer.name,
+        opponentName: parsedData.opponentName || parsedData.secondaryPlayer.name,
+        playerRace: parsedData.playerRace || parsedData.primaryPlayer.race,
+        opponentRace: parsedData.opponentRace || parsedData.secondaryPlayer.race,
+        apm: parsedData.apm || parsedData.primaryPlayer.apm,
+        eapm: parsedData.eapm || parsedData.primaryPlayer.eapm,
+        opponentApm: parsedData.opponentApm || parsedData.secondaryPlayer.apm,
+        opponentEapm: parsedData.opponentEapm || parsedData.secondaryPlayer.eapm,
+        buildOrder: parsedData.buildOrder || parsedData.primaryPlayer.buildOrder || []
       };
       
       // Final progress update

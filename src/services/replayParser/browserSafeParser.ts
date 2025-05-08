@@ -1,14 +1,14 @@
 
 /**
- * Browser-safe wrapper for JSSUH replay parser
+ * Browser-safe wrapper for screparsed replay parser
  */
 
-// Import as named export to ensure we access it properly
-import { ReplayParser } from 'jssuh';
+// Import necessary types from screparsed
+import { Parser } from 'screparsed';
 
 // Track initialization state
 let isInitialized = false;
-let replayParserConstructor: any = null;
+let parserModule: any = null;
 
 /**
  * Initialize the browser-safe parser
@@ -20,23 +20,26 @@ export async function initBrowserSafeParser(): Promise<void> {
   }
   
   try {
-    // Get the ReplayParser constructor and check if it exists
-    console.log('[browserSafeParser] Attempting to initialize parser, ReplayParser:', typeof ReplayParser);
+    console.log('[browserSafeParser] Attempting to initialize screparsed parser');
     
-    if (!ReplayParser) {
-      throw new Error('JSSUH ReplayParser not found');
+    // Import screparsed dynamically
+    const screparsed = await import('screparsed');
+    console.log('[browserSafeParser] Screparsed import result:', screparsed);
+    
+    // Store the parser module for future use
+    parserModule = screparsed;
+    
+    if (!parserModule || !parserModule.Parser) {
+      throw new Error('screparsed Parser not found');
     }
     
-    // Create a test instance to verify functionality
+    // Create a test parser to verify functionality
     try {
-      const testParser = new ReplayParser({ encoding: "cp1252" });
-      console.log('[browserSafeParser] Test parser created successfully');
-      console.log('[browserSafeParser] Test parser has these methods:', Object.keys(testParser));
+      console.log('[browserSafeParser] Creating test parser instance');
+      const testParser = new parserModule.Parser();
+      console.log('[browserSafeParser] Test parser created successfully:', testParser);
       
-      // Store the constructor for future use
-      replayParserConstructor = ReplayParser;
       isInitialized = true;
-      
       console.log('[browserSafeParser] ✅ Browser-safe parser initialized successfully');
     } catch (innerError) {
       console.error('[browserSafeParser] Failed to create test parser instance:', innerError);
@@ -49,82 +52,31 @@ export async function initBrowserSafeParser(): Promise<void> {
 }
 
 /**
- * Parse a replay file using the browser-safe JSSUH parser
+ * Parse a replay file using the browser-safe screparsed parser
  */
 export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promise<any> {
-  if (!isInitialized || !replayParserConstructor) {
+  if (!isInitialized || !parserModule) {
     await initBrowserSafeParser();
   }
   
   return new Promise((resolve, reject) => {
     try {
       console.log('[browserSafeParser] Creating parser instance');
-      const ReplayParserClass = replayParserConstructor;
       
-      // Create a parser instance with explicit class reference
-      const parser = new ReplayParserClass({ encoding: "cp1252" });
-      console.log('[browserSafeParser] Created ReplayParser instance successfully');
+      if (!parserModule || !parserModule.Parser) {
+        throw new Error('screparsed Parser not available');
+      }
       
-      // Create collectors for the parsed data
-      let headerData: any = null;
-      let commandsData: any[] = [];
-      let chatMessagesData: any[] = [];
-      let playersData: any[] = [];
+      // Create a parser instance
+      const parser = new parserModule.Parser();
+      console.log('[browserSafeParser] Created screparsed Parser instance successfully');
       
-      // Event listeners to collect data
-      parser.on('header', (header: any) => {
-        console.log('[browserSafeParser] Header received:', header?.game);
-        headerData = header;
-      });
+      // Parse the replay data
+      console.log('[browserSafeParser] Parsing replay data:', data.length, 'bytes');
+      const result = parser.parseReplay(data);
+      console.log('[browserSafeParser] Parsing completed, result:', result);
       
-      parser.on('player', (player: any) => {
-        console.log('[browserSafeParser] Player received:', player?.name);
-        playersData.push(player);
-      });
-      
-      parser.on('command', (command: any) => {
-        // Don't log every command as it would flood the console
-        if (commandsData.length === 0) {
-          console.log('[browserSafeParser] First command received');
-        }
-        commandsData.push(command);
-      });
-      
-      parser.on('chatmessage', (message: any) => {
-        console.log('[browserSafeParser] Chat message received');
-        chatMessagesData.push(message);
-      });
-      
-      parser.on('error', (error: any) => {
-        console.error('[browserSafeParser] Parser error:', error);
-        reject(error);
-      });
-      
-      parser.on('end', () => {
-        console.log('[browserSafeParser] Parsing completed');
-        console.log('[browserSafeParser] Collected data summary:');
-        console.log(`- Header: ${headerData ? 'Present' : 'Missing'}`);
-        console.log(`- Players: ${playersData.length}`);
-        console.log(`- Commands: ${commandsData.length}`);
-        console.log(`- Chat messages: ${chatMessagesData.length}`);
-        
-        // Assemble the full data object
-        const parsedData = {
-          header: headerData,
-          players: playersData,
-          commands: commandsData,
-          chatMessages: chatMessagesData
-        };
-        
-        resolve(parsedData);
-      });
-      
-      // Direct write approach for browser compatibility
-      console.log('[browserSafeParser] Writing data to parser:', data.length, 'bytes');
-      parser.write(data);
-      parser.end();
-      console.log('[browserSafeParser] Data written to parser');
-      
+      resolve(result);
     } catch (error) {
       console.error('[browserSafeParser] Parsing error:', error);
       reject(error);

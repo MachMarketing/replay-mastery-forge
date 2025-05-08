@@ -1,3 +1,4 @@
+
 import { ParsedReplayData, PlayerData, ReplayAnalysis, ParsedReplayResult } from './replayParser/types';
 import { parseReplayInBrowser } from './browserReplayParser';
 import { markBrowserAsHavingWasmIssues } from '@/utils/browserDetection';
@@ -6,7 +7,7 @@ import { markBrowserAsHavingWasmIssues } from '@/utils/browserDetection';
 export type { PlayerData, ParsedReplayData, ReplayAnalysis, ParsedReplayResult };
 
 // Create a merged type that satisfies both interfaces without conflicts
-export type AnalyzedReplayResult = ParsedReplayResult & Omit<ReplayAnalysis, keyof ParsedReplayResult>;
+export type AnalyzedReplayResult = ParsedReplayResult;
 
 // Track active parsing process for potential abort
 let activeParsingAbortController: AbortController | null = null;
@@ -111,17 +112,18 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
         console.log('[replayParserService] Fixed matchup to:', result.matchup);
       }
       
-      // Ensure backward compatibility by creating legacy field mappings
-      const enhancedResult: AnalyzedReplayResult = {
+      // Ensure required fields are present
+      const enhancedResult: ParsedReplayResult = {
         ...result,
-        playerName: result.primaryPlayer?.name || 'Player',
-        opponentName: result.secondaryPlayer?.name || 'Opponent',
-        playerRace: result.primaryPlayer?.race || 'Terran',
-        opponentRace: result.secondaryPlayer?.race || 'Terran',
-        apm: result.primaryPlayer?.apm || 0,
-        eapm: result.primaryPlayer?.eapm || 0,
-        opponentApm: result.secondaryPlayer?.apm || 0,
-        opponentEapm: result.secondaryPlayer?.eapm || 0,
+        playerName: result.playerName || result.primaryPlayer?.name || 'Player',
+        opponentName: result.opponentName || result.secondaryPlayer?.name || 'Opponent',
+        playerRace: result.playerRace || result.primaryPlayer?.race || 'Terran',
+        opponentRace: result.opponentRace || result.secondaryPlayer?.race || 'Terran',
+        apm: result.apm || result.primaryPlayer?.apm || 0,
+        eapm: result.eapm || result.primaryPlayer?.eapm || 0,
+        opponentApm: result.opponentApm || result.secondaryPlayer?.apm || 0,
+        opponentEapm: result.opponentEapm || result.secondaryPlayer?.eapm || 0,
+        buildOrder: result.buildOrder || result.primaryPlayer?.buildOrder || [],
         // Add the trainingPlan property required by ReplayAnalysis
         trainingPlan: result.trainingPlan || [
           { day: 1, focus: "Macro Management", drill: "Constant worker production" },
