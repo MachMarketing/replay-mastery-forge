@@ -6,6 +6,7 @@
 import { ParsedReplayData, PlayerData } from './replayParser/types';
 import { mapRawToParsed } from './replayMapper';
 import { ReplayParser } from 'screparsed';
+import type { ParsedReplay, FramedCommand } from 'screparsed';
 
 // Define consistent timeout duration - 60 seconds
 const PARSER_TIMEOUT_MS = 60000;
@@ -61,8 +62,12 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
           console.log(`🛠 Game info keys:`, Object.keys(rawResult.gameInfo));
         }
         
-        if (rawResult.frames) {
+        // Fix for error TS2339: Property 'length' does not exist on type 'number'.
+        // Check if frames is an array before accessing length
+        if (rawResult.frames && Array.isArray(rawResult.frames)) {
           console.log(`🛠 Frames count:`, rawResult.frames.length);
+        } else {
+          console.log(`🛠 Frames count: Not available or not an array`);
         }
         
         if (rawResult.gameInfo) {
@@ -72,11 +77,14 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
         
         if (rawResult.players) {
           console.log(`🛠 Direct players access:`, 
-            rawResult.players ? rawResult.players.length : 'none');
+            Array.isArray(rawResult.players) ? rawResult.players.length : 'not an array');
         }
         
-        if (rawResult.commands) {
+        // Fix for array check before accessing length
+        if (rawResult.commands && Array.isArray(rawResult.commands)) {
           console.log(`🛠 Commands available:`, rawResult.commands.length);
+        } else {
+          console.log(`🛠 Commands: Not available or not an array`);
         }
         
         // Dump the raw data structure to help with debugging
@@ -87,7 +95,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
         
         // Process player data - don't modify original players array
         let processedPlayers = [];
-        if (rawResult.players && rawResult.players.length > 0) {
+        if (rawResult.players && Array.isArray(rawResult.players) && rawResult.players.length > 0) {
           console.log(`🛠 [browserReplayParser] Found ${rawResult.players.length} players`);
           
           // Make a deep copy of players to work with
@@ -145,7 +153,11 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
             if (!playerObj.buildOrder || playerObj.buildOrder.length === 0) {
               if (rawResult.commands && Array.isArray(rawResult.commands)) {
                 console.log(`🛠 [browserReplayParser] Attempting to find player ${playerId} commands in global commands array`);
-                const playerCommands = rawResult.commands.filter(cmd => cmd.player === playerId);
+                
+                // Fix for 'player' vs 'playerId' property
+                const playerCommands = rawResult.commands.filter((cmd: FramedCommand) => 
+                  (cmd as any).player === playerId || cmd.playerId === playerId);
+                
                 if (playerCommands && playerCommands.length > 0) {
                   console.log(`🛠 [browserReplayParser] Found ${playerCommands.length} commands for player ${playerId}`);
                   playerObj.commands = playerCommands;
@@ -277,7 +289,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
             
             // If we have frames, try looking at their commands
             if ((!playerObj.buildOrder || playerObj.buildOrder.length === 0) && 
-                 rawResult.frames && rawResult.frames.length > 0) {
+                 rawResult.frames && Array.isArray(rawResult.frames) && rawResult.frames.length > 0) {
               console.log(`🛠 [browserReplayParser] Attempting to extract build order from frames`);
               
               const buildEvents = [];
@@ -288,7 +300,8 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
                 const frame = rawResult.frames[i];
                 if (frame && frame.commands) {
                   for (const cmd of frame.commands) {
-                    if (cmd.player === playerIdToCheck) {
+                    // Fix for 'player' vs 'playerId' property
+                    if ((cmd as any).player === playerIdToCheck || cmd.playerId === playerIdToCheck) {
                       // Check if this is a build-related command
                       const cmdType = (cmd.type || '').toLowerCase();
                       if (cmdType.includes('build') || cmdType.includes('train') || cmdType.includes('research')) {
@@ -338,24 +351,25 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
               }
             }
             
-            // If we have events array, check for build events
+            // Remove the events property check since it doesn't exist in ParsedReplay type
+            // Instead, check for any custom events that might be in the raw data
             if ((!playerObj.buildOrder || playerObj.buildOrder.length === 0) && 
-                rawResult.events && rawResult.events.length > 0) {
-              console.log(`🛠 [browserReplayParser] Checking events array for build order events`);
+                (rawResult as any).customEvents && Array.isArray((rawResult as any).customEvents)) {
+              console.log(`🛠 [browserReplayParser] Checking custom events for build order events`);
               
               // Filter for this player's events
-              const playerEvents = rawResult.events.filter(event => {
-                return event.player === playerId && 
+              const playerEvents = (rawResult as any).customEvents.filter((event: any) => {
+                return (event.player === playerId || event.playerId === playerId) && 
                        (event.type === 'UnitBorn' || 
                         event.type === 'UnitComplete' || 
                         event.type === 'UpgradeComplete' || 
                         event.type === 'ResearchComplete');
               });
               
-              if (playerEvents.length > 0) {
-                console.log(`🛠 [browserReplayParser] Found ${playerEvents.length} build events for player ${playerId}`);
+              if (playerEvents && playerEvents.length > 0) {
+                console.log(`🛠 [browserReplayParser] Found ${playerEvents.length} custom build events for player ${playerId}`);
                 
-                playerObj.buildOrder = playerEvents.map(event => {
+                playerObj.buildOrder = playerEvents.map((event: any) => {
                   // Convert frame to time string
                   const seconds = Math.floor(event.frame / 24);
                   const minutes = Math.floor(seconds / 60);
