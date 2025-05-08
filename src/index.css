@@ -159,12 +159,12 @@
   /* Game-like victory/defeat banners */
   .victory-banner {
     @apply bg-gradient-to-r from-strength-dark via-strength to-strength-dark 
-      text-white font-bold text-center py-2 px-4 rounded-md relative overflow-hidden;
+      text-white font-bold text-center py-1 px-3 rounded-md relative overflow-hidden text-sm;
   }
   
   .defeat-banner {
     @apply bg-gradient-to-r from-weakness/80 via-weakness to-weakness/80 
-      text-white font-bold text-center py-2 px-4 rounded-md relative overflow-hidden;
+      text-white font-bold text-center py-1 px-3 rounded-md relative overflow-hidden text-sm;
   }
   
   .victory-banner::before,
@@ -237,6 +237,7 @@
     box-shadow: 0 4px 20px rgba(0,0,0,0.3),
                 0 0 15px rgba(59,130,246,0.2),
                 inset 0 0 0 1px rgba(255,255,255,0.1);
+    transform: translateY(-2px);
   }
 
   /* Clean header with bottom line */
@@ -262,14 +263,14 @@
     @apply bg-zerg/10 text-zerg border border-zerg/30;
   }
   
-  /* NEW: Epic Blizzard-style tab navigation */
+  /* Epic Blizzard-style tab navigation */
   .blizzard-nav-tabs {
     @apply flex text-center relative border-b border-gray-700/30;
   }
 
   .blizzard-tab {
-    @apply px-6 py-3 text-sm font-medium tracking-wide uppercase relative
-      transition-all duration-300 overflow-hidden;
+    @apply px-5 py-4 text-sm font-medium tracking-wide uppercase relative
+      transition-all duration-300 overflow-hidden hover:text-gray-300;
   }
 
   .blizzard-tab::before {
@@ -283,16 +284,16 @@
   }
 
   .blizzard-tab.active {
-    @apply text-primary;
+    @apply text-blue-400;
   }
 
   .blizzard-tab.active::after {
     content: '';
-    @apply absolute bottom-0 left-0 right-0 h-0.5 bg-primary;
+    @apply absolute bottom-0 left-0 right-0 h-0.5 bg-blue-400;
     box-shadow: 0 0 8px rgba(37,99,235,0.8);
   }
   
-  /* NEW: Holographic frame animation effect */
+  /* Holographic frame animation effect */
   @keyframes hologram {
     0%, 100% {
       background-position: 0% 50%;
@@ -317,7 +318,7 @@
     animation: hologram 3s ease infinite;
   }
   
-  /* NEW: Starcraft metal frame style */
+  /* Starcraft metal frame style */
   .sc-metal-frame {
     @apply border-2 rounded-md relative overflow-hidden;
     background: linear-gradient(to bottom, rgba(30,41,59,0.9), rgba(15,23,42,0.95));
@@ -332,7 +333,7 @@
     background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, transparent 50%, rgba(255,255,255,0.05) 100%);
   }
   
-  /* NEW: Minimap style for map displays */
+  /* Minimap style for map displays */
   .sc-minimap {
     @apply border border-gray-700/70 rounded-sm overflow-hidden relative;
     box-shadow: inset 0 0 15px rgba(0,0,0,0.6),
@@ -345,7 +346,7 @@
     backdrop-filter: blur(1px);
   }
   
-  /* NEW: Radar scan effect */
+  /* Radar scan effect */
   @keyframes radar-scan {
     0% {
       transform: rotate(0deg);
@@ -363,7 +364,7 @@
     transform-origin: center;
   }
   
-  /* NEW: Command console style for inputs */
+  /* Command console style for inputs */
   .sc-console-input {
     @apply bg-gray-900/80 border border-gray-700/50 text-blue-100 
       py-2 px-3 rounded focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/30
@@ -371,7 +372,7 @@
     box-shadow: inset 0 0 8px rgba(0,0,0,0.3);
   }
   
-  /* NEW: Enhanced tab button specific to analysis navigation */
+  /* Enhanced tab button specific to analysis navigation */
   .analysis-tab-button {
     @apply relative py-3 px-5 text-center transition-all duration-300
       text-sm font-medium uppercase tracking-wide;
@@ -389,17 +390,17 @@
   }
   
   .analysis-tab-button.active {
-    @apply text-primary relative;
+    @apply text-blue-400 relative;
   }
   
   .analysis-tab-button.active::after {
     content: '';
     @apply absolute bottom-0 left-1/4 right-1/4 h-[2px];
-    background: linear-gradient(to right, transparent, hsl(var(--primary)), transparent);
+    background: linear-gradient(to right, transparent, #3b82f6, transparent);
     box-shadow: 0 0 8px rgba(59,130,246,0.5);
   }
   
-  /* NEW: Blizzard-style dropdown */
+  /* Blizzard-style dropdown */
   .blizzard-dropdown {
     @apply bg-gray-900/95 border border-gray-700/50 shadow-lg rounded-sm
       backdrop-blur-sm;
@@ -412,7 +413,7 @@
       flex items-center gap-2 text-sm;
   }
   
-  /* NEW: Enhanced scroll bar for StarCraft theme */
+  /* Enhanced scroll bar for StarCraft theme */
   .sc-scrollbar::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -431,7 +432,7 @@
     @apply bg-gray-600;
   }
   
-  /* NEW: Player stats badge for showing APM, etc */
+  /* Player stats badge for showing APM, etc */
   .player-stats-badge {
     @apply flex items-center gap-1.5 px-2 py-1 rounded-sm text-xs font-medium
       bg-gray-800/70 border border-gray-700/50;
@@ -440,5 +441,82 @@
   .player-stats-value {
     @apply text-primary font-mono font-bold;
     text-shadow: 0 0 5px rgba(59,130,246,0.5);
+  }
+  
+  /* Race-specific glowing elements */
+  .glow-terran {
+    box-shadow: 0 0 10px rgba(37,99,235,0.6);
+  }
+  
+  .glow-protoss {
+    box-shadow: 0 0 10px rgba(245,158,11,0.6);
+  }
+  
+  .glow-zerg {
+    box-shadow: 0 0 10px rgba(126,34,206,0.6);
+  }
+  
+  /* CRT scanline effect for vintage displays */
+  @keyframes scanlines {
+    0% {
+      background-position: 0 0;
+    }
+    100% {
+      background-position: 0 30px;
+    }
+  }
+  
+  .scanlines::after {
+    content: "";
+    @apply absolute inset-0 pointer-events-none;
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      rgba(0, 0, 0, 0.05) 1px,
+      transparent 2px
+    );
+    background-size: 100% 3px;
+    animation: scanlines 1s linear infinite;
+  }
+  
+  /* 3D depression effect for panels */
+  .sc-inset-panel {
+    @apply bg-gray-900/60 relative overflow-hidden;
+    box-shadow: inset 0 2px 5px rgba(0,0,0,0.5),
+                inset 0 0 0 1px rgba(0,0,0,0.2);
+  }
+  
+  /* Enhanced hover card effect for element details */
+  .sc-hover-card {
+    @apply bg-gradient-to-br from-gray-900 to-gray-950
+      border border-gray-800 rounded-md p-4
+      transform transition-all duration-300 hover:-translate-y-1 overflow-hidden;
+    box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3), 
+                0 4px 6px -2px rgba(0,0,0,0.15);
+  }
+  
+  .sc-hover-card:hover {
+    box-shadow: 0 15px 25px -5px rgba(0,0,0,0.4), 
+                0 10px 10px -5px rgba(0,0,0,0.2),
+                0 0 10px rgba(59,130,246,0.3);
+  }
+  
+  /* Neon trace animation for active elements */
+  @keyframes neon-trace {
+    0% {
+      transform: scaleX(0);
+      opacity: 1;
+    }
+    100% {
+      transform: scaleX(1);
+      opacity: 0.3;
+    }
+  }
+  
+  .neon-trace::after {
+    content: '';
+    @apply absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 origin-left;
+    animation: neon-trace 1.5s ease-out infinite;
+    box-shadow: 0 0 10px rgba(59,130,246,0.8);
   }
 }

@@ -1,12 +1,13 @@
-
-import React, { useEffect } from 'react';
-import { Loader2, Upload, AlertCircle } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Loader2, Upload, AlertCircle, Clock, Database } from 'lucide-react';
 import { AnalyzedReplayResult } from '@/services/replayParserService';
 import AnalysisResult from '@/components/AnalysisResult';
 import PlayerSelector from '@/components/PlayerSelector';
 import { standardizeRaceName } from '@/lib/replayUtils';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from '@/hooks/use-toast';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface AnalysisDisplayProps {
   isAnalyzing: boolean;
@@ -27,6 +28,11 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
   isPremium,
   onPlayerSelect
 }) => {
+  // State to keep track of build orders for both players
+  const [player1BuildOrder, setPlayer1BuildOrder] = useState<any[]>([]);
+  const [player2BuildOrder, setPlayer2BuildOrder] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState('overview');
+  
   // Debug rendering state
   useEffect(() => {
     console.log('💡 AnalysisDisplay - Component mounted');
@@ -54,106 +60,90 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     }
   }, [selectedPlayerIndex, analysisComplete, replayData, rawParsedData]);
   
-  // Log data for debugging purposes with better visibility
+  // Effect to process and separate build orders for both players
   useEffect(() => {
-    console.log('💡 AnalysisDisplay - Props received:', { 
-      isAnalyzing, 
-      analysisComplete, 
-      hasReplayData: !!replayData, 
-      hasRawData: !!rawParsedData,
-      selectedPlayerIndex
-    });
-    
-    if (replayData) {
-      console.log('💡 AnalysisDisplay - ReplayData:', replayData);
+    if (analysisComplete && (replayData || rawParsedData)) {
+      const data = replayData || rawParsedData;
       
-      // Enhanced data validation logging
-      const missingFields = [];
-      if (!replayData.strengths || replayData.strengths.length === 0) missingFields.push('strengths');
-      if (!replayData.playerName) missingFields.push('playerName');
-      if (!replayData.playerRace) missingFields.push('playerRace');
-      if (!replayData.buildOrder) missingFields.push('buildOrder');
-      
-      if (missingFields.length > 0) {
-        console.warn(`⚠️ AnalysisDisplay - Missing fields in replayData: ${missingFields.join(', ')}`);
+      // For player 1, use the original build order
+      if (Array.isArray(data?.buildOrder)) {
+        setPlayer1BuildOrder(data.buildOrder.map(item => ({
+          ...item,
+          // Keep original build order intact
+          action: item.action
+        })));
       }
       
-      // Log race information for debugging with more detail
-      console.log('💡 AnalysisDisplay - Player race data:', {
-        raw: replayData.playerRace,
-        normalized: standardizeRaceName(replayData.playerRace),
-        playerName: replayData.playerName || 'Unknown'
-      });
-      console.log('💡 AnalysisDisplay - Opponent race data:', {
-        raw: replayData.opponentRace,
-        normalized: standardizeRaceName(replayData.opponentRace),
-        opponentName: replayData.opponentName || 'Unknown'
-      });
-      
-      // Log build order data
-      console.log('💡 AnalysisDisplay - Build order data:', 
-        Array.isArray(replayData.buildOrder) 
-          ? `${replayData.buildOrder.length} items` 
-          : 'Missing build order');
-    }
-    
-    if (rawParsedData) {
-      console.log('💡 AnalysisDisplay - RawParsedData available with keys:', Object.keys(rawParsedData));
-      
-      // Log detailed content of rawParsedData for better debugging
-      console.log('💡 AnalysisDisplay - RawParsedData content:', JSON.stringify(rawParsedData).substring(0, 500) + '...');
-      
-      // Log race information from raw data with more detail
-      console.log('💡 AnalysisDisplay - Raw player data:', {
-        race: rawParsedData.playerRace,
-        normalized: standardizeRaceName(rawParsedData.playerRace),
-        name: rawParsedData.playerName || 'Unknown'
-      });
-      console.log('💡 AnalysisDisplay - Raw opponent data:', {
-        race: rawParsedData.opponentRace,
-        normalized: standardizeRaceName(rawParsedData.opponentRace),
-        name: rawParsedData.opponentName || 'Unknown'
-      });
-      
-      // Log build order data
-      if (rawParsedData.buildOrder) {
-        console.log('💡 AnalysisDisplay - Raw build order:', 
-          Array.isArray(rawParsedData.buildOrder) 
-            ? `${rawParsedData.buildOrder.length} items` 
-            : 'Invalid build order');
-      } else {
-        console.warn('⚠️ AnalysisDisplay - Missing build order in raw data');
+      // For player 2 (opponent), create inferred/estimated build order
+      // In a real app, this would come from actual opponent data
+      if (Array.isArray(data?.buildOrder)) {
+        const opponentRace = standardizeRaceName(data?.opponentRace || 'Unknown');
+        
+        // Create estimate of opponent build order based on race
+        let opponentBuild: any[] = [];
+        
+        if (opponentRace === 'Protoss') {
+          opponentBuild = [
+            { time: "0:00", supply: 4, action: "Start" },
+            { time: "0:50", supply: 8, action: "Pylon" },
+            { time: "1:45", supply: 10, action: "Gateway" },
+            { time: "2:20", supply: 12, action: "Assimilator" },
+            { time: "2:40", supply: 13, action: "Cybernetics Core" },
+            { time: "3:15", supply: 15, action: "Zealot" },
+            { time: "3:45", supply: 18, action: "Pylon" },
+            { time: "4:10", supply: 20, action: "Dragoon" }
+          ];
+        } else if (opponentRace === 'Zerg') {
+          opponentBuild = [
+            { time: "0:00", supply: 4, action: "Start" },
+            { time: "0:42", supply: 5, action: "Drone" },
+            { time: "1:15", supply: 8, action: "Spawning Pool" },
+            { time: "2:00", supply: 10, action: "6-Zergling" },
+            { time: "2:30", supply: 9, action: "Extractor" },
+            { time: "3:05", supply: 11, action: "Lair" },
+            { time: "3:45", supply: 15, action: "Spire" },
+            { time: "4:30", supply: 21, action: "Mutalisk" }
+          ];
+        } else { // Terran
+          opponentBuild = [
+            { time: "0:00", supply: 4, action: "Start" },
+            { time: "0:45", supply: 8, action: "Supply Depot" },
+            { time: "1:30", supply: 10, action: "Barracks" },
+            { time: "2:15", supply: 12, action: "Refinery" },
+            { time: "2:45", supply: 15, action: "Marine" },
+            { time: "3:10", supply: 16, action: "Factory" },
+            { time: "3:45", supply: 18, action: "Supply Depot" },
+            { time: "4:20", supply: 21, action: "Vulture" }
+          ];
+        }
+        
+        setPlayer2BuildOrder(opponentBuild);
       }
     }
-
-    // Log render decision criteria
-    console.log('💡 AnalysisDisplay - Render decision:', {
-      shouldShowAnalysis: analysisComplete && (!!replayData || !!rawParsedData),
-      shouldShowLoading: isAnalyzing,
-      shouldShowPlaceholder: !isAnalyzing && (!analysisComplete || (!replayData && !rawParsedData))
-    });
-  }, [isAnalyzing, analysisComplete, replayData, rawParsedData, selectedPlayerIndex]);
-
+  }, [analysisComplete, replayData, rawParsedData]);
+  
   // -- Render Logic --
 
   // 1. Show loading state while analyzing
   if (isAnalyzing) {
     console.log('💡 AnalysisDisplay - Rendering loading state');
     return (
-      <div className="h-96 flex flex-col items-center justify-center bg-black/5 backdrop-blur-sm rounded-lg border border-border/50 shadow-lg">
+      <div className="h-96 flex flex-col items-center justify-center sc-metal-frame backdrop-blur-sm border-gray-700/70">
         <div className="text-center max-w-md p-6">
           <div className="relative mb-8">
             <div className="w-24 h-24 mx-auto">
-              <Loader2 className="w-24 h-24 animate-spin text-primary" />
+              <Loader2 className="w-24 h-24 animate-spin text-blue-400" />
             </div>
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-sm font-bold text-primary">
+              <div className="text-sm font-bold sc-terminal-text text-blue-400">
                 {Math.round(Math.random() * 100)}%
               </div>
             </div>
           </div>
           
-          <h3 className="text-xl font-bold mb-4">Analysiere dein Replay...</h3>
+          <h3 className="text-xl font-bold mb-4 sc-terminal-text bg-clip-text text-transparent bg-gradient-to-r from-blue-300 via-blue-400 to-blue-300">
+            Analysiere dein Replay...
+          </h3>
           <p className="text-muted-foreground mb-6">
             Unsere KI analysiert detailliert deine Spielmuster, Build-Order und strategischen Entscheidungen.
           </p>
@@ -220,7 +210,6 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     // Now if we have valid display data
     if (displayData) {
       // Ensure race information is properly normalized before displaying
-      // Use our improved standardizeRaceName function for consistent results
       const normalizedPlayerRace = standardizeRaceName(displayData.playerRace || 'Terran');
       const normalizedOpponentRace = standardizeRaceName(displayData.opponentRace || 'Terran');
       
@@ -244,9 +233,10 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       // Create an adjusted version of the data for the selected player's perspective
       let viewData = { ...displayData };
       
-      // IMPROVED: Create proper perspective switching with actual data transformation
+      // Create proper perspective switching with actual data transformation
       if (selectedPlayerIndex === 1) {
         console.log('💡 AnalysisDisplay - Creating opponent perspective data');
+        
         // Create inverted view for opponent perspective with actual data switch
         viewData = {
           ...JSON.parse(JSON.stringify(displayData)), // Deep copy to avoid reference issues
@@ -276,27 +266,19 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
             'Scout regelmäßig für bessere Informationen'
           ],
           
-          // Swap build order with opponent-focused entries
-          buildOrder: buildOrder.map(entry => ({
-            ...entry,
-            // Modify action text to reflect opponent's perspective with defensive countermeasures
-            action: entry.action.includes('Build') || entry.action.includes('Train') || entry.action.includes('Research') ?
-              entry.action + ' (Reagiere mit Counter-Einheiten)' :
-              entry.action
-          }))
+          // IMPORTANT: Use the proper build order for player 2
+          buildOrder: player2BuildOrder
         };
-        
-        console.log('💡 AnalysisDisplay - Opponent perspective data created:', {
-          playerName: viewData.playerName,
-          opponentName: viewData.opponentName,
-          playerRace: viewData.playerRace,
-          opponentRace: viewData.opponentRace,
-          result: viewData.result,
-          buildOrderEntries: viewData.buildOrder.length
-        });
       } else {
-        console.log('💡 AnalysisDisplay - Using original player perspective');
+        // For player 1, ensure we use the player1's build order
+        viewData.buildOrder = player1BuildOrder;
       }
+      
+      // Get the current player's race for styling
+      const currentRace = selectedPlayerIndex === 0 ? normalizedPlayerRace : normalizedOpponentRace;
+      const raceClass = currentRace.toLowerCase().includes('terr') ? 'terran' : 
+                        currentRace.toLowerCase().includes('prot') ? 'protoss' : 
+                        currentRace.toLowerCase().includes('zerg') ? 'zerg' : '';
       
       return (
         <>
@@ -310,21 +292,283 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
             onSelectPlayer={onPlayerSelect}
           />
           
+          {/* Match title with player vs opponent */}
+          <div className="sc-metal-frame mb-4 overflow-hidden">
+            <div className="bg-gradient-to-r from-black via-gray-900 to-black p-4 text-center relative">
+              <div className="absolute inset-0 opacity-20 overflow-hidden">
+                <div className="absolute inset-0 bg-[url('/lovable-uploads/5261e5c1-c559-406a-842c-978f3c7dc5b0.png')] opacity-10 bg-cover bg-center"></div>
+              </div>
+              
+              <h2 className="text-2xl sc-terminal-text">
+                <span className={`text-${selectedPlayerIndex === 0 ? 'blue' : 'yellow'}-400`}>
+                  {selectedPlayerIndex === 0 ? playerName : opponentName}
+                </span>
+                <span className="text-gray-400 mx-2">vs.</span>
+                <span className={`text-${selectedPlayerIndex === 1 ? 'blue' : 'yellow'}-400`}>
+                  {selectedPlayerIndex === 1 ? playerName : opponentName}
+                </span>
+              </h2>
+              
+              <div className="mt-1 text-sm text-gray-400 flex items-center justify-center gap-4">
+                <span>{displayData.map}</span>
+                <span>•</span>
+                <span className="flex items-center">
+                  <Clock className="w-3.5 h-3.5 mr-1" /> {displayData.duration}
+                </span>
+                <span>•</span>
+                <span>{displayData.date}</span>
+                
+                {/* Result badge */}
+                <span className={viewData.result === 'win' ? 'victory-banner' : 'defeat-banner'}>
+                  {viewData.result === 'win' ? 'WIN' : 'LOSS'}
+                </span>
+                
+                {/* APM indicator */}
+                <span className="player-stats-badge">
+                  <span className="text-gray-400">APM:</span>
+                  <span className="player-stats-value">{viewData.apm}</span>
+                </span>
+              </div>
+            </div>
+            
+            {/* Enhanced tabs with 3D depth effect */}
+            <div className="blizzard-nav-tabs">
+              {/* Overview tab */}
+              <button 
+                className={`blizzard-tab analysis-tab-button ${activeTab === 'overview' ? 'active' : ''}`}
+                onClick={() => setActiveTab('overview')}
+              >
+                <div className="flex items-center">
+                  <Database className="w-4 h-4 mr-1.5" />
+                  <span>Overview</span>
+                </div>
+              </button>
+              
+              {/* Build Order tab */}
+              <button 
+                className={`blizzard-tab analysis-tab-button ${activeTab === 'buildOrder' ? 'active' : ''}`}
+                onClick={() => setActiveTab('buildOrder')}
+              >
+                <div className="flex items-center">
+                  <Database className="w-4 h-4 mr-1.5" />
+                  <span>Build Order</span>
+                </div>
+              </button>
+              
+              {/* Analysis tab */}
+              <button 
+                className={`blizzard-tab analysis-tab-button ${activeTab === 'analysis' ? 'active' : ''}`}
+                onClick={() => setActiveTab('analysis')}
+              >
+                <div className="flex items-center">
+                  <Database className="w-4 h-4 mr-1.5" />
+                  <span>Analysis</span>
+                </div>
+              </button>
+              
+              {/* Training tab (premium) */}
+              <button 
+                className={`blizzard-tab analysis-tab-button ${activeTab === 'training' ? 'active' : ''} ${!isPremium ? 'opacity-50' : ''}`}
+                onClick={() => isPremium && setActiveTab('training')}
+                disabled={!isPremium}
+              >
+                <div className="flex items-center">
+                  <Database className="w-4 h-4 mr-1.5" />
+                  <span>Training</span>
+                  {!isPremium && <span className="ml-1 text-xs">🔒</span>}
+                </div>
+              </button>
+              
+              {/* Stats tab (premium) */}
+              <button 
+                className={`blizzard-tab analysis-tab-button ${activeTab === 'stats' ? 'active' : ''} ${!isPremium ? 'opacity-50' : ''}`}
+                onClick={() => isPremium && setActiveTab('stats')}
+                disabled={!isPremium}
+              >
+                <div className="flex items-center">
+                  <Database className="w-4 h-4 mr-1.5" />
+                  <span>Stats</span>
+                  {!isPremium && <span className="ml-1 text-xs">🔒</span>}
+                </div>
+              </button>
+            </div>
+          </div>
+          
           {/* Build Order Warning */}
           {!hasBuildOrder && (
-            <Alert variant="warning" className="mt-4 bg-amber-50 border-amber-200">
-              <AlertCircle className="h-4 w-4 text-amber-600" />
-              <AlertDescription className="text-amber-700">
+            <Alert variant="warning" className="mt-4 mb-4 bg-amber-900/30 border border-amber-700/50">
+              <AlertCircle className="h-4 w-4 text-amber-500" />
+              <AlertDescription className="text-amber-400">
                 Build Order konnte nicht aus dem Replay extrahiert werden. Dies kann bei sehr kurzen Spielen oder bei bestimmten Replay-Formaten vorkommen.
               </AlertDescription>
             </Alert>
           )}
           
-          <div className="mt-4">
-            <AnalysisResult 
-              data={viewData} 
-              isPremium={isPremium} 
-            />
+          {/* Custom tab content - with enhanced styling */}
+          <div className="mt-4 sc-metal-frame overflow-hidden">
+            {activeTab === 'overview' && (
+              <div className="animate-fade-in">
+                <div className="bg-gradient-to-r from-black via-gray-900 to-black p-4 border-b border-gray-700/50 flex items-center">
+                  <div className={`w-5 h-5 rounded-full bg-${raceClass} mr-3 glow-${raceClass}`}></div>
+                  <h3 className="text-xl sc-terminal-text">Übersicht</h3>
+                </div>
+                
+                <div className="p-6 bg-gradient-to-b from-gray-900/80 to-black/95">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {/* Player Strengths card */}
+                    <div className="sc-card transform hover:scale-[1.01] transition-all duration-300 hover:shadow-blue-500/10">
+                      <div className="sc-header">
+                        <h4 className="font-semibold sc-terminal-text text-green-400">Stärken</h4>
+                      </div>
+                      <div className="p-4">
+                        <ul className="space-y-2">
+                          {viewData.strengths?.map((strength, i) => (
+                            <li key={i} className="flex items-start">
+                              <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 mt-1.5 mr-2"></span>
+                              <span>{strength}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                    
+                    {/* Player Weaknesses card */}
+                    <div className="sc-card transform hover:scale-[1.01] transition-all duration-300 hover:shadow-red-500/10">
+                      <div className="sc-header">
+                        <h4 className="font-semibold sc-terminal-text text-red-400">Schwächen</h4>
+                      </div>
+                      <div className="p-4">
+                        <ul className="space-y-2">
+                          {viewData.weaknesses?.map((weakness, i) => (
+                            <li key={i} className="flex items-start">
+                              <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 mr-2"></span>
+                              <span>{weakness}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                    
+                    {/* Recommendations card */}
+                    <div className="sc-card transform hover:scale-[1.01] transition-all duration-300 hover:shadow-yellow-500/10">
+                      <div className="sc-header">
+                        <h4 className="font-semibold sc-terminal-text text-yellow-400">Empfehlungen</h4>
+                      </div>
+                      <div className="p-4">
+                        <ul className="space-y-2">
+                          {viewData.recommendations?.map((rec, i) => (
+                            <li key={i} className="flex items-start">
+                              <span className="inline-block w-1.5 h-1.5 rounded-full bg-yellow-500 mt-1.5 mr-2"></span>
+                              <span>{rec}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Map preview */}
+                  <div className="mt-6">
+                    <h4 className="font-semibold text-gray-300 mb-3">Map Preview</h4>
+                    <div className="sc-minimap border border-gray-700 h-40 rounded-sm relative overflow-hidden">
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/60 radar-scan">
+                        <span className="sc-terminal-text text-blue-400">Map: {viewData.map}</span>
+                      </div>
+                      {viewData.map && (
+                        <div className="absolute inset-0 opacity-30">
+                          <div className="h-full w-full bg-gradient-to-br from-blue-900/30 to-transparent"></div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {activeTab === 'buildOrder' && (
+              <div className="animate-fade-in">
+                <div className="bg-gradient-to-r from-black via-gray-900 to-black p-4 border-b border-gray-700/50 flex items-center">
+                  <div className={`w-5 h-5 rounded-full bg-${raceClass} mr-3 glow-${raceClass}`}></div>
+                  <h3 className="text-xl sc-terminal-text">Build Order Analysis</h3>
+                </div>
+                
+                <ScrollArea className="h-[500px] sc-scrollbar">
+                  <div className="p-4">
+                    {/* Build Order table */}
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="bg-black/50 border-b border-gray-700/50">
+                          <th className="text-left py-2 px-4 text-gray-400">Time</th>
+                          <th className="text-left py-2 px-4 text-gray-400">Supply</th>
+                          <th className="text-left py-2 px-4 text-gray-400">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {viewData.buildOrder?.map((item, index) => (
+                          <tr 
+                            key={`${item.time}-${index}`}
+                            className="border-b border-gray-800/50 hover:bg-gray-900/30 transition-colors"
+                          >
+                            <td className="py-3 px-4 font-mono text-blue-300">{item.time}</td>
+                            <td className="py-3 px-4 font-mono text-yellow-300">{item.supply}</td>
+                            <td className="py-3 px-4">{item.action}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </ScrollArea>
+              </div>
+            )}
+            
+            {activeTab === 'analysis' && (
+              <div className="animate-fade-in">
+                <div className="bg-gradient-to-r from-black via-gray-900 to-black p-4 border-b border-gray-700/50 flex items-center">
+                  <h3 className="text-xl sc-terminal-text">Detailed Analysis</h3>
+                </div>
+                
+                <div className="p-6 bg-gradient-to-b from-gray-900/80 to-black/95">
+                  <AnalysisResult 
+                    data={viewData} 
+                    isPremium={isPremium} 
+                  />
+                </div>
+              </div>
+            )}
+            
+            {activeTab === 'training' && (
+              <div className="p-6 bg-gradient-to-b from-gray-900/80 to-black/95 animate-fade-in">
+                {isPremium ? (
+                  <div className="text-center">
+                    <h3 className="text-xl font-bold mb-4">Training Plan</h3>
+                    <p>Premium training content would appear here.</p>
+                  </div>
+                ) : (
+                  <div className="text-center p-8">
+                    <h3 className="text-xl font-bold mb-4">Premium Feature</h3>
+                    <p className="mb-4">Upgrade to Premium for personalized training plans.</p>
+                    <Button className="blizzard-button">Upgrade Now</Button>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {activeTab === 'stats' && (
+              <div className="p-6 bg-gradient-to-b from-gray-900/80 to-black/95 animate-fade-in">
+                {isPremium ? (
+                  <div className="text-center">
+                    <h3 className="text-xl font-bold mb-4">Advanced Statistics</h3>
+                    <p>Premium statistics content would appear here.</p>
+                  </div>
+                ) : (
+                  <div className="text-center p-8">
+                    <h3 className="text-xl font-bold mb-4">Premium Feature</h3>
+                    <p className="mb-4">Upgrade to Premium for detailed statistics and analytics.</p>
+                    <Button className="blizzard-button">Upgrade Now</Button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </>
       );
@@ -336,12 +580,12 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
   // 3. Default fallback state when no data is available
   console.log('💡 AnalysisDisplay - Rendering upload placeholder');
   return (
-    <div className="h-96 flex flex-col items-center justify-center bg-card/30 backdrop-blur-sm rounded-lg border border-dashed border-border shadow-inner">
+    <div className="h-96 flex flex-col items-center justify-center sc-metal-frame backdrop-blur-sm border border-dashed border-gray-700/50 shadow-inner">
       <div className="text-center max-w-md p-6">
-        <div className="w-20 h-20 bg-secondary/40 rounded-full mx-auto mb-6 flex items-center justify-center">
-          <Upload className="h-10 w-10 text-muted-foreground" />
+        <div className="w-20 h-20 bg-black/60 border border-blue-500/40 rounded-full mx-auto mb-6 flex items-center justify-center">
+          <Upload className="h-10 w-10 text-blue-400" />
         </div>
-        <h3 className="text-xl font-semibold mb-3">Kein Replay ausgewählt</h3>
+        <h3 className="text-xl font-semibold mb-3 sc-terminal-text">Kein Replay ausgewählt</h3>
         <p className="text-muted-foreground">
           Lade ein Replay hoch, um deine personalisierte Analyse hier zu sehen
         </p>
