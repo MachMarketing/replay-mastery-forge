@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ParsedReplayData, ParsedReplayResult, ReplayAnalysis } from '@/services/replayParser';
+import { ParsedReplayData, AnalyzedReplayResult } from '@/services/replayParserService';
 import { useToast } from '@/hooks/use-toast';
 import { parseReplayInBrowser } from '@/services/browserReplayParser';
 import { hasBrowserWasmIssues } from '@/utils/browserDetection';
 
 interface ReplayParserResult {
-  parseReplay: (file: File) => Promise<ParsedReplayResult & ReplayAnalysis | null>;
+  parseReplay: (file: File) => Promise<AnalyzedReplayResult | null>;
   isProcessing: boolean;
   error: string | null;
   clearError: () => void;
@@ -43,7 +43,7 @@ export function useReplayParser(): ReplayParserResult {
     setProgress(0);
   }, []);
 
-  const parseReplay = useCallback(async (file: File): Promise<ParsedReplayResult & ReplayAnalysis | null> => {
+  const parseReplay = useCallback(async (file: File): Promise<AnalyzedReplayResult | null> => {
     if (isProcessing) {
       console.log('[useReplayParser] Already processing a file, aborting');
       toast({
@@ -134,8 +134,8 @@ export function useReplayParser(): ReplayParserResult {
         secondaryBuildOrderItems: parsedData.secondaryPlayer?.buildOrder?.length || 0
       });
       
-      // Ensure the result has all required fields for ParsedReplayResult and ReplayAnalysis
-      const result: ParsedReplayResult & ReplayAnalysis = {
+      // Ensure the result has all required fields for AnalyzedReplayResult
+      const result: AnalyzedReplayResult = {
         ...parsedData,
         playerName: parsedData.primaryPlayer?.name || 'Player',
         opponentName: parsedData.secondaryPlayer?.name || 'Opponent',

@@ -1,4 +1,3 @@
-
 import { ParsedReplayData, PlayerData, ReplayAnalysis } from './replayParser/types';
 import { parseReplayInBrowser } from './browserReplayParser';
 import { markBrowserAsHavingWasmIssues } from '@/utils/browserDetection';
@@ -18,11 +17,12 @@ export interface ParsedReplayResult extends ParsedReplayData {
   eapm: number;        // Aliased from primaryPlayer.eapm
   opponentApm: number; // Aliased from secondaryPlayer.apm
   opponentEapm: number; // Aliased from secondaryPlayer.eapm
+  // Make trainingPlan required in this interface to match ReplayAnalysis
+  trainingPlan: Array<{ day: number; focus: string; drill: string }>;
 }
 
-export interface AnalyzedReplayResult extends ParsedReplayResult, ReplayAnalysis {
-  // All properties are now inherited from ParsedReplayResult and ReplayAnalysis
-}
+// Create a merged type that satisfies both interfaces without conflicts
+export type AnalyzedReplayResult = ParsedReplayResult & Omit<ReplayAnalysis, keyof ParsedReplayResult>;
 
 // Track active parsing process for potential abort
 let activeParsingAbortController: AbortController | null = null;
@@ -143,7 +143,10 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
           { day: 1, focus: "Macro Management", drill: "Constant worker production" },
           { day: 2, focus: "Micro Control", drill: "Unit positioning practice" },
           { day: 3, focus: "Build Order", drill: "Timing attack execution" }
-        ]
+        ],
+        strengths: result.strengths || [],
+        weaknesses: result.weaknesses || [],
+        recommendations: result.recommendations || []
       };
       
       return enhancedResult;
