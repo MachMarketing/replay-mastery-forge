@@ -1,4 +1,5 @@
 
+
 /**
  * End-to-end test for comparing parser implementations
  */
@@ -58,7 +59,13 @@ export async function runE2EParserTest(file: File): Promise<E2ETestResult> {
       apm: browserParserResult.primaryPlayer?.apm || 0,
       eapm: browserParserResult.primaryPlayer?.eapm || 0,
       opponentApm: browserParserResult.secondaryPlayer?.apm || 0,
-      opponentEapm: browserParserResult.secondaryPlayer?.eapm || 0
+      opponentEapm: browserParserResult.secondaryPlayer?.eapm || 0,
+      // Add the required trainingPlan property with default values
+      trainingPlan: browserParserResult.trainingPlan || [
+        { day: 1, focus: "Macro Management", drill: "Constant worker production" },
+        { day: 2, focus: "Micro Control", drill: "Unit positioning practice" },
+        { day: 3, focus: "Build Order", drill: "Timing attack execution" }
+      ]
     };
     
     // Add some delay to ensure the comparison is complete
@@ -76,3 +83,4 @@ export async function runE2EParserTest(file: File): Promise<E2ETestResult> {
     };
   }
 }
+
