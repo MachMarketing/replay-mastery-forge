@@ -27,173 +27,148 @@ export async function initBrowserSafeParser(): Promise<void> {
     const screparsed = await import('screparsed');
     console.log('[browserSafeParser] Screparsed import successful:', Object.keys(screparsed));
     
-    // Based on screparsed documentation, it exports a function that takes a Uint8Array
-    // and returns the parsed replay data
+    // Based on the error messages and module structure:
+    // - The module doesn't have a direct 'parse' function
+    // - The module itself isn't callable
+    // - We need to use the exported classes/constructors
     
-    // Approach 1: Try to use the package as a direct function (common pattern in WASM modules)
-    if (typeof screparsed.parse === 'function') {
-      console.log('[browserSafeParser] Found parse function directly on module');
+    // First, check if ParsedReplay class exists (from the error message)
+    if (screparsed.ParsedReplay) {
+      console.log('[browserSafeParser] Found ParsedReplay class');
       
-      parserInstance = {
-        parse: (data: Uint8Array) => {
-          try {
-            return screparsed.parse(data);
-          } catch (err) {
-            console.error('[browserSafeParser] Error using screparsed.parse:', err);
-            throw err;
-          }
-        }
-      };
-      
-      isInitialized = true;
-      console.log('[browserSafeParser] ✅ Parser initialized using screparsed.parse');
-      return;
-    }
-    
-    // Approach 2: Check if the default export is a function
-    if (typeof screparsed.default === 'function') {
-      console.log('[browserSafeParser] Using default export as parsing function');
-      
-      parserInstance = {
-        parse: (data: Uint8Array) => {
-          try {
-            return screparsed.default(data);
-          } catch (err) {
-            console.error('[browserSafeParser] Error using default export function:', err);
-            throw err;
-          }
-        }
-      };
-      
-      isInitialized = true;
-      console.log('[browserSafeParser] ✅ Parser initialized using default export');
-      return;
-    }
-    
-    // Approach 3: Check for ParsedReplay or ReplayParser class (based on screp-ts structure)
-    const parserClasses = ['ParsedReplay', 'ReplayParser'];
-    for (const className of parserClasses) {
-      if (screparsed[className]) {
-        console.log(`[browserSafeParser] Found ${className} class`);
+      try {
+        const parseReplayClass = screparsed.ParsedReplay;
         
-        // Check for static parse methods
-        const staticMethods = ['parse', 'parseReplay', 'fromBuffer', 'fromArrayBuffer', 'fromUint8Array'];
-        
-        for (const methodName of staticMethods) {
-          const staticMethod = screparsed[className][methodName];
-          if (typeof staticMethod === 'function') {
-            console.log(`[browserSafeParser] Found static ${className}.${methodName} method`);
-            
-            parserInstance = {
-              parse: (data: Uint8Array) => {
-                try {
-                  return staticMethod(data);
-                } catch (err) {
-                  console.error(`[browserSafeParser] Error using ${className}.${methodName}:`, err);
-                  throw err;
-                }
-              }
-            };
-            
-            isInitialized = true;
-            console.log(`[browserSafeParser] ✅ Parser initialized using ${className}.${methodName}`);
-            return;
-          }
-        }
-        
-        // Try to instantiate the class
-        try {
-          console.log(`[browserSafeParser] Trying to instantiate ${className}`);
-          
-          // First try with data parameter
-          parserInstance = {
-            parse: (data: Uint8Array) => {
-              try {
-                const parser = new screparsed[className](data);
-                
-                // If instance has a parse method, use it
-                if (typeof parser.parse === 'function') {
-                  return parser.parse();
-                }
-                
-                // Otherwise return the instance itself as it may be the parsed result
-                return parser;
-              } catch (constructorErr) {
-                console.warn(`[browserSafeParser] Error instantiating ${className} with data:`, constructorErr);
-                
-                try {
-                  // Try without parameters
-                  const parser = new screparsed[className]();
-                  
-                  if (typeof parser.parse === 'function') {
-                    return parser.parse(data);
-                  } else if (typeof parser.parseReplay === 'function') {
-                    return parser.parseReplay(data);
-                  } else {
-                    throw new Error(`${className} instance has no parse or parseReplay method`);
-                  }
-                } catch (err) {
-                  console.error(`[browserSafeParser] Error using ${className} instance:`, err);
-                  throw err;
-                }
-              }
-            }
-          };
-          
-          isInitialized = true;
-          console.log(`[browserSafeParser] ✅ Parser initialized with ${className} constructor`);
-          return;
-        } catch (err) {
-          console.warn(`[browserSafeParser] Could not instantiate ${className}:`, err);
-        }
-      }
-    }
-    
-    // Approach 4: Look for any function that might work as a parser
-    for (const key of Object.keys(screparsed)) {
-      // Skip already checked classes
-      if (parserClasses.includes(key)) continue;
-      
-      const exportedItem = screparsed[key];
-      if (typeof exportedItem === 'function') {
-        console.log(`[browserSafeParser] Found function ${key}, trying as parser`);
-        
+        // Create a parser instance that uses ParsedReplay
         parserInstance = {
           parse: (data: Uint8Array) => {
             try {
-              return exportedItem(data);
+              // Try to construct with data directly (common pattern)
+              const parsedReplay = new parseReplayClass(data);
+              return parsedReplay;
+            } catch (constructorErr) {
+              console.warn('[browserSafeParser] Error instantiating ParsedReplay with data:', constructorErr);
+              
+              // Alternative: Try to instantiate without args and then parse
+              try {
+                const parser = new parseReplayClass();
+                
+                // Check if the instance has a parse method
+                if (typeof parser.parse === 'function') {
+                  return parser.parse(data);
+                } else {
+                  // If no direct parse method, the instance itself might be the result
+                  return parser;
+                }
+              } catch (err) {
+                console.error('[browserSafeParser] Error using ParsedReplay class:', err);
+                throw err;
+              }
+            }
+          }
+        };
+        
+        isInitialized = true;
+        console.log('[browserSafeParser] ✅ Parser initialized with ParsedReplay constructor');
+        return;
+      } catch (err) {
+        console.error('[browserSafeParser] Failed to initialize with ParsedReplay:', err);
+      }
+    }
+    
+    // Next, try using ReplayParser class
+    if (screparsed.ReplayParser) {
+      console.log('[browserSafeParser] Found ReplayParser class');
+      
+      try {
+        const replayParserClass = screparsed.ReplayParser;
+        
+        // Create a parser instance that uses ReplayParser
+        parserInstance = {
+          parse: (data: Uint8Array) => {
+            try {
+              // Try with static parse method first
+              if (typeof replayParserClass.parse === 'function') {
+                return replayParserClass.parse(data);
+              }
+              
+              // Otherwise instantiate and use instance methods
+              const parser = new replayParserClass();
+              
+              if (typeof parser.parse === 'function') {
+                return parser.parse(data);
+              } else if (typeof parser.parseReplay === 'function') {
+                return parser.parseReplay(data);
+              } else {
+                throw new Error('ReplayParser has no usable parse methods');
+              }
             } catch (err) {
-              console.error(`[browserSafeParser] Error using ${key}:`, err);
+              console.error('[browserSafeParser] Error using ReplayParser:', err);
               throw err;
             }
           }
         };
         
         isInitialized = true;
-        console.log(`[browserSafeParser] ✅ Parser initialized using ${key} function`);
+        console.log('[browserSafeParser] ✅ Parser initialized with ReplayParser constructor');
         return;
+      } catch (err) {
+        console.error('[browserSafeParser] Failed to initialize with ReplayParser:', err);
       }
     }
     
-    // Final attempt - use the whole module as a function (avoiding direct call that causes build error)
-    console.log('[browserSafeParser] Attempting to use module itself as a function');
-    const moduleAsFunction = screparsed as unknown as (data: Uint8Array) => any;
-    
-    parserInstance = {
-      parse: (data: Uint8Array) => {
-        try {
-          // Use apply to avoid direct function call syntax that causes build error
-          return Function.prototype.apply.call(moduleAsFunction, null, [data]);
-        } catch (err) {
-          console.error('[browserSafeParser] Error using module as function:', err);
-          throw err;
+    // Try the default export as a last resort
+    if (screparsed.default) {
+      console.log('[browserSafeParser] Trying default export:', typeof screparsed.default);
+      
+      try {
+        const defaultExport = screparsed.default;
+        
+        if (typeof defaultExport === 'function') {
+          // Default export is a function we can call
+          parserInstance = {
+            parse: (data: Uint8Array) => {
+              try {
+                return defaultExport(data);
+              } catch (err) {
+                console.error('[browserSafeParser] Error using default export as function:', err);
+                throw err;
+              }
+            }
+          };
+          
+          isInitialized = true;
+          console.log('[browserSafeParser] ✅ Parser initialized with default export function');
+          return;
+        } 
+        
+        // Check if default export has needed classes/methods
+        if (defaultExport.ParsedReplay) {
+          console.log('[browserSafeParser] Found ParsedReplay in default export');
+          
+          parserInstance = {
+            parse: (data: Uint8Array) => {
+              try {
+                const parser = new defaultExport.ParsedReplay(data);
+                return parser;
+              } catch (err) {
+                console.error('[browserSafeParser] Error using default.ParsedReplay:', err);
+                throw err;
+              }
+            }
+          };
+          
+          isInitialized = true;
+          console.log('[browserSafeParser] ✅ Parser initialized with default.ParsedReplay');
+          return;
         }
+      } catch (err) {
+        console.error('[browserSafeParser] Failed to use default export:', err);
       }
-    };
+    }
     
-    isInitialized = true;
-    console.log('[browserSafeParser] ✅ Parser initialized using module as function');
-    
+    // If we got here, we couldn't initialize any parser
+    throw new Error('Could not initialize replay parser with any available API');
   } catch (err) {
     console.error('[browserSafeParser] Failed to initialize parser:', err);
     throw new Error(`Failed to initialize replay parser: ${err instanceof Error ? err.message : String(err)}`);
