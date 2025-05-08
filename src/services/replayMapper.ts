@@ -1,4 +1,3 @@
-
 /**
  * Maps raw parsed replay data to our application's format
  */
@@ -151,7 +150,6 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
       durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
     } else {
       console.warn('[replayMapper] No duration information available in replay');
-      throw new Error('No duration information found in replay data');
     }
     
     // Parse build order for primary player
@@ -166,37 +164,33 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
       if (player1.commands) console.log('[replayMapper] commands available:', player1.commands.length);
       if (player1.actions) console.log('[replayMapper] actions available:', player1.actions.length);
       
-      if (Array.isArray(player1.buildOrder) && player1.buildOrder.length > 0) {
-        // Direct build order data
-        console.log('[replayMapper] Using direct buildOrder data');
-        buildOrder = mapBuildOrderData(player1.buildOrder);
-      } else if (Array.isArray(player1.commands) && player1.commands.length > 0) {
-        // Extract from commands
-        console.log('[replayMapper] Extracting build order from commands');
-        buildOrder = extractBuildOrderFromCommands(player1.commands);
-      } else if (Array.isArray(player1.actions) && player1.actions.length > 0) {
-        // Extract from actions as last resort
-        console.log('[replayMapper] Extracting build order from actions');
-        buildOrder = extractBuildOrderFromActions(player1.actions);
-      } else {
-        console.warn('[replayMapper] No valid data sources for build order extraction');
-        throw new Error('No valid data sources for build order extraction');
+      try {
+        if (Array.isArray(player1.buildOrder) && player1.buildOrder.length > 0) {
+          // Direct build order data
+          console.log('[replayMapper] Using direct buildOrder data');
+          buildOrder = mapBuildOrderData(player1.buildOrder);
+        } else if (Array.isArray(player1.commands) && player1.commands.length > 0) {
+          // Extract from commands
+          console.log('[replayMapper] Extracting build order from commands');
+          buildOrder = extractBuildOrderFromCommands(player1.commands);
+        } else if (Array.isArray(player1.actions) && player1.actions.length > 0) {
+          // Extract from actions as last resort
+          console.log('[replayMapper] Extracting build order from actions');
+          buildOrder = extractBuildOrderFromActions(player1.actions);
+        } else {
+          console.warn('[replayMapper] No valid data sources for build order extraction');
+          // Instead of throwing, just use an empty array
+          buildOrder = [];
+        }
+      } catch (err) {
+        console.warn('[replayMapper] Error extracting build order:', err);
+        // Use empty array instead of throwing
+        buildOrder = [];
       }
     }
     
-    // If we couldn't extract a build order, throw an error
-    if (!buildOrder || buildOrder.length === 0) {
-      console.warn('[replayMapper] Failed to extract build order');
-      throw new Error('Failed to extract build order from replay data');
-    }
-    
-    console.log('[replayMapper] Final build order items:', buildOrder.length);
-    
     // Determine game result from replay data
     const gameResult: 'win' | 'loss' = determineGameResult(parsedData);
-    
-    // Generate strengths, weaknesses, and recommendations based on race and build order
-    const analysis = generateAnalysis(primaryPlayer.race, secondaryPlayer.race, buildOrder, mapName);
     
     // Map all data to our application format
     const result: ParsedReplayData = {
@@ -218,9 +212,9 @@ export function mapRawToParsed(parsedData: any): ParsedReplayData {
       date: currentDate,
       result: gameResult,
       buildOrder,
-      strengths: analysis.strengths,
-      weaknesses: analysis.weaknesses,
-      recommendations: analysis.recommendations
+      strengths: [],
+      weaknesses: [],
+      recommendations: []
     };
     
     console.log('[replayMapper] Mapping complete', {
@@ -505,132 +499,6 @@ function determineGameResult(parsedData: any): 'win' | 'loss' {
     return parsedData.header.result === 'victory' ? 'win' : 'loss';
   }
   
-  // For test purposes, use semi-random but consistent result based on map name
-  if (parsedData && parsedData.mapName) {
-    // Simple hash of map name
-    const hash = parsedData.mapName
-      .split('')
-      .reduce((sum: number, char: string) => sum + char.charCodeAt(0), 0);
-    
-    return hash % 2 === 0 ? 'win' : 'loss';
-  }
-  
-  // Default to unknown
+  // Default to win - this is arbitrary but a safer choice
   return 'win';
-}
-
-/**
- * Generate analysis based on race and build order
- */
-function generateAnalysis(
-  playerRace: string,
-  opponentRace: string,
-  buildOrder: Array<{ time: string; supply: number; action: string }>,
-  mapName: string
-) {
-  // Base results
-  const results = {
-    strengths: [] as string[],
-    weaknesses: [] as string[],
-    recommendations: [] as string[]
-  };
-  
-  // Race-based analysis
-  switch (playerRace) {
-    case 'Terran':
-      results.strengths.push('Gute Positionierung der Terran-Einheiten');
-      results.weaknesses.push('Könnte früher expandieren');
-      results.recommendations.push('Mehr Dropship-Harassment verwenden');
-      break;
-      
-    case 'Protoss':
-      results.strengths.push('Effektiver Einsatz von Protoss-Zaubersprüchen');
-      results.weaknesses.push('Zu wenig Observer für Map-Kontrolle');
-      results.recommendations.push('Mehr auf Expansion und Technologie achten');
-      break;
-      
-    case 'Zerg':
-      results.strengths.push('Gute Creep-Ausbreitung für Zerg-Mobilität');
-      results.weaknesses.push('Zu spätes Upgraden von Metabolic Boost');
-      results.recommendations.push('Früher auf Lurker umsteigen gegen diesen Gegner');
-      break;
-  }
-  
-  // Matchup-based analysis (e.g., PvT, ZvP, etc.)
-  const matchup = `${playerRace[0]}v${opponentRace[0]}`;
-  
-  switch (matchup) {
-    case 'TvP':
-      results.strengths.push('Effektive Belagerungspanzer-Positionierung gegen Protoss');
-      results.recommendations.push('Mehr Medics in deine Bio-Armee integrieren');
-      break;
-      
-    case 'TvZ':
-      results.strengths.push('Guter Mineneinsatz gegen Zerglings');
-      results.recommendations.push('Mehr auf Science Vessels für Detection setzen');
-      break;
-      
-    case 'PvT':
-      results.strengths.push('Guter Einsatz von High Templars gegen Bio-Bälle');
-      results.recommendations.push('Mehr Observer für die Aufklärung produzieren');
-      break;
-      
-    case 'PvZ':
-      results.strengths.push('Effektive Cannon-Absicherung gegen Zerg-Rushes');
-      results.recommendations.push('Früher auf Corsairs umsteigen gegen Muta-Schwärme');
-      break;
-      
-    case 'ZvT':
-      results.strengths.push('Guter Einsatz von Lurkers gegen Marines');
-      results.recommendations.push('Mehr Sunken Colonies zum Verteidigen bauen');
-      break;
-      
-    case 'ZvP':
-      results.strengths.push('Effektiver Einsatz von Zerglings gegen frühe Zealots');
-      results.recommendations.push('Mehr Overlords für Map-Kontrolle produzieren');
-      break;
-  }
-  
-  // Map-based analysis
-  if (mapName.toLowerCase().includes('python')) {
-    results.recommendations.push('Auf dieser Karte durch die Mitte expandieren');
-  } else if (mapName.toLowerCase().includes('polypoid')) {
-    results.recommendations.push('Auf Polypoid mehr auf Expansion und Lufteinheiten achten');
-  } else if (mapName.toLowerCase().includes('luna')) {
-    results.recommendations.push('Auf Luna mehr auf Lufteinheiten setzen');
-  }
-  
-  // Build order analysis
-  if (buildOrder.length > 0) {
-    const earlyBuild = buildOrder.filter(item => {
-      const [min, sec] = item.time.split(':').map(Number);
-      return (min * 60 + sec) < 300; // first 5 minutes
-    });
-    
-    if (earlyBuild.length < 5) {
-      results.weaknesses.push('Build-Order in der frühen Phase zu ungenau');
-    } else {
-      results.strengths.push('Effiziente frühe Build-Order');
-    }
-  } else {
-    results.weaknesses.push('Keine Build-Order-Daten verfügbar zur Analyse');
-  }
-  
-  // Ensure we have some analysis even if the data is sparse
-  if (results.strengths.length < 2) {
-    results.strengths.push('Solides mechanisches Spiel');
-    results.strengths.push('Gute Ressourcennutzung');
-  }
-  
-  if (results.weaknesses.length < 2) {
-    results.weaknesses.push('Könnte mehr scouten');
-    results.weaknesses.push('Build-Order könnte optimiert werden');
-  }
-  
-  if (results.recommendations.length < 2) {
-    results.recommendations.push('Standard-Build-Order gegen dieses Match-Up üben');
-    results.recommendations.push('Timing-Angriffe perfektionieren');
-  }
-  
-  return results;
 }

@@ -1,4 +1,3 @@
-
 import { ParsedReplayData, PlayerData } from './replayParser/types';
 import { parseReplayInBrowser } from './browserReplayParser';
 import { markBrowserAsHavingWasmIssues } from '@/utils/browserDetection';
@@ -175,37 +174,19 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
       // Check for known WASM errors
       const errorMessage = error instanceof Error ? error.message : String(error);
       
+      // Only mark browser as having issues if it's actually a WASM error
       if (errorMessage.includes('makeslice') || 
           errorMessage.includes('runtime error')) {
         console.warn('[replayParserService] WASM error detected, marking browser as having issues');
         markBrowserAsHavingWasmIssues();
-        return createEmergencyFallbackData(file);
       }
       
       throw error;
     } finally {
       activeParsingAbortController = null;
     }
-    
-    // Validate the parsed result
-    if (!result || !result.primaryPlayer || !result.primaryPlayer.name) {
-      console.warn('[replayParserService] Invalid result from parser, using fallback');
-      return createEmergencyFallbackData(file);
-    }
   } catch (error) {
     console.error('[replayParserService] Error:', error);
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    
-    // For specific WASM errors, mark as having issues
-    if (errorMessage.includes('makeslice') || 
-        errorMessage.includes('runtime error')) {
-      console.warn('[replayParserService] WASM error detected, marking browser as having issues');
-      markBrowserAsHavingWasmIssues();
-      
-      // Return minimal fallback data
-      return createEmergencyFallbackData(file);
-    }
-    
     throw error;
   }
 }
