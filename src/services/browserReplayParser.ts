@@ -80,6 +80,18 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
               apm: player.apm || calculateApmFromActions(player),
             });
             
+            // Fix race case-insensitive detection
+            if (player.race) {
+              const raceStr = player.race.toString().toLowerCase();
+              if (raceStr.includes('p') || raceStr.includes('protoss')) {
+                player.race = 'Protoss';
+              } else if (raceStr.includes('t') || raceStr.includes('terran')) {
+                player.race = 'Terran'; 
+              } else if (raceStr.includes('z') || raceStr.includes('zerg')) {
+                player.race = 'Zerg';
+              }
+            }
+            
             // Special case for player named "NumberOne" - always set to Protoss
             if (player.name && player.name.toLowerCase().includes('numberone')) {
               console.log(`🛠 [browserReplayParser] Found NumberOne, setting race to Protoss`);
@@ -99,6 +111,41 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
             console.log(`  - Actions: ${playerObj.actions ? `Found (${playerObj.actions.length})` : 'Not found'}`);
             console.log(`  - Units: ${playerObj.units ? `Found (${Object.keys(playerObj.units).length})` : 'Not found'}`);
             console.log(`  - Buildings: ${playerObj.buildings ? `Found (${Object.keys(playerObj.buildings).length})` : 'Not found'}`);
+            
+            // Enhanced build order detection
+            // Try to construct build orders from commands, units, and buildings
+            if (!playerObj.buildOrder || playerObj.buildOrder.length === 0) {
+              console.log(`🛠 [browserReplayParser] No direct buildOrder found, attempting to extract from other sources`);
+              
+              // If we have commands, try to extract a build order from them
+              if (playerObj.commands && Array.isArray(playerObj.commands) && playerObj.commands.length > 0) {
+                console.log(`🛠 [browserReplayParser] Attempting to extract build order from ${playerObj.commands.length} commands`);
+                
+                // Extract relevant build commands (train, build, research, etc.)
+                const buildCommands = playerObj.commands.filter((cmd: any) => {
+                  const cmdType = cmd.type && cmd.type.toLowerCase();
+                  return cmdType && (
+                    cmdType.includes('train') || 
+                    cmdType.includes('build') || 
+                    cmdType.includes('research') || 
+                    cmdType.includes('upgrade')
+                  );
+                });
+                
+                if (buildCommands.length > 0) {
+                  console.log(`🛠 [browserReplayParser] Found ${buildCommands.length} build-related commands`);
+                  // We'll convert this to actual build order in the mapper
+                  playerObj.buildCommands = buildCommands;
+                }
+              }
+              
+              // Log units and buildings for potential build order reconstruction
+              if (playerObj.units || playerObj.buildings) {
+                console.log(`🛠 [browserReplayParser] Found units/buildings data that could be used for build order reconstruction`);
+              }
+            } else {
+              console.log(`🛠 [browserReplayParser] Direct buildOrder found with ${playerObj.buildOrder.length} entries`);
+            }
             
             // Log commands if available
             if (playerObj.commands && Array.isArray(playerObj.commands)) {

@@ -113,8 +113,19 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
         secondaryPlayer: result.secondaryPlayer ? 
           `${result.secondaryPlayer.name} (${result.secondaryPlayer.race})` : 'Missing',
         primaryBuildOrderItems: result.primaryPlayer?.buildOrder?.length || 0,
-        secondaryBuildOrderItems: result.secondaryPlayer?.buildOrder?.length || 0
+        secondaryBuildOrderItems: result.secondaryPlayer?.buildOrder?.length || 0,
+        matchup: result.matchup || 'Unknown matchup'
       });
+      
+      // Fix matchup if needed based on actual player races
+      if (result.primaryPlayer && result.secondaryPlayer && 
+          result.primaryPlayer.race && result.secondaryPlayer.race) {
+        // Create matchup from first letter of each race
+        const p1Race = result.primaryPlayer.race.charAt(0).toUpperCase();
+        const p2Race = result.secondaryPlayer.race.charAt(0).toUpperCase();
+        result.matchup = `${p1Race}v${p2Race}`;
+        console.log('[replayParserService] Fixed matchup to:', result.matchup);
+      }
       
       // Ensure backward compatibility by creating legacy field mappings
       const enhancedResult: AnalyzedReplayResult = {
