@@ -78,4 +78,3 @@ export interface ParsedReplayResult extends ParsedReplayData {
   // Make trainingPlan required in this interface
   trainingPlan: Array<{ day: number; focus: string; drill: string }>;
 }
-
