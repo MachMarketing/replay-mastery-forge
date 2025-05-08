@@ -68,7 +68,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
           // Make a copy of players to work with
           processedPlayers = [...processedPlayers];
           
-          // Log details for each player
+          // Log details for each player and process data
           processedPlayers.forEach((player: any, index: number) => {
             console.log(`🛠 [browserReplayParser] Player ${index + 1} details (${parseId}):`, {
               name: player.name,
@@ -113,10 +113,12 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
             }
           });
 
-          // Instead of trying to modify the original parsed result, create a new object
+          // Instead of trying to modify the original parsed result directly,
+          // create a new processed data object that we'll pass to mapRawToParsed
           parsedResult = {
             ...parsedResult,
-            players: processedPlayers
+            // We're treating players as a regular array property, not trying to modify
+            // the original ParsedReplay object structure
           };
         }
         
@@ -147,7 +149,7 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
         // We'll use a more adaptive approach instead of assuming specific properties
         const parsedData = {
           header: parsedResult.gameInfo || {},
-          players: parsedResult.players || [],
+          players: processedPlayers, // Use our processed player data
           mapName: parsedResult.gameInfo?.map || 'Unknown',
           chat: parsedResult.chatMessages || [],
           fileHash: String(file.size) + '_' + parseId, // Add a unique hash for this specific file
