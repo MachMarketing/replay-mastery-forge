@@ -12,6 +12,12 @@ interface IReplayParser {
   parse: (data: Uint8Array) => any;
 }
 
+// Interface for expected constructor signatures
+interface ParsedReplay {
+  parseReplay?: (data: Uint8Array) => any;
+  parse?: (data: Uint8Array) => any;
+}
+
 /**
  * Initialize the browser-safe parser
  */
@@ -44,6 +50,7 @@ export async function initBrowserSafeParser(): Promise<void> {
               
               try {
                 // Try with just the data parameter first
+                // @ts-expect-error - We're testing different argument patterns
                 parsedReplay = new ParsedReplayClass(data);
                 console.log('[browserSafeParser] Created ParsedReplay with single argument');
               } catch (singleArgError) {
@@ -51,14 +58,15 @@ export async function initBrowserSafeParser(): Promise<void> {
                 
                 try {
                   // Try with no arguments (some WASM bindings expect this pattern)
+                  // @ts-expect-error - We're testing different argument patterns
                   parsedReplay = new ParsedReplayClass();
                   console.log('[browserSafeParser] Created ParsedReplay with no arguments');
                   
                   // Try to find a method to parse the data
-                  if (typeof parsedReplay.parseReplay === 'function') {
-                    return parsedReplay.parseReplay(data);
-                  } else if (typeof parsedReplay.parse === 'function') {
-                    return parsedReplay.parse(data);
+                  if (typeof (parsedReplay as any).parseReplay === 'function') {
+                    return (parsedReplay as any).parseReplay(data);
+                  } else if (typeof (parsedReplay as any).parse === 'function') {
+                    return (parsedReplay as any).parse(data);
                   } else {
                     console.warn('[browserSafeParser] No parse methods found on instance');
                     // Just return the instance as a fallback
@@ -69,8 +77,6 @@ export async function initBrowserSafeParser(): Promise<void> {
                   
                   try {
                     // Last attempt: try with standardized arguments (often used in WASM bindings)
-                    // We pass null for optional arguments to avoid TypeScript errors
-                    // @ts-ignore - Ignore TypeScript errors as we're trying different argument patterns
                     parsedReplay = new ParsedReplayClass(data, null, null);
                     console.log('[browserSafeParser] Created ParsedReplay with three arguments');
                   } catch (threeArgsError) {
@@ -83,7 +89,7 @@ export async function initBrowserSafeParser(): Promise<void> {
               // If we got here, we have a parsedReplay instance
               // Check if it's already a parsed result or if we need to process it further
               if (parsedReplay && typeof parsedReplay === 'object' && 
-                  (parsedReplay.players || parsedReplay.header || parsedReplay.commands)) {
+                  ((parsedReplay as any).players || (parsedReplay as any).header || (parsedReplay as any).commands)) {
                 return parsedReplay;
               }
               
@@ -117,15 +123,15 @@ export async function initBrowserSafeParser(): Promise<void> {
               // Try different patterns to create and use the parser
               
               // First check if ReplayParserClass has static methods we can use
-              if (ReplayParserClass.prototype && typeof ReplayParserClass.prototype.parse === 'function') {
+              if (ReplayParserClass.prototype && typeof (ReplayParserClass.prototype as any).parse === 'function') {
                 try {
                   // Create an instance first
                   const parser = Object.create(ReplayParserClass.prototype);
-                  // @ts-ignore - Dynamically initialize
+                  // @ts-expect-error - Dynamically initialize
                   ReplayParserClass.apply(parser, []);
                   
                   // Call the instance method
-                  return parser.parse(data);
+                  return (parser as any).parse(data);
                 } catch (protoError) {
                   console.warn('[browserSafeParser] Prototype approach failed:', protoError);
                 }
@@ -133,14 +139,14 @@ export async function initBrowserSafeParser(): Promise<void> {
               
               // Try direct instantiation with new
               try {
-                // @ts-ignore - Try with different argument patterns
+                // @ts-expect-error - Try with different argument patterns
                 const parser = new ReplayParserClass();
                 
                 // Try to use the parser instance
-                if (typeof parser.parse === 'function') {
-                  return parser.parse(data);
-                } else if (typeof parser.parseReplay === 'function') {
-                  return parser.parseReplay(data);
+                if (typeof (parser as any).parse === 'function') {
+                  return (parser as any).parse(data);
+                } else if (typeof (parser as any).parseReplay === 'function') {
+                  return (parser as any).parseReplay(data);
                 }
               } catch (directInstError) {
                 console.warn('[browserSafeParser] Direct instantiation failed:', directInstError);
@@ -148,14 +154,14 @@ export async function initBrowserSafeParser(): Promise<void> {
               
               // Try with config object
               try {
-                // @ts-ignore - Try with config object
+                // @ts-expect-error - Try with config object
                 const parser = new ReplayParserClass({ encoding: 'cp1252' });
                 
                 // Try to use the parser instance
-                if (typeof parser.parse === 'function') {
-                  return parser.parse(data);
-                } else if (typeof parser.parseReplay === 'function') {
-                  return parser.parseReplay(data);
+                if (typeof (parser as any).parse === 'function') {
+                  return (parser as any).parse(data);
+                } else if (typeof (parser as any).parseReplay === 'function') {
+                  return (parser as any).parseReplay(data);
                 }
               } catch (configInstError) {
                 console.warn('[browserSafeParser] Config instantiation failed:', configInstError);
@@ -163,7 +169,7 @@ export async function initBrowserSafeParser(): Promise<void> {
               
               // Last resort - try calling the class directly as a function
               try {
-                // @ts-ignore - Try calling as function
+                // @ts-expect-error - Try calling as function
                 return ReplayParserClass(data);
               } catch (functionCallError) {
                 console.warn('[browserSafeParser] Function call approach failed:', functionCallError);
@@ -196,7 +202,7 @@ export async function initBrowserSafeParser(): Promise<void> {
           parserInstance = {
             parse: (data: Uint8Array) => {
               try {
-                // @ts-ignore - Ignore type errors for dynamic function call
+                // @ts-expect-error - Ignore type errors for dynamic function call
                 return defaultExport(data);
               } catch (err) {
                 console.error('[browserSafeParser] Error using default export as function:', err);
@@ -218,8 +224,9 @@ export async function initBrowserSafeParser(): Promise<void> {
             parse: (data: Uint8Array) => {
               try {
                 const ParsedReplayClass = defaultExport.ParsedReplay;
-                // @ts-ignore - Try different constructor patterns
-                return new ParsedReplayClass(data, null, null);
+                // Using correct argument pattern
+                const parsedReplay = new ParsedReplayClass(data, null, null);
+                return parsedReplay;
               } catch (err) {
                 console.error('[browserSafeParser] Error using default.ParsedReplay:', err);
                 throw err;
@@ -248,7 +255,7 @@ export async function initBrowserSafeParser(): Promise<void> {
           parserInstance = {
             parse: (data: Uint8Array) => {
               try {
-                // @ts-ignore - Ignore type errors for dynamic function call
+                // @ts-expect-error - Ignore type errors for dynamic function call
                 return exportedItem(data);
               } catch (callError) {
                 console.error(`[browserSafeParser] Error calling '${key}':`, callError);
