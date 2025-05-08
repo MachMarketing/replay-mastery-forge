@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ParsedReplayResult, ParsedReplayData } from '@/services/replayParserService';
+import { ParsedReplayData, ParsedReplayResult } from '@/services/replayParserService';
 import { useToast } from '@/hooks/use-toast';
 import { parseReplayInBrowser } from '@/services/browserReplayParser';
 import { hasBrowserWasmIssues } from '@/utils/browserDetection';
@@ -69,11 +69,11 @@ export function useReplayParser(): ReplayParserResult {
       setProgress(prev => {
         // Increase progress continuously up to 95%
         if (prev >= 95) return 95;
-        return Math.min(prev + 0.3, 95); // Verlangsamte Geschwindigkeit, da jetzt 60 statt 20 Sekunden
+        return Math.min(prev + 0.3, 95); // Slower progress over 60 seconds
       });
     }, 100);
     
-    // Set timeout for the entire processing (60 Sekunden - erhöht von 20)
+    // Set timeout for the entire processing (60 seconds)
     if (processingTimeoutRef.current) {
       window.clearTimeout(processingTimeoutRef.current);
     }
@@ -95,7 +95,7 @@ export function useReplayParser(): ReplayParserResult {
           variant: 'destructive',
         });
       }
-    }, 60000); // Erhöht von 20000 auf 60000 ms
+    }, 60000); // 60 seconds timeout
     
     try {
       // Validate file
@@ -108,7 +108,7 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error('Nur StarCraft Replay Dateien (.rep) sind erlaubt');
       }
       
-      // Parse using our unified approach
+      // Parse using our unified approach with screparsed
       console.log('[useReplayParser] Calling parseReplayInBrowser with file:', file.name);
       
       const parsedData: ParsedReplayData = await parseReplayInBrowser(file);

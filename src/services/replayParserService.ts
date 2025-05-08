@@ -1,3 +1,4 @@
+
 import { ParsedReplayData, PlayerData } from './replayParser/types';
 import { parseReplayInBrowser } from './browserReplayParser';
 import { markBrowserAsHavingWasmIssues } from '@/utils/browserDetection';
@@ -5,6 +6,8 @@ import { markBrowserAsHavingWasmIssues } from '@/utils/browserDetection';
 // Re-export PlayerData interface properly
 export type { PlayerData, ParsedReplayData };
 
+// This interface ensures backward compatibility with existing code
+// by making optional fields in ParsedReplayData required here
 export interface ParsedReplayResult extends ParsedReplayData {
   // Ensure all legacy fields have proper typing and are required (not optional)
   playerName: string;  // Aliased from primaryPlayer.name
@@ -36,10 +39,10 @@ export function abortActiveProcess(): void {
 }
 
 /**
- * Initialize the replay parser
+ * Initialize the replay parser - now just initializes the browser parser
  */
 export async function initParser(): Promise<void> {
-  console.log('[replayParserService] Initializing parser');
+  console.log('[replayParserService] Initializing screparsed parser');
   // Nothing to initialize, as browserReplayParser handles this internally
 }
 
@@ -118,10 +121,10 @@ function validateReplayFile(file: File): boolean {
 
 /**
  * Parse a replay file and return the parsed data
- * Now uses our unified browser parsing approach
+ * Now exclusively uses screparsed through our browserReplayParser
  */
 export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult> {
-  console.log('[replayParserService] Starting to parse replay file');
+  console.log('[replayParserService] Starting to parse replay file with screparsed');
   
   try {
     // Additional validation before parsing
@@ -132,12 +135,12 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     // Create abort controller for this parsing operation
     activeParsingAbortController = new AbortController();
     
-    // Set a timeout for the entire parsing operation - erhöht auf 60 Sekunden
+    // Set a timeout for the entire parsing operation
     const timeoutPromise = new Promise<never>((_, reject) => {
       const timeoutId = setTimeout(() => {
         reject(new Error('Zeitüberschreitung beim Parsen'));
         activeParsingAbortController = null;
-      }, 60000); // Erhöht von 15000 auf 60000 ms
+      }, 60000); // 60 seconds timeout
       
       // Clean up timeout if aborted
       activeParsingAbortController?.signal.addEventListener('abort', () => {
@@ -145,7 +148,7 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
       });
     });
     
-    // Parse using our unified browser parsing approach
+    // Parse using our screparsed-based browser parser
     const parsePromise = parseReplayInBrowser(file);
     
     let result: ParsedReplayData;

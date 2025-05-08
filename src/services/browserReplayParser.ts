@@ -50,18 +50,18 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
         
         console.log(`[browserReplayParser] Running parser.parse() (${parseId})...`);
         // Actually run the parsing operation
-        let parsedResult = await parser.parse();
+        const rawResult = await parser.parse();
         
         // Add the debugging log to see the exact structure
-        console.log(`🛠 [browserReplayParser] Full parsed object structure (${parseId}):`, parsedResult);
+        console.log(`🛠 [browserReplayParser] Full parsed object structure (${parseId}):`, rawResult);
         
         // Dump the raw data structure to help with debugging
-        console.log(`🛠 [browserReplayParser] Game info structure (${parseId}):`, parsedResult.gameInfo ? Object.keys(parsedResult.gameInfo) : 'none');
-        console.log(`🛠 [browserReplayParser] Players structure (${parseId}):`, parsedResult.players ? 
-          parsedResult.players.map((p: any) => Object.keys(p)) : 'none');
+        console.log(`🛠 [browserReplayParser] Game info structure (${parseId}):`, rawResult.gameInfo ? Object.keys(rawResult.gameInfo) : 'none');
+        console.log(`🛠 [browserReplayParser] Players structure (${parseId}):`, rawResult.players ? 
+          rawResult.players.map((p: any) => Object.keys(p)) : 'none');
         
         // Process player data
-        let processedPlayers = parsedResult.players || [];
+        let processedPlayers = rawResult.players || [];
         if (processedPlayers && processedPlayers.length > 0) {
           console.log(`🛠 [browserReplayParser] Found ${processedPlayers.length} players`);
           
@@ -112,41 +112,38 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
               console.log(`🛠 [browserReplayParser] Calculated APM for ${player.name}: ${player.apm}`);
             }
           });
-          
-          // WICHTIG: Nicht versuchen, das ursprüngliche parsedResult zu modifizieren!
-          // Stattdessen direkt mit den verarbeiteten Daten für mapRawToParsed arbeiten
         }
         
         // Clear the timeout since parsing completed
         clearTimeout(timeoutId);
         
         console.log(`[browserReplayParser] Parsing complete (${parseId}), found data:`, 
-          parsedResult ? 'Result found' : 'No result');
+          rawResult ? 'Result found' : 'No result');
         
-        if (!parsedResult) {
+        if (!rawResult) {
           throw new Error('Parser returned empty data');
         }
         
         // Log more detailed information about the parsed result structure
-        console.log(`[browserReplayParser] Result keys (${parseId}): ${Object.keys(parsedResult).join(', ')}`);
+        console.log(`[browserReplayParser] Result keys (${parseId}): ${Object.keys(rawResult).join(', ')}`);
         
-        if (parsedResult.gameInfo) {
-          console.log(`[browserReplayParser] Game info (${parseId}): Map: ${parsedResult.gameInfo.map || 'Unknown map'}`);
-          console.log(`[browserReplayParser] Game frames (${parseId}): ${parsedResult.gameInfo.frames || 'Unknown'}`);
+        if (rawResult.gameInfo) {
+          console.log(`[browserReplayParser] Game info (${parseId}): Map: ${rawResult.gameInfo.map || 'Unknown map'}`);
+          console.log(`[browserReplayParser] Game frames (${parseId}): ${rawResult.gameInfo.frames || 'Unknown'}`);
           
           // Use frames as duration if durationFrames isn't available
-          const durationFrames = parsedResult.gameInfo.frames || 0;
+          const durationFrames = rawResult.gameInfo.frames || 0;
           console.log(`[browserReplayParser] Game duration (${parseId}): ${durationFrames ? 
             Math.round(durationFrames / 24 / 60) + ' minutes' : 'Unknown'}`);
         }
         
-        // Extrahiere relevante Daten in ein Format, das für mapRawToParsed geeignet ist
-        // Wir erstellen ein neues Objekt anstatt das parsedResult zu modifizieren
+        // Extract relevant data in a format suitable for mapRawToParsed
+        // Instead of modifying the parsed result, create a new object with data properly extracted
         const parsedData = {
-          header: parsedResult.gameInfo || {},
+          header: rawResult.gameInfo || {},
           players: processedPlayers, // Use our processed player data
-          mapName: parsedResult.gameInfo?.map || 'Unknown',
-          chat: parsedResult.chatMessages || [],
+          mapName: rawResult.gameInfo?.map || 'Unknown',
+          chat: rawResult.chatMessages || [],
           fileHash: String(file.size) + '_' + parseId, // Add a unique hash for this specific file
           fileDate: new Date().toISOString(),
           fileName: file.name
