@@ -271,6 +271,7 @@ const META_STRATEGIES: { [key: string]: MetaStrategy } = {
     keyUnits: ['Zergling', 'Mutalisk', 'Scourge', 'Queen'],
     earlyGoals: ['Zergling control', 'Deny scouting', 'Worker harassment'],
     midGameTransition: ['Mutalisk micro', 'Map control', 'Economy advantage'],
+    lateGameGoals: ['Mutalisk/Scourge air control', 'Expansion denial', 'Tech advantage'],
     timings: {
       'speedlingTiming': '3:30-4:00',
       'lair': '3:30-4:00',
