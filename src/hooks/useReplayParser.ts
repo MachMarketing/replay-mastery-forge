@@ -1,12 +1,11 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ParsedReplayData, ParsedReplayResult } from '@/services/replayParser';
+import { ParsedReplayData, ParsedReplayResult, ReplayAnalysis } from '@/services/replayParser';
 import { useToast } from '@/hooks/use-toast';
 import { parseReplayInBrowser } from '@/services/browserReplayParser';
 import { hasBrowserWasmIssues } from '@/utils/browserDetection';
 
 interface ReplayParserResult {
-  parseReplay: (file: File) => Promise<ParsedReplayResult | null>;
+  parseReplay: (file: File) => Promise<ParsedReplayResult & ReplayAnalysis | null>;
   isProcessing: boolean;
   error: string | null;
   clearError: () => void;
@@ -44,7 +43,7 @@ export function useReplayParser(): ReplayParserResult {
     setProgress(0);
   }, []);
 
-  const parseReplay = useCallback(async (file: File): Promise<ParsedReplayResult | null> => {
+  const parseReplay = useCallback(async (file: File): Promise<ParsedReplayResult & ReplayAnalysis | null> => {
     if (isProcessing) {
       console.log('[useReplayParser] Already processing a file, aborting');
       toast({
@@ -135,8 +134,8 @@ export function useReplayParser(): ReplayParserResult {
         secondaryBuildOrderItems: parsedData.secondaryPlayer?.buildOrder?.length || 0
       });
       
-      // Ensure the result has all required fields for ParsedReplayResult
-      const result: ParsedReplayResult = {
+      // Ensure the result has all required fields for ParsedReplayResult and ReplayAnalysis
+      const result: ParsedReplayResult & ReplayAnalysis = {
         ...parsedData,
         playerName: parsedData.primaryPlayer?.name || 'Player',
         opponentName: parsedData.secondaryPlayer?.name || 'Opponent',
@@ -146,6 +145,15 @@ export function useReplayParser(): ReplayParserResult {
         eapm: parsedData.primaryPlayer?.eapm || 0,
         opponentApm: parsedData.secondaryPlayer?.apm || 0,
         opponentEapm: parsedData.secondaryPlayer?.eapm || 0,
+        // Add trainingPlan property to satisfy the ReplayAnalysis interface
+        trainingPlan: parsedData.trainingPlan || [
+          { day: 1, focus: "Macro Management", drill: "Constant worker production" },
+          { day: 2, focus: "Micro Control", drill: "Unit positioning practice" },
+          { day: 3, focus: "Build Order", drill: "Timing attack execution" }
+        ],
+        strengths: parsedData.strengths || [],
+        weaknesses: parsedData.weaknesses || [],
+        recommendations: parsedData.recommendations || []
       };
       
       // Final progress update

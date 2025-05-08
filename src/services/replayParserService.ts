@@ -1,3 +1,4 @@
+
 import { ParsedReplayData, PlayerData, ReplayAnalysis } from './replayParser/types';
 import { parseReplayInBrowser } from './browserReplayParser';
 import { markBrowserAsHavingWasmIssues } from '@/utils/browserDetection';
@@ -137,6 +138,12 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
         eapm: result.primaryPlayer?.eapm || 0,
         opponentApm: result.secondaryPlayer?.apm || 0,
         opponentEapm: result.secondaryPlayer?.eapm || 0,
+        // Add the trainingPlan property required by ReplayAnalysis
+        trainingPlan: result.trainingPlan || [
+          { day: 1, focus: "Macro Management", drill: "Constant worker production" },
+          { day: 2, focus: "Micro Control", drill: "Unit positioning practice" },
+          { day: 3, focus: "Build Order", drill: "Timing attack execution" }
+        ]
       };
       
       return enhancedResult;

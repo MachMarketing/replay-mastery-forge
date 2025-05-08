@@ -57,4 +57,7 @@ export interface ParsedReplayData {
   strengths: string[];
   weaknesses: string[];
   recommendations: string[];
+  
+  // Optional training plan (since it's added later in the process)
+  trainingPlan?: Array<{ day: number; focus: string; drill: string }>;
 }
