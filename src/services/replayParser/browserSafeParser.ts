@@ -81,8 +81,15 @@ export async function initBrowserSafeParser(): Promise<void> {
                 
                 // Use type assertion to bypass type checking for constructor
                 // This is necessary because the actual API may differ from TypeScript definitions
-                parsedReplay = new (ParsedReplayClass as any)(data, mockGameInfo, {});
-                console.log('[browserSafeParser] Created ParsedReplay with three arguments');
+                try {
+                  parsedReplay = new (ParsedReplayClass as any)(data, mockGameInfo, {});
+                  console.log('[browserSafeParser] Created ParsedReplay with three arguments');
+                } catch (constructorError) {
+                  console.warn('[browserSafeParser] Three args constructor call failed:', constructorError);
+                  // Try an alternative construction approach
+                  parsedReplay = new (ParsedReplayClass as any)(mockGameInfo, data, {});
+                  console.log('[browserSafeParser] Created ParsedReplay with reordered three arguments');
+                }
               } catch (threeArgError) {
                 console.warn('[browserSafeParser] Three args constructor failed:', threeArgError);
                 
@@ -238,6 +245,46 @@ export async function initBrowserSafeParser(): Promise<void> {
               if (typeof (screparsed as any).parseReplayData === 'function') {
                 console.log('[browserSafeParser] Using parseReplayData function');
                 return (screparsed as any).parseReplayData(data, mockGameInfo);
+              }
+              
+              // Try instantiating the parser using alternate methods
+              // This is the problematic part - we need to handle the "not callable" error
+              let parser;
+              try {
+                // Try to access any constructor-like functionality
+                if (typeof classAny.create === 'function') {
+                  parser = classAny.create();
+                } else if (typeof classAny.getInstance === 'function') {
+                  parser = classAny.getInstance();
+                } else {
+                  // Instead of directly trying to instantiate with 'new', 
+                  // check if we can safely instantiate first
+                  const descriptor = Object.getOwnPropertyDescriptor(classAny, 'prototype');
+                  if (descriptor && !descriptor.writable && !descriptor.configurable) {
+                    console.log('[browserSafeParser] ReplayParser has a non-instantiable prototype');
+                    // We can't instantiate it directly, try to use it as a factory or function
+                    if (typeof classAny === 'function') {
+                      // Try calling it as a function without 'new'
+                      parser = classAny(data);
+                    } else {
+                      throw new Error('ReplayParser cannot be instantiated or called');
+                    }
+                  } else {
+                    // We can try instantiation
+                    parser = new classAny();
+                  }
+                }
+                
+                // If we got a parser, try to use it
+                if (parser && typeof parser.parse === 'function') {
+                  return parser.parse(data);
+                } else if (parser) {
+                  // If no parse method but we got something, return it
+                  return parser;
+                }
+              } catch (instantiationError) {
+                console.error('[browserSafeParser] Error instantiating ReplayParser:', instantiationError);
+                // Continue to next approach
               }
               
               throw new Error('No suitable parsing method found in ReplayParser');
