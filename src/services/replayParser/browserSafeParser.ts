@@ -82,14 +82,38 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
         
         if (parseMethod) {
           console.log('[browserSafeParser] Using found parse method');
-          // Type assertion to ensure TypeScript knows this is callable
-          const parseFunction = parseMethod as Function;
-          result = await parseFunction(data);
+          try {
+            // Type assertion to ensure TypeScript knows this is callable
+            const parseFunction = parseMethod as Function;
+            result = await parseFunction(data);
+          } catch (e) {
+            console.log('[browserSafeParser] Error with parse method, might need "new":', e);
+            // Try using "new" if it's a constructor
+            if (e instanceof TypeError && e.message.includes('cannot be invoked without \'new\'')) {
+              console.log('[browserSafeParser] Trying with "new" operator');
+              // @ts-ignore - Using constructor dynamically
+              result = await new parseFunction(data);
+            } else {
+              throw e;
+            }
+          }
         } else if (parserModule.default && typeof parserModule.default === 'function') {
           console.log('[browserSafeParser] Using default export as function');
-          // Type assertion to ensure TypeScript knows this is callable
-          const defaultFunction = parserModule.default as Function;
-          result = await defaultFunction(data);
+          try {
+            // Type assertion to ensure TypeScript knows this is callable
+            const defaultFunction = parserModule.default as Function;
+            result = await defaultFunction(data);
+          } catch (e) {
+            console.log('[browserSafeParser] Error with default function, might need "new":', e);
+            // Try using "new" if it's a constructor
+            if (e instanceof TypeError && e.message.includes('cannot be invoked without \'new\'')) {
+              console.log('[browserSafeParser] Trying default with "new" operator');
+              // @ts-ignore - Using constructor dynamically
+              result = await new defaultFunction(data);
+            } else {
+              throw e;
+            }
+          }
         }
       } else {
         console.log('[browserSafeParser] ReplayParser not available as expected');
@@ -115,8 +139,31 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
               if (result) break;
             } catch (e) {
               console.log(`[browserSafeParser] Method ${methodName} failed:`, e);
+              
+              // Try using as constructor if applicable
+              if (e instanceof TypeError && e.message.includes('cannot be invoked without \'new\'')) {
+                try {
+                  console.log(`[browserSafeParser] Trying ParsedReplay.${methodName} with "new" operator`);
+                  // @ts-ignore - Using constructor dynamically
+                  result = await new methodFunction(data.buffer || data);
+                  if (result) break;
+                } catch (ne) {
+                  console.log(`[browserSafeParser] Constructor ${methodName} failed:`, ne);
+                }
+              }
               // Continue to next method
             }
+          }
+        }
+        
+        // Try instantiating ParsedReplay directly as a last resort
+        if (!result) {
+          try {
+            console.log('[browserSafeParser] Trying to instantiate ParsedReplay directly');
+            // @ts-ignore - Dynamically using constructor
+            result = new parserModule.ParsedReplay(data);
+          } catch (e) {
+            console.log('[browserSafeParser] Direct instantiation failed:', e);
           }
         }
       }
@@ -125,13 +172,35 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
       if (!result && parserModule.default) {
         console.log('[browserSafeParser] Trying default export');
         if (typeof parserModule.default === 'function') {
-          // Type assertion to ensure TypeScript knows this is callable
-          const defaultFunction = parserModule.default as Function;
-          result = await defaultFunction(data);
+          try {
+            // Type assertion to ensure TypeScript knows this is callable
+            const defaultFunction = parserModule.default as Function;
+            result = await defaultFunction(data);
+          } catch (e) {
+            // Try using "new" if it's a constructor
+            if (e instanceof TypeError && e.message.includes('cannot be invoked without \'new\'')) {
+              console.log('[browserSafeParser] Trying default with "new" operator');
+              // @ts-ignore - Using constructor dynamically
+              result = await new defaultFunction(data);
+            } else {
+              throw e;
+            }
+          }
         } else if (parserModule.default.parse && typeof parserModule.default.parse === 'function') {
-          // Type assertion to ensure TypeScript knows this is callable
-          const parseFunction = parserModule.default.parse as Function;
-          result = await parseFunction(data);
+          try {
+            // Type assertion to ensure TypeScript knows this is callable
+            const parseFunction = parserModule.default.parse as Function;
+            result = await parseFunction(data);
+          } catch (e) {
+            // Try using "new" if it's a constructor
+            if (e instanceof TypeError && e.message.includes('cannot be invoked without \'new\'')) {
+              console.log('[browserSafeParser] Trying default.parse with "new" operator');
+              // @ts-ignore - Using constructor dynamically
+              result = await new parseFunction(data);
+            } else {
+              throw e;
+            }
+          }
         }
       }
     } catch (err) {
@@ -158,6 +227,20 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
                 break;
               }
             } catch (e) {
+              // Try using "new" if it's a constructor
+              if (e instanceof TypeError && e.message.includes('cannot be invoked without \'new\'')) {
+                console.log(`[browserSafeParser] Trying ${key} with "new" operator`);
+                try {
+                  // @ts-ignore - Using constructor dynamically
+                  result = await new parserModule[key](data);
+                  if (result) {
+                    console.log(`[browserSafeParser] Successfully parsed using new ${key}`);
+                    break;
+                  }
+                } catch (ne) {
+                  // Continue to next function
+                }
+              }
               // Continue to next function
             }
           }
