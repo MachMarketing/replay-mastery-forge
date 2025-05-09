@@ -40,65 +40,131 @@ export function formatPlayerName(name: string): string {
 }
 
 /**
- * Deeply analyze the replay structure to find usable data
- * This helper function logs detailed information about replay structure
+ * Deep analyze the replay structure to find data in multiple formats
  */
 export function deepAnalyzeReplayStructure(data: any): void {
-  console.log('[deepAnalyze] Starting deep structure analysis');
-  
-  if (!data) {
-    console.log('[deepAnalyze] No data provided');
+  if (!data || typeof data !== 'object') {
+    console.log('[replayUtils] No data to analyze');
     return;
   }
+
+  console.log('[replayUtils] Analyzing replay structure...');
   
-  // Look for keys that might contain build order data
-  const buildRelatedKeys = ['commands', 'events', 'actions', 'builds', 'unitsBorn', 'buildOrder'];
+  const paths: string[] = [];
+  const structures: Record<string, any> = {};
   
-  for (const key of buildRelatedKeys) {
-    if (data[key] && Array.isArray(data[key])) {
-      console.log(`[deepAnalyze] Found potential build data in ${key}:`, data[key].length, 'items');
-      if (data[key].length > 0) {
-        console.log(`[deepAnalyze] Sample ${key} item:`, data[key][0]);
+  // Recursively explore the object structure
+  function explore(obj: any, path: string = ''): void {
+    if (!obj || typeof obj !== 'object') return;
+    
+    if (Array.isArray(obj)) {
+      paths.push(`${path} (Array[${obj.length}])`);
+      
+      // Look at first few items
+      if (obj.length > 0) {
+        if (typeof obj[0] === 'object' && obj[0] !== null) {
+          // Sample first item for arrays of objects
+          structures[path] = {
+            type: 'array',
+            length: obj.length,
+            sampleItem: obj[0]
+          };
+          
+          // Special handling for potential command arrays
+          if (
+            obj[0].type || 
+            obj[0].name || 
+            obj[0].frame ||
+            obj[0].abilityName
+          ) {
+            console.log(`[replayUtils] Potential commands/events at ${path}:`, 
+              obj.slice(0, 3));
+          }
+        } else {
+          // For primitive arrays, just note the type
+          structures[path] = {
+            type: 'array',
+            length: obj.length,
+            itemType: typeof obj[0]
+          };
+        }
       }
+      
+      // If it's not too big, explore array items
+      if (obj.length > 0 && obj.length < 10) {
+        obj.forEach((item: any, index: number) => {
+          explore(item, `${path}[${index}]`);
+        });
+      }
+    } else {
+      // For objects
+      const keys = Object.keys(obj);
+      paths.push(`${path} (Object{${keys.length}})`);
+      
+      // Store keys in structure info
+      structures[path] = {
+        type: 'object',
+        keys: keys
+      };
+      
+      // Special inspection for common keys
+      if ('players' in obj && Array.isArray(obj.players)) {
+        console.log(`[replayUtils] Found players array with ${obj.players.length} players`);
+        if (obj.players.length > 0) {
+          console.log('[replayUtils] Sample player:', obj.players[0]);
+        }
+      }
+      
+      if ('header' in obj) {
+        console.log('[replayUtils] Found header:', obj.header);
+      }
+      
+      if ('commands' in obj && Array.isArray(obj.commands)) {
+        console.log(`[replayUtils] Found commands array with ${obj.commands.length} commands`);
+        if (obj.commands.length > 0) {
+          console.log('[replayUtils] Sample commands:', obj.commands.slice(0, 3));
+        }
+      }
+      
+      // Check for certain keywords that might indicate build orders
+      const buildOrderKeys = ['buildOrder', 'builds', 'units', 'buildings', 'commands', 'events'];
+      const found = buildOrderKeys.filter(key => key in obj);
+      if (found.length > 0) {
+        console.log(`[replayUtils] Potential build order keys at ${path}:`, found);
+      }
+      
+      // Continue exploring each property
+      keys.forEach(key => {
+        explore(obj[key], path ? `${path}.${key}` : key);
+      });
     }
   }
   
-  // Look specifically for screparsed format with _frames and _gameInfo
-  if (data._frames && data._gameInfo) {
-    console.log('[deepAnalyze] Detected screparsed format with _frames and _gameInfo');
-    console.log('[deepAnalyze] Frame count:', Array.isArray(data._frames) ? data._frames.length : 'unknown');
+  // Start exploration from root
+  explore(data);
+  
+  console.log('[replayUtils] Found paths:', paths.length > 20 ? 
+    `${paths.length} paths (showing first 20)` : `${paths.length} paths`);
+    
+  // Log only first 20 paths to avoid flooding console
+  if (paths.length > 0) {
+    console.log(paths.slice(0, 20));
   }
   
-  // Check for any properties that might contain build order information
-  if (typeof data === 'object') {
-    Object.keys(data).forEach(key => {
-      if (typeof data[key] === 'object' && data[key] !== null) {
-        // Check if this object has properties that suggest it might contain build orders
-        if (key.toLowerCase().includes('build') || 
-            key.toLowerCase().includes('command') ||
-            key.toLowerCase().includes('action') ||
-            key.toLowerCase().includes('event')) {
-          console.log(`[deepAnalyze] Potential build data in ${key}:`, data[key]);
-        }
-        
-        // For arrays, check sample items for build-related fields
-        if (Array.isArray(data[key]) && data[key].length > 0) {
-          const sample = data[key][0];
-          if (sample && typeof sample === 'object') {
-            const sampleKeys = Object.keys(sample);
-            const hasBuildIndicators = sampleKeys.some(k => 
-              k.toLowerCase().includes('build') ||
-              k.toLowerCase().includes('unit') ||
-              k.toLowerCase().includes('structure') ||
-              k.toLowerCase().includes('train')
-            );
-            
-            if (hasBuildIndicators) {
-              console.log(`[deepAnalyze] Array ${key} may contain build data, sample:`, sample);
-            }
-          }
-        }
-      }
+  // Log important structures we found
+  const importantPaths = Object.keys(structures).filter(path => 
+    path.includes('players') || 
+    path.includes('commands') || 
+    path.includes('events') ||
+    path.includes('buildOrder') ||
+    path.includes('units') ||
+    path.includes('header')
+  );
+  
+  if (importantPaths.length > 0) {
+    console.log('[replayUtils] Important structures found:');
+    importantPaths.forEach(path => {
+      console.log(`- ${path}:`, structures[path]);
     });
   }
 }

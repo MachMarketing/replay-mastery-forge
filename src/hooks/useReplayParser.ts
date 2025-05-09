@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ParsedReplayData, ParsedReplayResult } from '@/services/replayParser/types';
 import { useToast } from '@/hooks/use-toast';
@@ -117,8 +116,30 @@ export function useReplayParser(): ReplayParserResult {
       console.log('[useReplayParser] Calling parseReplayInBrowser with file:', file.name);
       
       const parsedData: ParsedReplayData = await parseReplayInBrowser(file);
-      console.log('[useReplayParser] Raw parsed data received:', JSON.stringify(parsedData).substring(0, 1000) + '...');
-      console.log('[useReplayParser] Build order items count:', parsedData.buildOrder?.length || 0);
+      
+      // Enhanced debugging - log the full structure
+      console.log('[useReplayParser] Raw parsed data structure:', 
+        Object.keys(parsedData).join(', '));
+      console.log('[useReplayParser] Player data:', {
+        primary: parsedData.primaryPlayer ? {
+          name: parsedData.primaryPlayer.name,
+          race: parsedData.primaryPlayer.race
+        } : 'Missing',
+        secondary: parsedData.secondaryPlayer ? {
+          name: parsedData.secondaryPlayer.name,
+          race: parsedData.secondaryPlayer.race
+        } : 'Missing'
+      });
+      
+      console.log('[useReplayParser] Build order items count:', 
+        parsedData.buildOrder?.length || 0);
+        
+      if (parsedData.buildOrder && parsedData.buildOrder.length > 0) {
+        console.log('[useReplayParser] Sample build order items:', 
+          parsedData.buildOrder.slice(0, 3));
+      } else {
+        console.warn('[useReplayParser] No build order items found in parsed data');
+      }
       
       // Special case for known player "NumberOne" - ensure it's always Protoss
       if (parsedData.primaryPlayer && 
