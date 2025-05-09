@@ -17,6 +17,12 @@ export function standardizeRaceName(race: string | undefined): string {
     return 'Protoss';
   } else if (lowerRace.includes('zerg') || lowerRace === 'z') {
     return 'Zerg';
+  } else if (lowerRace === '0') {
+    return 'Zerg';     // From screparsed documentation: 0 = Zerg
+  } else if (lowerRace === '1') {
+    return 'Terran';   // From screparsed documentation: 1 = Terran
+  } else if (lowerRace === '2') {
+    return 'Protoss';  // From screparsed documentation: 2 = Protoss
   } else {
     return 'Unknown';
   }
@@ -51,4 +57,16 @@ export function debugLogReplayData(data: any): void {
     hasPlayers: data.Header?.Players ? data.Header.Players.length : 0,
     topLevelKeys: Object.keys(data)
   });
+}
+
+/**
+ * Extract race name from numeric race ID based on screparsed conventions
+ */
+export function getRaceFromId(raceId: number): string {
+  switch (raceId) {
+    case 0: return 'Zerg';
+    case 1: return 'Terran';
+    case 2: return 'Protoss';
+    default: return 'Unknown';
+  }
 }
