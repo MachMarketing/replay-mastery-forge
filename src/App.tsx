@@ -13,7 +13,6 @@ import NotFound from '@/pages/NotFound';
 import ParserTestPage from '@/pages/ParserTestPage';
 import ParserTest from '@/pages/ParserTest';
 import JSSUHTestPage from '@/pages/JSSUHTest';
-import { Toaster } from '@/components/ui/sonner';
 import './App.css';
 
 function LoadingFallback() {
@@ -31,30 +30,27 @@ function App() {
   console.log("🚀 App rendering started");
   
   return (
-    <>
-      <Suspense fallback={<LoadingFallback />}>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/features" element={<FeaturesPage />} />
-          <Route path="/pricing" element={<PricingPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
-          <Route path="/parser-test" element={<ParserTestPage />} />
-          <Route path="/parser-debug" element={<ParserTest />} />
-          <Route path="/jssuh-test" element={<JSSUHTestPage />} />
-          
-          {/* Upload route is public to allow users to test without login */}
-          <Route path="/upload" element={<UploadPage />} />
-          
-          {/* Protected Routes */}
-          <Route path="/replays" element={<ProtectedRoute element={<ReplaysPage />} />} />
-          
-          {/* 404 Page */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </Suspense>
-      <Toaster />
-    </>
+    <Suspense fallback={<LoadingFallback />}>
+      <Routes>
+        <Route path="/" element={<Index />} />
+        <Route path="/features" element={<FeaturesPage />} />
+        <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/parser-test" element={<ParserTestPage />} />
+        <Route path="/parser-debug" element={<ParserTest />} />
+        <Route path="/jssuh-test" element={<JSSUHTestPage />} />
+        
+        {/* Upload route is public to allow users to test without login */}
+        <Route path="/upload" element={<UploadPage />} />
+        
+        {/* Protected Routes */}
+        <Route path="/replays" element={<ProtectedRoute element={<ReplaysPage />} />} />
+        
+        {/* 404 Page */}
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </Suspense>
   );
 }
 
