@@ -78,7 +78,8 @@ const ScreparsedTest: React.FC = () => {
           Object.entries(mod).forEach(([key, value]) => {
             if (typeof value === 'function' && 
                 (key.toLowerCase().includes('parse') || 
-                 value.name?.toLowerCase().includes('parse'))) {
+                 (typeof (value as any).name === 'string' && 
+                  (value as any).name.toLowerCase().includes('parse')))) {
               methods.push(`${key}()`);
             }
           });
@@ -119,18 +120,40 @@ const ScreparsedTest: React.FC = () => {
       console.log('Available module keys:', Object.keys(mod));
       
       // Check for different parsing methods
-      if (mod.ParsedReplay && typeof mod.ParsedReplay.fromBuffer === 'function') {
-        console.log('Using ParsedReplay.fromBuffer');
-        parseFn = mod.ParsedReplay.fromBuffer;
-      } else if (mod.ReplayParser && mod.ReplayParser.prototype && typeof mod.ReplayParser.prototype.parse === 'function') {
-        console.log('Using ReplayParser prototype method');
-        // This is just for detection, we won't use it directly due to private constructor
-      } else if (mod.default && typeof mod.default.parse === 'function') {
-        console.log('Using default export parse method');
-        parseFn = mod.default.parse;
-      } else if (mod.default && typeof mod.default === 'function') {
-        console.log('Using default export as function');
-        parseFn = mod.default;
+      if (mod.ParsedReplay) {
+        console.log('Checking ParsedReplay methods');
+        
+        // Check for methods that might be useful
+        const methods = Object.getOwnPropertyNames(mod.ParsedReplay);
+        console.log('Available ParsedReplay methods:', methods);
+        
+        for (const methodName of methods) {
+          if (/from|parse|load|create/i.test(methodName) && 
+              typeof mod.ParsedReplay[methodName] === 'function') {
+            parseFn = mod.ParsedReplay[methodName] as Function;
+            break;
+          }
+        }
+      }
+      
+      if (!parseFn && mod.default) {
+        console.log('Checking default export');
+        if (typeof mod.default === 'function') {
+          parseFn = mod.default as Function;
+        } else if (mod.default && typeof mod.default.parse === 'function') {
+          parseFn = mod.default.parse as Function;
+        }
+      }
+      
+      // Last resort - try any function in the module
+      if (!parseFn) {
+        for (const key of Object.keys(mod)) {
+          if (typeof mod[key] === 'function' && key !== 'ReplayParser' && key !== 'ParsedReplay') {
+            parseFn = mod[key] as Function;
+            console.log(`Using ${key} as parsing function`);
+            break;
+          }
+        }
       }
       
       if (parseFn) {
