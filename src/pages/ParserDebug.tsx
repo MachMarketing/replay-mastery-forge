@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,15 +30,18 @@ const ParserDebug: React.FC = () => {
         const moduleKeys = Object.keys(module);
         console.log('Screparsed module loaded with exports:', moduleKeys);
         
-        // Check for different ways the parse function might be exposed
-        if ((module.default && typeof module.default.parse === 'function') || 
-            typeof module.parse === 'function' ||
-            typeof module.default === 'function') {
-          console.log('Parse function found');
+        // Check for different parsing capabilities
+        const hasDefaultExport = !!module.default;
+        const canParseDirectly = typeof module.default === 'function';
+        const hasReplayParser = !!module.ReplayParser;
+        const hasParsedReplay = !!module.ParsedReplay;
+        
+        if (hasDefaultExport || canParseDirectly || hasReplayParser || hasParsedReplay) {
+          console.log('Screparsed module appears to have parsing capabilities');
           setResult('Screparsed module successfully loaded');
         } else {
-          console.warn('Parse function not found in expected location');
-          setErrorMessage('Parse function not found in expected location in screparsed module');
+          console.warn('No obvious parsing functionality found in screparsed module');
+          setErrorMessage('No obvious parsing functionality found in screparsed module');
         }
       } catch (error) {
         console.error('Failed to load screparsed module:', error);

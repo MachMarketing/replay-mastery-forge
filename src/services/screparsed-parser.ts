@@ -30,6 +30,9 @@ interface ScreparsedResult {
   matchup?: string;
 }
 
+// Type for dynamic access to parsing function
+type ParseFunction = (data: Uint8Array) => Promise<any> | any;
+
 /**
  * Parse StarCraft: Brood War replay file using screparsed WASM module
  */
@@ -42,30 +45,62 @@ export async function parseReplayWithScreparsed(file: File): Promise<ParsedRepla
     const screparsed = await import('screparsed');
     console.log('[screparsed-parser] Loaded screparsed module:', Object.keys(screparsed));
     
-    if (!screparsed.default) {
-      console.error('[screparsed-parser] screparsed module default export is missing');
-      throw new Error('Invalid screparsed module configuration');
-    }
-    
     // Read file as ArrayBuffer
     const arrayBuffer = await file.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
     
     console.log('[screparsed-parser] File loaded, size:', uint8Array.length, 'bytes');
     
-    // Parse the replay file - checking for different ways the parse method might be exposed
-    console.log('[screparsed-parser] Calling screparsed.parse()...');
-    let parsedData;
+    // Find a suitable parse function in the module
+    let parseFn: ParseFunction | null = null;
+    let parsedData: any = null;
     
-    if (typeof screparsed.parse === 'function') {
-      parsedData = await screparsed.parse(uint8Array);
-    } else if (typeof screparsed.default.parse === 'function') {
-      parsedData = await screparsed.default.parse(uint8Array);
-    } else if (typeof screparsed.default === 'function') {
-      parsedData = await screparsed.default(uint8Array);
-    } else {
-      console.error('[screparsed-parser] No parse method found in screparsed module');
-      throw new Error('Screparsed module does not have a parse function');
+    // Try different ways to access the parsing functionality
+    console.log('[screparsed-parser] Looking for parsing functionality...');
+    
+    // Option 1: Check if there's a parse function directly on the module (dynamic access)
+    if (typeof (screparsed as any).parse === 'function') {
+      console.log('[screparsed-parser] Found parse function directly on module');
+      parseFn = (screparsed as any).parse;
+    } 
+    // Option 2: Check if there's a parse function on the default export
+    else if (screparsed.default && typeof (screparsed.default as any).parse === 'function') {
+      console.log('[screparsed-parser] Found parse function on default export');
+      parseFn = (screparsed.default as any).parse;
+    }
+    // Option 3: Check if the default export itself is callable
+    else if (typeof screparsed.default === 'function') {
+      console.log('[screparsed-parser] Default export is a function, using it directly');
+      parseFn = screparsed.default as unknown as ParseFunction;
+    }
+    // Option 4: Check if ReplayParser has a static parse method
+    else if (screparsed.ReplayParser && typeof (screparsed.ReplayParser as any).parse === 'function') {
+      console.log('[screparsed-parser] Using ReplayParser.parse');
+      parseFn = (screparsed.ReplayParser as any).parse;
+    }
+    // Option 5: Check if ParsedReplay has a static parse or fromBuffer method
+    else if (screparsed.ParsedReplay) {
+      if (typeof (screparsed.ParsedReplay as any).parse === 'function') {
+        console.log('[screparsed-parser] Using ParsedReplay.parse');
+        parseFn = (screparsed.ParsedReplay as any).parse;
+      } else if (typeof (screparsed.ParsedReplay as any).fromBuffer === 'function') {
+        console.log('[screparsed-parser] Using ParsedReplay.fromBuffer');
+        parseFn = (screparsed.ParsedReplay as any).fromBuffer;
+      }
+    }
+    
+    if (!parseFn) {
+      console.error('[screparsed-parser] No parsing function found in module');
+      throw new Error('No suitable parsing function found in screparsed module');
+    }
+    
+    // Parse the replay file using the function we found
+    console.log('[screparsed-parser] Calling parse function...');
+    try {
+      parsedData = await parseFn(uint8Array);
+    } catch (parseError) {
+      console.error('[screparsed-parser] Error during parsing:', parseError);
+      throw new Error(`Parsing error: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
     }
     
     console.log('[screparsed-parser] Raw parsed data:', parsedData);
