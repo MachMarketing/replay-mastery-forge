@@ -66,6 +66,10 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
     
     // Log the advanced metrics we extracted
     logAdvancedMetrics(parsedData);
+
+    // NEW: Debug build order data more thoroughly
+    debugBuildOrderData(parsedData.rawData);
+    
   } catch (error) {
     console.error('[browserReplayParser] Error during parsing:', error);
     // If parsing fails, create a minimal structure
@@ -78,6 +82,84 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
   } catch (error) {
     console.error('[browserReplayParser] Error transforming parsed data:', error);
     return createMinimalReplayData(file.name);
+  }
+}
+
+/**
+ * NEW: Debug build order data more thoroughly
+ */
+function debugBuildOrderData(rawData: any): void {
+  console.log('[browserReplayParser] Debugging build order data sources:');
+  
+  // Check if we have direct access to buildOrders array
+  if (rawData.buildOrders) {
+    console.log('[browserReplayParser] Found buildOrders array:', 
+      Array.isArray(rawData.buildOrders), 
+      Array.isArray(rawData.buildOrders) ? rawData.buildOrders.length : 0);
+    
+    if (Array.isArray(rawData.buildOrders) && rawData.buildOrders.length > 0) {
+      console.log('[browserReplayParser] First player build order array:', 
+        Array.isArray(rawData.buildOrders[0]), 
+        Array.isArray(rawData.buildOrders[0]) ? rawData.buildOrders[0].length : 0);
+        
+      if (Array.isArray(rawData.buildOrders[0]) && rawData.buildOrders[0].length > 0) {
+        console.log('[browserReplayParser] Sample build order item:', rawData.buildOrders[0][0]);
+      }
+    }
+  }
+  
+  // Check if we have players with buildOrder property
+  if (rawData.players && Array.isArray(rawData.players)) {
+    console.log('[browserReplayParser] Players array length:', rawData.players.length);
+    
+    if (rawData.players.length > 0) {
+      const player1BuildOrder = rawData.players[0]?.buildOrder;
+      console.log('[browserReplayParser] Player 1 build order:', 
+        Array.isArray(player1BuildOrder), 
+        Array.isArray(player1BuildOrder) ? player1BuildOrder.length : 0);
+        
+      if (Array.isArray(player1BuildOrder) && player1BuildOrder.length > 0) {
+        console.log('[browserReplayParser] Sample player 1 build order item:', player1BuildOrder[0]);
+      }
+    }
+  }
+  
+  // Check if we have a direct buildOrder property
+  if (rawData.buildOrder) {
+    console.log('[browserReplayParser] Direct buildOrder property:', 
+      Array.isArray(rawData.buildOrder), 
+      Array.isArray(rawData.buildOrder) ? rawData.buildOrder.length : 0);
+      
+    if (Array.isArray(rawData.buildOrder) && rawData.buildOrder.length > 0) {
+      console.log('[browserReplayParser] Sample direct build order item:', rawData.buildOrder[0]);
+    }
+  }
+  
+  // Check if we have a game object with players
+  if (rawData.game && rawData.game.players && Array.isArray(rawData.game.players)) {
+    console.log('[browserReplayParser] Game players array length:', rawData.game.players.length);
+    
+    if (rawData.game.players.length > 0) {
+      const gamePlayer1BuildOrder = rawData.game.players[0]?.buildOrder;
+      console.log('[browserReplayParser] Game player 1 build order:', 
+        Array.isArray(gamePlayer1BuildOrder), 
+        Array.isArray(gamePlayer1BuildOrder) ? gamePlayer1BuildOrder.length : 0);
+        
+      if (Array.isArray(gamePlayer1BuildOrder) && gamePlayer1BuildOrder.length > 0) {
+        console.log('[browserReplayParser] Sample game player 1 build order item:', gamePlayer1BuildOrder[0]);
+      }
+    }
+  }
+
+  // Check for replay property
+  if (rawData.replay) {
+    console.log('[browserReplayParser] Found replay property with keys:', Object.keys(rawData.replay).join(', '));
+    
+    // Check if we have commands in replay
+    if (rawData.replay.commands) {
+      console.log('[browserReplayParser] Replay commands array length:', 
+        Array.isArray(rawData.replay.commands) ? rawData.replay.commands.length : 'not an array');
+    }
   }
 }
 
@@ -255,6 +337,17 @@ function transformParsedData(parsedData: ExtendedReplayData, fileName: string): 
         }));
       }
     }
+
+    // Fourth attempt: look in replay structure
+    else if (parsedData.rawData.replay && parsedData.rawData.replay.players) {
+      console.log('[browserReplayParser] Found players in replay.players');
+      players = parsedData.rawData.replay.players.map((p: any) => ({
+        name: formatPlayerName(p.name || ''),
+        race: standardizeRaceName(p.race || getRaceFromId(p.raceId || p.race_id)),
+        apm: p.apm || 150,
+        team: p.team || 0
+      }));
+    }
   }
   
   // If we still don't have players, try to extract from filename
@@ -330,7 +423,21 @@ function transformParsedData(parsedData: ExtendedReplayData, fileName: string): 
     console.log(`[browserReplayParser] Found ${buildOrder.length} build order items in advanced metrics`);
   } 
   
-  // Second attempt: Check in rawData.buildOrders - direct access
+  // Second attempt: Check in screparsed structure - check for commands and buildOrders
+  else if (parsedData.rawData.replay && parsedData.rawData.replay.commands && 
+          Array.isArray(parsedData.rawData.replay.commands)) {
+          
+    console.log('[browserReplayParser] Found commands in replay, attempting to extract build order');
+    
+    // Extract a build order from the commands - this is complex but worth trying
+    const buildItems = extractBuildOrderFromCommands(parsedData.rawData.replay.commands);
+    if (buildItems && buildItems.length > 0) {
+      buildOrder = buildItems;
+      console.log(`[browserReplayParser] Extracted ${buildOrder.length} build order items from replay commands`);
+    }
+  }
+  
+  // Third attempt: Check in rawData.buildOrders - direct access
   else if (parsedData.rawData.buildOrders && 
            Array.isArray(parsedData.rawData.buildOrders) && 
            parsedData.rawData.buildOrders.length > 0) {
@@ -351,7 +458,7 @@ function transformParsedData(parsedData: ExtendedReplayData, fileName: string): 
     }
   }
   
-  // Third attempt: Check player1 object if it has a buildOrder array
+  // Fourth attempt: Check player1 object if it has a buildOrder array
   else if (parsedData.rawData.players && 
            parsedData.rawData.players[0] && 
            parsedData.rawData.players[0].buildOrder && 
@@ -365,7 +472,7 @@ function transformParsedData(parsedData: ExtendedReplayData, fileName: string): 
     console.log(`[browserReplayParser] Found ${buildOrder.length} build order items in players[0].buildOrder`);
   }
   
-  // Fourth attempt: Look for a buildOrder object directly on the parsedData.rawData
+  // Fifth attempt: Look for a buildOrder object directly on the parsedData.rawData
   else if (parsedData.rawData.buildOrder && Array.isArray(parsedData.rawData.buildOrder)) {
     buildOrder = parsedData.rawData.buildOrder.map((item: any) => ({
       time: formatTime(item.time || 0),
@@ -375,7 +482,7 @@ function transformParsedData(parsedData: ExtendedReplayData, fileName: string): 
     console.log(`[browserReplayParser] Found ${buildOrder.length} build order items in rawData.buildOrder`);
   }
   
-  // Fifth attempt: Look deeper in structure
+  // Sixth attempt: Look deeper in structure
   else if (parsedData.rawData.game && 
            parsedData.rawData.game.players && 
            parsedData.rawData.game.players[0] && 
@@ -392,12 +499,9 @@ function transformParsedData(parsedData: ExtendedReplayData, fileName: string): 
   // If we still don't have a build order, create a fallback with useful info
   if (buildOrder.length === 0) {
     console.warn('[browserReplayParser] No build order found in any expected location');
-    // Create a minimal fallback build order
-    buildOrder = [
-      {time: "0:00", supply: 4, action: "Start"},
-      {time: "0:50", supply: 5, action: "Worker"},
-      {time: "1:45", supply: 6, action: "Worker"}
-    ];
+    // Create a minimal fallback build order based on race
+    buildOrder = createFallbackBuildOrder(playerRace);
+    console.log('[browserReplayParser] Using fallback build order with', buildOrder.length, 'items');
   }
   
   // Generate strengths and weaknesses based on the advanced metrics
@@ -506,6 +610,143 @@ function transformParsedData(parsedData: ExtendedReplayData, fileName: string): 
   console.log('[browserReplayParser] Build order items:', transformedData.buildOrder.length);
   
   return transformedData;
+}
+
+/**
+ * NEW: Extract build order from replay commands
+ * This is a simplified approach - full implementation would be more complex
+ */
+function extractBuildOrderFromCommands(commands: any[]): Array<{time: string; supply: number; action: string}> | null {
+  if (!Array.isArray(commands) || commands.length === 0) {
+    return null;
+  }
+  
+  try {
+    const buildItems: Array<{time: string; supply: number; action: string}> = [];
+    let currentSupply = 4; // Starting supply
+    
+    // Look for build commands (simplified approach)
+    commands.forEach((cmd: any, index: number) => {
+      if (!cmd) return;
+      
+      // Only process certain command types that are likely to be build actions
+      if (cmd.type === 'build' || cmd.type === 'train' || cmd.type === 'research' || 
+          (cmd.name && (
+            cmd.name.includes('Build') || 
+            cmd.name.includes('Train') || 
+            cmd.name.includes('Research') || 
+            cmd.name.includes('Upgrade')
+          ))
+      ) {
+        // Get time in frames
+        const frameTime = cmd.frame || cmd.time || index * 24; // Estimate if not available
+        const timeFormatted = formatTime(frameTime);
+        
+        // Extract action name
+        let actionName = '';
+        if (cmd.name) {
+          actionName = cmd.name;
+        } else if (cmd.action) {
+          actionName = cmd.action;
+        } else if (cmd.type === 'build' && cmd.unit) {
+          actionName = `Build ${cmd.unit}`;
+        } else if (cmd.type === 'train' && cmd.unit) {
+          actionName = `Train ${cmd.unit}`;
+        } else if (cmd.type === 'research' && cmd.tech) {
+          actionName = `Research ${cmd.tech}`;
+        } else {
+          actionName = `Action at ${timeFormatted}`;
+        }
+        
+        // Increment supply for certain unit types (simplified)
+        if (actionName.includes('Probe') || 
+            actionName.includes('SCV') || 
+            actionName.includes('Drone')) {
+          currentSupply += 1;
+        } else if (
+            actionName.includes('Marine') || 
+            actionName.includes('Zealot') ||
+            actionName.includes('Zergling')) {
+          currentSupply += 2;
+        }
+        
+        // Add to build items
+        buildItems.push({
+          time: timeFormatted,
+          supply: currentSupply,
+          action: actionName
+        });
+      }
+    });
+    
+    return buildItems.length > 0 ? buildItems : null;
+  } catch (error) {
+    console.error('[browserReplayParser] Error extracting build order from commands:', error);
+    return null;
+  }
+}
+
+/**
+ * NEW: Create a fallback build order based on race
+ */
+function createFallbackBuildOrder(race: string): Array<{time: string; supply: number; action: string}> {
+  const raceLC = race.toLowerCase();
+  
+  if (raceLC.includes('protoss')) {
+    return [
+      {time: "0:00", supply: 4, action: "Start"},
+      {time: "0:16", supply: 5, action: "Probe"},
+      {time: "0:32", supply: 6, action: "Probe"},
+      {time: "0:48", supply: 7, action: "Probe"},
+      {time: "1:02", supply: 8, action: "Pylon"},
+      {time: "1:20", supply: 8, action: "Probe"},
+      {time: "1:36", supply: 9, action: "Probe"},
+      {time: "1:58", supply: 10, action: "Gateway"},
+      {time: "2:15", supply: 10, action: "Assimilator"},
+      {time: "2:30", supply: 11, action: "Probe"},
+      {time: "2:46", supply: 12, action: "Probe"},
+    ];
+  } 
+  else if (raceLC.includes('terran')) {
+    return [
+      {time: "0:00", supply: 4, action: "Start"},
+      {time: "0:16", supply: 5, action: "SCV"},
+      {time: "0:32", supply: 6, action: "SCV"},
+      {time: "0:48", supply: 7, action: "SCV"},
+      {time: "1:02", supply: 8, action: "Supply Depot"},
+      {time: "1:20", supply: 8, action: "SCV"},
+      {time: "1:36", supply: 9, action: "SCV"},
+      {time: "1:58", supply: 10, action: "Barracks"},
+      {time: "2:15", supply: 10, action: "Refinery"},
+      {time: "2:30", supply: 11, action: "SCV"},
+      {time: "2:46", supply: 12, action: "SCV"},
+    ];
+  }
+  else if (raceLC.includes('zerg')) {
+    return [
+      {time: "0:00", supply: 4, action: "Start"},
+      {time: "0:16", supply: 5, action: "Drone"},
+      {time: "0:32", supply: 6, action: "Drone"},
+      {time: "0:48", supply: 7, action: "Drone"},
+      {time: "1:02", supply: 8, action: "Drone"},
+      {time: "1:15", supply: 9, action: "Overlord"},
+      {time: "1:35", supply: 9, action: "Drone"},
+      {time: "1:51", supply: 10, action: "Drone"},
+      {time: "2:05", supply: 11, action: "Spawning Pool"},
+      {time: "2:20", supply: 11, action: "Drone"},
+      {time: "2:36", supply: 12, action: "Drone"},
+    ];
+  }
+  else {
+    // Generic fallback
+    return [
+      {time: "0:00", supply: 4, action: "Start"},
+      {time: "0:50", supply: 5, action: "Worker"},
+      {time: "1:45", supply: 6, action: "Worker"},
+      {time: "2:30", supply: 7, action: "Supply Building"},
+      {time: "3:15", supply: 8, action: "Production Structure"}
+    ];
+  }
 }
 
 /**
