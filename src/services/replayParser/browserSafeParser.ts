@@ -79,8 +79,9 @@ export async function initBrowserSafeParser(): Promise<void> {
                   saveTime: Date.now()
                 };
                 
-                // Try three argument constructor pattern
-                parsedReplay = new ParsedReplayClass(data, mockGameInfo, {});
+                // Use type assertion to bypass type checking for constructor
+                // This is necessary because the actual API may differ from TypeScript definitions
+                parsedReplay = new (ParsedReplayClass as any)(data, mockGameInfo, {});
                 console.log('[browserSafeParser] Created ParsedReplay with three arguments');
               } catch (threeArgError) {
                 console.warn('[browserSafeParser] Three args constructor failed:', threeArgError);
@@ -101,11 +102,12 @@ export async function initBrowserSafeParser(): Promise<void> {
                     saveTime: Date.now()
                   };
                   
-                  parsedReplay = new ParsedReplayClass(mockGameInfo);
+                  // Use type assertion to bypass strict typing
+                  parsedReplay = new (ParsedReplayClass as any)(mockGameInfo);
                   console.log('[browserSafeParser] Created ParsedReplay with single GameInfo argument');
                   
                   // If successful, try to use parseReplay method with our data
-                  if (typeof (parsedReplay as any).parseReplay === 'function') {
+                  if (parsedReplay && typeof (parsedReplay as any).parseReplay === 'function') {
                     return (parsedReplay as any).parseReplay(data);
                   }
                 } catch (singleArgError) {
@@ -113,13 +115,13 @@ export async function initBrowserSafeParser(): Promise<void> {
                   
                   try {
                     // Try with no arguments (some WASM bindings expect this pattern)
-                    parsedReplay = new ParsedReplayClass();
+                    parsedReplay = new (ParsedReplayClass as any)();
                     console.log('[browserSafeParser] Created ParsedReplay with no arguments');
                     
                     // Try to find a method to parse the data
-                    if (typeof (parsedReplay as any).parseReplay === 'function') {
+                    if (parsedReplay && typeof (parsedReplay as any).parseReplay === 'function') {
                       return (parsedReplay as any).parseReplay(data);
-                    } else if (typeof (parsedReplay as any).parse === 'function') {
+                    } else if (parsedReplay && typeof (parsedReplay as any).parse === 'function') {
                       return (parsedReplay as any).parse(data);
                     } else {
                       console.warn('[browserSafeParser] No parse methods found on instance');
@@ -161,6 +163,7 @@ export async function initBrowserSafeParser(): Promise<void> {
       console.log('[browserSafeParser] Found ReplayParser class');
       
       try {
+        // Don't try to instantiate directly - access via static methods or properties
         const ReplayParserClass = screparsed.ReplayParser;
         
         // Create a parser instance that uses ReplayParser - handle possible constructor access issues
@@ -170,7 +173,7 @@ export async function initBrowserSafeParser(): Promise<void> {
               // Different approach to avoid constructor access issues
               console.log('[browserSafeParser] Trying methods on ReplayParser');
               
-              // Check for static methods if available
+              // Use type assertion for flexibility
               const classAny = ReplayParserClass as any;
               
               // Try static methods first if they exist
@@ -182,7 +185,7 @@ export async function initBrowserSafeParser(): Promise<void> {
               if (typeof classAny.fromArrayBuffer === 'function') {
                 console.log('[browserSafeParser] Using static fromArrayBuffer method');
                 const result = classAny.fromArrayBuffer(data.buffer);
-                if (typeof result.parse === 'function') {
+                if (result && typeof result.parse === 'function') {
                   return result.parse();
                 }
                 return result;
@@ -191,21 +194,20 @@ export async function initBrowserSafeParser(): Promise<void> {
               if (typeof classAny.fromUint8Array === 'function') {
                 console.log('[browserSafeParser] Using static fromUint8Array method');
                 const result = classAny.fromUint8Array(data);
-                if (typeof result.parse === 'function') {
+                if (result && typeof result.parse === 'function') {
                   return result.parse();
                 }
                 return result;
               }
               
-              // Try instance factory methods as not all ReplayParser implementations 
-              // expose a public constructor
-              console.log('[browserSafeParser] Trying factory methods');
+              // If we can't use static methods, try an approach that doesn't rely on constructors
+              console.log('[browserSafeParser] Trying alternative approaches');
               
-              // Check for factory function on the module
+              // Check if the module itself has parser functions
               if (typeof (screparsed as any).createParser === 'function') {
                 console.log('[browserSafeParser] Using createParser factory function');
                 const parser = (screparsed as any).createParser(data);
-                if (typeof parser?.parse === 'function') {
+                if (parser && typeof parser.parse === 'function') {
                   return parser.parse();
                 }
                 return parser;
@@ -217,10 +219,7 @@ export async function initBrowserSafeParser(): Promise<void> {
                 return (screparsed as any).parseReplay(data);
               }
               
-              // If we get here, we couldn't use ReplayParser directly
-              // Try a different approach with a mock GameInfo object
-              console.log('[browserSafeParser] Trying alternative approaches');
-              
+              // Try direct function call with mock GameInfo
               // Create mock GameInfo to satisfy type requirements
               const mockGameInfo: GameInfo = {
                 engine: "broodwar",
@@ -236,7 +235,6 @@ export async function initBrowserSafeParser(): Promise<void> {
                 saveTime: Date.now()
               };
               
-              // Try direct function call with mock GameInfo
               if (typeof (screparsed as any).parseReplayData === 'function') {
                 console.log('[browserSafeParser] Using parseReplayData function');
                 return (screparsed as any).parseReplayData(data, mockGameInfo);
@@ -306,8 +304,8 @@ export async function initBrowserSafeParser(): Promise<void> {
                   saveTime: Date.now()
                 };
                 
-                // Using correct argument pattern with mock objects to satisfy TypeScript
-                const parsedReplay = new ParsedReplayClass(data, mockGameInfo, {});
+                // Use type assertion to bypass type checking
+                const parsedReplay = new (ParsedReplayClass as any)(data, mockGameInfo, {});
                 return parsedReplay;
               } catch (err) {
                 console.error('[browserSafeParser] Error using default.ParsedReplay:', err);
@@ -334,6 +332,7 @@ export async function initBrowserSafeParser(): Promise<void> {
         try {
           console.log(`[browserSafeParser] Trying to use '${key}' export as parser`);
           
+          // For safety, we wrap it in a try/catch
           parserInstance = {
             parse: (data: Uint8Array) => {
               try {
