@@ -147,13 +147,17 @@ const ScreparsedTest: React.FC = () => {
         console.log('Checking default export');
         if (typeof mod.default === 'function') {
           parseFn = (data: Uint8Array) => {
-            // Use type assertion since we've verified it's a function
-            return (mod.default as Function)(data);
+            // Convert to unknown first, then to Function to satisfy TypeScript
+            return ((mod.default as unknown) as Function)(data);
           };
         } else if (mod.default && typeof mod.default.parse === 'function') {
           parseFn = (data: Uint8Array) => {
-            // Safe function call with type assertion
-            return (mod.default.parse as Function)(data);
+            // Convert the specific property to a function after verification
+            const parseFn = mod.default.parse;
+            if (typeof parseFn === 'function') {
+              return parseFn(data);
+            }
+            throw new Error('parse method is not a function');
           };
         }
       }
