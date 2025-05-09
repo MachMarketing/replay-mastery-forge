@@ -117,6 +117,8 @@ export function useReplayParser(): ReplayParserResult {
       console.log('[useReplayParser] Calling parseReplayInBrowser with file:', file.name);
       
       const parsedData: ParsedReplayData = await parseReplayInBrowser(file);
+      console.log('[useReplayParser] Raw parsed data received:', JSON.stringify(parsedData).substring(0, 1000) + '...');
+      console.log('[useReplayParser] Build order items count:', parsedData.buildOrder?.length || 0);
       
       // Special case for known player "NumberOne" - ensure it's always Protoss
       if (parsedData.primaryPlayer && 
@@ -130,8 +132,8 @@ export function useReplayParser(): ReplayParserResult {
       console.log('[useReplayParser] Parser returned player data:', {
         player1: `${parsedData.primaryPlayer.name} (${parsedData.primaryPlayer.race})`,
         player2: `${parsedData.secondaryPlayer.name} (${parsedData.secondaryPlayer.race})`,
-        primaryBuildOrderItems: parsedData.primaryPlayer.buildOrder.length,
-        secondaryBuildOrderItems: parsedData.secondaryPlayer.buildOrder.length
+        primaryBuildOrderItems: parsedData.primaryPlayer.buildOrder?.length || 0,
+        secondaryBuildOrderItems: parsedData.secondaryPlayer.buildOrder?.length || 0
       });
       
       // Ensure the result has the required fields for the view

@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
@@ -142,8 +143,18 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         throw new Error(parsingError || 'Fehler beim Parsen der Replay-Datei');
       }
       
-      // Log parsed data for debugging
-      console.log("[UploadBox] Parsed data from screparsed parser:", parsedData);
+      // Log parsed data for debugging, especially build order
+      console.log("[UploadBox] Parsed data summary:", {
+        playerName: parsedData.playerName,
+        opponentName: parsedData.opponentName,
+        playerRace: parsedData.playerRace,
+        opponentRace: parsedData.opponentRace,
+        map: parsedData.map,
+        matchup: parsedData.matchup,
+        buildOrderItems: parsedData.buildOrder?.length || 0
+      });
+      
+      console.log("[UploadBox] Build order details:", JSON.stringify(parsedData.buildOrder || []));
       
       // Validate that the returned data contains required fields
       if (!parsedData.primaryPlayer || !parsedData.primaryPlayer.name) {

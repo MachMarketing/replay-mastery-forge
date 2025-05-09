@@ -40,96 +40,125 @@ export function formatPlayerName(name: string): string {
 }
 
 /**
+ * Deeply analyze the replay structure to find usable data
+ * This helper function logs detailed information about replay structure
+ */
+export function deepAnalyzeReplayStructure(data: any): void {
+  console.log('[deepAnalyze] Starting deep structure analysis');
+  
+  if (!data) {
+    console.log('[deepAnalyze] No data provided');
+    return;
+  }
+  
+  // Look for keys that might contain build order data
+  const buildRelatedKeys = ['commands', 'events', 'actions', 'builds', 'unitsBorn', 'buildOrder'];
+  
+  for (const key of buildRelatedKeys) {
+    if (data[key] && Array.isArray(data[key])) {
+      console.log(`[deepAnalyze] Found potential build data in ${key}:`, data[key].length, 'items');
+      if (data[key].length > 0) {
+        console.log(`[deepAnalyze] Sample ${key} item:`, data[key][0]);
+      }
+    }
+  }
+  
+  // Look specifically for screparsed format with _frames and _gameInfo
+  if (data._frames && data._gameInfo) {
+    console.log('[deepAnalyze] Detected screparsed format with _frames and _gameInfo');
+    console.log('[deepAnalyze] Frame count:', Array.isArray(data._frames) ? data._frames.length : 'unknown');
+  }
+  
+  // Check for any properties that might contain build order information
+  if (typeof data === 'object') {
+    Object.keys(data).forEach(key => {
+      if (typeof data[key] === 'object' && data[key] !== null) {
+        // Check if this object has properties that suggest it might contain build orders
+        if (key.toLowerCase().includes('build') || 
+            key.toLowerCase().includes('command') ||
+            key.toLowerCase().includes('action') ||
+            key.toLowerCase().includes('event')) {
+          console.log(`[deepAnalyze] Potential build data in ${key}:`, data[key]);
+        }
+        
+        // For arrays, check sample items for build-related fields
+        if (Array.isArray(data[key]) && data[key].length > 0) {
+          const sample = data[key][0];
+          if (sample && typeof sample === 'object') {
+            const sampleKeys = Object.keys(sample);
+            const hasBuildIndicators = sampleKeys.some(k => 
+              k.toLowerCase().includes('build') ||
+              k.toLowerCase().includes('unit') ||
+              k.toLowerCase().includes('structure') ||
+              k.toLowerCase().includes('train')
+            );
+            
+            if (hasBuildIndicators) {
+              console.log(`[deepAnalyze] Array ${key} may contain build data, sample:`, sample);
+            }
+          }
+        }
+      }
+    });
+  }
+}
+
+/**
  * Extract map name from replay data
  */
 export function extractMapName(data: any): string {
-  // Check various locations where the map name might be
-  if (data && typeof data === 'object') {
-    // Check in common _gameInfo location
-    if (data._gameInfo && data._gameInfo.mapName) {
-      return data._gameInfo.mapName;
-    }
+  if (!data) return 'Unknown Map';
+  
+  // Try different property paths where map name might be stored
+  const mapSearchPaths = [
+    'header.mapName',
+    'header.map',
+    'Header.Map',
+    'map',
+    'mapName',
+    'metadata.mapName',
+    'MapName',
+    'mapData.name',
+    'scenario.mapTitle',
+    '_gameInfo.mapName'
+  ];
+  
+  // Log search attempts for debugging
+  const mapInfo: Record<string, string> = {
+    directMapName: 'Not found',
+    gameInfoMapName: 'Not found',
+    headerMapName: 'Not found',
+    metadataMapName: 'Not found',
+    mapData: 'Not found',
+    scenarioMapTitle: 'Not found'
+  };
+  
+  // Direct properties
+  if (data.mapName) mapInfo.directMapName = data.mapName;
+  if (data._gameInfo?.mapName) mapInfo.gameInfoMapName = data._gameInfo.mapName;
+  if (data.header?.mapName || data.header?.map) mapInfo.headerMapName = data.header?.mapName || data.header?.map;
+  if (data.metadata?.mapName) mapInfo.metadataMapName = data.metadata.mapName;
+  if (data.mapData?.name) mapInfo.mapData = data.mapData.name;
+  if (data.scenario?.mapTitle) mapInfo.scenarioMapTitle = data.scenario.mapTitle;
+  
+  console.log('[replayUtils] Map information search:', mapInfo);
+  
+  // Try each path
+  for (const path of mapSearchPaths) {
+    const pathParts = path.split('.');
+    let current = data;
+    let valid = true;
     
-    // Check for map name in header structures (common in other parsers)
-    if (data.header && data.header.map) {
-      return data.header.map;
-    }
-    
-    if (data.Header && data.Header.Map) {
-      return data.Header.Map;
-    }
-    
-    // Check for map data object
-    if (data.mapData && data.mapData.name) {
-      return data.mapData.name;
-    }
-    
-    // Try to find map name in various scenario data locations
-    if (data.scenario && data.scenario.mapTitle) {
-      return data.scenario.mapTitle;
-    }
-    
-    // Check for common filename key patterns
-    const mapKeys = Object.keys(data).filter(key => 
-      key.toLowerCase().includes('map') || 
-      key.toLowerCase().includes('level') ||
-      key.toLowerCase().includes('scenario')
-    );
-    
-    if (mapKeys.length > 0) {
-      for (const key of mapKeys) {
-        const value = data[key];
-        if (typeof value === 'string') {
-          return value;
-        } else if (typeof value === 'object' && value && value.name) {
-          return value.name;
-        }
+    for (const part of pathParts) {
+      if (!current || typeof current !== 'object') {
+        valid = false;
+        break;
       }
+      current = current[part];
     }
     
-    // Try to look for possible map name string in the most likely locations
-    const possibleMapContainers = [
-      data.metadata,
-      data.info,
-      data.gameInfo,
-      data.replay,
-      data._metadata,
-      data._replay,
-      data.settings
-    ].filter(Boolean);
-    
-    for (const container of possibleMapContainers) {
-      if (container && typeof container === 'object') {
-        const mapInContainer = Object.keys(container).find(key => 
-          key.toLowerCase().includes('map') || 
-          key.toLowerCase().includes('level')
-        );
-        
-        if (mapInContainer && typeof container[mapInContainer] === 'string') {
-          return container[mapInContainer];
-        }
-      }
-    }
-    
-    // Last resort - look for anything that might be a StarCraft map name
-    const starCraftMapPatterns = [
-      'lost temple', 'python', 'circuit breaker', 'fighting spirit',
-      'jade', 'heartbreak', 'luna', 'medusa', 'requiem', 'cross game',
-      'neo', 'benzene', 'destination', 'match point', 'blue storm'
-    ];
-    
-    const allStrings = JSON.stringify(data).toLowerCase();
-    for (const mapPattern of starCraftMapPatterns) {
-      if (allStrings.includes(mapPattern)) {
-        // Extract the context around the map name
-        const index = allStrings.indexOf(mapPattern);
-        const start = Math.max(0, index - 20);
-        const end = Math.min(allStrings.length, index + mapPattern.length + 20);
-        const context = allStrings.substring(start, end);
-        
-        console.log(`[extractMapName] Found map pattern "${mapPattern}" in context: ${context}`);
-        return mapPattern.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-      }
+    if (valid && current && typeof current === 'string') {
+      return current;
     }
   }
   
@@ -242,124 +271,78 @@ export function getRaceFromId(raceId: number): string {
 }
 
 /**
- * Deeper analysis of the replay data structure to find player information
- */
-export function deepAnalyzeReplayStructure(data: any): void {
-  if (!data || typeof data !== 'object') {
-    console.log('[deepAnalyze] Invalid data format');
-    return;
-  }
-  
-  console.log('[deepAnalyze] Starting deep structure analysis');
-  
-  // Convert to string for pattern searches
-  const dataString = JSON.stringify(data);
-  
-  // Look for indicators of players
-  const playerPatterns = ['player', 'name', 'race', 'color', 'apm'];
-  for (const pattern of playerPatterns) {
-    const regex = new RegExp(`"${pattern}":\\s*"([^"]+)"`, 'gi');
-    const matches = Array.from(dataString.matchAll(regex)).slice(0, 5);
-    if (matches.length > 0) {
-      console.log(`[deepAnalyze] Found ${matches.length} potential ${pattern} values:`, 
-        matches.map(m => m[1]).join(', '));
-    }
-  }
-  
-  // Look for race identifiers
-  const raceRegex = /"race":\s*("?\d+"?|"[^"]+"|true|false)/gi;
-  const raceMatches = Array.from(dataString.matchAll(raceRegex)).slice(0, 5);
-  if (raceMatches.length > 0) {
-    console.log('[deepAnalyze] Found race identifiers:', 
-      raceMatches.map(m => m[1]).join(', '));
-  }
-  
-  // Check special structures from known parser formats
-  const knownStructures = [
-    { path: '_playerStructs', desc: 'Player structures' },
-    { path: 'players', desc: 'Players array' },
-    { path: 'Players', desc: 'Capitalized players array' },
-    { path: 'entities', desc: 'Game entities' },
-    { path: 'playerInfo', desc: 'Player info object' }
-  ];
-  
-  for (const struct of knownStructures) {
-    const structRegex = new RegExp(`"${struct.path}":\\s*(\\{|\\[)`, 'gi');
-    if (structRegex.test(dataString)) {
-      console.log(`[deepAnalyze] Found potential ${struct.desc} at ${struct.path}`);
-    }
-  }
-}
-
-/**
  * Extract player information from replay filename
+ * For cases where the parser couldn't extract player data
  */
-export function extractPlayersFromFilename(filename: string): { 
-  player1: string, 
-  player2: string, 
-  race1?: string, 
-  race2?: string 
+export function extractPlayersFromFilename(filename: string): {
+  player1: string;
+  player2: string;
+  race1?: string;
+  race2?: string;
 } {
-  console.log(`[extractPlayersFromFilename] Analyzing filename: ${filename}`);
+  console.log('[extractPlayersFromFilename] Analyzing filename:', filename);
   
-  // Remove file extension
-  const nameWithoutExt = filename.split('.')[0];
+  // Remove file extension and decode URL entities if present
+  const nameOnly = filename.replace(/\.rep$/i, '').replace(/%20/g, ' ');
   
-  // Look for common separators and matchup patterns
-  const vsPatterns = [' vs ', ' VS ', ' Vs ', '_vs_', '-vs-', ' v ', '(', ')', '[', ']'];
-  let parts: string[] = [nameWithoutExt];
+  // Split by common separators
+  const parts = nameOnly.split(/\s+|_|-|vs\.?|versus|against/i);
+  console.log('[extractPlayersFromFilename] Split by spaces/underscores:', parts);
   
-  // Try to split by common separators
-  for (const pattern of vsPatterns) {
-    if (nameWithoutExt.includes(pattern)) {
-      parts = nameWithoutExt.split(pattern).filter(p => p.trim().length > 0);
-      console.log(`[extractPlayersFromFilename] Split by "${pattern}":`, parts);
-      break;
-    }
+  // Initialize result
+  const result = {
+    player1: 'Player 1',
+    player2: 'Player 2',
+    race1: undefined as string | undefined,
+    race2: undefined as string | undefined
+  };
+  
+  // Look for common matchup patterns like "PvZ" or "TvsP"
+  const matchupRegex = /([TZP])v(?:s|\.)?([TZP])/i;
+  const matchupParts = nameOnly.match(matchupRegex);
+  
+  if (matchupParts) {
+    // We found a standard matchup string
+    const race1Char = matchupParts[1].toUpperCase();
+    const race2Char = matchupParts[2].toUpperCase();
+    
+    // Map race characters to full names
+    const raceMap: Record<string, string> = {
+      'T': 'Terran',
+      'P': 'Protoss',
+      'Z': 'Zerg'
+    };
+    
+    result.race1 = raceMap[race1Char] || undefined;
+    result.race2 = raceMap[race2Char] || undefined;
+    
+    console.log('[extractPlayersFromFilename] Found race identifiers:', result.race1, 'vs', result.race2);
   }
   
-  // If no specific separator found, try spaces or underscores
-  if (parts.length === 1) {
-    parts = nameWithoutExt.split(/[\s_-]+/);
-    console.log('[extractPlayersFromFilename] Split by spaces/underscores:', parts);
-  }
-  
-  // Extract player names based on parts
-  let player1 = 'Unknown';
-  let player2 = 'Unknown';
-  
-  // If we have multiple parts, first and last are likely player names
+  // Try to extract player names
   if (parts.length >= 2) {
-    player1 = parts[0].trim();
-    player2 = parts[parts.length - 1].trim();
-  } 
-  // If we have just one part but it's long, try to split in the middle
-  else if (parts[0].length > 10) {
-    const middle = Math.floor(parts[0].length / 2);
-    player1 = parts[0].substring(0, middle).trim();
-    player2 = parts[0].substring(middle).trim();
-  }
-  // Otherwise just use the filename as player 1
-  else {
-    player1 = parts[0].trim();
-  }
-  
-  // Look for race identifiers (T, P, Z) in the filename
-  let race1: string | undefined;
-  let race2: string | undefined;
-  
-  const raceMatch = nameWithoutExt.match(/([TPZtpz])\s*v\s*([TPZtpz])/i);
-  if (raceMatch) {
-    const r1 = raceMatch[1].toUpperCase();
-    const r2 = raceMatch[2].toUpperCase();
+    // Strategy: take first part as player 1, last part as player 2
+    // This is a simple heuristic that works reasonably well
+    result.player1 = parts[0].trim();
+    result.player2 = parts[parts.length - 1].trim();
     
-    race1 = r1 === 'T' ? 'Terran' : r1 === 'Z' ? 'Zerg' : 'Protoss';
-    race2 = r2 === 'T' ? 'Terran' : r2 === 'Z' ? 'Zerg' : 'Protoss';
+    // If we have a part that looks like "vs" or empty, adjust
+    if (['vs', 'versus', 'v', ''].includes(result.player2.toLowerCase())) {
+      result.player2 = parts[parts.length - 2].trim();
+    }
     
-    console.log(`[extractPlayersFromFilename] Found race identifiers: ${race1} vs ${race2}`);
+    if (['vs', 'versus', 'v', ''].includes(result.player1.toLowerCase()) && parts.length > 2) {
+      result.player1 = parts[1].trim();
+    }
+    
+    // Clean up player names - remove race indicators if embedded
+    ['tvp', 'tvt', 'tvz', 'pvp', 'pvt', 'pvz', 'zvz', 'zvt', 'zvp'].forEach(matchup => {
+      result.player1 = result.player1.replace(new RegExp(matchup, 'i'), '').trim();
+      result.player2 = result.player2.replace(new RegExp(matchup, 'i'), '').trim();
+    });
   }
   
-  return { player1, player2, race1, race2 };
+  return result;
 }
 
 /**

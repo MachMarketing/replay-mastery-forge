@@ -1,4 +1,3 @@
-
 import { parseReplayWithBrowserSafeParser, initBrowserSafeParser } from './replayParser/browserSafeParser';
 import { ParsedReplayData } from './replayParser/types';
 
@@ -55,6 +54,9 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
     rawData = await parseReplayWithBrowserSafeParser(new Uint8Array(fileBuffer));
     console.log('[browserReplayParser] Raw parsed data structure:', 
       rawData ? Object.keys(rawData).join(', ') : 'null');
+    
+    // Log the entire raw data structure for debugging
+    console.log('[browserReplayParser] Raw data details:', JSON.stringify(rawData, null, 2).substring(0, 1000) + '...');
     
     // Use our enhanced debug logging
     debugLogReplayData(rawData);
@@ -142,6 +144,82 @@ function createMinimalReplayData(fileName: string): ParsedReplayData {
   };
   
   return minimalData;
+}
+
+/**
+ * Extract build order information from raw data
+ */
+function extractBuildOrder(rawData: any): Array<{ time: string; supply: number; action: string }> {
+  console.log('[browserReplayParser] Attempting to extract build order');
+  const buildOrders = [];
+  
+  try {
+    // Try different possible locations for build order data
+    if (rawData.commands && Array.isArray(rawData.commands)) {
+      console.log('[browserReplayParser] Found commands array, length:', rawData.commands.length);
+      
+      // Filter for build-related commands
+      const buildCommands = rawData.commands.filter((cmd: any) => 
+        cmd.type === 'build' || 
+        cmd.type === 'train' || 
+        cmd.name?.toLowerCase().includes('build') ||
+        cmd.name?.toLowerCase().includes('train')
+      );
+      
+      if (buildCommands.length > 0) {
+        return buildCommands.map((cmd: any) => ({
+          time: formatGameTime(cmd.frame || 0),
+          supply: cmd.supply || 0,
+          action: cmd.name || 'Unknown Action'
+        }));
+      }
+    }
+    
+    // Try alternative structure: events
+    if (rawData.events && Array.isArray(rawData.events)) {
+      console.log('[browserReplayParser] Found events array, length:', rawData.events.length);
+      
+      const buildEvents = rawData.events.filter((event: any) => 
+        event.type === 'build' || 
+        event.type === 'train' || 
+        event.type === 'CommandUnitBorn' || 
+        event.type === 'CommandBuildingBuilt'
+      );
+      
+      if (buildEvents.length > 0) {
+        return buildEvents.map((event: any) => ({
+          time: formatGameTime(event.frame || event.frameTime || 0),
+          supply: event.supply || 0,
+          action: event.name || event.abilityName || 'Unknown Action'
+        }));
+      }
+    }
+    
+    // Try screparsed specific structure: _gameInfo might contain build events
+    if (rawData._gameInfo && typeof rawData._gameInfo === 'object') {
+      console.log('[browserReplayParser] Checking _gameInfo for build data');
+      
+      // Custom extraction logic for screparsed format if needed
+      // This would depend on the exact structure of _gameInfo
+    }
+    
+    console.log('[browserReplayParser] No build order data found in standard locations');
+    return [];
+  } catch (error) {
+    console.error('[browserReplayParser] Error extracting build order:', error);
+    return [];
+  }
+}
+
+/**
+ * Format game time from frames to MM:SS
+ */
+function formatGameTime(frames: number): string {
+  // BW runs at 24 frames per second
+  const totalSeconds = Math.floor(frames / 24);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
 /**
@@ -256,6 +334,10 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
   const playerName = formatPlayerName(player1.name);
   const opponentName = formatPlayerName(player2.name);
   
+  // Extract build orders
+  const buildOrders = extractBuildOrder(parsedData);
+  console.log('[browserReplayParser] Extracted build orders:', buildOrders.length, 'items');
+  
   // Determine result - ensure it's one of the allowed enum values
   let matchResult: 'win' | 'loss' | 'unknown' = 'unknown';
   
@@ -285,7 +367,7 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
       race: race1,
       apm: player1.apm || 150,
       eapm: Math.round((player1.apm || 150) * 0.7),
-      buildOrder: [],
+      buildOrder: buildOrders,
       strengths: ['Replay analysis requires premium'],
       weaknesses: ['Replay analysis requires premium'],
       recommendations: ['Upgrade to premium for detailed analysis']
@@ -319,12 +401,13 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
     eapm: Math.round((player1.apm || 150) * 0.7),
     opponentApm: player2.apm || 150,
     opponentEapm: Math.round((player2.apm || 150) * 0.7),
-    buildOrder: []
+    buildOrder: buildOrders
   };
   
   console.log('[browserReplayParser] Transformed data:', 
     `${transformedData.primaryPlayer.name} (${transformedData.primaryPlayer.race}) vs ` +
     `${transformedData.secondaryPlayer.name} (${transformedData.secondaryPlayer.race}) on ${transformedData.map}`);
+  console.log('[browserReplayParser] Build order items:', transformedData.buildOrder.length);
   
   return transformedData;
 }
