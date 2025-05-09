@@ -1,8 +1,9 @@
+
 import { parseReplayWithBrowserSafeParser, initBrowserSafeParser } from './replayParser/browserSafeParser';
-import { ParsedReplayData } from './replayParser/types';
+import { ParsedReplayData, ExtendedReplayData } from './replayParser/types';
 
 // Import readFileAsArrayBuffer
-import { readFileAsArrayBuffer } from '../services/fileReader';
+import { readFileAsArrayBuffer } from './fileReader';
 import { 
   formatPlayerName, 
   standardizeRaceName, 
@@ -48,43 +49,74 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
   console.log('[browserReplayParser] File read successfully, size:', fileBuffer.byteLength);
   
   // Parse the replay using the screparsed browser-safe parser
-  let rawData;
+  let parsedData: ExtendedReplayData;
   try {
-    rawData = await parseReplayWithBrowserSafeParser(new Uint8Array(fileBuffer));
+    parsedData = await parseReplayWithBrowserSafeParser(new Uint8Array(fileBuffer));
     console.log('[browserReplayParser] Raw parsed data structure:', 
-      rawData ? Object.keys(rawData).join(', ') : 'null');
-    
-    // According to screparsed, data should include players, header, etc.
-    console.log('[browserReplayParser] Parsed data players:', rawData?.players ? 'Found' : 'Not found');
-    console.log('[browserReplayParser] Parsed data header:', rawData?.header ? 'Found' : 'Not found');
-    console.log('[browserReplayParser] Parsed data commands:', 
-      rawData?.commands ? `Found - ${rawData.commands.length} commands` : 'Not found');
-    
-    // Log the first few commands if available
-    if (rawData?.commands && Array.isArray(rawData.commands) && rawData.commands.length > 0) {
-      console.log('[browserReplayParser] Sample commands:', rawData.commands.slice(0, 3));
-    }
+      parsedData ? Object.keys(parsedData).join(', ') : 'null');
     
     // Use our enhanced debug logging
-    debugLogReplayData(rawData);
+    debugLogReplayData(parsedData.rawData);
+    
+    // Log the advanced metrics we extracted
+    logAdvancedMetrics(parsedData);
   } catch (error) {
     console.error('[browserReplayParser] Error during parsing:', error);
     // If parsing fails, create a minimal structure
     return createMinimalReplayData(file.name);
   }
   
-  if (!rawData) {
-    console.error('[browserReplayParser] Parser returned no data');
-    return createMinimalReplayData(file.name);
-  }
-  
   try {
-    // Handle the parsed data safely without assuming structure
-    return transformParsedData(rawData, file.name);
+    // Transform the parsed data into our expected format
+    return transformParsedData(parsedData, file.name);
   } catch (error) {
     console.error('[browserReplayParser] Error transforming parsed data:', error);
     return createMinimalReplayData(file.name);
   }
+}
+
+/**
+ * Log the advanced metrics we extracted
+ */
+function logAdvancedMetrics(data: ExtendedReplayData): void {
+  const metrics = data.advancedMetrics;
+  
+  console.log('[browserReplayParser] 📊 Advanced Metrics Summary:');
+  
+  // Log build order counts
+  console.log(`[browserReplayParser] 📊 Build Order: P1(${metrics.buildOrderTiming.player1.length} items), P2(${metrics.buildOrderTiming.player2.length} items)`);
+  
+  // Log supply blocks
+  const p1Blocks = metrics.supplyManagement.player1.supplyBlocks.length;
+  const p2Blocks = metrics.supplyManagement.player2.supplyBlocks.length;
+  console.log(`[browserReplayParser] 📊 Supply Blocks: P1(${p1Blocks} blocks), P2(${p2Blocks} blocks)`);
+  
+  // Log resource collection points
+  const p1Resources = metrics.resourceCollection.player1.collectionRate.minerals.length;
+  const p2Resources = metrics.resourceCollection.player2.collectionRate.minerals.length;
+  console.log(`[browserReplayParser] 📊 Resource Collection Data Points: P1(${p1Resources}), P2(${p2Resources})`);
+  
+  // Log expansion counts
+  const p1Expansions = metrics.expansionTiming.player1.length;
+  const p2Expansions = metrics.expansionTiming.player2.length;
+  console.log(`[browserReplayParser] 📊 Expansions: P1(${p1Expansions}), P2(${p2Expansions})`);
+  
+  // Log tech path items
+  const p1Tech = metrics.techPath.player1.length;
+  const p2Tech = metrics.techPath.player2.length;
+  console.log(`[browserReplayParser] 📊 Tech Path Items: P1(${p1Tech}), P2(${p2Tech})`);
+  
+  // Log action distribution
+  const p1Macro = metrics.actionDistribution.player1.macroPercentage;
+  const p1Micro = metrics.actionDistribution.player1.microPercentage;
+  const p2Macro = metrics.actionDistribution.player2.macroPercentage;
+  const p2Micro = metrics.actionDistribution.player2.microPercentage;
+  console.log(`[browserReplayParser] 📊 Action Distribution: P1(${p1Macro}% macro, ${p1Micro}% micro), P2(${p2Macro}% macro, ${p2Micro}% micro)`);
+  
+  // Log hotkey usage
+  const p1Hotkeys = metrics.hotkeyUsage.player1.hotkeyActionsPerMinute;
+  const p2Hotkeys = metrics.hotkeyUsage.player2.hotkeyActionsPerMinute;
+  console.log(`[browserReplayParser] 📊 Hotkey APM: P1(${p1Hotkeys}), P2(${p2Hotkeys})`);
 }
 
 /**
@@ -151,116 +183,27 @@ function createMinimalReplayData(fileName: string): ParsedReplayData {
 }
 
 /**
- * Extract build order information from raw data based on screparsed structure
+ * Transform the extended parsed data into our application's expected format
  */
-function extractBuildOrder(rawData: any): Array<{ time: string; supply: number; action: string }> {
-  console.log('[browserReplayParser] Attempting to extract build order');
-  const buildOrders = [];
-  
-  try {
-    // Based on screparsed GitHub documentation, check for commands array
-    if (rawData.commands && Array.isArray(rawData.commands)) {
-      console.log('[browserReplayParser] Found commands array, length:', rawData.commands.length);
-      
-      // Filter for build-related commands
-      const buildCommands = rawData.commands.filter((cmd: any) => {
-        // Check for various command types that might indicate builds
-        const isRelevant = 
-          (cmd.type && (cmd.type === 'build' || cmd.type === 'train')) ||
-          (cmd.name && (
-            cmd.name.toLowerCase().includes('build') || 
-            cmd.name.toLowerCase().includes('train') ||
-            cmd.name.toLowerCase().includes('probe') ||
-            cmd.name.toLowerCase().includes('scv') ||
-            cmd.name.toLowerCase().includes('drone')
-          ));
-          
-        return isRelevant;
-      });
-      
-      if (buildCommands.length > 0) {
-        console.log('[browserReplayParser] Found build commands:', buildCommands.length);
-        return buildCommands.map((cmd: any) => ({
-          time: formatGameTime(cmd.frame || 0),
-          supply: cmd.supply || 0,
-          action: cmd.name || 'Unknown Action'
-        }));
-      }
-    }
-    
-    // Check for chatMessages as it might contain game events according to repo
-    if (rawData.chatMessages && Array.isArray(rawData.chatMessages)) {
-      console.log('[browserReplayParser] Found chatMessages, checking for game events');
-    }
-    
-    // Check for players array which might contain build orders
-    if (rawData.players && Array.isArray(rawData.players) && rawData.players.length > 0) {
-      console.log('[browserReplayParser] Found players array, checking for build orders');
-      
-      for (const player of rawData.players) {
-        if (player.buildOrder && Array.isArray(player.buildOrder) && player.buildOrder.length > 0) {
-          console.log('[browserReplayParser] Found player build order:', player.buildOrder.length);
-          return player.buildOrder.map((item: any) => ({
-            time: formatGameTime(item.frame || 0),
-            supply: item.supply || 0,
-            action: item.name || 'Unknown Action'
-          }));
-        }
-      }
-    }
-    
-    // Check if we have a gameEvents array
-    if (rawData.gameEvents && Array.isArray(rawData.gameEvents)) {
-      console.log('[browserReplayParser] Found gameEvents array');
-      
-      const buildEvents = rawData.gameEvents.filter((event: any) => {
-        return event.type === 'unit_born' || event.type === 'building_complete';
-      });
-      
-      if (buildEvents.length > 0) {
-        console.log('[browserReplayParser] Found build events:', buildEvents.length);
-        return buildEvents.map((event: any) => ({
-          time: formatGameTime(event.frame || 0),
-          supply: event.supply || 0,
-          action: event.name || event.unitType || 'Unknown Action'
-        }));
-      }
-    }
-    
-    console.log('[browserReplayParser] No build order data found in standard locations');
-    return [];
-  } catch (error) {
-    console.error('[browserReplayParser] Error extracting build order:', error);
-    return [];
-  }
-}
-
-/**
- * Format game time from frames to MM:SS
- */
-function formatGameTime(frames: number): string {
-  // BW runs at 24 frames per second
-  const totalSeconds = Math.floor(frames / 24);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-}
-
-/**
- * Transform the parsed data into our application's expected format
- * Based on the structure in screparsed GitHub repository
- */
-function transformParsedData(parsedData: any, fileName: string): ParsedReplayData {
+function transformParsedData(parsedData: ExtendedReplayData, fileName: string): ParsedReplayData {
   // First, log the structure to help with debugging
-  console.log('[browserReplayParser] Transforming data with structure:', 
-    typeof parsedData === 'object' ? Object.keys(parsedData) : typeof parsedData);
+  console.log('[browserReplayParser] Transforming extended data');
   
-  // According to screparsed docs, players should be in parsedData.players
+  // Start with player data
+  let playerName = '';
+  let opponentName = '';
+  let playerRace = '';
+  let opponentRace = '';
+  let playerApm = 0;
+  let opponentApm = 0;
+  let buildOrder = [];
+  
+  // According to screparsed docs, players should be in rawData.players
   let players = [];
   
-  if (parsedData.players && Array.isArray(parsedData.players)) {
-    console.log('[browserReplayParser] Using parsedData.players array');
-    players = parsedData.players.map((player: any) => ({
+  if (parsedData.rawData.players && Array.isArray(parsedData.rawData.players)) {
+    console.log('[browserReplayParser] Using rawData.players array');
+    players = parsedData.rawData.players.map((player: any) => ({
       name: player.name || `Player ${player.id || 'Unknown'}`,
       race: standardizeRaceName(player.race || 'Unknown'),
       apm: player.apm || 150,
@@ -269,23 +212,12 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
   } else {
     console.log('[browserReplayParser] No players array found, using extractPlayerData');
     // Fall back to our extraction function
-    players = extractPlayerData(parsedData);
+    players = extractPlayerData(parsedData.rawData);
   }
   
   // Extract map name using enhanced map extractor
-  let mapName = extractMapName(parsedData);
+  let mapName = extractMapName(parsedData.rawData);
   console.log('[browserReplayParser] Extracted map name:', mapName);
-  
-  let durationFrames = 0;
-  
-  // Get game duration from header or metadata
-  if (parsedData.header) {
-    console.log('[browserReplayParser] Using header for duration');
-    durationFrames = parsedData.header.frames || parsedData.header.duration * 24 || 0;
-  } else if (parsedData.metadata) {
-    console.log('[browserReplayParser] Using metadata for duration');
-    durationFrames = parsedData.metadata.frames || parsedData.metadata.duration * 24 || 0;
-  }
   
   // If still no players, extract from filename as last resort
   if (!players || players.length === 0) {
@@ -318,12 +250,6 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
     });
   }
   
-  // Calculate duration in seconds (BW runs at 24 frames per second)
-  const durationSeconds = Math.max(1, Math.floor(durationFrames / 24));
-  const minutes = Math.floor(durationSeconds / 60);
-  const seconds = durationSeconds % 60;
-  const formattedDuration = `${minutes}:${String(seconds).padStart(2, '0')}`;
-  
   // Extract player 1 and 2
   const player1 = players[0];
   const player2 = players[1];
@@ -333,12 +259,41 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
   const race2 = standardizeRaceName(player2.race);
   
   // Format player names
-  const playerName = formatPlayerName(player1.name);
-  const opponentName = formatPlayerName(player2.name);
+  playerName = formatPlayerName(player1.name);
+  opponentName = formatPlayerName(player2.name);
+  playerRace = race1;
+  opponentRace = race2;
+  playerApm = player1.apm || 150;
+  opponentApm = player2.apm || 150;
   
-  // Extract build orders using our enhanced function
-  const buildOrders = extractBuildOrder(parsedData);
-  console.log('[browserReplayParser] Extracted build orders:', buildOrders.length, 'items');
+  // Calculate duration in seconds from the parsed data
+  let durationFrames = parsedData.rawData.metadata?.frames || 0;
+  const durationSeconds = Math.max(1, Math.floor(durationFrames / 24));
+  const minutes = Math.floor(durationSeconds / 60);
+  const seconds = durationSeconds % 60;
+  const formattedDuration = `${minutes}:${String(seconds).padStart(2, '0')}`;
+  
+  // Use the enhanced build order data from our advanced metrics
+  if (parsedData.advancedMetrics && parsedData.advancedMetrics.buildOrderTiming) {
+    buildOrder = parsedData.advancedMetrics.buildOrderTiming.player1.map(item => ({
+      time: item.timeFormatted,
+      supply: item.supply,
+      action: item.name
+    }));
+  }
+  
+  // Generate strengths and weaknesses based on the advanced metrics
+  const strengths = generatePlayerStrengths(parsedData, 0);
+  const weaknesses = generatePlayerWeaknesses(parsedData, 0);
+  const recommendations = generatePlayerRecommendations(parsedData, 0);
+  
+  // Generate opponent strengths and weaknesses
+  const opponentStrengths = generatePlayerStrengths(parsedData, 1);
+  const opponentWeaknesses = generatePlayerWeaknesses(parsedData, 1);
+  const opponentRecommendations = generatePlayerRecommendations(parsedData, 1);
+  
+  // Generate a customized training plan
+  const trainingPlan = generateTrainingPlan(parsedData, 0);
   
   // Determine result - ensure it's one of the allowed enum values
   let matchResult: 'win' | 'loss' | 'unknown' = 'unknown';
@@ -350,20 +305,24 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
       race: race1,
       apm: player1.apm || 150,
       eapm: Math.round((player1.apm || 150) * 0.7),
-      buildOrder: buildOrders,
-      strengths: ['Replay analysis requires premium'],
-      weaknesses: ['Replay analysis requires premium'],
-      recommendations: ['Upgrade to premium for detailed analysis']
+      buildOrder: buildOrder,
+      strengths: strengths,
+      weaknesses: weaknesses,
+      recommendations: recommendations
     },
     secondaryPlayer: {
       name: opponentName,
       race: race2,
       apm: player2.apm || 150,
       eapm: Math.round((player2.apm || 150) * 0.7),
-      buildOrder: [],
-      strengths: ['Replay analysis requires premium'],
-      weaknesses: ['Replay analysis requires premium'],
-      recommendations: ['Upgrade to premium for detailed analysis']
+      buildOrder: parsedData.advancedMetrics.buildOrderTiming.player2.map(item => ({
+        time: item.timeFormatted,
+        supply: item.supply,
+        action: item.name
+      })),
+      strengths: opponentStrengths,
+      weaknesses: opponentWeaknesses,
+      recommendations: opponentRecommendations
     },
     map: mapName,
     matchup: `${race1.charAt(0)}v${race2.charAt(0)}`,
@@ -371,9 +330,9 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
     durationMS: durationSeconds * 1000,
     date: new Date().toISOString(),
     result: matchResult,
-    strengths: ['Replay analysis requires premium'],
-    weaknesses: ['Replay analysis requires premium'],
-    recommendations: ['Upgrade to premium for detailed analysis'],
+    strengths: strengths,
+    weaknesses: weaknesses,
+    recommendations: recommendations,
     
     // Legacy properties
     playerName,
@@ -384,7 +343,9 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
     eapm: Math.round((player1.apm || 150) * 0.7),
     opponentApm: player2.apm || 150,
     opponentEapm: Math.round((player2.apm || 150) * 0.7),
-    buildOrder: buildOrders
+    buildOrder: buildOrder,
+    
+    trainingPlan
   };
   
   console.log('[browserReplayParser] Transformed data:', 
@@ -394,3 +355,347 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
   
   return transformedData;
 }
+
+/**
+ * Generate player strengths based on the replay metrics
+ */
+function generatePlayerStrengths(data: ExtendedReplayData, playerIndex: number): string[] {
+  const metrics = data.advancedMetrics;
+  const strengths: string[] = [];
+  const playerKey = playerIndex === 0 ? 'player1' : 'player2';
+  
+  // Check APM
+  const apm = playerIndex === 0 ? data.primaryPlayer.apm : data.secondaryPlayer.apm;
+  if (apm > 150) {
+    strengths.push('Hohe Aktionsgeschwindigkeit (APM)');
+  }
+  
+  // Check macro (low supply blocks, good resource usage)
+  const supplyBlocks = metrics.supplyManagement[playerKey].supplyBlocks.length;
+  if (supplyBlocks === 0) {
+    strengths.push('Ausgezeichnetes Supply-Management (keine Supply-Blocks)');
+  } else if (supplyBlocks <= 2) {
+    strengths.push('Gutes Supply-Management (wenige Supply-Blocks)');
+  }
+  
+  // Check expansion timing
+  const expansions = metrics.expansionTiming[playerKey];
+  if (expansions.length >= 2) {
+    const firstExpansionTime = expansions[0]?.time || 0;
+    if (firstExpansionTime > 0 && firstExpansionTime < 24 * 300) { // Before 5 minutes
+      strengths.push('Schnelle Expansion für wirtschaftliche Vorteile');
+    }
+  }
+  
+  // Check resource collection efficiency
+  const resourceData = metrics.resourceCollection[playerKey];
+  if (resourceData.unspentResources.minerals.length > 0) {
+    const lastIndex = resourceData.unspentResources.minerals.length - 1;
+    const lastMinerals = resourceData.unspentResources.minerals[lastIndex]?.value || 0;
+    
+    if (lastMinerals < 300) {
+      strengths.push('Effiziente Ressourcennutzung (geringe ungenutzte Mineralien)');
+    }
+  }
+  
+  // Check production efficiency
+  const productionData = metrics.productionEfficiency[playerKey];
+  if (productionData.idleProductionTime.length > 0) {
+    const idlePercentage = productionData.idleProductionTime[0]?.percentage || 0;
+    if (idlePercentage < 15) {
+      strengths.push('Kontinuierliche Produktionsprozesse (geringe Leerlaufzeiten)');
+    }
+  }
+  
+  // Check hotkey usage
+  const hotkeyAPM = metrics.hotkeyUsage[playerKey].hotkeyActionsPerMinute;
+  if (hotkeyAPM > 30) {
+    strengths.push('Effektive Verwendung von Hotkeys');
+  }
+  
+  // Check micro/macro balance
+  const actionDistribution = metrics.actionDistribution[playerKey];
+  if (actionDistribution.macroPercentage > 30 && actionDistribution.microPercentage > 30) {
+    strengths.push('Gute Balance zwischen Makro- und Mikromanagement');
+  } else if (actionDistribution.macroPercentage > 45) {
+    strengths.push('Starker Fokus auf Makromanagement');
+  } else if (actionDistribution.microPercentage > 45) {
+    strengths.push('Ausgezeichnete Einheitenkontrolle (Mikromanagement)');
+  }
+  
+  // If we still don't have enough strengths, add some generic ones
+  if (strengths.length < 3) {
+    const genericStrengths = [
+      'Konstante Arbeiterproduktion',
+      'Strategische Entscheidungsfindung',
+      'Anpassungsfähige Spielweise'
+    ];
+    
+    for (const generic of genericStrengths) {
+      if (!strengths.includes(generic) && strengths.length < 3) {
+        strengths.push(generic);
+      }
+    }
+  }
+  
+  return strengths;
+}
+
+/**
+ * Generate player weaknesses based on the replay metrics
+ */
+function generatePlayerWeaknesses(data: ExtendedReplayData, playerIndex: number): string[] {
+  const metrics = data.advancedMetrics;
+  const weaknesses: string[] = [];
+  const playerKey = playerIndex === 0 ? 'player1' : 'player2';
+  
+  // Check APM
+  const apm = playerIndex === 0 ? data.primaryPlayer.apm : data.secondaryPlayer.apm;
+  if (apm < 70) {
+    weaknesses.push('Niedrige Aktionsgeschwindigkeit (APM)');
+  }
+  
+  // Check supply blocks
+  const supplyBlocks = metrics.supplyManagement[playerKey].supplyBlocks;
+  if (supplyBlocks.length > 4) {
+    weaknesses.push('Häufige Supply-Blocks behindern die Produktion');
+  } else if (supplyBlocks.length > 0) {
+    // Check if any supply blocks are long
+    const longBlock = supplyBlocks.find(block => block.durationSeconds > 20);
+    if (longBlock) {
+      weaknesses.push('Lange Supply-Blocks verursachen Produktionsverzögerungen');
+    }
+  }
+  
+  // Check resource management
+  const resourceData = metrics.resourceCollection[playerKey];
+  if (resourceData.unspentResources.minerals.length > 0) {
+    const highMinerals = resourceData.unspentResources.minerals
+      .filter(point => point.value > 800);
+    
+    if (highMinerals.length > Math.floor(resourceData.unspentResources.minerals.length * 0.3)) {
+      weaknesses.push('Ansammlung von ungenutzten Ressourcen');
+    }
+  }
+  
+  // Check production efficiency
+  const productionData = metrics.productionEfficiency[playerKey];
+  if (productionData.idleProductionTime.length > 0) {
+    const idlePercentage = productionData.idleProductionTime[0]?.percentage || 0;
+    if (idlePercentage > 30) {
+      weaknesses.push('Hohe Produktionsleerlaufzeiten');
+    }
+  }
+  
+  // Check expansion timing
+  const expansions = metrics.expansionTiming[playerKey];
+  if (expansions.length === 0) {
+    weaknesses.push('Keine Expansion für wirtschaftliche Entwicklung');
+  } else if (expansions.length === 1 && expansions[0].time > 24 * 600) { // After 10 minutes
+    weaknesses.push('Verspätete Expansion limitiert wirtschaftliche Entwicklung');
+  }
+  
+  // Check tech progression
+  const techPath = metrics.techPath[playerKey];
+  if (techPath.length === 0) {
+    weaknesses.push('Fehlende technologische Entwicklung');
+  }
+  
+  // Check hotkey usage
+  const hotkeyAPM = metrics.hotkeyUsage[playerKey].hotkeyActionsPerMinute;
+  if (hotkeyAPM < 10) {
+    weaknesses.push('Geringe Nutzung von Hotkeys und Kontrollgruppen');
+  }
+  
+  // If we still don't have enough weaknesses, add some generic ones
+  if (weaknesses.length < 2) {
+    const genericWeaknesses = [
+      'Aufklärung könnte verbessert werden',
+      'Reaktionsgeschwindigkeit auf gegnerische Strategien',
+      'Build Order Optimierung benötigt'
+    ];
+    
+    for (const generic of genericWeaknesses) {
+      if (!weaknesses.includes(generic) && weaknesses.length < 2) {
+        weaknesses.push(generic);
+      }
+    }
+  }
+  
+  return weaknesses;
+}
+
+/**
+ * Generate player recommendations based on the replay metrics and weaknesses
+ */
+function generatePlayerRecommendations(data: ExtendedReplayData, playerIndex: number): string[] {
+  const weaknesses = playerIndex === 0 ? 
+    generatePlayerWeaknesses(data, playerIndex) : 
+    data.secondaryPlayer.weaknesses;
+  
+  const recommendations: string[] = [];
+  
+  // Generate specific recommendations for each weakness
+  for (const weakness of weaknesses) {
+    if (weakness.includes('Supply-Block')) {
+      recommendations.push('Übungsroutine: Baue ein Versorgungsgebäude, wenn du bei 75% deines maximalen Supplies bist');
+    }
+    
+    if (weakness.includes('ungenutzten Ressourcen')) {
+      recommendations.push('Nutze zusätzliche Produktionsgebäude, um ungenutzte Ressourcen effektiver einzusetzen');
+    }
+    
+    if (weakness.includes('Leerlaufzeiten')) {
+      recommendations.push('Fokussiere dich auf eine konstante Produktion aus allen Produktionsgebäuden');
+    }
+    
+    if (weakness.includes('Expansion')) {
+      recommendations.push('Plane deine Expansion früher, idealerweise nach einem bestimmten Punkt in deiner Build Order');
+    }
+    
+    if (weakness.includes('technologische Entwicklung')) {
+      recommendations.push('Investiere früher in Technologiegebäude, um Zugang zu fortgeschrittenen Einheiten zu erhalten');
+    }
+    
+    if (weakness.includes('Hotkeys')) {
+      recommendations.push('Übe die Verwendung von Kontrollgruppen für deine Armee und Produktionsgebäude');
+    }
+    
+    if (weakness.includes('Aufklärung')) {
+      recommendations.push('Sende frühe Scouts und halte Aufklärungseinheiten an strategischen Positionen auf der Karte');
+    }
+    
+    if (weakness.includes('APM')) {
+      recommendations.push('Verbessere deine Mechanik durch gezielte Übungen und Hotkey-Optimierung');
+    }
+  }
+  
+  // Add map-specific recommendation if available
+  const mapName = data.map.toLowerCase();
+  if (mapName.includes('fighting spirit')) {
+    recommendations.push('Auf Fighting Spirit: Kontrolliere die zentrale Hochebene für strategische Vorteile');
+  } else if (mapName.includes('circuit breaker')) {
+    recommendations.push('Auf Circuit Breaker: Sichere die Wege zwischen den Basen gegen Runbys');
+  } else if (mapName.includes('jade')) {
+    recommendations.push('Auf Jade: Nutze die zusätzlichen Mineralfelder für wirtschaftliche Vorteile');
+  }
+  
+  // If we still don't have enough recommendations, add some generic ones
+  if (recommendations.length < 3) {
+    const genericRecommendations = [
+      'Verbessere deine Build Order Ausführung durch regelmäßiges Üben',
+      'Entwickle spezifische Strategien gegen jede Rasse und übe diese',
+      'Analysiere mehr Replays von professionellen Spielern mit deiner Rasse',
+      'Verbessere deine multitasking-Fähigkeiten durch gezielte Übungen'
+    ];
+    
+    for (const generic of genericRecommendations) {
+      if (!recommendations.includes(generic) && recommendations.length < 3) {
+        recommendations.push(generic);
+      }
+    }
+  }
+  
+  return recommendations;
+}
+
+/**
+ * Generate a personalized training plan based on the replay metrics
+ */
+function generateTrainingPlan(data: ExtendedReplayData, playerIndex: number): Array<{ day: number; focus: string; drill: string }> {
+  const weaknesses = playerIndex === 0 ? 
+    generatePlayerWeaknesses(data, playerIndex) : 
+    data.secondaryPlayer.weaknesses;
+  
+  const trainingPlan: Array<{ day: number; focus: string; drill: string }> = [];
+  
+  // Add weakness-specific training
+  if (weaknesses.some(w => w.includes('Supply-Block'))) {
+    trainingPlan.push({
+      day: trainingPlan.length + 1,
+      focus: "Supply-Management",
+      drill: "Übe, jedes Supply-Gebäude rechtzeitig zu bauen (bei 75% des maximalen Supplies)"
+    });
+  }
+  
+  if (weaknesses.some(w => w.includes('ungenutzten Ressourcen'))) {
+    trainingPlan.push({
+      day: trainingPlan.length + 1,
+      focus: "Ressourcenmanagement",
+      drill: "Optimiere Ausgaben - halte Mineralien unter 500, Gas unter 300 nach der frühen Spielphase"
+    });
+  }
+  
+  if (weaknesses.some(w => w.includes('Leerlaufzeiten'))) {
+    trainingPlan.push({
+      day: trainingPlan.length + 1,
+      focus: "Produktionszyklen",
+      drill: "Kontinuierliche Produktion aus allen Gebäuden, ohne Leerlaufzeiten"
+    });
+  }
+  
+  if (weaknesses.some(w => w.includes('Expansion'))) {
+    trainingPlan.push({
+      day: trainingPlan.length + 1,
+      focus: "Expansionstiming",
+      drill: "Übe optimale Timing-Punkte für deine erste und zweite Expansion"
+    });
+  }
+  
+  if (weaknesses.some(w => w.includes('Hotkeys'))) {
+    trainingPlan.push({
+      day: trainingPlan.length + 1,
+      focus: "Hotkey-Optimierung",
+      drill: "Setze Produktionsgebäude und Armeeeinheiten auf konsistente Kontrollgruppen"
+    });
+  }
+  
+  if (weaknesses.some(w => w.includes('Aufklärung'))) {
+    trainingPlan.push({
+      day: trainingPlan.length + 1,
+      focus: "Aufklärung",
+      drill: "Entwickle einen systematischen Aufklärungsplan für jede Karte und jeden Gegnertyp"
+    });
+  }
+  
+  // Always include build order practice
+  trainingPlan.push({
+    day: trainingPlan.length + 1,
+    focus: "Build Order Ausführung",
+    drill: "Übe deine Build Order bis zur Perfektion gegen KI-Gegner"
+  });
+  
+  // Always include micro practice based on race
+  const race = playerIndex === 0 ? data.primaryPlayer.race : data.secondaryPlayer.race;
+  if (race.toLowerCase().includes('terran')) {
+    trainingPlan.push({
+      day: trainingPlan.length + 1,
+      focus: "Einheiten-Mikro",
+      drill: "Übe Marine Splits gegen simulierte Baneling-Angriffe"
+    });
+  } else if (race.toLowerCase().includes('protoss')) {
+    trainingPlan.push({
+      day: trainingPlan.length + 1,
+      focus: "Einheiten-Mikro",
+      drill: "Übe Stalker Blink-Mikro gegen Belagerungspanzer"
+    });
+  } else if (race.toLowerCase().includes('zerg')) {
+    trainingPlan.push({
+      day: trainingPlan.length + 1,
+      focus: "Einheiten-Mikro",
+      drill: "Übe Zergling/Baneling-Kontrolle gegen Bio-Armeen"
+    });
+  }
+  
+  // Ensure we have at least 3 days of training
+  if (trainingPlan.length < 3) {
+    trainingPlan.push({
+      day: trainingPlan.length + 1,
+      focus: "Multitasking",
+      drill: "Führe gleichzeitig Mehrfachangriffe durch, während du deine Wirtschaft ausbaust"
+    });
+  }
+  
+  return trainingPlan;
+}
+

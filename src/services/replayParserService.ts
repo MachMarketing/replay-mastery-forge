@@ -1,13 +1,13 @@
 
-import { ParsedReplayData, PlayerData, ReplayAnalysis, ParsedReplayResult } from './replayParser/types';
+import { ParsedReplayData, PlayerData, ReplayAnalysis, ParsedReplayResult, ExtendedReplayData } from './replayParser/types';
 import { parseReplayInBrowser } from './browserReplayParser';
 import { markBrowserAsHavingWasmIssues } from '@/utils/browserDetection';
 
 // Re-export PlayerData interface properly
-export type { PlayerData, ParsedReplayData, ReplayAnalysis, ParsedReplayResult };
+export type { PlayerData, ParsedReplayData, ReplayAnalysis, ParsedReplayResult, ExtendedReplayData };
 
 // Create a merged type that satisfies both interfaces without conflicts
-export type AnalyzedReplayResult = ParsedReplayResult;
+export type AnalyzedReplayResult = ParsedReplayResult & Partial<ExtendedReplayData>;
 
 // Track active parsing process for potential abort
 let activeParsingAbortController: AbortController | null = null;
@@ -88,9 +88,9 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
     // Parse using our screparsed-based browser parser
     const parsePromise = parseReplayInBrowser(file);
     
-    let result: ParsedReplayData;
+    let result: ExtendedReplayData;
     try {
-      result = await Promise.race([parsePromise, timeoutPromise]);
+      result = await Promise.race([parsePromise, timeoutPromise]) as ExtendedReplayData;
       
       console.log('[replayParserService] Got parsed result:', {
         primaryPlayer: result.primaryPlayer ? 
@@ -99,8 +99,19 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
           `${result.secondaryPlayer.name} (${result.secondaryPlayer.race})` : 'Missing',
         primaryBuildOrderItems: result.primaryPlayer?.buildOrder?.length || 0,
         secondaryBuildOrderItems: result.secondaryPlayer?.buildOrder?.length || 0,
-        matchup: result.matchup || 'Unknown matchup'
+        matchup: result.matchup || 'Unknown matchup',
+        advancedMetricsAvailable: !!result.advancedMetrics
       });
+      
+      // Check for and log extracted advanced metrics
+      if (result.advancedMetrics) {
+        console.log('[replayParserService] Advanced metrics summary:', {
+          buildOrderItems: result.advancedMetrics.buildOrderTiming.player1.length,
+          supplyBlocks: result.advancedMetrics.supplyManagement.player1.supplyBlocks.length,
+          resourceDataPoints: result.advancedMetrics.resourceCollection.player1.collectionRate.minerals.length,
+          expansions: result.advancedMetrics.expansionTiming.player1.length
+        });
+      }
       
       // Fix matchup if needed based on actual player races
       if (result.primaryPlayer && result.secondaryPlayer && 
@@ -113,7 +124,7 @@ export async function parseReplayFile(file: File): Promise<AnalyzedReplayResult>
       }
       
       // Ensure required fields are present
-      const enhancedResult: ParsedReplayResult = {
+      const enhancedResult: AnalyzedReplayResult = {
         ...result,
         playerName: result.playerName || result.primaryPlayer?.name || 'Player',
         opponentName: result.opponentName || result.secondaryPlayer?.name || 'Opponent',
