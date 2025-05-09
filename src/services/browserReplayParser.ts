@@ -124,7 +124,7 @@ function createMinimalReplayData(fileName: string): ParsedReplayData {
     duration: '10:00',
     durationMS: 600000,
     date: new Date().toISOString(),
-    result: 'unknown',
+    result: 'unknown' as 'unknown' | 'win' | 'loss',
     strengths: ['Replay analysis requires premium'],
     weaknesses: ['Replay analysis requires premium'],
     recommendations: ['Upgrade to premium for detailed analysis'],
@@ -327,13 +327,4 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
     `${transformedData.secondaryPlayer.name} (${transformedData.secondaryPlayer.race}) on ${transformedData.map}`);
   
   return transformedData;
-}
-
-/**
- * Helper function to format duration
- */
-function formatDuration(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
 }
