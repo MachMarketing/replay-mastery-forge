@@ -1,39 +1,44 @@
+
 import { ParsedReplayData, PlayerData } from './types';
 
 /**
- * Transform JSSUH parsed replay data to our application format
+ * Transform screparsed parsed replay data to our application format
  */
 export function transformJSSUHData(rawData: any): ParsedReplayData | null {
-  if (!rawData || !rawData.metadata) {
-    console.error('[transformer] Invalid JSSUH data format, missing metadata');
+  if (!rawData) {
+    console.error('[transformer] Invalid screparsed data format');
     return null;
   }
 
   try {
+    console.log('[transformer] Raw data structure:', Object.keys(rawData));
+    
+    // Extract metadata from screparsed format
+    const metadata = rawData.metadata || {};
     const playerIndex = 0;
     const opponentIndex = 1;
 
     // Extract player names
-    const playerName = rawData.metadata.playerNames?.[playerIndex] || 'Unknown Player';
-    const opponentName = rawData.metadata.playerNames?.[opponentIndex] || 'Unknown Opponent';
+    const playerName = metadata.playerNames?.[playerIndex] || 'Unknown Player';
+    const opponentName = metadata.playerNames?.[opponentIndex] || 'Unknown Opponent';
 
     // Extract races
-    const playerRace = mapRace(rawData.metadata.playerRaces?.[playerIndex]);
-    const opponentRace = mapRace(rawData.metadata.playerRaces?.[opponentIndex]);
+    const playerRace = mapRace(metadata.playerRaces?.[playerIndex]);
+    const opponentRace = mapRace(metadata.playerRaces?.[opponentIndex]);
 
     // Extract match result
-    const isWinner = rawData.metadata.winners?.[0] === playerIndex;
+    const isWinner = metadata.winners?.[0] === playerIndex;
 
     // Extract APM
-    const playerApm = rawData.metadata.apm?.[playerIndex] || 0;
-    const opponentApm = rawData.metadata.apm?.[opponentIndex] || 0;
+    const playerApm = metadata.apm?.[playerIndex] || 0;
+    const opponentApm = metadata.apm?.[opponentIndex] || 0;
 
     // EAPM (effective APM) - estimate as 70% of APM if not available
-    const playerEapm = rawData.metadata.eapm?.[playerIndex] || Math.round(playerApm * 0.7);
-    const opponentEapm = rawData.metadata.eapm?.[opponentIndex] || Math.round(opponentApm * 0.7);
+    const playerEapm = metadata.eapm?.[playerIndex] || Math.round(playerApm * 0.7);
+    const opponentEapm = metadata.eapm?.[opponentIndex] || Math.round(opponentApm * 0.7);
 
     // Extract game duration
-    const durationMS = rawData.metadata.frames || 0;
+    const durationMS = metadata.frames || 0;
     const durationSeconds = Math.floor(durationMS / 24); // Brood War runs at 24 frames per second
     const duration = formatDuration(durationSeconds);
 
@@ -41,12 +46,12 @@ export function transformJSSUHData(rawData: any): ParsedReplayData | null {
     const buildOrder = extractBuildOrder(rawData, playerIndex);
 
     // Match timestamp
-    const date = rawData.metadata.startTime 
-      ? new Date(rawData.metadata.startTime).toISOString()
+    const date = metadata.startTime 
+      ? new Date(metadata.startTime).toISOString()
       : new Date().toISOString();
 
     // Map name
-    const map = rawData.metadata.mapName || 'Unknown Map';
+    const map = metadata.mapName || 'Unknown Map';
 
     // Create the matchup string (e.g., "TvZ")
     const matchup = `${playerRace.charAt(0)}v${opponentRace.charAt(0)}`;
@@ -63,7 +68,6 @@ export function transformJSSUHData(rawData: any): ParsedReplayData | null {
       apm: playerApm,
       eapm: playerEapm,
       buildOrder: buildOrder,
-      // Add required properties
       strengths: strengths,
       weaknesses: weaknesses,
       recommendations: recommendations
@@ -75,7 +79,6 @@ export function transformJSSUHData(rawData: any): ParsedReplayData | null {
       apm: opponentApm,
       eapm: opponentEapm,
       buildOrder: extractBuildOrder(rawData, opponentIndex),
-      // Add required properties
       strengths: [],
       weaknesses: [],
       recommendations: []
