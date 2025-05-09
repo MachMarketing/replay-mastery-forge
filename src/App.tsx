@@ -1,20 +1,21 @@
+
 import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { ThemeProvider } from "@/components/theme-provider"
-import { Toaster } from "@/components/ui/toaster"
-import Index from './pages/IndexPage';
+import { ThemeProvider } from "./components/theme-provider";
+import { Toaster } from "@/components/ui/toaster";
+import Index from './pages/Index';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import PricingPage from './pages/PricingPage';
 import FeaturesPage from './pages/FeaturesPage';
 import UploadPage from './pages/UploadPage';
 import ReplaysPage from './pages/ReplaysPage';
-import NotFound from './pages/NotFoundPage';
+import NotFound from './pages/NotFound';
 import ParserTest from './pages/ParserTestPage';
 import JSSUHTest from './components/JSSUHTest';
 import ParserDebug from './pages/ParserDebug';
-import { AuthProvider, ProtectedRoute } from './context/AuthContext';
-import { QueryClient, QueryClientProvider } from 'react-query';
+import { AuthProvider } from './context/AuthContext';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const queryClient = new QueryClient();
 
@@ -36,10 +37,16 @@ function App() {
               <Route path="/jssuh-test" element={<JSSUHTest />} />
               <Route path="/parser-debug" element={<ParserDebug />} />
               
-              <Route element={<ProtectedRoute />}>
-                <Route path="/upload" element={<UploadPage />} />
-                <Route path="/replays" element={<ReplaysPage />} />
-              </Route>
+              <Route path="/upload" element={
+                <ProtectedRouteWrapper>
+                  <UploadPage />
+                </ProtectedRouteWrapper>
+              } />
+              <Route path="/replays" element={
+                <ProtectedRouteWrapper>
+                  <ReplaysPage />
+                </ProtectedRouteWrapper>
+              } />
               
               <Route path="*" element={<NotFound />} />
             </Routes>
@@ -50,5 +57,31 @@ function App() {
     </Router>
   );
 }
+
+// Custom wrapper component to handle protected routes
+const ProtectedRouteWrapper = ({ children }: { children: React.ReactNode }) => {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="h-10 w-10 animate-spin mx-auto mb-4 text-primary border-4 border-t-primary border-r-transparent border-b-transparent border-l-transparent rounded-full"></div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+};
+
+// Add missing imports
+import { useAuth } from './context/AuthContext';
+import { Navigate } from 'react-router-dom';
 
 export default App;

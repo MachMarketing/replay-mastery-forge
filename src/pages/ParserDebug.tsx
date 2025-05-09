@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,9 +29,11 @@ const ParserDebug: React.FC = () => {
         const moduleKeys = Object.keys(module);
         console.log('Screparsed module loaded with exports:', moduleKeys);
         
-        // Check for parse function
-        if (module.default && typeof module.default.parse === 'function') {
-          console.log('Parse function found in default export');
+        // Check for different ways the parse function might be exposed
+        if ((module.default && typeof module.default.parse === 'function') || 
+            typeof module.parse === 'function' ||
+            typeof module.default === 'function') {
+          console.log('Parse function found');
           setResult('Screparsed module successfully loaded');
         } else {
           console.warn('Parse function not found in expected location');

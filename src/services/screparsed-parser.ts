@@ -42,8 +42,8 @@ export async function parseReplayWithScreparsed(file: File): Promise<ParsedRepla
     const screparsed = await import('screparsed');
     console.log('[screparsed-parser] Loaded screparsed module:', Object.keys(screparsed));
     
-    if (!screparsed.default || typeof screparsed.default.parse !== 'function') {
-      console.error('[screparsed-parser] screparsed module does not have a parse function');
+    if (!screparsed.default) {
+      console.error('[screparsed-parser] screparsed module default export is missing');
       throw new Error('Invalid screparsed module configuration');
     }
     
@@ -53,9 +53,21 @@ export async function parseReplayWithScreparsed(file: File): Promise<ParsedRepla
     
     console.log('[screparsed-parser] File loaded, size:', uint8Array.length, 'bytes');
     
-    // Parse the replay file
+    // Parse the replay file - checking for different ways the parse method might be exposed
     console.log('[screparsed-parser] Calling screparsed.parse()...');
-    const parsedData = await screparsed.default.parse(uint8Array);
+    let parsedData;
+    
+    if (typeof screparsed.parse === 'function') {
+      parsedData = await screparsed.parse(uint8Array);
+    } else if (typeof screparsed.default.parse === 'function') {
+      parsedData = await screparsed.default.parse(uint8Array);
+    } else if (typeof screparsed.default === 'function') {
+      parsedData = await screparsed.default(uint8Array);
+    } else {
+      console.error('[screparsed-parser] No parse method found in screparsed module');
+      throw new Error('Screparsed module does not have a parse function');
+    }
+    
     console.log('[screparsed-parser] Raw parsed data:', parsedData);
     
     // Transform the screparsed result to our application format
