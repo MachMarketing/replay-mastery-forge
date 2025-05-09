@@ -1,4 +1,3 @@
-
 import { parseReplayWithBrowserSafeParser, initBrowserSafeParser } from './replayParser/browserSafeParser';
 import { ParsedReplayData } from './replayParser/types';
 

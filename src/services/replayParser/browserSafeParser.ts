@@ -5,6 +5,7 @@
 
 // Import the specific types
 import { ParsedReplayData } from './types';
+import { ReplayParser } from 'screparsed';
 
 // Track initialization state
 let isInitialized = false;
@@ -68,20 +69,22 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
     let result = null;
     const replayError = new Error('Failed to parse replay using any available method');
     
-    // Approach 1: Try using ReplayParser if it exists
+    // Approach 1: Try using direct documented API with ReplayParser if available
     if (parserModule.ReplayParser) {
       try {
-        console.log('[browserSafeParser] Trying ReplayParser.fromUint8Array method');
+        console.log('[browserSafeParser] Trying ReplayParser with documented API');
         const ReplayParserClass = parserModule.ReplayParser;
         
         if (typeof ReplayParserClass.fromUint8Array === 'function') {
+          console.log('[browserSafeParser] Using ReplayParser.fromUint8Array method');
           const parser = ReplayParserClass.fromUint8Array(data);
           if (parser && typeof parser.parse === 'function') {
             result = await parser.parse();
             console.log('[browserSafeParser] Successfully parsed using ReplayParser.fromUint8Array');
           }
         } else if (typeof ReplayParserClass.fromArrayBuffer === 'function') {
-          console.log('[browserSafeParser] Trying ReplayParser.fromArrayBuffer method');
+          console.log('[browserSafeParser] Using ReplayParser.fromArrayBuffer method');
+          // Create an ArrayBuffer from the Uint8Array
           const parser = ReplayParserClass.fromArrayBuffer(data.buffer);
           if (parser && typeof parser.parse === 'function') {
             result = await parser.parse();
@@ -89,11 +92,43 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
           }
         }
       } catch (err) {
-        console.error('[browserSafeParser] Error using ReplayParser:', err);
+        console.error('[browserSafeParser] Error using ReplayParser direct API:', err);
       }
     }
     
-    // Approach 2: Try using ParsedReplay if it exists and Approach 1 failed
+    // Approach 2: Try using ReplayParser with constructor patterns if Approach 1 failed
+    if (!result && parserModule.ReplayParser) {
+      try {
+        console.log('[browserSafeParser] Trying alternative ReplayParser constructor patterns');
+        const ReplayParserClass = parserModule.ReplayParser;
+        
+        // Try with direct constructor
+        try {
+          const parser = new ReplayParserClass(data);
+          if (parser && typeof parser.parse === 'function') {
+            result = await parser.parse();
+            console.log('[browserSafeParser] Successfully parsed using new ReplayParser(data)');
+          }
+        } catch (err) {
+          console.warn('[browserSafeParser] Error with direct constructor:', err);
+          
+          // Try with ArrayBuffer
+          try {
+            const parser = new ReplayParserClass(data.buffer);
+            if (parser && typeof parser.parse === 'function') {
+              result = await parser.parse();
+              console.log('[browserSafeParser] Successfully parsed using new ReplayParser(data.buffer)');
+            }
+          } catch (err2) {
+            console.warn('[browserSafeParser] Error with ArrayBuffer constructor:', err2);
+          }
+        }
+      } catch (err) {
+        console.error('[browserSafeParser] Error using ReplayParser constructor patterns:', err);
+      }
+    }
+    
+    // Approach 3: Try using ParsedReplay if it exists and Approach 1 & 2 failed
     if (!result && parserModule.ParsedReplay) {
       try {
         console.log('[browserSafeParser] Trying ParsedReplay class');
@@ -127,8 +162,17 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
             // Try alternative constructor patterns
             parsedReplay = new ParsedReplayClass(mockGameInfo);
             if (parsedReplay && typeof parsedReplay.parseReplay === 'function') {
-              result = parsedReplay.parseReplay(data);
-              console.log('[browserSafeParser] Successfully parsed using ParsedReplay.parseReplay');
+              // Use Function.prototype.call.call to ensure it's callable
+              try {
+                result = Function.prototype.call.call(
+                  parsedReplay.parseReplay, 
+                  parsedReplay, 
+                  data
+                );
+                console.log('[browserSafeParser] Successfully parsed using ParsedReplay.parseReplay');
+              } catch (callError) {
+                console.error('[browserSafeParser] Error calling parseReplay method:', callError);
+              }
             }
           } catch (err2) {
             console.warn('[browserSafeParser] Error using alternative ParsedReplay patterns:', err2);
@@ -139,7 +183,7 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
       }
     }
     
-    // Approach 3: Try using any parse function directly
+    // Approach 4: Try using any parse function directly
     if (!result) {
       try {
         const directMethods = [

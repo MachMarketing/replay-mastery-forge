@@ -117,7 +117,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   };
 
   const processFile = async (file: File) => {
-    console.log('[UploadBox] Starting file processing:', file.name);
+    console.log("[UploadBox] Starting file processing:", file.name);
     clearError();
     setFile(file);
     setErrorDetails(null);
@@ -127,7 +127,14 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     clearTimeouts();
     
     try {
-      console.log('[UploadBox] Starting parsing with unified browser parser:', file.name);
+      console.log("[UploadBox] Starting parsing with unified browser parser:", file.name);
+      // Add more debug information
+      console.log("[UploadBox] File details:", {
+        type: file.type,
+        size: file.size,
+        lastModified: new Date(file.lastModified).toISOString()
+      });
+      
       // Use the useReplayParser hook to parse the file
       const parsedData = await parseReplay(file);
       
@@ -136,11 +143,11 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       }
       
       // Log parsed data for debugging
-      console.log('[UploadBox] Parsed data from unified parser:', parsedData);
+      console.log("[UploadBox] Parsed data from unified parser:", parsedData);
       
       // Validate that the returned data contains required fields
       if (!parsedData.primaryPlayer || !parsedData.primaryPlayer.name) {
-        console.error('[UploadBox] Parsed data missing player name');
+        console.error("[UploadBox] Parsed data missing player name");
         throw new Error('Fehler: Keine Spielernamen gefunden');
       }
       
@@ -158,14 +165,14 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       // Ensure we wait a moment before transitioning to the analysis view
       setTimeout(() => {
         if (onUploadComplete && parsedData) {
-          console.log('[UploadBox] Sending parsed data to parent component');
+          console.log("[UploadBox] Sending parsed data to parent component");
           onUploadComplete(file, parsedData as any);
         } else {
-          console.warn('[UploadBox] Cannot complete upload: onUploadComplete missing or no data');
+          console.warn("[UploadBox] Cannot complete upload: onUploadComplete missing or no data");
         }
       }, 500);
     } catch (error) {
-      console.error('[UploadBox] File processing error:', error);
+      console.error("[UploadBox] File processing error:", error);
       
       resetProgress();
       clearTimeouts();
