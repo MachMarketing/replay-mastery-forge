@@ -265,7 +265,13 @@ export async function initBrowserSafeParser(): Promise<void> {
                     // We can't instantiate it directly, try to use it as a factory or function
                     if (typeof classAny === 'function') {
                       // Try calling it as a function without 'new'
-                      parser = classAny(data);
+                      try {
+                        parser = classAny(data);
+                      } catch (callError) {
+                        console.error('[browserSafeParser] Error calling ReplayParser as function:', callError);
+                        // If calling as function fails, try one last option - call with optional arguments
+                        parser = Function.prototype.call.call(classAny, undefined, data);
+                      }
                     } else {
                       throw new Error('ReplayParser cannot be instantiated or called');
                     }
