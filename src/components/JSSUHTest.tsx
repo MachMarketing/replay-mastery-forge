@@ -38,15 +38,14 @@ const ScreparsedTest: React.FC = () => {
           moduleDetails: moduleDetails
         });
         
-        // If we can create an instance, examine its methods
-        if (typeof mod.ReplayParser === 'function') {
+        // Instead of trying to instantiate, we check available methods on the exported class
+        if (mod.ReplayParser) {
           try {
-            const parser = new mod.ReplayParser();
-            const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(parser))
-              .filter(name => typeof parser[name] === 'function' && name !== 'constructor');
+            const methods = Object.getOwnPropertyNames(mod.ReplayParser.prototype)
+              .filter(name => name !== 'constructor');
             setParserMethodsInfo(methods);
           } catch (e) {
-            setParserMethodsInfo(['Error creating parser instance: ' + String(e)]);
+            setParserMethodsInfo(['Error examining ReplayParser methods: ' + String(e)]);
           }
         }
       } catch (error) {
@@ -64,14 +63,9 @@ const ScreparsedTest: React.FC = () => {
   const runTest = async () => {
     setStatus('testing');
     try {
-      // Create parser instance
-      const parser = new ReplayParser();
-      
-      // Check if it has the expected methods
-      const hasParseMethod = typeof parser.parse === 'function';
-      
-      if (!hasParseMethod) {
-        throw new Error('Parser instance is missing required methods');
+      // Check if the required methods are available on ReplayParser
+      if (typeof ReplayParser.parse !== 'function') {
+        throw new Error('ReplayParser is missing required static parse method');
       }
       
       // Create a minimal test data
@@ -80,9 +74,9 @@ const ScreparsedTest: React.FC = () => {
         0x20, 0x72, 0x65, 0x70, 0x6c, 0x61, 0x79, 0x20, 0x75, 0x62, 0x64
       ]);
       
-      // Try parsing the test data
+      // Try parsing the test data using static parse method
       try {
-        await parser.parse(testData);
+        await ReplayParser.parse(testData);
         setStatus('success');
         setResult('Screparsed parser test successful! The module is working correctly.');
       } catch (err) {
