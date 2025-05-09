@@ -46,6 +46,7 @@ console.log('- process.env exists:', typeof process !== 'undefined' && typeof pr
 console.log('- process.nextTick exists:', typeof process !== 'undefined' && typeof process.nextTick === 'function');
 console.log('- window.process exists:', typeof window !== 'undefined' && typeof window.process !== 'undefined');
 
+// Make sure there's only ONE BrowserRouter wrapping the entire application
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>
