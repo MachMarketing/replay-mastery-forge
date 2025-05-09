@@ -82,10 +82,14 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
         
         if (parseMethod) {
           console.log('[browserSafeParser] Using found parse method');
-          result = await (parseMethod as Function)(data);
+          // Type assertion to ensure TypeScript knows this is callable
+          const parseFunction = parseMethod as Function;
+          result = await parseFunction(data);
         } else if (parserModule.default && typeof parserModule.default === 'function') {
           console.log('[browserSafeParser] Using default export as function');
-          result = await parserModule.default(data);
+          // Type assertion to ensure TypeScript knows this is callable
+          const defaultFunction = parserModule.default as Function;
+          result = await defaultFunction(data);
         }
       } else {
         console.log('[browserSafeParser] ReplayParser not available as expected');
@@ -105,7 +109,9 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
               typeof parserModule.ParsedReplay[methodName] === 'function') {
             try {
               console.log(`[browserSafeParser] Trying ParsedReplay.${methodName}`);
-              result = await parserModule.ParsedReplay[methodName](data.buffer || data);
+              // Type assertion to ensure TypeScript knows this is callable
+              const methodFunction = parserModule.ParsedReplay[methodName] as Function;
+              result = await methodFunction(data.buffer || data);
               if (result) break;
             } catch (e) {
               console.log(`[browserSafeParser] Method ${methodName} failed:`, e);
@@ -119,9 +125,13 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
       if (!result && parserModule.default) {
         console.log('[browserSafeParser] Trying default export');
         if (typeof parserModule.default === 'function') {
-          result = await parserModule.default(data);
+          // Type assertion to ensure TypeScript knows this is callable
+          const defaultFunction = parserModule.default as Function;
+          result = await defaultFunction(data);
         } else if (parserModule.default.parse && typeof parserModule.default.parse === 'function') {
-          result = await parserModule.default.parse(data);
+          // Type assertion to ensure TypeScript knows this is callable
+          const parseFunction = parserModule.default.parse as Function;
+          result = await parseFunction(data);
         }
       }
     } catch (err) {
@@ -140,7 +150,9 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
           if (typeof parserModule[key] === 'function') {
             try {
               console.log(`[browserSafeParser] Trying ${key} function`);
-              result = await parserModule[key](data);
+              // Type assertion to ensure TypeScript knows this is callable
+              const keyFunction = parserModule[key] as Function;
+              result = await keyFunction(data);
               if (result) {
                 console.log(`[browserSafeParser] Successfully parsed using ${key}`);
                 break;

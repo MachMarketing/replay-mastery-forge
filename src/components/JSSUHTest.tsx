@@ -115,7 +115,7 @@ const ScreparsedTest: React.FC = () => {
       
       // Find a suitable parsing function
       let result = null;
-      let parseFn: Function | null = null;
+      let parseFn: ((data: Uint8Array) => Promise<any>) | null = null;
       
       console.log('Available module keys:', Object.keys(mod));
       
@@ -130,7 +130,10 @@ const ScreparsedTest: React.FC = () => {
         for (const methodName of methods) {
           if (/from|parse|load|create/i.test(methodName) && 
               typeof mod.ParsedReplay[methodName] === 'function') {
-            parseFn = mod.ParsedReplay[methodName] as Function;
+            parseFn = (data: Uint8Array) => {
+              // Cast to any to avoid TypeScript errors
+              return (mod.ParsedReplay[methodName] as any)(data);
+            };
             break;
           }
         }
@@ -139,9 +142,15 @@ const ScreparsedTest: React.FC = () => {
       if (!parseFn && mod.default) {
         console.log('Checking default export');
         if (typeof mod.default === 'function') {
-          parseFn = mod.default as Function;
+          parseFn = (data: Uint8Array) => {
+            // Cast to any to avoid TypeScript errors
+            return (mod.default as any)(data);
+          };
         } else if (mod.default && typeof mod.default.parse === 'function') {
-          parseFn = mod.default.parse as Function;
+          parseFn = (data: Uint8Array) => {
+            // Cast to any to avoid TypeScript errors
+            return (mod.default as any).parse(data);
+          };
         }
       }
       
@@ -149,7 +158,10 @@ const ScreparsedTest: React.FC = () => {
       if (!parseFn) {
         for (const key of Object.keys(mod)) {
           if (typeof mod[key] === 'function' && key !== 'ReplayParser' && key !== 'ParsedReplay') {
-            parseFn = mod[key] as Function;
+            parseFn = (data: Uint8Array) => {
+              // Cast to any to avoid TypeScript errors
+              return (mod[key] as any)(data);
+            };
             console.log(`Using ${key} as parsing function`);
             break;
           }
@@ -158,7 +170,6 @@ const ScreparsedTest: React.FC = () => {
       
       if (parseFn) {
         try {
-          // Cast to unknown first, then to Function to avoid TypeScript error
           result = await parseFn(testData);
           setStatus('success');
           setResult('Screparsed parser test successful! The module is working correctly.');
