@@ -38,14 +38,20 @@ const ScreparsedTest: React.FC = () => {
           moduleDetails: moduleDetails
         });
         
-        // Instead of trying to instantiate, we check available methods on the exported class
+        // Instead of examining prototype methods, check for the constructor
         if (mod.ReplayParser) {
           try {
-            const methods = Object.getOwnPropertyNames(mod.ReplayParser.prototype)
+            const parser = new mod.ReplayParser();
+            console.log('Parser instance created:', parser);
+            
+            // Get instance methods
+            const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(parser))
               .filter(name => name !== 'constructor');
+            
             setParserMethodsInfo(methods);
           } catch (e) {
-            setParserMethodsInfo(['Error examining ReplayParser methods: ' + String(e)]);
+            console.error('Error creating parser instance:', e);
+            setParserMethodsInfo(['Error creating parser instance: ' + String(e)]);
           }
         }
       } catch (error) {
@@ -63,9 +69,13 @@ const ScreparsedTest: React.FC = () => {
   const runTest = async () => {
     setStatus('testing');
     try {
-      // Check if the required methods are available on ReplayParser
-      if (typeof ReplayParser.parse !== 'function') {
-        throw new Error('ReplayParser is missing required static parse method');
+      // Create a parser instance - this is the proper way to use ReplayParser
+      const parser = new ReplayParser();
+      console.log('Created parser instance for testing');
+      
+      // Check if the instance has a parse method
+      if (typeof parser.parse !== 'function') {
+        throw new Error('Parser instance is missing required parse method');
       }
       
       // Create a minimal test data
@@ -74,9 +84,9 @@ const ScreparsedTest: React.FC = () => {
         0x20, 0x72, 0x65, 0x70, 0x6c, 0x61, 0x79, 0x20, 0x75, 0x62, 0x64
       ]);
       
-      // Try parsing the test data using static parse method
+      // Try parsing the test data using the instance method
       try {
-        await ReplayParser.parse(testData);
+        await parser.parse(testData);
         setStatus('success');
         setResult('Screparsed parser test successful! The module is working correctly.');
       } catch (err) {

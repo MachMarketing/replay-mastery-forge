@@ -68,17 +68,22 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
     console.log('[browserSafeParser] Using ReplayParser from screparsed');
     
     try {
-      // Use the static method directly without instantiation
-      result = await ReplayParser.parse(data);
-      console.log('[browserSafeParser] Successfully parsed using ReplayParser.parse');
+      // Create a ReplayParser instance and use its instance methods
+      // This fixes the error with trying to use a static parse method
+      const parser = new ReplayParser();
+      console.log('[browserSafeParser] Created ReplayParser instance');
+      
+      // Use the parse method on the instance
+      result = await parser.parse(data);
+      console.log('[browserSafeParser] Successfully parsed using ReplayParser instance');
     } catch (err) {
       console.error('[browserSafeParser] Error using primary ReplayParser approach:', err);
       
       // Fallback: Try using ArrayBuffer if available
       try {
         console.log('[browserSafeParser] Trying ArrayBuffer fallback');
-        // Use static method with ArrayBuffer data
-        result = await ReplayParser.parse(new Uint8Array(data.buffer));
+        const parser = new ReplayParser();
+        result = await parser.parse(new Uint8Array(data.buffer));
         console.log('[browserSafeParser] Successfully parsed using ArrayBuffer fallback');
       } catch (err2) {
         console.error('[browserSafeParser] Fallback parsing error:', err2);
