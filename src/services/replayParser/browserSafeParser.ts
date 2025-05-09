@@ -68,12 +68,12 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
     console.log('[browserSafeParser] Using ReplayParser from screparsed');
     
     try {
-      // Use the proper documented API with ReplayParser
-      const parser = ReplayParser.fromUint8Array(data);
+      // Create a new instance of ReplayParser and parse the data
+      const parser = new ReplayParser();
       console.log('[browserSafeParser] Created parser instance successfully');
       
       // Parse the replay
-      result = await parser.parse();
+      result = await parser.parse(data);
       console.log('[browserSafeParser] Successfully parsed using ReplayParser');
     } catch (err) {
       console.error('[browserSafeParser] Error using primary ReplayParser approach:', err);
@@ -81,8 +81,8 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
       // Fallback: Try using ArrayBuffer if available
       try {
         console.log('[browserSafeParser] Trying ArrayBuffer fallback');
-        const parser = ReplayParser.fromArrayBuffer(data.buffer);
-        result = await parser.parse();
+        const parser = new ReplayParser();
+        result = await parser.parse(new Uint8Array(data.buffer));
         console.log('[browserSafeParser] Successfully parsed using ArrayBuffer fallback');
       } catch (err2) {
         console.error('[browserSafeParser] Fallback parsing error:', err2);

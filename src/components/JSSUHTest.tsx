@@ -3,21 +3,20 @@ import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, CheckCircle } from 'lucide-react';
-import { getReplayParserConstructor } from '@/services/replayParser/jssuhLoader';
-import { Readable } from 'stream-browserify';
+import { ReplayParser } from 'screparsed';
 
-const JSSUHTest: React.FC = () => {
+const ScreparsedTest: React.FC = () => {
   const [status, setStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [result, setResult] = useState<string>('');
-  const [jssuhInfo, setJssuhInfo] = useState<any>(null);
+  const [parserInfo, setParserInfo] = useState<any>(null);
   const [parserMethodsInfo, setParserMethodsInfo] = useState<string[]>([]);
 
   useEffect(() => {
-    // On mount, check if JSSUH is loaded
-    const checkJSSUH = async () => {
+    // On mount, check if screparsed is loaded
+    const checkParser = async () => {
       try {
         // Try to import dynamically
-        const mod = await import('jssuh');
+        const mod = await import('screparsed');
         
         // Get the detailed structure of the module
         let moduleDetails;
@@ -30,7 +29,7 @@ const JSSUHTest: React.FC = () => {
           moduleDetails = 'Could not stringify module structure';
         }
         
-        setJssuhInfo({
+        setParserInfo({
           type: typeof mod,
           hasReplayParser: !!mod.ReplayParser,
           isFunction: typeof mod.ReplayParser === 'function',
@@ -42,7 +41,7 @@ const JSSUHTest: React.FC = () => {
         // If we can create an instance, examine its methods
         if (typeof mod.ReplayParser === 'function') {
           try {
-            const parser = new mod.ReplayParser({ encoding: 'cp1252' });
+            const parser = new mod.ReplayParser();
             const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(parser))
               .filter(name => typeof parser[name] === 'function' && name !== 'constructor');
             setParserMethodsInfo(methods);
@@ -51,34 +50,27 @@ const JSSUHTest: React.FC = () => {
           }
         }
       } catch (error) {
-        console.error('Error checking JSSUH:', error);
-        setJssuhInfo({
+        console.error('Error checking parser:', error);
+        setParserInfo({
           error: `Failed to load: ${error instanceof Error ? error.message : String(error)}`,
           type: 'unknown'
         });
       }
     };
     
-    checkJSSUH();
+    checkParser();
   }, []);
 
   const runTest = async () => {
     setStatus('testing');
     try {
-      // Use our getReplayParserConstructor helper
-      const ReplayParserClass = await getReplayParserConstructor();
-      console.log('JSSUH ReplayParser constructor:', ReplayParserClass);
-      
-      // Create parser with proper encoding option
-      const parser = new ReplayParserClass({ encoding: 'cp1252' });
+      // Create parser instance
+      const parser = new ReplayParser();
       
       // Check if it has the expected methods
-      const hasOnMethod = typeof parser.on === 'function';
-      const hasWriteMethod = typeof parser.write === 'function';
-      const hasEndMethod = typeof parser.end === 'function';
-      const hasPipeChkMethod = typeof parser.pipeChk === 'function';
+      const hasParseMethod = typeof parser.parse === 'function';
       
-      if (!hasOnMethod || !hasWriteMethod || !hasEndMethod) {
+      if (!hasParseMethod) {
         throw new Error('Parser instance is missing required methods');
       }
       
@@ -88,63 +80,34 @@ const JSSUHTest: React.FC = () => {
         0x20, 0x72, 0x65, 0x70, 0x6c, 0x61, 0x79, 0x20, 0x75, 0x62, 0x64
       ]);
       
-      // Set up event handlers
-      let success = false;
-      
-      parser.on('error', (err: any) => {
-        console.error('Parser test error:', err);
-      });
-      
-      parser.on('end', () => {
-        success = true;
+      // Try parsing the test data
+      try {
+        await parser.parse(testData);
         setStatus('success');
-        setResult('JSSUH parser test successful! The module is working correctly.');
-      });
-      
-      // Try to write data using pipeChk if available
-      if (hasPipeChkMethod) {
-        console.log('Using pipeChk method for test');
-        
-        const readable = new Readable({
-          read() {
-            this.push(Buffer.from(testData));
-            this.push(null);
-          }
-        });
-        
-        parser.pipeChk(readable);
-      } else {
-        // Fallback to write+end
-        console.log('Using write+end method for test');
-        parser.write(testData);
-        parser.end();
+        setResult('Screparsed parser test successful! The module is working correctly.');
+      } catch (err) {
+        console.error('Parser test error:', err);
+        throw err;
       }
       
-      // If we didn't get an end event within 1 second, consider it a failure
-      setTimeout(() => {
-        if (!success) {
-          throw new Error('Parser did not emit end event');
-        }
-      }, 1000);
-      
     } catch (error) {
-      console.error('JSSUH test error:', error);
+      console.error('Parser test error:', error);
       setStatus('error');
-      setResult(`JSSUH test failed: ${error instanceof Error ? error.message : String(error)}`);
+      setResult(`Parser test failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-medium">JSSUH Test Tool</h3>
+      <h3 className="text-lg font-medium">Screparsed Parser Test Tool</h3>
       
-      {jssuhInfo && (
+      {parserInfo && (
         <div className="bg-muted/50 p-3 rounded text-sm">
-          <p>JSSUH type: {jssuhInfo.type}</p>
-          <p>Has ReplayParser: {jssuhInfo.hasReplayParser ? 'Yes' : 'No'}</p>
-          <p>Is function: {jssuhInfo.isFunction ? 'Yes' : 'No'}</p>
-          <p>Available keys: {jssuhInfo.keys?.length > 0 ? jssuhInfo.keys.join(', ') : 'None'}</p>
-          <p>Default export: {jssuhInfo.defaultExport}</p>
+          <p>Parser module type: {parserInfo.type}</p>
+          <p>Has ReplayParser: {parserInfo.hasReplayParser ? 'Yes' : 'No'}</p>
+          <p>Is function: {parserInfo.isFunction ? 'Yes' : 'No'}</p>
+          <p>Available keys: {parserInfo.keys?.length > 0 ? parserInfo.keys.join(', ') : 'None'}</p>
+          <p>Default export: {parserInfo.defaultExport}</p>
           
           {parserMethodsInfo.length > 0 && (
             <div className="mt-2">
@@ -157,12 +120,12 @@ const JSSUHTest: React.FC = () => {
             </div>
           )}
           
-          {jssuhInfo.error && <p className="text-destructive">Error: {jssuhInfo.error}</p>}
+          {parserInfo.error && <p className="text-destructive">Error: {parserInfo.error}</p>}
           
           <details className="mt-2">
             <summary className="cursor-pointer text-xs font-medium">Show module details</summary>
             <pre className="mt-1 text-xs overflow-auto max-h-40 bg-black/10 p-2 rounded">
-              {jssuhInfo.moduleDetails || 'No details available'}
+              {parserInfo.moduleDetails || 'No details available'}
             </pre>
           </details>
         </div>
@@ -172,13 +135,13 @@ const JSSUHTest: React.FC = () => {
         onClick={runTest}
         disabled={status === 'testing'}
       >
-        Test JSSUH Parser
+        Test Parser
       </Button>
       
       {status === 'testing' && (
         <div className="flex items-center space-x-2">
           <div className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-          <p>Testing JSSUH parser...</p>
+          <p>Testing parser...</p>
         </div>
       )}
       
@@ -201,4 +164,4 @@ const JSSUHTest: React.FC = () => {
   );
 };
 
-export default JSSUHTest;
+export default ScreparsedTest;
