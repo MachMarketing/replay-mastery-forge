@@ -4,7 +4,7 @@ import { ParsedReplayData } from './replayParser/types';
 
 // Import readFileAsArrayBuffer
 import { readFileAsArrayBuffer } from '../services/fileReader';
-import { formatPlayerName, standardizeRaceName, debugLogReplayData, getRaceFromId } from '../lib/replayUtils';
+import { formatPlayerName, standardizeRaceName, debugLogReplayData, getRaceFromId, extractPlayerData } from '../lib/replayUtils';
 
 // Track if the parser has been initialized
 let parserInitialized = false;
@@ -160,8 +160,8 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
   console.log('[browserReplayParser] Transforming data with structure:', 
     typeof parsedData === 'object' ? Object.keys(parsedData) : typeof parsedData);
   
-  // Extract players based on screparsed format (_gameInfo.playerStructs)
-  let players: any[] = [];
+  // Extract players using our enhanced utility that tries different approaches
+  let players = extractPlayerData(parsedData);
   let mapName = 'Unknown Map';
   let durationFrames = 0;
   
@@ -178,43 +178,6 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
       durationFrames = Array.isArray(parsedData._frames) ? parsedData._frames.length : Number(parsedData._frames) || 0;
       console.log('[browserReplayParser] Duration frames:', durationFrames);
     }
-    
-    // Extract player data from playerStructs
-    if (parsedData._gameInfo.playerStructs && typeof parsedData._gameInfo.playerStructs === 'object') {
-      try {
-        const playerEntries = Object.entries(parsedData._gameInfo.playerStructs);
-        console.log('[browserReplayParser] Found player entries:', playerEntries.length);
-        
-        // Sort by ID to ensure consistent order
-        playerEntries.sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
-        
-        players = playerEntries.map(([id, data]: [string, any]) => {
-          const playerData = data || {};
-          
-          // Extract player name safely
-          const name = typeof playerData.name === 'string' ? playerData.name.trim() : `Player ${parseInt(id) + 1}`;
-          
-          // Map race ID to race name (0=Zerg, 1=Terran, 2=Protoss)
-          // Based on screparsed documentation
-          let race = 'Unknown';
-          if (playerData.race !== undefined) {
-            race = getRaceFromId(Number(playerData.race));
-          }
-          
-          console.log(`[browserReplayParser] Extracted player ${id}: ${name} (${race})`);
-          
-          return {
-            id: parseInt(id),
-            name,
-            race,
-            apm: 150, // Default APM, will be calculated later if possible
-            team: playerData.team !== undefined ? Number(playerData.team) : 0
-          };
-        });
-      } catch (e) {
-        console.error('[browserReplayParser] Error extracting players from playerStructs:', e);
-      }
-    }
   }
   // Handle alternative structure if screparsed doesn't provide _gameInfo
   else if (parsedData.header) {
@@ -222,17 +185,6 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
     
     // Get map name from the header structure
     mapName = parsedData.header.map || parsedData.mapData?.name || 'Unknown Map';
-    
-    // Extract players from the header
-    if (parsedData.header && parsedData.header.players && Array.isArray(parsedData.header.players)) {
-      players = parsedData.header.players.map((p: any, idx: number) => ({
-        id: idx,
-        name: p.name || `Player ${idx + 1}`,
-        race: standardizeRaceName(p.race),
-        apm: 150,
-        team: p.team || 0
-      }));
-    }
     
     // Get duration if available
     if (parsedData.header && typeof parsedData.header.duration === 'number') {
@@ -246,38 +198,9 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
     // Get map name
     mapName = parsedData.Header.Map || 'Unknown Map';
     
-    // Extract players
-    if (parsedData.Header.Players && Array.isArray(parsedData.Header.Players)) {
-      players = parsedData.Header.Players.map((p: any, idx: number) => ({
-        id: idx,
-        name: p.Name || p.name || `Player ${idx + 1}`,
-        race: standardizeRaceName(p.Race || p.race),
-        apm: 150,
-        team: p.Team || p.team || 0
-      }));
-    }
-    
     // Get duration
     if (parsedData.Header.Duration && typeof parsedData.Header.Duration === 'number') {
       durationFrames = parsedData.Header.Duration * 24;
-    }
-  }
-  
-  // If still no players, try to find them in the raw structure
-  if (!players || players.length === 0) {
-    console.log('[browserReplayParser] No players found in standard locations, searching deeper');
-    
-    // Try to find any player-like objects in the parsed data
-    for (const key in parsedData) {
-      if (key.toLowerCase().includes('player') && Array.isArray(parsedData[key])) {
-        console.log(`[browserReplayParser] Found potential player array in key: ${key}`);
-        players = parsedData[key].map((p: any, idx: number) => {
-          const name = p.name || p.Name || `Player ${idx + 1}`;
-          const race = standardizeRaceName(p.race || p.Race);
-          return { id: idx, name, race, apm: 150, team: p.team || p.Team || 0 };
-        });
-        break;
-      }
     }
   }
   
@@ -286,8 +209,8 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
     console.log('[browserReplayParser] No player data found, extracting from filename');
     const fileNameParts = fileName.split('.')[0].split(/\s+|_|vs|VS|Vs/);
     players = [
-      { id: 0, name: fileNameParts.length > 0 ? fileNameParts[0].trim() : 'Player 1', race: 'Protoss', apm: 150, team: 0 },
-      { id: 1, name: fileNameParts.length > 1 ? fileNameParts[1].trim() : 'Player 2', race: 'Protoss', apm: 150, team: 1 }
+      { name: fileNameParts.length > 0 ? fileNameParts[0].trim() : 'Player 1', race: 'Protoss', apm: 150, team: 0 },
+      { name: fileNameParts.length > 1 ? fileNameParts[1].trim() : 'Player 2', race: 'Protoss', apm: 150, team: 1 }
     ];
   }
   

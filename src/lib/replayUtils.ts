@@ -82,6 +82,22 @@ export function debugLogReplayData(data: any): void {
           team: player.team
         });
       });
+    } else {
+      // Try to inspect _gameInfo keys to find player data
+      console.log('🔍 No playerStructs found, inspecting _gameInfo keys');
+      
+      // Try to identify numeric keys that might contain player data
+      const numericKeys = Object.keys(data._gameInfo).filter(key => !isNaN(Number(key)));
+      if (numericKeys.length > 0) {
+        console.log('🔍 Found numeric keys in _gameInfo:', numericKeys);
+        
+        // Sample a few keys to see their structure
+        const sampleSize = Math.min(5, numericKeys.length);
+        for (let i = 0; i < sampleSize; i++) {
+          const key = numericKeys[i];
+          console.log(`🔍 Sample key ${key} data:`, data._gameInfo[key]);
+        }
+      }
     }
   }
   
@@ -105,4 +121,108 @@ export function getRaceFromId(raceId: number): string {
     case 2: return 'Protoss';
     default: return 'Unknown';
   }
+}
+
+/**
+ * Try to extract player data from various formats in screparsed output
+ */
+export function extractPlayerData(data: any): Array<{ name: string; race: string; apm?: number; team?: number }> {
+  const players: Array<{ name: string; race: string; apm?: number; team?: number }> = [];
+  
+  // Check if we have a _gameInfo.playerStructs object
+  if (data._gameInfo?.playerStructs) {
+    console.log('🔍 Extracting from playerStructs');
+    Object.entries(data._gameInfo.playerStructs).forEach(([key, value]: [string, any]) => {
+      players.push({
+        name: formatPlayerName(value.name || `Player ${key}`),
+        race: standardizeRaceName(value.race),
+        apm: value.apm || 150,
+        team: value.team || parseInt(key)
+      });
+    });
+    
+    if (players.length > 0) {
+      return players;
+    }
+  }
+  
+  // Try to find player data in _gameInfo numeric keys
+  if (data._gameInfo) {
+    console.log('🔍 Looking for player data in _gameInfo keys');
+    const playerKeys = Object.keys(data._gameInfo).filter(key => 
+      !isNaN(Number(key)) && 
+      typeof data._gameInfo[key] === 'object' && 
+      data._gameInfo[key] !== null
+    );
+    
+    if (playerKeys.length > 0) {
+      console.log(`🔍 Found ${playerKeys.length} potential player entries in _gameInfo`);
+      
+      // Filter to only keys that have player-like data
+      const validPlayerKeys = playerKeys.filter(key => {
+        const entry = data._gameInfo[key];
+        // Check if this object has properties that look like player data
+        return entry && (
+          entry.name || 
+          entry.race !== undefined || 
+          entry.id !== undefined || 
+          entry.type !== undefined ||
+          entry.color !== undefined
+        );
+      });
+      
+      if (validPlayerKeys.length > 0) {
+        console.log(`🔍 Found ${validPlayerKeys.length} valid player entries`);
+        
+        validPlayerKeys.forEach(key => {
+          const playerData = data._gameInfo[key];
+          if (playerData) {
+            // Determine if this represents a player (not a neutral or observer)
+            const isPlayer = 
+              playerData.type === 1 || // From screp: 1 = player
+              playerData.controller === 1 || // Another convention: 1 = human
+              playerData.race !== undefined; // Has race defined
+              
+            if (isPlayer) {
+              players.push({
+                name: formatPlayerName(playerData.name || `Player ${key}`),
+                race: standardizeRaceName(playerData.race),
+                apm: playerData.apm || 150,
+                team: playerData.team || parseInt(key)
+              });
+            }
+          }
+        });
+      }
+    }
+  }
+  
+  // Try to find players in header format
+  if (data.Header?.Players && Array.isArray(data.Header.Players)) {
+    console.log('🔍 Extracting from Header.Players array');
+    data.Header.Players.forEach((player: any, idx: number) => {
+      if (player) {
+        players.push({
+          name: formatPlayerName(player.Name || player.name || `Player ${idx + 1}`),
+          race: standardizeRaceName(player.Race || player.race),
+          apm: player.APM || player.apm || 150,
+          team: player.Team || player.team || idx
+        });
+      }
+    });
+  } else if (data.header?.players && Array.isArray(data.header.players)) {
+    console.log('🔍 Extracting from header.players array');
+    data.header.players.forEach((player: any, idx: number) => {
+      if (player) {
+        players.push({
+          name: formatPlayerName(player.name || `Player ${idx + 1}`),
+          race: standardizeRaceName(player.race),
+          apm: player.apm || 150,
+          team: player.team || idx
+        });
+      }
+    });
+  }
+  
+  return players;
 }
