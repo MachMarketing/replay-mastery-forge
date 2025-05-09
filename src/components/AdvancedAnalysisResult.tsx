@@ -67,12 +67,12 @@ const AdvancedAnalysisResult: React.FC<AdvancedAnalysisResultProps> = ({ data, i
           
           <div className="flex items-center mt-4 justify-between">
             <PlayerSelector
-              primaryPlayer={{
+              player1={{
                 name: data.primaryPlayer.name,
                 race: data.primaryPlayer.race,
                 apm: data.primaryPlayer.apm
               }}
-              secondaryPlayer={{
+              player2={{
                 name: data.secondaryPlayer.name,
                 race: data.secondaryPlayer.race,
                 apm: data.secondaryPlayer.apm

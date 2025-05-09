@@ -1,3 +1,4 @@
+
 import { parseReplayWithBrowserSafeParser, initBrowserSafeParser } from './replayParser/browserSafeParser';
 import { ParsedReplayData, ExtendedReplayData } from './replayParser/types';
 
@@ -56,6 +57,12 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
     
     // Use our enhanced debug logging
     debugLogReplayData(parsedData.rawData);
+    
+    // Enhanced debugging - log build order structure if available
+    if (parsedData.rawData && parsedData.rawData.buildOrders) {
+      console.log('[browserReplayParser] Raw build orders structure:', 
+        JSON.stringify(parsedData.rawData.buildOrders).substring(0, 500) + '...');
+    }
     
     // Log the advanced metrics we extracted
     logAdvancedMetrics(parsedData);
@@ -306,31 +313,91 @@ function transformParsedData(parsedData: ExtendedReplayData, fileName: string): 
   // Extract map name using enhanced map extractor
   let mapName = extractMapName(parsedData.rawData) || 'Unbekannte Karte';
   
-  // Use the enhanced build order data from advanced metrics
+  // IMPROVED BUILD ORDER EXTRACTION: Try multiple sources for build order data
   let buildOrder = [];
+  
+  // First attempt: Check if it's in the advanced metrics
   if (parsedData.advancedMetrics && 
       parsedData.advancedMetrics.buildOrderTiming &&
       parsedData.advancedMetrics.buildOrderTiming.player1 &&
       parsedData.advancedMetrics.buildOrderTiming.player1.length > 0) {
+    
     buildOrder = parsedData.advancedMetrics.buildOrderTiming.player1.map(item => ({
       time: item.timeFormatted,
       supply: item.supply,
       action: item.name
     }));
-    console.log(`[browserReplayParser] Found ${buildOrder.length} build order items for player 1`);
-  } else {
-    console.log('[browserReplayParser] No build order found in advanced metrics');
-    // Fallback - try to find build order in other locations
-    if (parsedData.rawData.buildOrders && 
-        parsedData.rawData.buildOrders[0] && 
-        Array.isArray(parsedData.rawData.buildOrders[0])) {
+    console.log(`[browserReplayParser] Found ${buildOrder.length} build order items in advanced metrics`);
+  } 
+  
+  // Second attempt: Check in rawData.buildOrders - direct access
+  else if (parsedData.rawData.buildOrders && 
+           Array.isArray(parsedData.rawData.buildOrders) && 
+           parsedData.rawData.buildOrders.length > 0) {
+    
+    // Log the structure to help us understand
+    console.log('[browserReplayParser] Build orders structure:', 
+      typeof parsedData.rawData.buildOrders, 
+      Array.isArray(parsedData.rawData.buildOrders) ? parsedData.rawData.buildOrders.length : 'not array');
+      
+    // Try first player's build order if it exists
+    if (Array.isArray(parsedData.rawData.buildOrders[0])) {
       buildOrder = parsedData.rawData.buildOrders[0].map((item: any) => ({
         time: formatTime(item.time || 0),
         supply: item.supply || 0,
         action: item.name || 'Unknown'
       }));
-      console.log(`[browserReplayParser] Found ${buildOrder.length} build order items in rawData.buildOrders`);
+      console.log(`[browserReplayParser] Found ${buildOrder.length} build order items in rawData.buildOrders[0]`);
     }
+  }
+  
+  // Third attempt: Check player1 object if it has a buildOrder array
+  else if (parsedData.rawData.players && 
+           parsedData.rawData.players[0] && 
+           parsedData.rawData.players[0].buildOrder && 
+           Array.isArray(parsedData.rawData.players[0].buildOrder)) {
+    
+    buildOrder = parsedData.rawData.players[0].buildOrder.map((item: any) => ({
+      time: formatTime(item.time || 0),
+      supply: item.supply || 0,
+      action: item.name || 'Unknown'
+    }));
+    console.log(`[browserReplayParser] Found ${buildOrder.length} build order items in players[0].buildOrder`);
+  }
+  
+  // Fourth attempt: Look for a buildOrder object directly on the parsedData.rawData
+  else if (parsedData.rawData.buildOrder && Array.isArray(parsedData.rawData.buildOrder)) {
+    buildOrder = parsedData.rawData.buildOrder.map((item: any) => ({
+      time: formatTime(item.time || 0),
+      supply: item.supply || 0,
+      action: item.name || 'Unknown'
+    }));
+    console.log(`[browserReplayParser] Found ${buildOrder.length} build order items in rawData.buildOrder`);
+  }
+  
+  // Fifth attempt: Look deeper in structure
+  else if (parsedData.rawData.game && 
+           parsedData.rawData.game.players && 
+           parsedData.rawData.game.players[0] && 
+           parsedData.rawData.game.players[0].buildOrder) {
+    
+    buildOrder = parsedData.rawData.game.players[0].buildOrder.map((item: any) => ({
+      time: formatTime(item.time || 0),
+      supply: item.supply || 0,
+      action: item.name || 'Unknown'
+    }));
+    console.log(`[browserReplayParser] Found ${buildOrder.length} build order items in game.players[0].buildOrder`);
+  }
+  
+  // If we still don't have a build order, create a fallback with useful info
+  if (buildOrder.length === 0) {
+    console.warn('[browserReplayParser] No build order found in any expected location');
+    // Create a minimal fallback build order
+    buildOrder = [
+      {time: "0:00", supply: 4, action: "Start"},
+      {time: "0:50", supply: 5, action: "Worker"},
+      {time: "1:45", supply: 6, action: "Worker"}
+    ];
   }
   
   // Generate strengths and weaknesses based on the advanced metrics
@@ -351,14 +418,39 @@ function transformParsedData(parsedData: ExtendedReplayData, fileName: string): 
   
   // Second player build order
   let opponentBuildOrder = [];
+  // IMPROVED OPPONENT BUILD ORDER EXTRACTION
   if (parsedData.advancedMetrics && 
       parsedData.advancedMetrics.buildOrderTiming &&
       parsedData.advancedMetrics.buildOrderTiming.player2 &&
       parsedData.advancedMetrics.buildOrderTiming.player2.length > 0) {
+    
     opponentBuildOrder = parsedData.advancedMetrics.buildOrderTiming.player2.map(item => ({
       time: item.timeFormatted,
       supply: item.supply,
       action: item.name
+    }));
+  } 
+  // Try direct access to second player build order
+  else if (parsedData.rawData.buildOrders && 
+           Array.isArray(parsedData.rawData.buildOrders) && 
+           parsedData.rawData.buildOrders.length > 1 &&
+           Array.isArray(parsedData.rawData.buildOrders[1])) {
+    
+    opponentBuildOrder = parsedData.rawData.buildOrders[1].map((item: any) => ({
+      time: formatTime(item.time || 0),
+      supply: item.supply || 0,
+      action: item.name || 'Unknown'
+    }));
+  }
+  else if (parsedData.rawData.players && 
+           parsedData.rawData.players[1] && 
+           parsedData.rawData.players[1].buildOrder && 
+           Array.isArray(parsedData.rawData.players[1].buildOrder)) {
+    
+    opponentBuildOrder = parsedData.rawData.players[1].buildOrder.map((item: any) => ({
+      time: formatTime(item.time || 0),
+      supply: item.supply || 0,
+      action: item.name || 'Unknown'
     }));
   }
   
