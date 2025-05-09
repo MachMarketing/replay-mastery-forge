@@ -36,6 +36,11 @@ export async function initBrowserSafeParser(): Promise<void> {
   }
 }
 
+// Type for constructable functions
+interface Constructor {
+  new (...args: any[]): any;
+}
+
 /**
  * Parse a replay file using the browser-safe screparsed parser
  */
@@ -64,45 +69,33 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
     };
     
     let result = null;
+    console.log('[browserSafeParser] Using parser from screparsed');
     
     try {
-      // According to the screparsed documentation, the main API is parseReplay
-      // which is available on the default export
-      console.log('[browserSafeParser] Looking for parse function in module:', Object.keys(parserModule));
-      
-      // Check if parseReplay is available directly on the module
-      if (typeof parserModule.parseReplay === 'function') {
-        console.log('[browserSafeParser] Using parserModule.parseReplay function');
-        result = await parserModule.parseReplay(data);
-      }
-      // Check if the default export is the parse function
-      else if (typeof parserModule.default === 'function') {
-        console.log('[browserSafeParser] Using parserModule.default function');
-        result = await parserModule.default(data);
-      }
-      // Check if default.parseReplay exists
-      else if (parserModule.default && typeof parserModule.default.parseReplay === 'function') {
-        console.log('[browserSafeParser] Using parserModule.default.parseReplay function');
-        result = await parserModule.default.parseReplay(data);
-      }
-      // Check if there's a parse method on default
-      else if (parserModule.default && typeof parserModule.default.parse === 'function') {
-        console.log('[browserSafeParser] Using parserModule.default.parse function');
-        result = await parserModule.default.parse(data);
-      }
-      // Try with ParsedReplay (if it's a class constructor)
-      else if (parserModule.ParsedReplay) {
-        console.log('[browserSafeParser] Trying with ParsedReplay constructor');
+      // According to documentation, the main API is parseReplay
+      if (parserModule.parseReplay && typeof parserModule.parseReplay === 'function') {
+        console.log('[browserSafeParser] Using documented parseReplay function');
         try {
-          result = new parserModule.ParsedReplay(data);
+          result = await parserModule.parseReplay(data);
         } catch (e) {
-          console.log('[browserSafeParser] ParsedReplay constructor failed:', e);
+          console.error('[browserSafeParser] Error with parseReplay:', e);
+          throw e;
+        }
+      }
+      // Try the ParsedReplay constructor if available
+      else if (parserModule.ParsedReplay) {
+        console.log('[browserSafeParser] Trying with ParsedReplay');
+        try {
+          const ParsedReplayConstructor = parserModule.ParsedReplay as unknown as Constructor;
+          result = new ParsedReplayConstructor(data);
+        } catch (e) {
+          console.error('[browserSafeParser] Error with ParsedReplay constructor:', e);
           
-          // Look for static methods
+          // Check for static methods on ParsedReplay
           const methods = Object.getOwnPropertyNames(parserModule.ParsedReplay);
           console.log('[browserSafeParser] Available ParsedReplay methods:', methods);
           
-          // Try with fromBuffer, fromUint8Array, or other likely method names
+          // Try with static methods that might work for parsing
           for (const methodName of ['fromBuffer', 'fromUint8Array', 'parse', 'fromArray', 'fromData']) {
             if (typeof parserModule.ParsedReplay[methodName] === 'function') {
               try {
@@ -116,6 +109,34 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
                 console.log(`[browserSafeParser] ParsedReplay.${methodName} failed:`, err);
               }
             }
+          }
+        }
+      }
+      // Check if module.default is available
+      else if (parserModule.default) {
+        console.log('[browserSafeParser] Using default export');
+        // Check if default is a function
+        if (typeof parserModule.default === 'function') {
+          try {
+            result = await parserModule.default(data);
+          } catch (e) {
+            console.log('[browserSafeParser] Error with default function:', e);
+          }
+        }
+        // Check if default.parseReplay exists
+        else if (parserModule.default.parseReplay && typeof parserModule.default.parseReplay === 'function') {
+          try {
+            result = await parserModule.default.parseReplay(data);
+          } catch (e) {
+            console.log('[browserSafeParser] Error with default.parseReplay:', e);
+          }
+        }
+        // Check if default.parse exists
+        else if (parserModule.default.parse && typeof parserModule.default.parse === 'function') {
+          try {
+            result = await parserModule.default.parse(data);
+          } catch (e) {
+            console.log('[browserSafeParser] Error with default.parse:', e);
           }
         }
       }
@@ -138,11 +159,13 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
         const parseFunction = Object.values(parserModule).find((value: any) => 
           typeof value === 'function' && 
           (String(value).includes('parse') || 
-           (value.name && value.name.toLowerCase().includes('parse')))
+           (typeof value === 'function' && 
+            value.name && 
+            String(value.name).toLowerCase().includes('parse')))
         );
         
         if (parseFunction) {
-          console.log('[browserSafeParser] Found potential parse function:', parseFunction.name || 'anonymous');
+          console.log('[browserSafeParser] Found potential parse function');
           result = await (parseFunction as Function)(data);
         }
       }
