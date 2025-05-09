@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from "./components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
 import Index from './pages/Index';
@@ -14,7 +14,7 @@ import NotFound from './pages/NotFound';
 import ParserTest from './pages/ParserTestPage';
 import JSSUHTest from './components/JSSUHTest';
 import ParserDebug from './pages/ParserDebug';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const queryClient = new QueryClient();
@@ -79,9 +79,5 @@ const ProtectedRouteWrapper = ({ children }: { children: React.ReactNode }) => {
 
   return <>{children}</>;
 };
-
-// Add missing imports
-import { useAuth } from './context/AuthContext';
-import { Navigate } from 'react-router-dom';
 
 export default App;

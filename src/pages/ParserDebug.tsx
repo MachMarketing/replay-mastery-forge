@@ -26,17 +26,26 @@ const ParserDebug: React.FC = () => {
   useEffect(() => {
     async function checkParser() {
       try {
-        const module = await import('screparsed');
-        const moduleKeys = Object.keys(module);
+        // Safe import of the module to prevent runtime errors
+        const importedModule = await import('screparsed').catch(err => {
+          console.error('Error importing screparsed:', err);
+          return null;
+        });
+        
+        if (!importedModule) {
+          setErrorMessage('Failed to load screparsed module');
+          return;
+        }
+        
+        const moduleKeys = Object.keys(importedModule);
         console.log('Screparsed module loaded with exports:', moduleKeys);
         
-        // Check for different parsing capabilities
-        const hasDefaultExport = !!module.default;
-        const canParseDirectly = typeof module.default === 'function';
-        const hasReplayParser = !!module.ReplayParser;
-        const hasParsedReplay = !!module.ParsedReplay;
+        // Check module structure without assuming specific properties
+        const hasDefaultExport = !!importedModule.default;
+        const hasReplayParser = !!importedModule.ReplayParser;
+        const hasParsedReplay = !!importedModule.ParsedReplay;
         
-        if (hasDefaultExport || canParseDirectly || hasReplayParser || hasParsedReplay) {
+        if (hasDefaultExport || hasReplayParser || hasParsedReplay) {
           console.log('Screparsed module appears to have parsing capabilities');
           setResult('Screparsed module successfully loaded');
         } else {

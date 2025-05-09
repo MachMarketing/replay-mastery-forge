@@ -42,8 +42,14 @@ export async function parseReplayWithScreparsed(file: File): Promise<ParsedRepla
   // Load the screparsed module
   try {
     // Check if screparsed is available
-    const screparsed = await import('screparsed');
-    console.log('[screparsed-parser] Loaded screparsed module:', Object.keys(screparsed));
+    let screparsed;
+    try {
+      screparsed = await import('screparsed');
+      console.log('[screparsed-parser] Loaded screparsed module:', Object.keys(screparsed));
+    } catch (importError) {
+      console.error('[screparsed-parser] Failed to import screparsed:', importError);
+      throw new Error(`Failed to load screparsed module: ${importError instanceof Error ? importError.message : String(importError)}`);
+    }
     
     // Read file as ArrayBuffer
     const arrayBuffer = await file.arrayBuffer();
@@ -58,35 +64,41 @@ export async function parseReplayWithScreparsed(file: File): Promise<ParsedRepla
     // Try different ways to access the parsing functionality
     console.log('[screparsed-parser] Looking for parsing functionality...');
     
-    // Option 1: Check if there's a parse function directly on the module (dynamic access)
-    if (typeof (screparsed as any).parse === 'function') {
-      console.log('[screparsed-parser] Found parse function directly on module');
-      parseFn = (screparsed as any).parse;
-    } 
-    // Option 2: Check if there's a parse function on the default export
-    else if (screparsed.default && typeof (screparsed.default as any).parse === 'function') {
-      console.log('[screparsed-parser] Found parse function on default export');
-      parseFn = (screparsed.default as any).parse;
-    }
-    // Option 3: Check if the default export itself is callable
-    else if (typeof screparsed.default === 'function') {
-      console.log('[screparsed-parser] Default export is a function, using it directly');
-      parseFn = screparsed.default as unknown as ParseFunction;
-    }
-    // Option 4: Check if ReplayParser has a static parse method
-    else if (screparsed.ReplayParser && typeof (screparsed.ReplayParser as any).parse === 'function') {
+    // Examine the structure of the screparsed module
+    const hasDefaultExport = !!screparsed.default;
+    const hasReplayParser = !!screparsed.ReplayParser;
+    const hasParsedReplay = !!screparsed.ParsedReplay;
+    
+    console.log('[screparsed-parser] Module structure:', { 
+      hasDefaultExport, 
+      hasReplayParser, 
+      hasParsedReplay,
+      defaultType: hasDefaultExport ? typeof screparsed.default : 'undefined'
+    });
+    
+    if (hasReplayParser && typeof screparsed.ReplayParser.parse === 'function') {
       console.log('[screparsed-parser] Using ReplayParser.parse');
-      parseFn = (screparsed.ReplayParser as any).parse;
+      parseFn = screparsed.ReplayParser.parse;
+    } 
+    else if (hasParsedReplay && typeof screparsed.ParsedReplay.fromBuffer === 'function') {
+      console.log('[screparsed-parser] Using ParsedReplay.fromBuffer');
+      parseFn = screparsed.ParsedReplay.fromBuffer;
     }
-    // Option 5: Check if ParsedReplay has a static parse or fromBuffer method
-    else if (screparsed.ParsedReplay) {
-      if (typeof (screparsed.ParsedReplay as any).parse === 'function') {
-        console.log('[screparsed-parser] Using ParsedReplay.parse');
-        parseFn = (screparsed.ParsedReplay as any).parse;
-      } else if (typeof (screparsed.ParsedReplay as any).fromBuffer === 'function') {
-        console.log('[screparsed-parser] Using ParsedReplay.fromBuffer');
-        parseFn = (screparsed.ParsedReplay as any).fromBuffer;
-      }
+    else if (hasParsedReplay && typeof screparsed.ParsedReplay.parse === 'function') {
+      console.log('[screparsed-parser] Using ParsedReplay.parse');
+      parseFn = screparsed.ParsedReplay.parse;
+    }
+    else if (hasDefaultExport && typeof screparsed.default === 'function') {
+      console.log('[screparsed-parser] Using default export as function');
+      parseFn = screparsed.default;
+    }
+    else if (hasDefaultExport && typeof screparsed.default.parse === 'function') {
+      console.log('[screparsed-parser] Using default.parse');
+      parseFn = screparsed.default.parse;
+    }
+    else if (typeof (screparsed as any).parse === 'function') {
+      console.log('[screparsed-parser] Using module.parse');
+      parseFn = (screparsed as any).parse;
     }
     
     if (!parseFn) {
@@ -97,10 +109,15 @@ export async function parseReplayWithScreparsed(file: File): Promise<ParsedRepla
     // Parse the replay file using the function we found
     console.log('[screparsed-parser] Calling parse function...');
     try {
-      parsedData = await parseFn(uint8Array);
+      parsedData = await Promise.resolve(parseFn(uint8Array));
     } catch (parseError) {
       console.error('[screparsed-parser] Error during parsing:', parseError);
       throw new Error(`Parsing error: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
+    }
+    
+    // The original code tries to access parsedData directly, but let's make sure it exists
+    if (!parsedData) {
+      throw new Error('Parsing completed but no data was returned');
     }
     
     console.log('[screparsed-parser] Raw parsed data:', parsedData);
