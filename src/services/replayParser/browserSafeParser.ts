@@ -18,20 +18,19 @@ interface ParsedReplay {
   parse?: (data: Uint8Array) => any;
 }
 
-// Minimal GameInfo interface to satisfy TypeScript
+// Complete GameInfo interface to satisfy TypeScript
 interface GameInfo {
   engine: string;
   frames: number;
   startTime: number;
   title: string;
-  // Include other required properties
-  map?: string;
-  type?: string;
-  isReplayOwner?: boolean;
-  playerStructs?: Record<string, any>;
-  gameType?: string;
-  replayPath?: string;
-  saveTime?: number;
+  map: string;
+  type: string;
+  isReplayOwner: boolean;
+  playerStructs: Record<string, any>;
+  gameType: string;
+  replayPath: string;
+  saveTime: number;
 }
 
 /**
@@ -72,7 +71,12 @@ export async function initBrowserSafeParser(): Promise<void> {
                   startTime: Date.now(),
                   title: "Replay",
                   map: "Unknown",
-                  playerStructs: {}
+                  type: "replay",
+                  isReplayOwner: true,
+                  playerStructs: {},
+                  gameType: "melee",
+                  replayPath: "",
+                  saveTime: Date.now()
                 };
                 
                 // Try three argument constructor pattern
@@ -82,10 +86,28 @@ export async function initBrowserSafeParser(): Promise<void> {
                 console.warn('[browserSafeParser] Three args constructor failed:', threeArgError);
                 
                 try {
-                  // Try with single argument as fallback
-                  // Assume constructor expects data not GameInfo
-                  parsedReplay = new ParsedReplayClass(data);
-                  console.log('[browserSafeParser] Created ParsedReplay with single argument');
+                  // Try with single argument as fallback with mock GameInfo
+                  const mockGameInfo: GameInfo = {
+                    engine: "broodwar",
+                    frames: 0,
+                    startTime: Date.now(),
+                    title: "Replay",
+                    map: "Unknown",
+                    type: "replay",
+                    isReplayOwner: true,
+                    playerStructs: {},
+                    gameType: "melee",
+                    replayPath: "",
+                    saveTime: Date.now()
+                  };
+                  
+                  parsedReplay = new ParsedReplayClass(mockGameInfo);
+                  console.log('[browserSafeParser] Created ParsedReplay with single GameInfo argument');
+                  
+                  // If successful, try to use parseReplay method with our data
+                  if (typeof (parsedReplay as any).parseReplay === 'function') {
+                    return (parsedReplay as any).parseReplay(data);
+                  }
                 } catch (singleArgError) {
                   console.warn('[browserSafeParser] Single arg constructor failed:', singleArgError);
                   
@@ -146,48 +168,44 @@ export async function initBrowserSafeParser(): Promise<void> {
           parse: (data: Uint8Array) => {
             try {
               // Different approach to avoid constructor access issues
-              console.log('[browserSafeParser] Trying static methods on ReplayParser');
+              console.log('[browserSafeParser] Trying methods on ReplayParser');
               
-              // Check for instance methods (non-static)
-              try {
-                // Try to instantiate ReplayParser first
-                const parser = new ReplayParserClass();
-                
-                if (typeof parser.parse === 'function') {
-                  console.log('[browserSafeParser] Using instance parse method');
-                  return parser.parse(data);
-                }
-                
-                if (typeof parser.fromArrayBuffer === 'function') {
-                  console.log('[browserSafeParser] Using instance fromArrayBuffer method');
-                  const result = parser.fromArrayBuffer(data.buffer);
-                  if (typeof result.parse === 'function') {
-                    return result.parse();
-                  }
-                  return result;
-                }
-                
-                if (typeof parser.fromUint8Array === 'function') {
-                  console.log('[browserSafeParser] Using instance fromUint8Array method');
-                  const result = parser.fromUint8Array(data);
-                  if (typeof result.parse === 'function') {
-                    return result.parse();
-                  }
-                  return result;
-                }
-                
-              } catch (instanceError) {
-                console.warn('[browserSafeParser] Instance methods failed:', instanceError);
+              // Check for static methods if available
+              const classAny = ReplayParserClass as any;
+              
+              // Try static methods first if they exist
+              if (typeof classAny.parse === 'function') {
+                console.log('[browserSafeParser] Using static parse method');
+                return classAny.parse(data);
               }
               
-              // If no instance methods worked, try a different approach
-              console.log('[browserSafeParser] No instance methods available, attempting alternative approaches');
+              if (typeof classAny.fromArrayBuffer === 'function') {
+                console.log('[browserSafeParser] Using static fromArrayBuffer method');
+                const result = classAny.fromArrayBuffer(data.buffer);
+                if (typeof result.parse === 'function') {
+                  return result.parse();
+                }
+                return result;
+              }
+              
+              if (typeof classAny.fromUint8Array === 'function') {
+                console.log('[browserSafeParser] Using static fromUint8Array method');
+                const result = classAny.fromUint8Array(data);
+                if (typeof result.parse === 'function') {
+                  return result.parse();
+                }
+                return result;
+              }
+              
+              // Try instance factory methods as not all ReplayParser implementations 
+              // expose a public constructor
+              console.log('[browserSafeParser] Trying factory methods');
               
               // Check for factory function on the module
               if (typeof (screparsed as any).createParser === 'function') {
                 console.log('[browserSafeParser] Using createParser factory function');
                 const parser = (screparsed as any).createParser(data);
-                if (typeof parser.parse === 'function') {
+                if (typeof parser?.parse === 'function') {
                   return parser.parse();
                 }
                 return parser;
@@ -197,6 +215,31 @@ export async function initBrowserSafeParser(): Promise<void> {
               if (typeof (screparsed as any).parseReplay === 'function') {
                 console.log('[browserSafeParser] Using direct parseReplay function');
                 return (screparsed as any).parseReplay(data);
+              }
+              
+              // If we get here, we couldn't use ReplayParser directly
+              // Try a different approach with a mock GameInfo object
+              console.log('[browserSafeParser] Trying alternative approaches');
+              
+              // Create mock GameInfo to satisfy type requirements
+              const mockGameInfo: GameInfo = {
+                engine: "broodwar",
+                frames: 0,
+                startTime: Date.now(),
+                title: "Replay",
+                map: "Unknown",
+                type: "replay",
+                isReplayOwner: true,
+                playerStructs: {},
+                gameType: "melee",
+                replayPath: "",
+                saveTime: Date.now()
+              };
+              
+              // Try direct function call with mock GameInfo
+              if (typeof (screparsed as any).parseReplayData === 'function') {
+                console.log('[browserSafeParser] Using parseReplayData function');
+                return (screparsed as any).parseReplayData(data, mockGameInfo);
               }
               
               throw new Error('No suitable parsing method found in ReplayParser');
@@ -255,7 +298,12 @@ export async function initBrowserSafeParser(): Promise<void> {
                   startTime: Date.now(),
                   title: "Replay",
                   map: "Unknown",
-                  playerStructs: {}
+                  type: "replay",
+                  isReplayOwner: true,
+                  playerStructs: {},
+                  gameType: "melee",
+                  replayPath: "",
+                  saveTime: Date.now()
                 };
                 
                 // Using correct argument pattern with mock objects to satisfy TypeScript
