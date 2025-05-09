@@ -1,13 +1,15 @@
+
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 
-// Define a type for the module with optional properties
+// Define a more comprehensive interface for the screparsed module
 interface ScreparsedModule {
   default?: any;
   ReplayParser?: any;
   ParsedReplay?: any;
+  parse?: (data: Uint8Array) => Promise<any> | any;
   [key: string]: any;
 }
 
@@ -21,8 +23,10 @@ const ScreparsedTest: React.FC = () => {
     // On mount, check if screparsed is loaded
     const checkParser = async () => {
       try {
+        console.log('Attempting to import screparsed module');
         // Try to import dynamically
         const mod = await import('screparsed');
+        console.log('Successfully imported screparsed module', Object.keys(mod));
         
         // Get the detailed structure of the module
         let moduleDetails;
@@ -31,7 +35,9 @@ const ScreparsedTest: React.FC = () => {
             if (typeof value === 'function') return 'Function';
             return value;
           }, 2);
+          console.log('Module structure:', moduleDetails);
         } catch (e) {
+          console.error('Failed to stringify module structure:', e);
           moduleDetails = 'Could not stringify module structure';
         }
         
@@ -49,19 +55,24 @@ const ScreparsedTest: React.FC = () => {
         try {
           // Check available methods in the module itself
           const methods = [];
+          console.log('Checking for parse methods in module');
           
           // Check for parse methods on the module and its exports
           if (mod.default && typeof mod.default === 'function') {
             methods.push('mod.default()');
+            console.log('Found function as default export');
           }
           
           if (mod.ReplayParser) {
             methods.push('ReplayParser available');
+            console.log('Found ReplayParser', typeof mod.ReplayParser);
             
             // Check if there are static methods on ReplayParser
             const replayParserMethods = Object.getOwnPropertyNames(mod.ReplayParser)
               .filter(name => typeof mod.ReplayParser[name] === 'function')
               .map(name => `ReplayParser.${name}()`);
+            
+            console.log('ReplayParser methods:', replayParserMethods);
             
             if (replayParserMethods.length > 0) {
               methods.push(...replayParserMethods);
@@ -70,24 +81,40 @@ const ScreparsedTest: React.FC = () => {
           
           if (mod.ParsedReplay) {
             methods.push('ParsedReplay available');
+            console.log('Found ParsedReplay', typeof mod.ParsedReplay);
             
             // Check if there are static methods on ParsedReplay
             const parsedReplayMethods = Object.getOwnPropertyNames(mod.ParsedReplay)
               .filter(name => typeof mod.ParsedReplay[name] === 'function')
               .map(name => `ParsedReplay.${name}()`);
             
+            console.log('ParsedReplay methods:', parsedReplayMethods);
+            
             if (parsedReplayMethods.length > 0) {
               methods.push(...parsedReplayMethods);
             }
           }
           
+          // Check if mod.default has a parse method
+          if (mod.default && typeof mod.default === 'object') {
+            console.log('Default export is an object, checking for parse method');
+            if (mod.default.parse && typeof mod.default.parse === 'function') {
+              methods.push('mod.default.parse()');
+              console.log('Found parse method on default export');
+            } else {
+              console.log('No parse method on default export', mod.default);
+            }
+          }
+          
           // Check other exported functions
           Object.entries(mod).forEach(([key, value]) => {
+            console.log(`Checking exported property: ${key}`, typeof value);
             if (typeof value === 'function' && 
                 (key.toLowerCase().includes('parse') || 
                  (typeof (value as any).name === 'string' && 
                   (value as any).name.toLowerCase().includes('parse')))) {
               methods.push(`${key}()`);
+              console.log(`Found potential parse function: ${key}`);
             }
           });
           
@@ -109,10 +136,13 @@ const ScreparsedTest: React.FC = () => {
   }, []);
 
   const runTest = async () => {
+    console.log('Starting parser test');
     setStatus('testing');
     try {
       // Import the module dynamically
+      console.log('Importing screparsed module for testing');
       const mod = await import('screparsed') as ScreparsedModule;
+      console.log('Module imported successfully with keys:', Object.keys(mod));
       
       // Create a minimal test data
       const testData = new Uint8Array([
@@ -126,8 +156,14 @@ const ScreparsedTest: React.FC = () => {
       
       console.log('Available module keys:', Object.keys(mod));
       
+      // Check for direct parse method on the module
+      if (typeof mod.parse === 'function') {
+        console.log('Found top-level parse function');
+        parseFn = mod.parse;
+      }
+      
       // Check for different parsing methods
-      if (mod.ParsedReplay) {
+      if (!parseFn && mod.ParsedReplay) {
         console.log('Checking ParsedReplay methods');
         
         // Check for methods that might be useful
@@ -137,10 +173,12 @@ const ScreparsedTest: React.FC = () => {
         for (const methodName of methods) {
           if (/from|parse|load|create/i.test(methodName) && 
               typeof mod.ParsedReplay[methodName] === 'function') {
+            console.log(`Trying ParsedReplay.${methodName}`);
             const methodFn = mod.ParsedReplay[methodName];
             // Safe type casting with function check
             if (typeof methodFn === 'function') {
               parseFn = (data: Uint8Array) => {
+                console.log(`Calling ParsedReplay.${methodName}`);
                 // Use type assertion since we've verified it's a function
                 return (methodFn as Function)(data);
               };
@@ -151,18 +189,24 @@ const ScreparsedTest: React.FC = () => {
       }
       
       if (!parseFn && mod.default) {
-        console.log('Checking default export');
+        console.log('Checking default export', typeof mod.default);
         if (typeof mod.default === 'function') {
+          console.log('Default export is a function, using it directly');
           parseFn = (data: Uint8Array) => {
+            console.log('Calling default export as function');
             // Convert to unknown first, then to Function to satisfy TypeScript
             return ((mod.default as unknown) as Function)(data);
           };
         } else if (mod.default) {
           // Check if mod.default has a parse property
+          console.log('Default export is not a function, checking for parse method');
           const defaultModule = mod.default as any;
+          console.log('Default module properties:', Object.keys(defaultModule));
           
           if (defaultModule && typeof defaultModule.parse === 'function') {
+            console.log('Found parse method on default export');
             parseFn = (data: Uint8Array) => {
+              console.log('Calling default.parse method');
               // Access the parse method using type assertion
               const parseMethod = defaultModule.parse;
               return parseMethod(data);
@@ -173,12 +217,15 @@ const ScreparsedTest: React.FC = () => {
       
       // Last resort - try any function in the module
       if (!parseFn) {
+        console.log('No standard parsing methods found, searching for any function');
         for (const key of Object.keys(mod)) {
           if (typeof mod[key] === 'function' && key !== 'ReplayParser' && key !== 'ParsedReplay') {
+            console.log(`Trying ${key} function as a parser`);
             // Safely cast to a function only after checking
             const keyFn = mod[key];
             if (typeof keyFn === 'function') {
               parseFn = (data: Uint8Array) => {
+                console.log(`Calling ${key} function`);
                 return (keyFn as Function)(data);
               };
               console.log(`Using ${key} as parsing function`);
@@ -190,7 +237,9 @@ const ScreparsedTest: React.FC = () => {
       
       if (parseFn) {
         try {
+          console.log('Executing selected parse function with test data');
           result = await parseFn(testData);
+          console.log('Parse result:', result);
           setStatus('success');
           setResult('Screparsed parser test successful! The module is working correctly.');
         } catch (err) {
@@ -198,6 +247,7 @@ const ScreparsedTest: React.FC = () => {
           throw err;
         }
       } else {
+        console.error('No suitable parsing function found in screparsed module');
         throw new Error('No suitable parsing function found in screparsed module');
       }
       
