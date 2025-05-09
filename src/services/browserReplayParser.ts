@@ -155,9 +155,9 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
     typeof parsedData === 'object' ? Object.keys(parsedData) : typeof parsedData);
   
   // Extract the key data we need based on structure
-  let players = [];
-  let header = {};
-  let commands = [];
+  let players: any[] = [];
+  let header: Record<string, any> = {};
+  let commands: any[] = [];
   let mapName = 'Unknown Map';
   
   // Handle different structures based on what we received
@@ -194,10 +194,10 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
     };
   } else if (parsedData.header) {
     // Structure seems to be from another parser implementation
-    header = parsedData.header;
-    players = parsedData.players || [];
-    commands = parsedData.commands || [];
-    mapName = parsedData.mapData?.name || header.map || 'Unknown Map';
+    header = parsedData.header || {};
+    players = Array.isArray(parsedData.players) ? parsedData.players : [];
+    commands = Array.isArray(parsedData.commands) ? parsedData.commands : [];
+    mapName = parsedData.mapData?.name || (header && typeof header === 'object' && 'map' in header ? header.map : 'Unknown Map');
   }
   
   // If still no players, extract from filename
@@ -254,12 +254,33 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
       return 150;
     }
     
-    const gameLengthMinutes = header.duration ? header.duration / 60 : 10;
+    // Ensure we have a valid duration to calculate APM
+    const gameLengthMinutes = (header && typeof header === 'object' && 'duration' in header && typeof header.duration === 'number') 
+      ? header.duration / 60 
+      : 10;
+    
     return Math.round(playerCommands.length / gameLengthMinutes);
   };
   
   const race1 = mapRace(player1.race);
   const race2 = mapRace(player2.race);
+  
+  // Safely get duration from header
+  const getDurationFromHeader = (): { durationSeconds: number, formattedDuration: string } => {
+    let durationSeconds = 600; // Default 10 minutes
+    
+    if (header && typeof header === 'object' && 'duration' in header && typeof header.duration === 'number') {
+      durationSeconds = header.duration;
+    }
+    
+    const minutes = Math.floor(durationSeconds / 60);
+    const seconds = Math.floor(durationSeconds % 60);
+    const formattedDuration = `${minutes}:${String(seconds).padStart(2, '0')}`;
+    
+    return { durationSeconds, formattedDuration };
+  };
+  
+  const { durationSeconds, formattedDuration } = getDurationFromHeader();
   
   // Create the transformed data structure
   const transformedData: ParsedReplayData = {
@@ -285,9 +306,8 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
     },
     map: mapName,
     matchup: `${race1.charAt(0)}v${race2.charAt(0)}`,
-    duration: typeof header.duration === 'number' ? 
-      `${Math.floor(header.duration / 60)}:${String(Math.floor(header.duration % 60)).padStart(2, '0')}` : '10:00',
-    durationMS: typeof header.duration === 'number' ? header.duration * 1000 : 600000,
+    duration: formattedDuration,
+    durationMS: durationSeconds * 1000,
     date: new Date().toISOString(),
     result: 'unknown',
     strengths: ['Replay analysis requires premium'],
