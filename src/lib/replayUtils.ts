@@ -57,6 +57,42 @@ export function debugLogReplayData(data: any): void {
     hasPlayers: data.Header?.Players ? data.Header.Players.length : 0,
     topLevelKeys: Object.keys(data)
   });
+
+  // Enhanced debugging for screparsed format
+  if (data._gameInfo) {
+    console.log('🔍 screparsed _gameInfo:', {
+      availableKeys: Object.keys(data._gameInfo),
+      hasPlayerStructs: !!data._gameInfo.playerStructs,
+      mapName: data._gameInfo.mapName || 'Unknown'
+    });
+
+    // Deep inspection of playerStructs if available
+    if (data._gameInfo.playerStructs) {
+      const playerKeys = Object.keys(data._gameInfo.playerStructs);
+      console.log('🔍 playerStructs keys:', playerKeys);
+
+      // Log each player's data structure
+      playerKeys.forEach(key => {
+        const player = data._gameInfo.playerStructs[key];
+        console.log(`🔍 Player ${key} structure:`, {
+          availableKeys: Object.keys(player),
+          name: player.name,
+          race: player.race,
+          id: player.id,
+          team: player.team
+        });
+      });
+    }
+  }
+  
+  // Debug duration info which might be at different places
+  const duration = data.header?.duration || data._frames || data.duration;
+  console.log('🔍 Duration information:', {
+    headerDuration: data.header?.duration,
+    frameCount: data._frames,
+    directDuration: data.duration,
+    calculatedDurationSec: duration ? Math.floor(duration / 24) : 'unknown'
+  });
 }
 
 /**

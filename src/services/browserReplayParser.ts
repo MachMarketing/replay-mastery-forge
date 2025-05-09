@@ -4,7 +4,7 @@ import { ParsedReplayData } from './replayParser/types';
 
 // Import readFileAsArrayBuffer
 import { readFileAsArrayBuffer } from '../services/fileReader';
-import { formatPlayerName, standardizeRaceName } from '../lib/replayUtils';
+import { formatPlayerName, standardizeRaceName, debugLogReplayData, getRaceFromId } from '../lib/replayUtils';
 
 // Track if the parser has been initialized
 let parserInitialized = false;
@@ -47,18 +47,9 @@ export async function parseReplayInBrowser(file: File): Promise<ParsedReplayData
     console.log('[browserReplayParser] Raw parsed data structure:', 
       rawData ? Object.keys(rawData).join(', ') : 'null');
     
-    // Debug more detailed structure to help with extraction
-    if (rawData && rawData._gameInfo) {
-      console.log('[browserReplayParser] _gameInfo structure:', Object.keys(rawData._gameInfo).join(', '));
-      if (rawData._gameInfo.playerStructs) {
-        console.log('[browserReplayParser] Found player structures:', Object.keys(rawData._gameInfo.playerStructs).length);
-        
-        // Log each player for debugging
-        Object.entries(rawData._gameInfo.playerStructs).forEach(([id, player]) => {
-          console.log(`[browserReplayParser] Player ${id}:`, player);
-        });
-      }
-    }
+    // Use our enhanced debug logging
+    debugLogReplayData(rawData);
+    
   } catch (error) {
     console.error('[browserReplayParser] Error during parsing:', error);
     // If parsing fails, create a minimal structure
@@ -183,7 +174,7 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
     console.log('[browserReplayParser] Map name:', mapName);
     
     // Get duration in frames (convert from frames to seconds later)
-    if (parsedData._frames) {
+    if (parsedData._frames !== undefined) {
       durationFrames = Array.isArray(parsedData._frames) ? parsedData._frames.length : Number(parsedData._frames) || 0;
       console.log('[browserReplayParser] Duration frames:', durationFrames);
     }
@@ -207,10 +198,7 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
           // Based on screparsed documentation
           let race = 'Unknown';
           if (playerData.race !== undefined) {
-            const raceId = Number(playerData.race);
-            if (raceId === 0) race = 'Zerg';
-            else if (raceId === 1) race = 'Terran';
-            else if (raceId === 2) race = 'Protoss';
+            race = getRaceFromId(Number(playerData.race));
           }
           
           console.log(`[browserReplayParser] Extracted player ${id}: ${name} (${race})`);
@@ -232,17 +220,15 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
   else if (parsedData.header) {
     console.log('[browserReplayParser] Processing alternative structure with header');
     
-    // Get map name
-    mapName = parsedData.mapData?.name || 
-              (parsedData.header && typeof parsedData.header === 'object' && parsedData.header.map) || 
-              'Unknown Map';
+    // Get map name from the header structure
+    mapName = parsedData.header.map || parsedData.mapData?.name || 'Unknown Map';
     
     // Extract players from the header
     if (parsedData.header && parsedData.header.players && Array.isArray(parsedData.header.players)) {
       players = parsedData.header.players.map((p: any, idx: number) => ({
         id: idx,
         name: p.name || `Player ${idx + 1}`,
-        race: p.race || 'Unknown',
+        race: standardizeRaceName(p.race),
         apm: 150,
         team: p.team || 0
       }));
@@ -253,8 +239,49 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
       durationFrames = parsedData.header.duration * 24; // Convert seconds to frames
     }
   }
+  // Try another common format with Header capitalized
+  else if (parsedData.Header) {
+    console.log('[browserReplayParser] Processing structure with capitalized Header');
+    
+    // Get map name
+    mapName = parsedData.Header.Map || 'Unknown Map';
+    
+    // Extract players
+    if (parsedData.Header.Players && Array.isArray(parsedData.Header.Players)) {
+      players = parsedData.Header.Players.map((p: any, idx: number) => ({
+        id: idx,
+        name: p.Name || p.name || `Player ${idx + 1}`,
+        race: standardizeRaceName(p.Race || p.race),
+        apm: 150,
+        team: p.Team || p.team || 0
+      }));
+    }
+    
+    // Get duration
+    if (parsedData.Header.Duration && typeof parsedData.Header.Duration === 'number') {
+      durationFrames = parsedData.Header.Duration * 24;
+    }
+  }
   
-  // If still no players, extract from filename
+  // If still no players, try to find them in the raw structure
+  if (!players || players.length === 0) {
+    console.log('[browserReplayParser] No players found in standard locations, searching deeper');
+    
+    // Try to find any player-like objects in the parsed data
+    for (const key in parsedData) {
+      if (key.toLowerCase().includes('player') && Array.isArray(parsedData[key])) {
+        console.log(`[browserReplayParser] Found potential player array in key: ${key}`);
+        players = parsedData[key].map((p: any, idx: number) => {
+          const name = p.name || p.Name || `Player ${idx + 1}`;
+          const race = standardizeRaceName(p.race || p.Race);
+          return { id: idx, name, race, apm: 150, team: p.team || p.Team || 0 };
+        });
+        break;
+      }
+    }
+  }
+  
+  // If still no players, extract from filename as last resort
   if (!players || players.length === 0) {
     console.log('[browserReplayParser] No player data found, extracting from filename');
     const fileNameParts = fileName.split('.')[0].split(/\s+|_|vs|VS|Vs/);
