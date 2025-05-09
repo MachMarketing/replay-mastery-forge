@@ -35,20 +35,46 @@ const ScreparsedTest: React.FC = () => {
           keys: Object.keys(mod),
           defaultExport: mod.default ? 'Present' : 'Missing',
           moduleDetails: moduleDetails,
-          hasParse: typeof mod.parse === 'function'
+          hasParseMethod: false // We'll update this when checking methods
         });
         
-        // Check for available parse methods instead of trying to instantiate
+        // Check for available parse methods
         try {
           // Check available methods in the module itself
           const methods = [];
           
-          // Look for parse method on the module
-          if (typeof mod.parse === 'function') {
-            methods.push('module.parse()');
+          // Check for parse methods on the module and its exports
+          if (mod.default && typeof mod.default === 'function') {
+            methods.push('mod.default()');
           }
           
-          // Check other exported functions that might be parsers
+          if (mod.ReplayParser) {
+            methods.push('ReplayParser available');
+            
+            // Check if there are static methods on ReplayParser
+            const replayParserMethods = Object.getOwnPropertyNames(mod.ReplayParser)
+              .filter(name => typeof mod.ReplayParser[name] === 'function')
+              .map(name => `ReplayParser.${name}()`);
+            
+            if (replayParserMethods.length > 0) {
+              methods.push(...replayParserMethods);
+            }
+          }
+          
+          if (mod.ParsedReplay) {
+            methods.push('ParsedReplay available');
+            
+            // Check if there are static methods on ParsedReplay
+            const parsedReplayMethods = Object.getOwnPropertyNames(mod.ParsedReplay)
+              .filter(name => typeof mod.ParsedReplay[name] === 'function')
+              .map(name => `ParsedReplay.${name}()`);
+            
+            if (parsedReplayMethods.length > 0) {
+              methods.push(...parsedReplayMethods);
+            }
+          }
+          
+          // Check other exported functions
           Object.entries(mod).forEach(([key, value]) => {
             if (typeof value === 'function' && 
                 (key.toLowerCase().includes('parse') || 
@@ -80,25 +106,44 @@ const ScreparsedTest: React.FC = () => {
       // Import the module dynamically
       const mod = await import('screparsed');
       
-      // Check if the module has a parse function we can use
-      if (typeof mod.parse !== 'function') {
-        throw new Error('No parse function available in screparsed module');
-      }
-      
       // Create a minimal test data
       const testData = new Uint8Array([
         0x28, 0x42, 0x29, 0x77, 0x31, 0x2e, 0x31, 0x36, 0x2e, 0x31, 
         0x20, 0x72, 0x65, 0x70, 0x6c, 0x61, 0x79, 0x20, 0x75, 0x62, 0x64
       ]);
       
-      // Try parsing the test data using the module's parse function
-      try {
-        await mod.parse(testData);
-        setStatus('success');
-        setResult('Screparsed parser test successful! The module is working correctly.');
-      } catch (err) {
-        console.error('Parser test error:', err);
-        throw err;
+      // Find a suitable parsing function
+      let result = null;
+      let parseFn: Function | null = null;
+      
+      console.log('Available module keys:', Object.keys(mod));
+      
+      // Check for different parsing methods
+      if (mod.ParsedReplay && typeof mod.ParsedReplay.fromBuffer === 'function') {
+        console.log('Using ParsedReplay.fromBuffer');
+        parseFn = mod.ParsedReplay.fromBuffer;
+      } else if (mod.ReplayParser && mod.ReplayParser.prototype && typeof mod.ReplayParser.prototype.parse === 'function') {
+        console.log('Using ReplayParser prototype method');
+        // This is just for detection, we won't use it directly due to private constructor
+      } else if (mod.default && typeof mod.default.parse === 'function') {
+        console.log('Using default export parse method');
+        parseFn = mod.default.parse;
+      } else if (mod.default && typeof mod.default === 'function') {
+        console.log('Using default export as function');
+        parseFn = mod.default;
+      }
+      
+      if (parseFn) {
+        try {
+          result = await parseFn(testData);
+          setStatus('success');
+          setResult('Screparsed parser test successful! The module is working correctly.');
+        } catch (err) {
+          console.error('Parser function error:', err);
+          throw err;
+        }
+      } else {
+        throw new Error('No suitable parsing function found in screparsed module');
       }
       
     } catch (error) {
@@ -117,7 +162,6 @@ const ScreparsedTest: React.FC = () => {
           <p>Parser module type: {parserInfo.type}</p>
           <p>Has ReplayParser: {parserInfo.hasReplayParser ? 'Yes' : 'No'}</p>
           <p>Is function: {parserInfo.isFunction ? 'Yes' : 'No'}</p>
-          <p>Has parse function: {parserInfo.hasParse ? 'Yes' : 'No'}</p>
           <p>Available keys: {parserInfo.keys?.length > 0 ? parserInfo.keys.join(', ') : 'None'}</p>
           <p>Default export: {parserInfo.defaultExport}</p>
           
