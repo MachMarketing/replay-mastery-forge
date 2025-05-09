@@ -1,8 +1,15 @@
-
 import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, CheckCircle } from 'lucide-react';
+
+// Define a type for the module with optional properties
+interface ScreparsedModule {
+  default?: any;
+  ReplayParser?: any;
+  ParsedReplay?: any;
+  [key: string]: any;
+}
 
 const ScreparsedTest: React.FC = () => {
   const [status, setStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
@@ -105,7 +112,7 @@ const ScreparsedTest: React.FC = () => {
     setStatus('testing');
     try {
       // Import the module dynamically
-      const mod = await import('screparsed');
+      const mod = await import('screparsed') as ScreparsedModule;
       
       // Create a minimal test data
       const testData = new Uint8Array([
@@ -150,15 +157,17 @@ const ScreparsedTest: React.FC = () => {
             // Convert to unknown first, then to Function to satisfy TypeScript
             return ((mod.default as unknown) as Function)(data);
           };
-        } else if (mod.default && typeof mod.default.parse === 'function') {
-          parseFn = (data: Uint8Array) => {
-            // Convert the specific property to a function after verification
-            const parseFn = mod.default.parse;
-            if (typeof parseFn === 'function') {
-              return parseFn(data);
-            }
-            throw new Error('parse method is not a function');
-          };
+        } else if (mod.default) {
+          // Check if mod.default has a parse property
+          const defaultModule = mod.default as any;
+          
+          if (defaultModule && typeof defaultModule.parse === 'function') {
+            parseFn = (data: Uint8Array) => {
+              // Access the parse method using type assertion
+              const parseMethod = defaultModule.parse;
+              return parseMethod(data);
+            };
+          }
         }
       }
       
