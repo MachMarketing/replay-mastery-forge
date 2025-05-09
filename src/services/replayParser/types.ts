@@ -278,8 +278,8 @@ export interface ParsedReplayData {
   opponentEapm: number;
   buildOrder: Array<{ time: string; supply: number; action: string }>;
   
-  // Optional training plan
-  trainingPlan?: Array<{ day: number; focus: string; drill: string }>;
+  // Training plan is now required
+  trainingPlan: Array<{ day: number; focus: string; drill: string }>;
 }
 
 /**
@@ -291,15 +291,11 @@ export interface ExtendedReplayData extends ParsedReplayData {
   
   // Advanced metrics extracted from replay
   advancedMetrics: AdvancedMetrics;
-  
-  // Make trainingPlan required in ExtendedReplayData
-  trainingPlan: Array<{ day: number; focus: string; drill: string }>;
 }
 
 /**
  * Mapped replay data with required fields guaranteed
  */
 export interface ParsedReplayResult extends ParsedReplayData {
-  // Required training plan
-  trainingPlan: Array<{ day: number; focus: string; drill: string }>;
+  // Training plan is already required in ParsedReplayData
 }

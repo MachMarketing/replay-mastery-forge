@@ -1,4 +1,3 @@
-
 import { parseReplayWithBrowserSafeParser, initBrowserSafeParser } from './replayParser/browserSafeParser';
 import { ParsedReplayData, ExtendedReplayData } from './replayParser/types';
 
@@ -132,51 +131,65 @@ function createMinimalReplayData(fileName: string): ParsedReplayData {
   const defaultRace1 = race1 || 'Protoss';
   const defaultRace2 = race2 || 'Protoss';
   
+  // Create more meaningful player names
+  const player1Name = player1 && player1 !== 'Unknown' ? player1 : 'Spieler 1';
+  const player2Name = player2 && player2 !== 'Unknown' ? player2 : 'Spieler 2';
+  
   // Create matchup string
   const matchup = `${defaultRace1.charAt(0)}v${defaultRace2.charAt(0)}`;
+  
+  // Training plan
+  const trainingPlan = [
+    { day: 1, focus: "Makromanagement", drill: "Konstante Arbeiterproduktion" },
+    { day: 2, focus: "Mikromanagement", drill: "Einheitenpositionierung" },
+    { day: 3, focus: "Build Order", drill: "Timing-Angriffe ausführen" }
+  ];
   
   // Create minimal replay data structure
   const minimalData: ParsedReplayData = {
     primaryPlayer: {
-      name: player1,
+      name: player1Name,
       race: defaultRace1,
       apm: 150,
       eapm: 105,
       buildOrder: [],
-      strengths: ['Replay analysis requires premium'],
-      weaknesses: ['Replay analysis requires premium'],
-      recommendations: ['Upgrade to premium for detailed analysis']
+      strengths: ['Replay-Analyse benötigt Premium'],
+      weaknesses: ['Replay-Analyse benötigt Premium'],
+      recommendations: ['Upgrade auf Premium für detaillierte Analyse']
     },
     secondaryPlayer: {
-      name: player2,
+      name: player2Name,
       race: defaultRace2,
       apm: 150,
       eapm: 105,
       buildOrder: [],
-      strengths: ['Replay analysis requires premium'],
-      weaknesses: ['Replay analysis requires premium'],
-      recommendations: ['Upgrade to premium for detailed analysis']
+      strengths: ['Replay-Analyse benötigt Premium'],
+      weaknesses: ['Replay-Analyse benötigt Premium'],
+      recommendations: ['Upgrade auf Premium für detaillierte Analyse']
     },
-    map: 'Unknown Map',
+    map: 'Unbekannte Karte',
     matchup: matchup,
     duration: '10:00',
     durationMS: 600000,
     date: new Date().toISOString(),
     result: 'unknown' as 'unknown' | 'win' | 'loss',
-    strengths: ['Replay analysis requires premium'],
-    weaknesses: ['Replay analysis requires premium'],
-    recommendations: ['Upgrade to premium for detailed analysis'],
+    strengths: ['Replay-Analyse benötigt Premium'],
+    weaknesses: ['Replay-Analyse benötigt Premium'],
+    recommendations: ['Upgrade auf Premium für detaillierte Analyse'],
     
     // Legacy properties
-    playerName: player1,
-    opponentName: player2,
+    playerName: player1Name,
+    opponentName: player2Name,
     playerRace: defaultRace1,
     opponentRace: defaultRace2,
     apm: 150,
     eapm: 105,
     opponentApm: 150,
     opponentEapm: 105,
-    buildOrder: []
+    buildOrder: [],
+    
+    // Required training plan
+    trainingPlan: trainingPlan
   };
   
   return minimalData;
@@ -189,64 +202,81 @@ function transformParsedData(parsedData: ExtendedReplayData, fileName: string): 
   // First, log the structure to help with debugging
   console.log('[browserReplayParser] Transforming extended data');
   
-  // Start with player data
-  let playerName = '';
-  let opponentName = '';
-  let playerRace = '';
-  let opponentRace = '';
-  let playerApm = 0;
-  let opponentApm = 0;
-  let buildOrder = [];
+  // Extract players from raw data or metadata
+  let players: Array<{name: string; race: string; apm: number; team?: number}> = [];
   
-  // According to screparsed docs, players should be in rawData.players
-  let players = [];
-  
-  if (parsedData.rawData.players && Array.isArray(parsedData.rawData.players)) {
-    console.log('[browserReplayParser] Using rawData.players array');
-    players = parsedData.rawData.players.map((player: any) => ({
-      name: player.name || `Player ${player.id || 'Unknown'}`,
-      race: standardizeRaceName(player.race || 'Unknown'),
-      apm: player.apm || 150,
-      team: player.team || player.id || 0
-    }));
-  } else {
-    console.log('[browserReplayParser] No players array found, using extractPlayerData');
-    // Fall back to our extraction function
-    players = extractPlayerData(parsedData.rawData);
+  // Try multiple data paths to extract players
+  if (parsedData.rawData) {
+    // First attempt: look in header.players
+    if (parsedData.rawData.header && 
+        parsedData.rawData.header.players && 
+        Array.isArray(parsedData.rawData.header.players)) {
+      console.log('[browserReplayParser] Found players in header.players');
+      players = parsedData.rawData.header.players.map((p: any) => ({
+        name: formatPlayerName(p.name || ''),
+        race: standardizeRaceName(p.race || getRaceFromId(p.raceId)),
+        apm: parseInt(p.apm || '0'),
+        team: p.team || 0
+      }));
+    }
+    
+    // Second attempt: look in players array
+    else if (parsedData.rawData.players && Array.isArray(parsedData.rawData.players)) {
+      console.log('[browserReplayParser] Found players in players array');
+      players = parsedData.rawData.players.map((p: any) => ({
+        name: formatPlayerName(p.name || ''),
+        race: standardizeRaceName(p.race || getRaceFromId(p.raceId)),
+        apm: p.apm || 0,
+        team: p.team || 0
+      }));
+    }
+    
+    // Third attempt: look in metadata
+    else if (parsedData.rawData.metadata) {
+      const metadata = parsedData.rawData.metadata;
+      if (metadata.playerNames && Array.isArray(metadata.playerNames)) {
+        console.log('[browserReplayParser] Found players in metadata');
+        players = metadata.playerNames.map((name: string, index: number) => ({
+          name: formatPlayerName(name || ''),
+          race: standardizeRaceName(
+            metadata.playerRaces && metadata.playerRaces[index] ? 
+              metadata.playerRaces[index] : 
+              index === 0 ? 'Protoss' : 'Terran'
+          ),
+          apm: metadata.apm && metadata.apm[index] ? metadata.apm[index] : 150,
+          team: metadata.teams && metadata.teams[index] ? metadata.teams[index] : index
+        }));
+      }
+    }
   }
   
-  // Extract map name using enhanced map extractor
-  let mapName = extractMapName(parsedData.rawData);
-  console.log('[browserReplayParser] Extracted map name:', mapName);
-  
-  // If still no players, extract from filename as last resort
-  if (!players || players.length === 0) {
-    console.log('[browserReplayParser] No player data found, extracting from filename');
+  // If we still don't have players, try to extract from filename
+  if (!players || players.length < 2) {
+    console.log('[browserReplayParser] Extracting players from filename:', fileName);
     const { player1, player2, race1, race2 } = extractPlayersFromFilename(fileName);
-    
     players = [
-      { 
-        name: player1, 
-        race: race1 || 'Protoss', 
-        apm: 150, 
-        team: 0 
+      {
+        name: player1 && player1 !== 'Unknown' ? player1 : 'Spieler 1',
+        race: standardizeRaceName(race1 || 'Protoss'), 
+        apm: 150
       },
-      { 
-        name: player2, 
-        race: race2 || 'Protoss', 
-        apm: 150, 
-        team: 1 
+      {
+        name: player2 && player2 !== 'Unknown' ? player2 : 'Spieler 2', 
+        race: standardizeRaceName(race2 || 'Terran'), 
+        apm: 150
       }
     ];
   }
   
+  // Debug log what we found
+  console.log('[browserReplayParser] Extracted players:', players.map(p => `${p.name} (${p.race})`).join(', '));
+  
   // Ensure we have at least 2 players
   while (players.length < 2) {
-    players.push({ 
-      name: `Player ${players.length + 1}`, 
-      race: 'Protoss', 
-      apm: 150,
-      team: players.length
+    players.push({
+      name: `Spieler ${players.length + 1}`,
+      race: 'Protoss',
+      apm: 150
     });
   }
   
@@ -254,17 +284,17 @@ function transformParsedData(parsedData: ExtendedReplayData, fileName: string): 
   const player1 = players[0];
   const player2 = players[1];
   
-  // Standardize race names
-  const race1 = standardizeRaceName(player1.race);
-  const race2 = standardizeRaceName(player2.race);
+  // Set real player names instead of placeholders
+  const playerName = formatPlayerName(player1.name || '');
+  const opponentName = formatPlayerName(player2.name || '');
   
-  // Format player names
-  playerName = formatPlayerName(player1.name);
-  opponentName = formatPlayerName(player2.name);
-  playerRace = race1;
-  opponentRace = race2;
-  playerApm = player1.apm || 150;
-  opponentApm = player2.apm || 150;
+  // Make sure the race names are standardized
+  const playerRace = standardizeRaceName(player1.race);
+  const opponentRace = standardizeRaceName(player2.race);
+  
+  // Use the APM from the parsed data or defaults
+  const playerApm = player1.apm || 150;
+  const opponentApm = player2.apm || 150;
   
   // Calculate duration in seconds from the parsed data
   let durationFrames = parsedData.rawData.metadata?.frames || 0;
@@ -273,13 +303,34 @@ function transformParsedData(parsedData: ExtendedReplayData, fileName: string): 
   const seconds = durationSeconds % 60;
   const formattedDuration = `${minutes}:${String(seconds).padStart(2, '0')}`;
   
-  // Use the enhanced build order data from our advanced metrics
-  if (parsedData.advancedMetrics && parsedData.advancedMetrics.buildOrderTiming) {
+  // Extract map name using enhanced map extractor
+  let mapName = extractMapName(parsedData.rawData) || 'Unbekannte Karte';
+  
+  // Use the enhanced build order data from advanced metrics
+  let buildOrder = [];
+  if (parsedData.advancedMetrics && 
+      parsedData.advancedMetrics.buildOrderTiming &&
+      parsedData.advancedMetrics.buildOrderTiming.player1 &&
+      parsedData.advancedMetrics.buildOrderTiming.player1.length > 0) {
     buildOrder = parsedData.advancedMetrics.buildOrderTiming.player1.map(item => ({
       time: item.timeFormatted,
       supply: item.supply,
       action: item.name
     }));
+    console.log(`[browserReplayParser] Found ${buildOrder.length} build order items for player 1`);
+  } else {
+    console.log('[browserReplayParser] No build order found in advanced metrics');
+    // Fallback - try to find build order in other locations
+    if (parsedData.rawData.buildOrders && 
+        parsedData.rawData.buildOrders[0] && 
+        Array.isArray(parsedData.rawData.buildOrders[0])) {
+      buildOrder = parsedData.rawData.buildOrders[0].map((item: any) => ({
+        time: formatTime(item.time || 0),
+        supply: item.supply || 0,
+        action: item.name || 'Unknown'
+      }));
+      console.log(`[browserReplayParser] Found ${buildOrder.length} build order items in rawData.buildOrders`);
+    }
   }
   
   // Generate strengths and weaknesses based on the advanced metrics
@@ -298,13 +349,26 @@ function transformParsedData(parsedData: ExtendedReplayData, fileName: string): 
   // Determine result - ensure it's one of the allowed enum values
   let matchResult: 'win' | 'loss' | 'unknown' = 'unknown';
   
+  // Second player build order
+  let opponentBuildOrder = [];
+  if (parsedData.advancedMetrics && 
+      parsedData.advancedMetrics.buildOrderTiming &&
+      parsedData.advancedMetrics.buildOrderTiming.player2 &&
+      parsedData.advancedMetrics.buildOrderTiming.player2.length > 0) {
+    opponentBuildOrder = parsedData.advancedMetrics.buildOrderTiming.player2.map(item => ({
+      time: item.timeFormatted,
+      supply: item.supply,
+      action: item.name
+    }));
+  }
+  
   // Create the transformed data structure
   const transformedData: ParsedReplayData = {
     primaryPlayer: {
       name: playerName,
-      race: race1,
-      apm: player1.apm || 150,
-      eapm: Math.round((player1.apm || 150) * 0.7),
+      race: playerRace,
+      apm: playerApm,
+      eapm: Math.round(playerApm * 0.7),
       buildOrder: buildOrder,
       strengths: strengths,
       weaknesses: weaknesses,
@@ -312,20 +376,16 @@ function transformParsedData(parsedData: ExtendedReplayData, fileName: string): 
     },
     secondaryPlayer: {
       name: opponentName,
-      race: race2,
-      apm: player2.apm || 150,
-      eapm: Math.round((player2.apm || 150) * 0.7),
-      buildOrder: parsedData.advancedMetrics.buildOrderTiming.player2.map(item => ({
-        time: item.timeFormatted,
-        supply: item.supply,
-        action: item.name
-      })),
+      race: opponentRace,
+      apm: opponentApm,
+      eapm: Math.round(opponentApm * 0.7),
+      buildOrder: opponentBuildOrder,
       strengths: opponentStrengths,
       weaknesses: opponentWeaknesses,
       recommendations: opponentRecommendations
     },
     map: mapName,
-    matchup: `${race1.charAt(0)}v${race2.charAt(0)}`,
+    matchup: `${playerRace.charAt(0)}v${opponentRace.charAt(0)}`,
     duration: formattedDuration,
     durationMS: durationSeconds * 1000,
     date: new Date().toISOString(),
@@ -337,13 +397,13 @@ function transformParsedData(parsedData: ExtendedReplayData, fileName: string): 
     // Legacy properties
     playerName,
     opponentName,
-    playerRace: race1,
-    opponentRace: race2,
-    apm: player1.apm || 150,
-    eapm: Math.round((player1.apm || 150) * 0.7),
-    opponentApm: player2.apm || 150,
-    opponentEapm: Math.round((player2.apm || 150) * 0.7),
-    buildOrder: buildOrder,
+    playerRace,
+    opponentRace,
+    apm: playerApm,
+    eapm: Math.round(playerApm * 0.7),
+    opponentApm,
+    opponentEapm: Math.round(opponentApm * 0.7),
+    buildOrder,
     
     trainingPlan
   };
@@ -354,6 +414,16 @@ function transformParsedData(parsedData: ExtendedReplayData, fileName: string): 
   console.log('[browserReplayParser] Build order items:', transformedData.buildOrder.length);
   
   return transformedData;
+}
+
+/**
+ * Format time in frames to a mm:ss format
+ */
+function formatTime(frames: number): string {
+  const seconds = Math.floor(frames / 24); // Assuming 24 frames per second
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
 }
 
 /**
@@ -698,4 +768,3 @@ function generateTrainingPlan(data: ExtendedReplayData, playerIndex: number): Ar
   
   return trainingPlan;
 }
-
