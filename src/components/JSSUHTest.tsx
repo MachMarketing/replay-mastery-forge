@@ -3,7 +3,6 @@ import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertCircle, CheckCircle } from 'lucide-react';
-import { ReplayParser } from 'screparsed';
 
 const ScreparsedTest: React.FC = () => {
   const [status, setStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
@@ -35,24 +34,33 @@ const ScreparsedTest: React.FC = () => {
           isFunction: typeof mod.ReplayParser === 'function',
           keys: Object.keys(mod),
           defaultExport: mod.default ? 'Present' : 'Missing',
-          moduleDetails: moduleDetails
+          moduleDetails: moduleDetails,
+          hasParse: typeof mod.parse === 'function'
         });
         
-        // Instead of examining prototype methods, check for the constructor
-        if (mod.ReplayParser) {
-          try {
-            const parser = new mod.ReplayParser();
-            console.log('Parser instance created:', parser);
-            
-            // Get instance methods
-            const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(parser))
-              .filter(name => name !== 'constructor');
-            
-            setParserMethodsInfo(methods);
-          } catch (e) {
-            console.error('Error creating parser instance:', e);
-            setParserMethodsInfo(['Error creating parser instance: ' + String(e)]);
+        // Check for available parse methods instead of trying to instantiate
+        try {
+          // Check available methods in the module itself
+          const methods = [];
+          
+          // Look for parse method on the module
+          if (typeof mod.parse === 'function') {
+            methods.push('module.parse()');
           }
+          
+          // Check other exported functions that might be parsers
+          Object.entries(mod).forEach(([key, value]) => {
+            if (typeof value === 'function' && 
+                (key.toLowerCase().includes('parse') || 
+                 value.name?.toLowerCase().includes('parse'))) {
+              methods.push(`${key}()`);
+            }
+          });
+          
+          setParserMethodsInfo(methods.length > 0 ? methods : ['No parsing methods found']);
+        } catch (e) {
+          console.error('Error analyzing parser methods:', e);
+          setParserMethodsInfo(['Error analyzing parser methods: ' + String(e)]);
         }
       } catch (error) {
         console.error('Error checking parser:', error);
@@ -69,13 +77,12 @@ const ScreparsedTest: React.FC = () => {
   const runTest = async () => {
     setStatus('testing');
     try {
-      // Create a parser instance - this is the proper way to use ReplayParser
-      const parser = new ReplayParser();
-      console.log('Created parser instance for testing');
+      // Import the module dynamically
+      const mod = await import('screparsed');
       
-      // Check if the instance has a parse method
-      if (typeof parser.parse !== 'function') {
-        throw new Error('Parser instance is missing required parse method');
+      // Check if the module has a parse function we can use
+      if (typeof mod.parse !== 'function') {
+        throw new Error('No parse function available in screparsed module');
       }
       
       // Create a minimal test data
@@ -84,9 +91,9 @@ const ScreparsedTest: React.FC = () => {
         0x20, 0x72, 0x65, 0x70, 0x6c, 0x61, 0x79, 0x20, 0x75, 0x62, 0x64
       ]);
       
-      // Try parsing the test data using the instance method
+      // Try parsing the test data using the module's parse function
       try {
-        await parser.parse(testData);
+        await mod.parse(testData);
         setStatus('success');
         setResult('Screparsed parser test successful! The module is working correctly.');
       } catch (err) {
@@ -110,6 +117,7 @@ const ScreparsedTest: React.FC = () => {
           <p>Parser module type: {parserInfo.type}</p>
           <p>Has ReplayParser: {parserInfo.hasReplayParser ? 'Yes' : 'No'}</p>
           <p>Is function: {parserInfo.isFunction ? 'Yes' : 'No'}</p>
+          <p>Has parse function: {parserInfo.hasParse ? 'Yes' : 'No'}</p>
           <p>Available keys: {parserInfo.keys?.length > 0 ? parserInfo.keys.join(', ') : 'None'}</p>
           <p>Default export: {parserInfo.defaultExport}</p>
           

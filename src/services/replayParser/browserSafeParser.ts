@@ -65,26 +65,44 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
     };
     
     let result = null;
-    console.log('[browserSafeParser] Using ReplayParser from screparsed');
+    console.log('[browserSafeParser] Using parser from screparsed');
     
     try {
-      // Create a ReplayParser instance and use its instance methods
-      // This fixes the error with trying to use a static parse method
-      const parser = new ReplayParser();
-      console.log('[browserSafeParser] Created ReplayParser instance');
-      
-      // Use the parse method on the instance
-      result = await parser.parse(data);
-      console.log('[browserSafeParser] Successfully parsed using ReplayParser instance');
+      // Access the parse function from screparsed module directly
+      // We're avoiding direct ReplayParser instantiation since its constructor is private
+      if (parserModule && typeof parserModule.parse === 'function') {
+        // Use the module's parse function directly if available
+        result = await parserModule.parse(data);
+        console.log('[browserSafeParser] Successfully parsed using module parse function');
+      } else {
+        // If direct parse is not available, try using the module's exported method
+        console.log('[browserSafeParser] Trying to find parser method in exports');
+        
+        // Try to find a parsing method in the module's exports
+        const parseMethod = Object.values(parserModule).find(
+          (exp: any) => typeof exp === 'function' && exp.name?.toLowerCase?.().includes('parse')
+        );
+        
+        if (parseMethod) {
+          console.log('[browserSafeParser] Found parse method in exports');
+          result = await parseMethod(data);
+          console.log('[browserSafeParser] Successfully parsed using exported parse method');
+        } else {
+          throw new Error('No suitable parsing method found in the screparsed module');
+        }
+      }
     } catch (err) {
-      console.error('[browserSafeParser] Error using primary ReplayParser approach:', err);
+      console.error('[browserSafeParser] Error using primary parsing approach:', err);
       
       // Fallback: Try using ArrayBuffer if available
       try {
         console.log('[browserSafeParser] Trying ArrayBuffer fallback');
-        const parser = new ReplayParser();
-        result = await parser.parse(new Uint8Array(data.buffer));
-        console.log('[browserSafeParser] Successfully parsed using ArrayBuffer fallback');
+        if (parserModule && typeof parserModule.parse === 'function') {
+          result = await parserModule.parse(new Uint8Array(data.buffer));
+          console.log('[browserSafeParser] Successfully parsed using ArrayBuffer fallback');
+        } else {
+          throw new Error('Parse method not available for fallback');
+        }
       } catch (err2) {
         console.error('[browserSafeParser] Fallback parsing error:', err2);
         throw err2; // Re-throw the error if all methods fail
