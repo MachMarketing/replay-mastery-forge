@@ -1,56 +1,53 @@
+import React, { useState } from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { ThemeProvider } from "@/components/theme-provider"
+import { Toaster } from "@/components/ui/toaster"
+import Index from './pages/IndexPage';
+import LoginPage from './pages/LoginPage';
+import SignupPage from './pages/SignupPage';
+import PricingPage from './pages/PricingPage';
+import FeaturesPage from './pages/FeaturesPage';
+import UploadPage from './pages/UploadPage';
+import ReplaysPage from './pages/ReplaysPage';
+import NotFound from './pages/NotFoundPage';
+import ParserTest from './pages/ParserTestPage';
+import JSSUHTest from './components/JSSUHTest';
+import ParserDebug from './pages/ParserDebug';
+import { AuthProvider, ProtectedRoute } from './context/AuthContext';
+import { QueryClient, QueryClientProvider } from 'react-query';
 
-import React, { Suspense } from 'react';
-import { Routes, Route } from 'react-router-dom';
-import ProtectedRoute from './components/ProtectedRoute';
-import Index from '@/pages/Index';
-import FeaturesPage from '@/pages/FeaturesPage';
-import PricingPage from '@/pages/PricingPage';
-import LoginPage from '@/pages/LoginPage';
-import SignupPage from '@/pages/SignupPage';
-import ReplaysPage from '@/pages/ReplaysPage';
-import UploadPage from '@/pages/UploadPage';
-import NotFound from '@/pages/NotFound';
-import ParserTestPage from '@/pages/ParserTestPage';
-import ParserTest from '@/pages/ParserTest';
-import JSSUHTestPage from '@/pages/JSSUHTest';
-import './App.css';
-
-function LoadingFallback() {
-  return (
-    <div className="flex items-center justify-center h-screen w-screen bg-background">
-      <div className="text-center">
-        <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-        <p className="text-foreground">Loading application...</p>
-      </div>
-    </div>
-  );
-}
+const queryClient = new QueryClient();
 
 function App() {
-  console.log("🚀 App rendering started");
-  
+  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+
   return (
-    <Suspense fallback={<LoadingFallback />}>
-      <Routes>
-        <Route path="/" element={<Index />} />
-        <Route path="/features" element={<FeaturesPage />} />
-        <Route path="/pricing" element={<PricingPage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/signup" element={<SignupPage />} />
-        <Route path="/parser-test" element={<ParserTestPage />} />
-        <Route path="/parser-debug" element={<ParserTest />} />
-        <Route path="/jssuh-test" element={<JSSUHTestPage />} />
-        
-        {/* Upload route is public to allow users to test without login */}
-        <Route path="/upload" element={<UploadPage />} />
-        
-        {/* Protected Routes */}
-        <Route path="/replays" element={<ProtectedRoute element={<ReplaysPage />} />} />
-        
-        {/* 404 Page */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </Suspense>
+    <Router>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider defaultTheme="light" storageKey="ui-theme">
+          <AuthProvider>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/signup" element={<SignupPage />} />
+              <Route path="/pricing" element={<PricingPage />} />
+              <Route path="/features" element={<FeaturesPage />} />
+              <Route path="/parser-test" element={<ParserTest />} />
+              <Route path="/jssuh-test" element={<JSSUHTest />} />
+              <Route path="/parser-debug" element={<ParserDebug />} />
+              
+              <Route element={<ProtectedRoute />}>
+                <Route path="/upload" element={<UploadPage />} />
+                <Route path="/replays" element={<ReplaysPage />} />
+              </Route>
+              
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </AuthProvider>
+          <Toaster />
+        </ThemeProvider>
+      </QueryClientProvider>
+    </Router>
   );
 }
 

@@ -1,8 +1,9 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ParsedReplayData, ParsedReplayResult } from '@/services/replayParser/types';
 import { useToast } from '@/hooks/use-toast';
-import { parseReplayInBrowser } from '@/services/browserReplayParser';
 import { hasBrowserWasmIssues } from '@/utils/browserDetection';
+import { parseReplayWithScreparsed } from '@/services/screparsed-parser';
 
 interface ReplayParserResult {
   parseReplay: (file: File) => Promise<ParsedReplayResult | null>;
@@ -112,10 +113,10 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error('Nur StarCraft Replay Dateien (.rep) sind erlaubt');
       }
       
-      // Parse using our unified approach with screparsed
-      console.log('[useReplayParser] Calling parseReplayInBrowser with file:', file.name);
+      // Parse directly using screparsed
+      console.log('[useReplayParser] Calling parseReplayWithScreparsed with file:', file.name);
       
-      const parsedData: ParsedReplayData = await parseReplayInBrowser(file);
+      const parsedData: ParsedReplayData = await parseReplayWithScreparsed(file);
       
       // Enhanced debugging - log the full structure
       console.log('[useReplayParser] Raw parsed data structure:', 
@@ -141,14 +142,6 @@ export function useReplayParser(): ReplayParserResult {
         console.warn('[useReplayParser] No build order items found in parsed data');
       }
       
-      // Special case for known player "NumberOne" - ensure it's always Protoss
-      if (parsedData.primaryPlayer && 
-          parsedData.primaryPlayer.name && 
-          parsedData.primaryPlayer.name.toLowerCase().includes('numberone')) {
-        console.log('[useReplayParser] Special case: Setting NumberOne race to Protoss');
-        parsedData.primaryPlayer.race = 'Protoss';
-      }
-      
       // Log the parsed data player and race information
       console.log('[useReplayParser] Parser returned player data:', {
         player1: `${parsedData.primaryPlayer.name} (${parsedData.primaryPlayer.race})`,
@@ -158,24 +151,7 @@ export function useReplayParser(): ReplayParserResult {
       });
       
       // Ensure the result has the required fields for the view
-      const result: ParsedReplayResult = {
-        ...parsedData,
-        trainingPlan: parsedData.trainingPlan || [
-          { day: 1, focus: "Macro Management", drill: "Constant worker production" },
-          { day: 2, focus: "Micro Control", drill: "Unit positioning practice" },
-          { day: 3, focus: "Build Order", drill: "Timing attack execution" }
-        ],
-        // Ensure legacy properties are populated for backward compatibility
-        playerName: parsedData.playerName || parsedData.primaryPlayer.name,
-        opponentName: parsedData.opponentName || parsedData.secondaryPlayer.name,
-        playerRace: parsedData.playerRace || parsedData.primaryPlayer.race,
-        opponentRace: parsedData.opponentRace || parsedData.secondaryPlayer.race,
-        apm: parsedData.apm || parsedData.primaryPlayer.apm,
-        eapm: parsedData.eapm || parsedData.primaryPlayer.eapm,
-        opponentApm: parsedData.opponentApm || parsedData.secondaryPlayer.apm,
-        opponentEapm: parsedData.opponentEapm || parsedData.secondaryPlayer.eapm,
-        buildOrder: parsedData.buildOrder || parsedData.primaryPlayer.buildOrder || []
-      };
+      const result: ParsedReplayResult = parsedData;
       
       // Final progress update
       setProgress(100);

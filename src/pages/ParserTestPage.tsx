@@ -1,9 +1,11 @@
+
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import axios, { AxiosError } from 'axios';
 import { useDropzone } from 'react-dropzone';
 import { useReplayParser } from '@/hooks/useReplayParser';
 import { AnalyzedReplayResult } from '@/services/replayParserService';
+import { ParsedReplayData } from '@/services/replayParser/types';
 import { uploadReplayFile } from '@/services/uploadService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -13,12 +15,13 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import AnalysisResult from '@/components/AnalysisResult';
+import { parseReplayWithScreparsed } from '@/services/screparsed-parser';
 
 const ParserTestPage: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [parsingStatus, setParsingStatus] = useState<'idle' | 'uploading' | 'parsing' | 'complete' | 'error'>('idle');
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [parsedReplayData, setParsedReplayData] = useState<AnalyzedReplayResult | null>(null);
+  const [parsedReplayData, setParsedReplayData] = useState<ParsedReplayData | null>(null);
   const [parsedOutput, setParsedOutput] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const { parseReplay } = useReplayParser();
@@ -60,7 +63,11 @@ const ParserTestPage: React.FC = () => {
         
         // Now parse the replay
         setParsingStatus('parsing');
-        const result = await parseReplay(selectedFile);
+        
+        // Use screparsed parser directly
+        console.log('Parsing with screparsed...');
+        const result = await parseReplayWithScreparsed(selectedFile);
+        console.log('Parsing successful:', result);
         
         if (!result) {
           throw new Error("Failed to parse replay - no result returned");
@@ -148,7 +155,7 @@ const ParserTestPage: React.FC = () => {
     <>
       <Navbar />
       <div className="container mx-auto px-4 py-8 mt-16">
-        <h1 className="text-2xl font-bold mb-6">Replay Analyzer</h1>
+        <h1 className="text-2xl font-bold mb-6">Replay Analyzer (Direct screparsed)</h1>
         
         {parsedReplayData ? (
           <div className="mb-8">
@@ -160,7 +167,7 @@ const ParserTestPage: React.FC = () => {
             </div>
             <AnalysisResult data={parsedReplayData as any} isPremium={true} />
             
-            {/* Debug JSON Output (hidden by default, can be toggled) */}
+            {/* Debug JSON Output */}
             <div className="mt-8">
               <details className="border rounded-md">
                 <summary className="p-2 font-medium cursor-pointer">
@@ -245,7 +252,7 @@ const ParserTestPage: React.FC = () => {
           </div>
         )}
         
-        {/* Debug Console - Only visible in development mode */}
+        {/* Debug Console */}
         {process.env.NODE_ENV === 'development' && !parsedReplayData && (
           <Card className="mt-8">
             <CardHeader>
@@ -254,6 +261,7 @@ const ParserTestPage: React.FC = () => {
             <CardContent>
               <div className="bg-black text-green-400 font-mono p-4 rounded-md h-64 overflow-auto">
                 <p className="text-sm text-gray-500">No logs yet. Parse a file to see debug output.</p>
+                <p className="text-sm text-green-400 mt-2">Using screparsed direct parsing method</p>
               </div>
             </CardContent>
           </Card>
