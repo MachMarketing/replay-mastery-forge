@@ -83,6 +83,7 @@ export async function initBrowserSafeParser(): Promise<void> {
                 
                 try {
                   // Try with single argument as fallback
+                  // Assume constructor expects data not GameInfo
                   parsedReplay = new ParsedReplayClass(data);
                   console.log('[browserSafeParser] Created ParsedReplay with single argument');
                 } catch (singleArgError) {
@@ -147,44 +148,55 @@ export async function initBrowserSafeParser(): Promise<void> {
               // Different approach to avoid constructor access issues
               console.log('[browserSafeParser] Trying static methods on ReplayParser');
               
-              // Check for static methods first
-              if (typeof ReplayParserClass.parse === 'function') {
-                console.log('[browserSafeParser] Using static ReplayParser.parse method');
-                return ReplayParserClass.parse(data);
-              }
-              
-              if (typeof ReplayParserClass.fromArrayBuffer === 'function') {
-                console.log('[browserSafeParser] Using static ReplayParser.fromArrayBuffer method');
-                const parser = ReplayParserClass.fromArrayBuffer(data.buffer);
+              // Check for instance methods (non-static)
+              try {
+                // Try to instantiate ReplayParser first
+                const parser = new ReplayParserClass();
+                
                 if (typeof parser.parse === 'function') {
-                  return parser.parse();
+                  console.log('[browserSafeParser] Using instance parse method');
+                  return parser.parse(data);
                 }
+                
+                if (typeof parser.fromArrayBuffer === 'function') {
+                  console.log('[browserSafeParser] Using instance fromArrayBuffer method');
+                  const result = parser.fromArrayBuffer(data.buffer);
+                  if (typeof result.parse === 'function') {
+                    return result.parse();
+                  }
+                  return result;
+                }
+                
+                if (typeof parser.fromUint8Array === 'function') {
+                  console.log('[browserSafeParser] Using instance fromUint8Array method');
+                  const result = parser.fromUint8Array(data);
+                  if (typeof result.parse === 'function') {
+                    return result.parse();
+                  }
+                  return result;
+                }
+                
+              } catch (instanceError) {
+                console.warn('[browserSafeParser] Instance methods failed:', instanceError);
               }
               
-              if (typeof ReplayParserClass.fromUint8Array === 'function') {
-                console.log('[browserSafeParser] Using static ReplayParser.fromUint8Array method');
-                const parser = ReplayParserClass.fromUint8Array(data);
-                if (typeof parser.parse === 'function') {
-                  return parser.parse();
-                }
-              }
+              // If no instance methods worked, try a different approach
+              console.log('[browserSafeParser] No instance methods available, attempting alternative approaches');
               
-              // If no static methods worked, try a different approach
-              console.log('[browserSafeParser] No static methods available, attempting alternative approaches');
-              
-              // Create a factory function if available
-              if (typeof screparsed.createParser === 'function') {
+              // Check for factory function on the module
+              if (typeof (screparsed as any).createParser === 'function') {
                 console.log('[browserSafeParser] Using createParser factory function');
-                const parser = screparsed.createParser(data);
+                const parser = (screparsed as any).createParser(data);
                 if (typeof parser.parse === 'function') {
                   return parser.parse();
                 }
+                return parser;
               }
               
               // Last resort - try direct function call
-              if (typeof screparsed.parseReplay === 'function') {
+              if (typeof (screparsed as any).parseReplay === 'function') {
                 console.log('[browserSafeParser] Using direct parseReplay function');
-                return screparsed.parseReplay(data);
+                return (screparsed as any).parseReplay(data);
               }
               
               throw new Error('No suitable parsing method found in ReplayParser');
