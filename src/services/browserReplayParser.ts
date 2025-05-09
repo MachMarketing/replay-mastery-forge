@@ -217,7 +217,6 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
   // Ensure we have at least 2 players
   while (players.length < 2) {
     players.push({ 
-      id: players.length, 
       name: `Player ${players.length + 1}`, 
       race: 'Protoss', 
       apm: 150,
@@ -293,3 +292,4 @@ function transformParsedData(parsedData: any, fileName: string): ParsedReplayDat
   
   return transformedData;
 }
+
