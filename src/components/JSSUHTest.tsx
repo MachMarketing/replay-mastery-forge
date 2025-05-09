@@ -9,8 +9,8 @@ interface ScreparsedModule {
   default?: any;
   ReplayParser?: any;
   ParsedReplay?: any;
-  parse?: (data: Uint8Array) => Promise<any> | any;
-  [key: string]: any;
+  // Note: Don't explicitly define parse as it may not exist directly on the module
+  [key: string]: any; // Allow other properties to be accessed dynamically
 }
 
 const ScreparsedTest: React.FC = () => {
@@ -25,7 +25,7 @@ const ScreparsedTest: React.FC = () => {
       try {
         console.log('Attempting to import screparsed module');
         // Try to import dynamically
-        const mod = await import('screparsed');
+        const mod = await import('screparsed') as ScreparsedModule;
         console.log('Successfully imported screparsed module', Object.keys(mod));
         
         // Get the detailed structure of the module
@@ -156,10 +156,17 @@ const ScreparsedTest: React.FC = () => {
       
       console.log('Available module keys:', Object.keys(mod));
       
-      // Check for direct parse method on the module
-      if (typeof mod.parse === 'function') {
+      // IMPORTANT: Don't reference mod.parse directly since TypeScript doesn't recognize it
+      // Instead, check if it exists at runtime
+      
+      // Check if the module has a parse function (dynamically)
+      const hasParse = 'parse' in mod && typeof mod['parse'] === 'function';
+      if (hasParse) {
         console.log('Found top-level parse function');
-        parseFn = mod.parse;
+        parseFn = (data: Uint8Array) => {
+          console.log('Calling top-level parse function');
+          return (mod as any)['parse'](data);
+        };
       }
       
       // Check for different parsing methods
