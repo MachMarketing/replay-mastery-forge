@@ -77,7 +77,7 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
                         (exp.toString().includes('parse') || 
                          (typeof exp === 'function' && 
                           exp.name && 
-                          exp.name.toString().toLowerCase().includes('parse')))
+                          String(exp.name).toString().toLowerCase().includes('parse')))
         );
         
         if (parseMethod) {

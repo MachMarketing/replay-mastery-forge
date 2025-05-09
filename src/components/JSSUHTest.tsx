@@ -158,6 +158,7 @@ const ScreparsedTest: React.FC = () => {
       
       if (parseFn) {
         try {
+          // Cast to unknown first, then to Function to avoid TypeScript error
           result = await parseFn(testData);
           setStatus('success');
           setResult('Screparsed parser test successful! The module is working correctly.');
