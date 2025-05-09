@@ -64,197 +64,96 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
     };
     
     let result = null;
-    console.log('[browserSafeParser] Using parser from screparsed');
     
     try {
-      // Check for different parsing approaches, starting with ReplayParser
-      if (parserModule.ReplayParser) {
-        console.log('[browserSafeParser] Found ReplayParser in module');
+      // According to the screparsed documentation, the main API is parseReplay
+      // which is available on the default export
+      console.log('[browserSafeParser] Looking for parse function in module:', Object.keys(parserModule));
+      
+      // Check if parseReplay is available directly on the module
+      if (typeof parserModule.parseReplay === 'function') {
+        console.log('[browserSafeParser] Using parserModule.parseReplay function');
+        result = await parserModule.parseReplay(data);
+      }
+      // Check if the default export is the parse function
+      else if (typeof parserModule.default === 'function') {
+        console.log('[browserSafeParser] Using parserModule.default function');
+        result = await parserModule.default(data);
+      }
+      // Check if default.parseReplay exists
+      else if (parserModule.default && typeof parserModule.default.parseReplay === 'function') {
+        console.log('[browserSafeParser] Using parserModule.default.parseReplay function');
+        result = await parserModule.default.parseReplay(data);
+      }
+      // Check if there's a parse method on default
+      else if (parserModule.default && typeof parserModule.default.parse === 'function') {
+        console.log('[browserSafeParser] Using parserModule.default.parse function');
+        result = await parserModule.default.parse(data);
+      }
+      // Try with ParsedReplay (if it's a class constructor)
+      else if (parserModule.ParsedReplay) {
+        console.log('[browserSafeParser] Trying with ParsedReplay constructor');
+        try {
+          result = new parserModule.ParsedReplay(data);
+        } catch (e) {
+          console.log('[browserSafeParser] ParsedReplay constructor failed:', e);
+          
+          // Look for static methods
+          const methods = Object.getOwnPropertyNames(parserModule.ParsedReplay);
+          console.log('[browserSafeParser] Available ParsedReplay methods:', methods);
+          
+          // Try with fromBuffer, fromUint8Array, or other likely method names
+          for (const methodName of ['fromBuffer', 'fromUint8Array', 'parse', 'fromArray', 'fromData']) {
+            if (typeof parserModule.ParsedReplay[methodName] === 'function') {
+              try {
+                console.log(`[browserSafeParser] Trying ParsedReplay.${methodName}`);
+                result = await parserModule.ParsedReplay[methodName](data);
+                if (result) {
+                  console.log(`[browserSafeParser] Successfully parsed with ParsedReplay.${methodName}`);
+                  break;
+                }
+              } catch (err) {
+                console.log(`[browserSafeParser] ParsedReplay.${methodName} failed:`, err);
+              }
+            }
+          }
+        }
+      }
+      
+      // If nothing worked so far, try to find any function that might work
+      if (!result) {
+        console.log('[browserSafeParser] Trying to find any parse function in the module');
         
-        // Check for parsing methods that might work
-        const parseMethod = Object.values(parserModule).find(
-          (exp: any) => typeof exp === 'function' && 
-                        (exp.toString().includes('parse') || 
-                         (typeof exp === 'function' && 
-                          exp.name && 
-                          String(exp.name).toString().toLowerCase().includes('parse')))
+        // Log all keys to help with debugging
+        Object.keys(parserModule).forEach(key => {
+          console.log(`[browserSafeParser] Module key: ${key}, type: ${typeof parserModule[key]}`);
+          
+          // For objects, log their properties too
+          if (typeof parserModule[key] === 'object' && parserModule[key] !== null) {
+            console.log(`[browserSafeParser] Properties of ${key}:`, Object.keys(parserModule[key]));
+          }
+        });
+        
+        // Try any function that looks like a parser
+        const parseFunction = Object.values(parserModule).find((value: any) => 
+          typeof value === 'function' && 
+          (String(value).includes('parse') || 
+           (value.name && value.name.toLowerCase().includes('parse')))
         );
         
-        if (parseMethod) {
-          console.log('[browserSafeParser] Using found parse method');
-          try {
-            // Type assertion to ensure TypeScript knows this is callable
-            const parseFunction = parseMethod as Function;
-            result = await parseFunction(data);
-          } catch (e) {
-            // Fix: Check if error is about needing the "new" keyword
-            console.log('[browserSafeParser] Error with parse method, might need "new":', e);
-            if (e instanceof TypeError && e.message.includes('cannot be invoked without \'new\'')) {
-              console.log('[browserSafeParser] Trying with "new" operator');
-              try {
-                // Use the previously defined parseFunction variable
-                result = await new parseFunction(data);
-              } catch (newError) {
-                console.error('[browserSafeParser] Error with new operator too:', newError);
-                throw newError;
-              }
-            } else {
-              throw e;
-            }
-          }
-        } else if (parserModule.default && typeof parserModule.default === 'function') {
-          console.log('[browserSafeParser] Using default export as function');
-          const defaultFunction = parserModule.default as Function;
-          try {
-            result = await defaultFunction(data);
-          } catch (e) {
-            console.log('[browserSafeParser] Error with default function, might need "new":', e);
-            // Try using "new" if it's a constructor
-            if (e instanceof TypeError && e.message.includes('cannot be invoked without \'new\'')) {
-              console.log('[browserSafeParser] Trying default with "new" operator');
-              result = await new defaultFunction(data);
-            } else {
-              throw e;
-            }
-          }
-        }
-      } else {
-        console.log('[browserSafeParser] ReplayParser not available as expected');
-      }
-      
-      // If we still don't have a result, try with ParsedReplay if available
-      if (!result && parserModule.ParsedReplay) {
-        console.log('[browserSafeParser] Trying with ParsedReplay');
-        
-        // Look for methods on ParsedReplay that might help
-        const methods = Object.getOwnPropertyNames(parserModule.ParsedReplay);
-        console.log('[browserSafeParser] Available ParsedReplay methods:', methods);
-        
-        // Try any method that sounds like it could create from binary data
-        for (const methodName of methods) {
-          if (/from|parse|load|create/i.test(methodName) && 
-              typeof parserModule.ParsedReplay[methodName] === 'function') {
-            try {
-              console.log(`[browserSafeParser] Trying ParsedReplay.${methodName}`);
-              // Store the method in a variable before using it
-              const methodFunction = parserModule.ParsedReplay[methodName] as Function;
-              result = await methodFunction(data.buffer || data);
-              if (result) break;
-            } catch (e) {
-              console.log(`[browserSafeParser] Method ${methodName} failed:`, e);
-              
-              // Try using as constructor if applicable
-              if (e instanceof TypeError && e.message.includes('cannot be invoked without \'new\'')) {
-                try {
-                  console.log(`[browserSafeParser] Trying ParsedReplay.${methodName} with "new" operator`);
-                  // Store the method in a variable before using it with new
-                  const constructorFunction = parserModule.ParsedReplay[methodName] as Function;
-                  result = await new constructorFunction(data.buffer || data);
-                  if (result) break;
-                } catch (ne) {
-                  console.log(`[browserSafeParser] Constructor ${methodName} failed:`, ne);
-                }
-              }
-              // Continue to next method
-            }
-          }
-        }
-        
-        // Try instantiating ParsedReplay directly as a last resort
-        if (!result) {
-          try {
-            console.log('[browserSafeParser] Trying to instantiate ParsedReplay directly');
-            result = new parserModule.ParsedReplay(data);
-          } catch (e) {
-            console.log('[browserSafeParser] Direct instantiation failed:', e);
-          }
+        if (parseFunction) {
+          console.log('[browserSafeParser] Found potential parse function:', parseFunction.name || 'anonymous');
+          result = await (parseFunction as Function)(data);
         }
       }
       
-      // Last fallback - try default export directly
-      if (!result && parserModule.default) {
-        console.log('[browserSafeParser] Trying default export');
-        if (typeof parserModule.default === 'function') {
-          try {
-            const defaultFunction = parserModule.default as Function;
-            result = await defaultFunction(data);
-          } catch (e) {
-            // Try using "new" if it's a constructor
-            if (e instanceof TypeError && e.message.includes('cannot be invoked without \'new\'')) {
-              console.log('[browserSafeParser] Trying default with "new" operator');
-              const defaultConstructor = parserModule.default as Function;
-              result = await new defaultConstructor(data);
-            } else {
-              throw e;
-            }
-          }
-        } else if (parserModule.default.parse && typeof parserModule.default.parse === 'function') {
-          try {
-            const parseFunction = parserModule.default.parse as Function;
-            result = await parseFunction(data);
-          } catch (e) {
-            // Try using "new" if it's a constructor
-            if (e instanceof TypeError && e.message.includes('cannot be invoked without \'new\'')) {
-              console.log('[browserSafeParser] Trying default.parse with "new" operator');
-              const parseConstructor = parserModule.default.parse as Function;
-              result = await new parseConstructor(data);
-            } else {
-              throw e;
-            }
-          }
-        }
+      // If still no result, throw error
+      if (!result) {
+        throw new Error('Could not find a working parse function in screparsed module');
       }
     } catch (err) {
-      console.error('[browserSafeParser] Error during primary parsing:', err);
-      
-      // Final fallback: try any function in the module that might be able to parse
-      try {
-        console.log('[browserSafeParser] Trying module-level fallbacks');
-        const moduleKeys = Object.keys(parserModule);
-        for (const key of moduleKeys) {
-          // Skip keys we've already tried
-          if (['ReplayParser', 'ParsedReplay', 'default'].includes(key)) {
-            continue;
-          }
-          
-          if (typeof parserModule[key] === 'function') {
-            try {
-              console.log(`[browserSafeParser] Trying ${key} function`);
-              // Store the method in a variable before using it
-              const keyFunction = parserModule[key] as Function;
-              result = await keyFunction(data);
-              if (result) {
-                console.log(`[browserSafeParser] Successfully parsed using ${key}`);
-                break;
-              }
-            } catch (e) {
-              // Try using "new" if it's a constructor
-              if (e instanceof TypeError && e.message.includes('cannot be invoked without \'new\'')) {
-                console.log(`[browserSafeParser] Trying ${key} with "new" operator`);
-                try {
-                  // Store the method in a variable before using it with new
-                  const keyConstructor = parserModule[key] as Function;
-                  result = await new keyConstructor(data);
-                  if (result) {
-                    console.log(`[browserSafeParser] Successfully parsed using new ${key}`);
-                    break;
-                  }
-                } catch (ne) {
-                  // Continue to next function
-                }
-              }
-              // Continue to next function
-            }
-          }
-        }
-        
-        if (!result) {
-          throw new Error('No suitable parsing method found in the module');
-        }
-      } catch (err2) {
-        console.error('[browserSafeParser] All parsing attempts failed:', err2);
-        throw err2;
-      }
+      console.error('[browserSafeParser] Error during parsing:', err);
+      throw err;
     }
     
     // Restore original error handler
@@ -268,7 +167,11 @@ export async function parseReplayWithBrowserSafeParser(data: Uint8Array): Promis
       throw new Error('Failed to parse replay using screparsed');
     }
     
-    console.log('[browserSafeParser] Parsing completed successfully');
+    console.log('[browserSafeParser] Parsing completed successfully, result type:', typeof result);
+    if (typeof result === 'object') {
+      console.log('[browserSafeParser] Result keys:', Object.keys(result));
+    }
+    
     return result;
   } catch (parseError) {
     console.error('[browserSafeParser] Error parsing replay:', parseError);
