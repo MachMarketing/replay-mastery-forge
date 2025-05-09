@@ -270,7 +270,14 @@ export async function initBrowserSafeParser(): Promise<void> {
                       } catch (callError) {
                         console.error('[browserSafeParser] Error calling ReplayParser as function:', callError);
                         // If calling as function fails, try one last option - call with optional arguments
-                        parser = Function.prototype.call.call(classAny, undefined, data);
+                        try {
+                          parser = Function.prototype.call.call(classAny, undefined, data);
+                        } catch (callError2) {
+                          console.error('[browserSafeParser] Error using Function.prototype.call:', callError2);
+                          // One final attempt - try invoking without arguments
+                          const tempObj = {};
+                          parser = classAny.call(tempObj);
+                        }
                       }
                     } else {
                       throw new Error('ReplayParser cannot be instantiated or called');
