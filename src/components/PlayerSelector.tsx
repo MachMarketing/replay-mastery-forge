@@ -5,12 +5,12 @@ import { Badge } from '@/components/ui/badge';
 import { Check, Gamepad2 } from 'lucide-react';
 
 interface PlayerSelectorProps {
-  primaryPlayer: {
+  player1: {
     name: string;
     race: string;
     apm: number;
   };
-  secondaryPlayer: {
+  player2: {
     name: string;
     race: string;
     apm: number;
@@ -20,8 +20,8 @@ interface PlayerSelectorProps {
 }
 
 const PlayerSelector: React.FC<PlayerSelectorProps> = ({
-  primaryPlayer,
-  secondaryPlayer,
+  player1,
+  player2,
   selectedPlayerIndex,
   onPlayerSelect
 }) => {
@@ -67,7 +67,7 @@ const PlayerSelector: React.FC<PlayerSelectorProps> = ({
           variant="ghost"
           className={`group relative h-auto py-3 px-4 rounded-none overflow-hidden transition-all duration-300
             ${selectedPlayerIndex === 0 ? 
-              `bg-gradient-to-b from-gray-900/95 to-black/95 border-b-2 border-b-blue-500/60 ${getRaceGlowColor(primaryPlayer.race, true)}` : 
+              `bg-gradient-to-b from-gray-900/95 to-black/95 border-b-2 border-b-blue-500/60 ${getRaceGlowColor(player1.race, true)}` : 
               "bg-black/60 hover:bg-black/80"}`}
           onClick={handleSelectPlayer(0)}
           type="button"
@@ -91,14 +91,14 @@ const PlayerSelector: React.FC<PlayerSelectorProps> = ({
             {/* Race badge */}
             <Badge 
               variant="outline" 
-              className={`${getRaceColor(primaryPlayer.race)} border mb-1.5 uppercase bg-black/50 text-xs px-1.5 py-0.5`}
+              className={`${getRaceColor(player1.race)} border mb-1.5 uppercase bg-black/50 text-xs px-1.5 py-0.5`}
             >
-              {primaryPlayer.race}
+              {player1.race}
             </Badge>
             
             {/* Player name with race-specific color */}
-            <div className={`font-bold sc-terminal-text text-xl ${selectedPlayerIndex === 0 ? getRaceColor(primaryPlayer.race).split(' ')[0] : 'text-gray-400'}`}>
-              {primaryPlayer.name}
+            <div className={`font-bold sc-terminal-text text-xl ${selectedPlayerIndex === 0 ? getRaceColor(player1.race).split(' ')[0] : 'text-gray-400'}`}>
+              {player1.name}
             </div>
             
             {/* Status indicator */}
@@ -122,7 +122,7 @@ const PlayerSelector: React.FC<PlayerSelectorProps> = ({
           variant="ghost"
           className={`group relative h-auto py-3 px-4 rounded-none overflow-hidden transition-all duration-300
             ${selectedPlayerIndex === 1 ? 
-              `bg-gradient-to-b from-gray-900/95 to-black/95 border-b-2 border-b-blue-500/60 ${getRaceGlowColor(secondaryPlayer.race, true)}` : 
+              `bg-gradient-to-b from-gray-900/95 to-black/95 border-b-2 border-b-blue-500/60 ${getRaceGlowColor(player2.race, true)}` : 
               "bg-black/60 hover:bg-black/80"}`}
           onClick={handleSelectPlayer(1)}
           type="button"
@@ -146,14 +146,14 @@ const PlayerSelector: React.FC<PlayerSelectorProps> = ({
             {/* Race badge */}
             <Badge 
               variant="outline" 
-              className={`${getRaceColor(secondaryPlayer.race)} border mb-1.5 uppercase bg-black/50 text-xs px-1.5 py-0.5`}
+              className={`${getRaceColor(player2.race)} border mb-1.5 uppercase bg-black/50 text-xs px-1.5 py-0.5`}
             >
-              {secondaryPlayer.race}
+              {player2.race}
             </Badge>
             
             {/* Player name with race-specific color */}
-            <div className={`font-bold sc-terminal-text text-xl ${selectedPlayerIndex === 1 ? getRaceColor(secondaryPlayer.race).split(' ')[0] : 'text-gray-400'}`}>
-              {secondaryPlayer.name}
+            <div className={`font-bold sc-terminal-text text-xl ${selectedPlayerIndex === 1 ? getRaceColor(player2.race).split(' ')[0] : 'text-gray-400'}`}>
+              {player2.name}
             </div>
             
             {/* Status indicator */}

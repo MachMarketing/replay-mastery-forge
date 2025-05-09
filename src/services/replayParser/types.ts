@@ -1,3 +1,4 @@
+
 /**
  * TypeScript definitions for replay parser data
  */
@@ -291,6 +292,9 @@ export interface ExtendedReplayData extends ParsedReplayData {
   
   // Advanced metrics extracted from replay
   advancedMetrics: AdvancedMetrics;
+  
+  // Make sure trainingPlan is required here as well
+  trainingPlan: Array<{ day: number; focus: string; drill: string }>;
 }
 
 /**
@@ -299,3 +303,4 @@ export interface ExtendedReplayData extends ParsedReplayData {
 export interface ParsedReplayResult extends ParsedReplayData {
   // Training plan is already required in ParsedReplayData
 }
+
