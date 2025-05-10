@@ -19,40 +19,53 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     
     console.log('[replayParser] File loaded, size:', uint8Array.length, 'bytes');
     
-    // Find the appropriate parse function based on the module structure
-    let parseFn;
+    // Use a more flexible approach to find the parsing function
     let parsedData;
     
-    if (screparsed.ReplayParser && typeof screparsed.ReplayParser.parse === 'function') {
-      console.log('[replayParser] Using ReplayParser.parse');
-      parseFn = screparsed.ReplayParser.parse;
+    // Try all possible ways to parse the replay with screparsed
+    // Use type assertion to bypass TypeScript's strict checking
+    if (screparsed.ReplayParser) {
+      console.log('[replayParser] Found ReplayParser, attempting to use it');
+      // Use any type to bypass TypeScript checks since we're dynamically checking functionality
+      const replayParser = screparsed.ReplayParser as any;
+      if (typeof replayParser.parse === 'function') {
+        console.log('[replayParser] Using ReplayParser.parse');
+        parsedData = await Promise.resolve(replayParser.parse(uint8Array));
+      }
     } 
-    else if (screparsed.ParsedReplay && typeof screparsed.ParsedReplay.fromBuffer === 'function') {
-      console.log('[replayParser] Using ParsedReplay.fromBuffer');
-      parseFn = screparsed.ParsedReplay.fromBuffer;
-    }
-    else if (screparsed.ParsedReplay && typeof screparsed.ParsedReplay.parse === 'function') {
-      console.log('[replayParser] Using ParsedReplay.parse');
-      parseFn = screparsed.ParsedReplay.parse;
+    else if (screparsed.ParsedReplay) {
+      console.log('[replayParser] Found ParsedReplay, attempting to use it');
+      const parsedReplay = screparsed.ParsedReplay as any;
+      if (typeof parsedReplay.fromBuffer === 'function') {
+        console.log('[replayParser] Using ParsedReplay.fromBuffer');
+        parsedData = await Promise.resolve(parsedReplay.fromBuffer(uint8Array));
+      } 
+      else if (typeof parsedReplay.parse === 'function') {
+        console.log('[replayParser] Using ParsedReplay.parse');
+        parsedData = await Promise.resolve(parsedReplay.parse(uint8Array));
+      }
     }
     else if (typeof screparsed.default === 'function') {
       console.log('[replayParser] Using default export as function');
-      parseFn = screparsed.default;
+      parsedData = await Promise.resolve(screparsed.default(uint8Array));
     }
-    else if (screparsed.default && typeof screparsed.default.parse === 'function') {
+    else if (screparsed.default && typeof (screparsed.default as any).parse === 'function') {
       console.log('[replayParser] Using default.parse');
-      parseFn = screparsed.default.parse;
+      parsedData = await Promise.resolve((screparsed.default as any).parse(uint8Array));
     }
     else if (typeof (screparsed as any).parse === 'function') {
       console.log('[replayParser] Using module.parse');
-      parseFn = (screparsed as any).parse;
+      parsedData = await Promise.resolve((screparsed as any).parse(uint8Array));
     }
     else {
       throw new Error('No suitable parsing function found in screparsed module');
     }
     
-    // Parse the replay file
-    parsedData = await Promise.resolve(parseFn(uint8Array));
+    // Check if we got any data
+    if (!parsedData) {
+      throw new Error('Failed to parse replay data');
+    }
+    
     console.log('[replayParser] Raw parsed data:', parsedData);
     
     // Transform the data
