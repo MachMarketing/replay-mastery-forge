@@ -1,12 +1,7 @@
 
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
-import axios, { AxiosError } from 'axios';
 import { useDropzone } from 'react-dropzone';
-import { useReplayParser } from '@/hooks/useReplayParser';
-import { AnalyzedReplayResult } from '@/services/replayParserService';
-import { ParsedReplayData } from '@/services/replayParser/types';
-import { uploadReplayFile } from '@/services/uploadService';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
@@ -15,7 +10,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import AnalysisResult from '@/components/AnalysisResult';
-import { parseReplayWithScreparsed } from '@/services/screparsed-parser';
+import { parseReplay } from '@/services/replayParser';
+import { ParsedReplayData } from '@/services/replayParser/types';
 
 const ParserTestPage: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
@@ -24,7 +20,6 @@ const ParserTestPage: React.FC = () => {
   const [parsedReplayData, setParsedReplayData] = useState<ParsedReplayData | null>(null);
   const [parsedOutput, setParsedOutput] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-  const { parseReplay } = useReplayParser();
   const { toast } = useToast();
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -56,22 +51,18 @@ const ParserTestPage: React.FC = () => {
       }, 200);
       
       try {
-        // Upload file first
-        const fileData = await uploadReplayFile(selectedFile);
+        // Simulate upload completion
+        await new Promise(resolve => setTimeout(resolve, 1000));
         clearInterval(progressInterval);
         setUploadProgress(100);
         
         // Now parse the replay
         setParsingStatus('parsing');
         
-        // Use screparsed parser directly
-        console.log('Parsing with screparsed...');
-        const result = await parseReplayWithScreparsed(selectedFile);
+        // Use our unified parser
+        console.log('Parsing with unified parser...');
+        const result = await parseReplay(selectedFile);
         console.log('Parsing successful:', result);
-        
-        if (!result) {
-          throw new Error("Failed to parse replay - no result returned");
-        }
         
         setParsedReplayData(result);
         setParsedOutput(JSON.stringify(result, null, 2));
@@ -79,7 +70,7 @@ const ParserTestPage: React.FC = () => {
         
         toast({
           title: "Replay parsed successfully",
-          description: `Analyzed: ${result.playerName} vs ${result.opponentName}`,
+          description: `Analyzed: ${result.primaryPlayer.name} vs ${result.secondaryPlayer.name}`,
         });
       } catch (e) {
         clearInterval(progressInterval);
@@ -87,11 +78,7 @@ const ParserTestPage: React.FC = () => {
       }
     } catch (e) {
       setParsingStatus('error');
-      const errorMessage = e instanceof AxiosError 
-        ? e.response?.data?.message || e.message
-        : e instanceof Error 
-          ? e.message 
-          : 'Unknown error occurred';
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error occurred';
       
       setError(errorMessage);
       toast({
@@ -155,7 +142,7 @@ const ParserTestPage: React.FC = () => {
     <>
       <Navbar />
       <div className="container mx-auto px-4 py-8 mt-16">
-        <h1 className="text-2xl font-bold mb-6">Replay Analyzer (Direct screparsed)</h1>
+        <h1 className="text-2xl font-bold mb-6">Replay Analyzer (Unified Parser)</h1>
         
         {parsedReplayData ? (
           <div className="mb-8">
@@ -261,7 +248,7 @@ const ParserTestPage: React.FC = () => {
             <CardContent>
               <div className="bg-black text-green-400 font-mono p-4 rounded-md h-64 overflow-auto">
                 <p className="text-sm text-gray-500">No logs yet. Parse a file to see debug output.</p>
-                <p className="text-sm text-green-400 mt-2">Using screparsed direct parsing method</p>
+                <p className="text-sm text-green-400 mt-2">Using unified screparsed parser</p>
               </div>
             </CardContent>
           </Card>

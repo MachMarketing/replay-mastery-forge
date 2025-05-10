@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { parseReplayWithScreparsed } from '@/services/screparsed-parser';
+import { parseReplay } from '@/services/replayParser';
 import PlayerSelector from '@/components/PlayerSelector';
 
 const ParserDebug: React.FC = () => {
@@ -89,7 +89,7 @@ const ParserDebug: React.FC = () => {
     
     try {
       console.log('Parsing file:', file.name);
-      const result = await parseReplayWithScreparsed(file);
+      const result = await parseReplay(file);
       
       clearInterval(interval);
       setProgress(100);

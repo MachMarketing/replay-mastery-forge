@@ -1,12 +1,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { ParsedReplayData, ParsedReplayResult } from '@/services/replayParser/types';
+import { ParsedReplayData } from '@/services/replayParser/types';
 import { useToast } from '@/hooks/use-toast';
 import { hasBrowserWasmIssues } from '@/utils/browserDetection';
-import { parseReplayWithScreparsed } from '@/services/screparsed-parser';
+import { parseReplay } from '@/services/replayParser';
 
 interface ReplayParserResult {
-  parseReplay: (file: File) => Promise<ParsedReplayResult | null>;
+  parseReplay: (file: File) => Promise<ParsedReplayData | null>;
   isProcessing: boolean;
   error: string | null;
   clearError: () => void;
@@ -49,7 +49,7 @@ export function useReplayParser(): ReplayParserResult {
     setProgress(0);
   }, []);
 
-  const parseReplay = useCallback(async (file: File): Promise<ParsedReplayResult | null> => {
+  const handleParseReplay = useCallback(async (file: File): Promise<ParsedReplayData | null> => {
     if (isProcessing) {
       console.log('[useReplayParser] Already processing a file, aborting');
       toast({
@@ -113,10 +113,10 @@ export function useReplayParser(): ReplayParserResult {
         throw new Error('Nur StarCraft Replay Dateien (.rep) sind erlaubt');
       }
       
-      // Parse directly using screparsed
-      console.log('[useReplayParser] Calling parseReplayWithScreparsed with file:', file.name);
+      // Parse using our unified parser
+      console.log('[useReplayParser] Calling unified parseReplay with file:', file.name);
       
-      const parsedData: ParsedReplayData = await parseReplayWithScreparsed(file);
+      const parsedData: ParsedReplayData = await parseReplay(file);
       
       // Enhanced debugging - log the full structure
       console.log('[useReplayParser] Raw parsed data structure:', 
@@ -133,11 +133,11 @@ export function useReplayParser(): ReplayParserResult {
       });
       
       console.log('[useReplayParser] Build order items count:', 
-        parsedData.buildOrder?.length || 0);
+        parsedData.primaryPlayer.buildOrder?.length || 0);
         
-      if (parsedData.buildOrder && parsedData.buildOrder.length > 0) {
+      if (parsedData.primaryPlayer.buildOrder && parsedData.primaryPlayer.buildOrder.length > 0) {
         console.log('[useReplayParser] Sample build order items:', 
-          parsedData.buildOrder.slice(0, 3));
+          parsedData.primaryPlayer.buildOrder.slice(0, 3));
       } else {
         console.warn('[useReplayParser] No build order items found in parsed data');
       }
@@ -149,9 +149,6 @@ export function useReplayParser(): ReplayParserResult {
         primaryBuildOrderItems: parsedData.primaryPlayer.buildOrder?.length || 0,
         secondaryBuildOrderItems: parsedData.secondaryPlayer.buildOrder?.length || 0
       });
-      
-      // Ensure the result has the required fields for the view
-      const result: ParsedReplayResult = parsedData;
       
       // Final progress update
       setProgress(100);
@@ -172,7 +169,7 @@ export function useReplayParser(): ReplayParserResult {
       setIsProcessing(false);
       console.log('[useReplayParser] Successfully parsed replay file');
       
-      return result;
+      return parsedData;
     } catch (err) {
       let errorMessage = err instanceof Error ? err.message : 'Fehler beim Parsen der Replay-Datei';
       
@@ -208,7 +205,7 @@ export function useReplayParser(): ReplayParserResult {
   }, [isProcessing, toast]);
 
   return {
-    parseReplay,
+    parseReplay: handleParseReplay,
     isProcessing,
     error,
     clearError,

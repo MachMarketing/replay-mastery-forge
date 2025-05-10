@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
@@ -128,7 +127,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     clearTimeouts();
     
     try {
-      console.log("[UploadBox] Starting parsing with screparsed parser:", file.name);
+      console.log("[UploadBox] Starting parsing with unified parser:", file.name);
       // Add more debug information
       console.log("[UploadBox] File details:", {
         type: file.type,
@@ -145,16 +144,17 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       
       // Log parsed data for debugging, especially build order
       console.log("[UploadBox] Parsed data summary:", {
-        playerName: parsedData.playerName,
-        opponentName: parsedData.opponentName,
-        playerRace: parsedData.playerRace,
-        opponentRace: parsedData.opponentRace,
+        playerName: parsedData.primaryPlayer.name,
+        opponentName: parsedData.secondaryPlayer.name,
+        playerRace: parsedData.primaryPlayer.race,
+        opponentRace: parsedData.secondaryPlayer.race,
         map: parsedData.map,
         matchup: parsedData.matchup,
-        buildOrderItems: parsedData.buildOrder?.length || 0
+        buildOrderItems: parsedData.primaryPlayer.buildOrder?.length || 0
       });
       
-      console.log("[UploadBox] Build order details:", JSON.stringify(parsedData.buildOrder || []));
+      console.log("[UploadBox] Build order details:", 
+        JSON.stringify(parsedData.primaryPlayer.buildOrder?.slice(0, 5) || []));
       
       // Validate that the returned data contains required fields
       if (!parsedData.primaryPlayer || !parsedData.primaryPlayer.name) {
@@ -254,13 +254,13 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     return null;
   };
 
-  // Update the parser status indicator to show it's using the screparsed parser
+  // Update the parser status indicator to show it's using the unified parser
   const renderParserStatus = () => {
     return (
       <div className="mt-4 flex items-center">
         <div className="h-2 w-2 rounded-full mr-2 bg-green-500 animate-pulse" />
         <p className="text-xs text-muted-foreground">
-          Screparsed Parser bereit
+          Unified Parser bereit
         </p>
       </div>
     );
