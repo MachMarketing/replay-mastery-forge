@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -7,7 +8,7 @@ import { useReplays, Replay } from '@/hooks/useReplays';
 import { useToast } from '@/hooks/use-toast';
 import { useReplayParser } from '@/hooks/useReplayParser';
 import { ParsedReplayResult } from '@/services/replayParser/types';
-import AnalysisDisplay from '@/components/AnalysisDisplay';
+import GamingAnalysisDisplay from '@/components/GamingAnalysisDisplay';
 
 interface ReplayData extends ParsedReplayResult {
   id: string;
@@ -154,26 +155,28 @@ const UploadPage = () => {
   const recentReplays = isLoading ? [] : replays.slice(0, 3);
 
   return (
-    <div className="flex flex-col min-h-screen bg-background">
+    <div className="flex flex-col min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900">
       <Navbar />
       
       <main className="flex-1 py-16 mt-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center mb-6">
-            <h1 className="text-3xl font-bold text-foreground">Analyse deines Replays</h1>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-cyan-400 bg-clip-text text-transparent">
+              Analyse deines Replays
+            </h1>
           </div>
           
-          <p className="text-muted-foreground mb-8">
+          <p className="text-gray-300 mb-8">
             Lade deine StarCraft: Brood War Replay-Datei hoch, um eine professionelle Analyse
             und persönliches Coaching zu erhalten.
           </p>
           
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-1">
-              <Card className="shadow-md">
-                <CardHeader className="bg-card border-b">
-                  <CardTitle className="text-lg">Replay hochladen</CardTitle>
-                  <CardDescription>
+              <Card className="bg-gray-900/50 backdrop-blur-sm border border-gray-700/50 shadow-xl">
+                <CardHeader className="bg-gray-800/50 border-b border-gray-700/50">
+                  <CardTitle className="text-lg text-white">Replay hochladen</CardTitle>
+                  <CardDescription className="text-gray-300">
                     Lade eine .rep Datei hoch, um dein Gameplay zu analysieren
                   </CardDescription>
                 </CardHeader>
@@ -182,8 +185,8 @@ const UploadPage = () => {
                   
                   {/* Tips section */}
                   <div className="mt-6">
-                    <h3 className="text-sm font-medium mb-2">Tipps:</h3>
-                    <ul className="text-xs text-muted-foreground space-y-1">
+                    <h3 className="text-sm font-medium mb-2 text-white">Tipps:</h3>
+                    <ul className="text-xs text-gray-400 space-y-1">
                       <li>• Stelle sicher, dass du eine StarCraft: Brood War Replay-Datei (.rep) hochlädst</li>
                       <li>• Aktuelle Spiele bieten die relevanteste Analyse</li>
                       <li>• Spiele länger als 5 Minuten bieten bessere Einblicke</li>
@@ -192,36 +195,36 @@ const UploadPage = () => {
                   </div>
 
                   {/* Recent uploads section */}
-                  <div className="mt-6 pt-6 border-t border-border">
-                    <h3 className="text-sm font-medium mb-3">Neueste Uploads</h3>
+                  <div className="mt-6 pt-6 border-t border-gray-700/50">
+                    <h3 className="text-sm font-medium mb-3 text-white">Neueste Uploads</h3>
                     <div className="space-y-2">
                       {error ? (
-                        <div className="p-3 rounded bg-destructive/10 text-destructive text-sm">
+                        <div className="p-3 rounded bg-red-900/20 text-red-400 text-sm border border-red-500/20">
                           <p>Fehler beim Laden der Replays: {error}</p>
                           <button 
                             onClick={fetchReplays} 
-                            className="text-xs underline mt-1 hover:text-destructive/80"
+                            className="text-xs underline mt-1 hover:text-red-300"
                           >
                             Erneut versuchen
                           </button>
                         </div>
                       ) : isLoading ? (
                         <div className="flex justify-center p-4">
-                          <div className="h-5 w-5 rounded-full border-2 border-primary border-t-transparent animate-spin"></div>
+                          <div className="h-5 w-5 rounded-full border-2 border-blue-400 border-t-transparent animate-spin"></div>
                         </div>
                       ) : recentReplays.length > 0 ? (
                         recentReplays.map((replay: Replay) => (
-                          <div key={replay.id} className="flex justify-between items-center p-2 rounded hover:bg-secondary/20 text-sm">
-                            <span className="truncate mr-2 max-w-[160px]" title={replay.original_filename || `${replay.player_name || 'Unknown'} vs ${replay.opponent_name || 'Unknown'}`}>
+                          <div key={replay.id} className="flex justify-between items-center p-2 rounded hover:bg-gray-800/30 text-sm border border-gray-700/30">
+                            <span className="truncate mr-2 max-w-[160px] text-gray-300" title={replay.original_filename || `${replay.player_name || 'Unknown'} vs ${replay.opponent_name || 'Unknown'}`}>
                               {replay.original_filename || `${replay.player_name || 'Unknown'} vs ${replay.opponent_name || 'Unknown'}`}
                             </span>
-                            <span className="text-xs text-muted-foreground">
+                            <span className="text-xs text-gray-500">
                               {new Date(replay.created_at).toLocaleDateString()}
                             </span>
                           </div>
                         ))
                       ) : (
-                        <p className="text-xs text-muted-foreground">Keine kürzlichen Uploads</p>
+                        <p className="text-xs text-gray-500">Keine kürzlichen Uploads</p>
                       )}
                     </div>
                   </div>
@@ -230,7 +233,7 @@ const UploadPage = () => {
             </div>
             
             <div className="lg:col-span-2">
-              <AnalysisDisplay
+              <GamingAnalysisDisplay
                 isAnalyzing={isAnalyzing}
                 analysisComplete={analysisComplete}
                 replayData={replayData}
