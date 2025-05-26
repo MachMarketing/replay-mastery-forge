@@ -1,7 +1,7 @@
 
 import { ParsedReplayData } from './replayParser/types';
-// Import screparsed correctly - it's the main export function
-import screparsed from 'screparsed';
+// Import screparsed correctly - check the actual API
+import * as screparsed from 'screparsed';
 
 /**
  * Parse a StarCraft: Brood War replay file using screparsed
@@ -46,20 +46,35 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
   // Parse with screparsed using the correct API
   try {
     console.log('[replayParser] Parsing with screparsed...');
-    console.log('[replayParser] screparsed type:', typeof screparsed);
+    console.log('[replayParser] Available screparsed methods:', Object.keys(screparsed));
+    console.log('[replayParser] screparsed object:', screparsed);
     
     let screparsedResult;
     
-    // Call screparsed directly as the main export function
-    try {
-      screparsedResult = screparsed(uint8Array);
-      console.log('[replayParser] Direct screparsed call successful');
-    } catch (directCallError) {
-      console.log('[replayParser] Direct call failed, trying alternative approaches');
+    // Try different possible API patterns for screparsed
+    if (typeof screparsed.default === 'function') {
+      console.log('[replayParser] Using screparsed.default');
+      screparsedResult = screparsed.default(uint8Array);
+    } else if (typeof (screparsed as any).parse === 'function') {
+      console.log('[replayParser] Using screparsed.parse');
+      screparsedResult = (screparsed as any).parse(uint8Array);
+    } else if (typeof (screparsed as any).parseReplay === 'function') {
+      console.log('[replayParser] Using screparsed.parseReplay');
+      screparsedResult = (screparsed as any).parseReplay(uint8Array);
+    } else {
+      // Check if screparsed exports any callable functions
+      const exportedFunctions = Object.keys(screparsed).filter(key => 
+        typeof (screparsed as any)[key] === 'function'
+      );
+      console.log('[replayParser] Available functions in screparsed:', exportedFunctions);
       
-      // Try as Buffer if Uint8Array doesn't work
-      const buffer = Buffer.from(uint8Array);
-      screparsedResult = screparsed(buffer);
+      if (exportedFunctions.length > 0) {
+        const mainFunction = exportedFunctions[0];
+        console.log('[replayParser] Using first available function:', mainFunction);
+        screparsedResult = (screparsed as any)[mainFunction](uint8Array);
+      } else {
+        throw new Error('Screparsed hat keine verfügbaren Parser-Funktionen');
+      }
     }
     
     console.log('[replayParser] Screparsed result:', screparsedResult);
