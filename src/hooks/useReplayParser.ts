@@ -48,7 +48,7 @@ export function useReplayParser(): ReplayParserResult {
       return null;
     }
     
-    console.log('[useReplayParser] Starting to process file:', file.name);
+    console.log('[useReplayParser] Starting to process file with screparsed:', file.name);
     
     setIsProcessing(true);
     setError(null);
@@ -58,30 +58,36 @@ export function useReplayParser(): ReplayParserResult {
       window.clearInterval(progressIntervalRef.current);
     }
     
-    // Simulate progress
+    // Simulate progress for screparsed parsing
     progressIntervalRef.current = window.setInterval(() => {
       setProgress(prev => {
         if (prev >= 90) return 90;
-        return Math.min(prev + 10, 90);
+        return Math.min(prev + 15, 90);
       });
-    }, 200);
+    }, 300);
     
     try {
-      console.log('[useReplayParser] Calling parseReplay with file:', file.name);
+      console.log('[useReplayParser] Calling screparsed parser with file:', file.name);
       
       const parsedData: ParsedReplayData = await parseReplay(file);
       
-      console.log('[useReplayParser] Parsing successful!');
-      console.log('[useReplayParser] Player data:', {
+      console.log('[useReplayParser] Screparsed parsing successful!');
+      console.log('[useReplayParser] Real player data extracted:', {
         primary: {
           name: parsedData.primaryPlayer.name,
           race: parsedData.primaryPlayer.race,
+          apm: parsedData.primaryPlayer.apm,
           buildOrderItems: parsedData.primaryPlayer.buildOrder?.length || 0
         },
         secondary: {
           name: parsedData.secondaryPlayer.name,
           race: parsedData.secondaryPlayer.race,
-          buildOrderItems: parsedData.secondaryPlayer.buildOrder?.length || 0
+          apm: parsedData.secondaryPlayer.apm
+        },
+        gameInfo: {
+          map: parsedData.map,
+          matchup: parsedData.matchup,
+          duration: parsedData.duration
         }
       });
       
@@ -92,16 +98,21 @@ export function useReplayParser(): ReplayParserResult {
         progressIntervalRef.current = null;
       }
       
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       setIsProcessing(false);
-      console.log('[useReplayParser] Successfully parsed replay file');
+      console.log('[useReplayParser] Successfully parsed SC:BW replay with real data');
       
       return parsedData;
     } catch (err) {
-      console.error('[useReplayParser] Replay parsing error:', err);
+      console.error('[useReplayParser] Screparsed parsing error:', err);
       
-      let errorMessage = err instanceof Error ? err.message : 'Fehler beim Parsen der Replay-Datei';
+      let errorMessage = err instanceof Error ? err.message : 'Fehler beim Parsen der Replay-Datei mit screparsed';
+      
+      // Add specific guidance for different error types
+      if (errorMessage.includes('screparsed')) {
+        errorMessage += ' - Möglicherweise beschädigte oder nicht unterstützte Replay-Datei';
+      }
       
       setError(errorMessage);
       
@@ -114,7 +125,7 @@ export function useReplayParser(): ReplayParserResult {
       setProgress(100);
       
       toast({
-        title: 'Replay-Analyse fehlgeschlagen',
+        title: 'Screparsed Replay-Analyse fehlgeschlagen',
         description: errorMessage,
         variant: 'destructive',
       });

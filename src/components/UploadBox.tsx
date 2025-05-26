@@ -1,14 +1,15 @@
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, X, FileText, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
-import { AnalyzedReplayResult } from '@/services/replayParserService';
+import { ParsedReplayData } from '@/services/replayParser/types';
 import { useReplayParser } from '@/hooks/useReplayParser';
 
 interface UploadBoxProps {
-  onUploadComplete?: (file: File, replayData: AnalyzedReplayResult) => void;
+  onUploadComplete?: (file: File, replayData: ParsedReplayData) => void;
   maxFileSize?: number; // in MB
 }
 
@@ -23,22 +24,22 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   const { toast } = useToast();
   const { parseReplay, isProcessing, error: parsingError, clearError, progress: parserProgress } = useReplayParser();
   
-  // Update UI based on parser progress
+  // Update UI based on screparsed parser progress
   useEffect(() => {
     if (isProcessing && uploadStatus === 'parsing') {
       // Update status message based on parser progress
       if (parserProgress < 25) {
-        setStatusMessage('Initialisiere Parser...');
+        setStatusMessage('Initialisiere Screparsed Parser...');
       } else if (parserProgress < 50) {
-        setStatusMessage('Lese Replay-Daten...');
+        setStatusMessage('Lese SC:BW Replay-Struktur...');
       } else if (parserProgress < 75) {
-        setStatusMessage('Analysiere Spieler-Daten...');
+        setStatusMessage('Extrahiere echte Spielerdaten...');
       } else if (parserProgress < 95) {
-        setStatusMessage('Fast fertig...');
+        setStatusMessage('Analysiere Build Order & APM...');
       } else if (parserProgress === 100) {
-        setStatusMessage('Analyse abgeschlossen!');
+        setStatusMessage('Screparsed Analyse abgeschlossen!');
       } else {
-        setStatusMessage('Verarbeite Replay-Daten...');
+        setStatusMessage('Verarbeite SC:BW Remastered Daten...');
       }
     }
   }, [isProcessing, parserProgress, uploadStatus]);
@@ -117,84 +118,96 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   };
 
   const processFile = async (file: File) => {
-    console.log("[UploadBox] Starting file processing:", file.name);
+    console.log("[UploadBox] Starting screparsed file processing:", file.name);
     clearError();
     setFile(file);
     setErrorDetails(null);
     setUploadStatus('parsing');
-    setStatusMessage('Verbinde mit Parser...');
+    setStatusMessage('Verbinde mit Screparsed Parser...');
     resetProgress();
     clearTimeouts();
     
     try {
-      console.log("[UploadBox] Starting parsing with unified parser:", file.name);
-      // Add more debug information
-      console.log("[UploadBox] File details:", {
-        type: file.type,
-        size: file.size,
-        lastModified: new Date(file.lastModified).toISOString()
-      });
+      console.log("[UploadBox] Starting parsing with screparsed for SC:BW Remastered support:", file.name);
       
-      // Use the useReplayParser hook to parse the file
+      // Use the screparsed-based parser
       const parsedData = await parseReplay(file);
       
       if (!parsedData) {
-        throw new Error(parsingError || 'Fehler beim Parsen der Replay-Datei');
+        throw new Error(parsingError || 'Screparsed konnte die Replay-Datei nicht verarbeiten');
       }
       
-      // Log parsed data for debugging, especially build order
-      console.log("[UploadBox] Parsed data summary:", {
-        playerName: parsedData.primaryPlayer.name,
-        opponentName: parsedData.secondaryPlayer.name,
-        playerRace: parsedData.primaryPlayer.race,
-        opponentRace: parsedData.secondaryPlayer.race,
-        map: parsedData.map,
-        matchup: parsedData.matchup,
-        buildOrderItems: parsedData.primaryPlayer.buildOrder?.length || 0
+      // Log the real extracted data for verification
+      console.log("[UploadBox] Real screparsed data extracted:", {
+        primaryPlayer: {
+          name: parsedData.primaryPlayer.name,
+          race: parsedData.primaryPlayer.race,
+          apm: parsedData.primaryPlayer.apm,
+          realBuildOrder: parsedData.primaryPlayer.buildOrder?.slice(0, 5)
+        },
+        secondaryPlayer: {
+          name: parsedData.secondaryPlayer.name,
+          race: parsedData.secondaryPlayer.race,
+          apm: parsedData.secondaryPlayer.apm
+        },
+        gameData: {
+          map: parsedData.map,
+          matchup: parsedData.matchup,
+          duration: parsedData.duration,
+          result: parsedData.result
+        },
+        analysis: {
+          strengths: parsedData.strengths?.length || 0,
+          weaknesses: parsedData.weaknesses?.length || 0,
+          recommendations: parsedData.recommendations?.length || 0
+        }
       });
       
-      console.log("[UploadBox] Build order details:", 
-        JSON.stringify(parsedData.primaryPlayer.buildOrder?.slice(0, 5) || []));
+      // Validate that we have real player names (not fallback data)
+      if (!parsedData.primaryPlayer.name || parsedData.primaryPlayer.name === 'Player 1') {
+        console.warn("[UploadBox] Warning: Still getting fallback player names");
+      }
       
-      // Validate that the returned data contains required fields
-      if (!parsedData.primaryPlayer || !parsedData.primaryPlayer.name) {
-        console.error("[UploadBox] Parsed data missing player name");
-        throw new Error('Fehler: Keine Spielernamen gefunden');
+      // Validate that we have real build order data
+      if (!parsedData.primaryPlayer.buildOrder || parsedData.primaryPlayer.buildOrder.length === 0) {
+        console.warn("[UploadBox] Warning: No build order data extracted");
+      } else {
+        console.log("[UploadBox] Successfully extracted", parsedData.primaryPlayer.buildOrder.length, "build order items");
       }
       
       clearTimeouts();
       resetProgress();
       
       setUploadStatus('success');
-      setStatusMessage('Analyse erfolgreich abgeschlossen!');
+      setStatusMessage('Screparsed Analyse erfolgreich abgeschlossen!');
       
       toast({
-        title: "Analyse vollständig",
-        description: `${file.name} wurde erfolgreich analysiert.`,
+        title: "SC:BW Replay analysiert",
+        description: `${file.name} wurde mit echten Daten erfolgreich analysiert.`,
       });
       
       // Ensure we wait a moment before transitioning to the analysis view
       setTimeout(() => {
         if (onUploadComplete && parsedData) {
-          console.log("[UploadBox] Sending parsed data to parent component");
-          onUploadComplete(file, parsedData as any);
+          console.log("[UploadBox] Sending real screparsed data to parent component");
+          onUploadComplete(file, parsedData);
         } else {
           console.warn("[UploadBox] Cannot complete upload: onUploadComplete missing or no data");
         }
       }, 500);
     } catch (error) {
-      console.error("[UploadBox] File processing error:", error);
+      console.error("[UploadBox] Screparsed file processing error:", error);
       
       resetProgress();
       clearTimeouts();
       
-      const errorMessage = error instanceof Error ? error.message : 'Unbekannter Fehler beim Parsen der Replay-Datei';
+      const errorMessage = error instanceof Error ? error.message : 'Unbekannter Fehler beim Parsen der SC:BW Replay-Datei';
       setErrorDetails(errorMessage);
       setUploadStatus('error');
-      setStatusMessage('Fehler bei der Verarbeitung');
+      setStatusMessage('Screparsed-Fehler bei der Verarbeitung');
       
       toast({
-        title: "Verarbeitung fehlgeschlagen",
+        title: "Screparsed Verarbeitung fehlgeschlagen",
         description: errorMessage,
         variant: "destructive",
       });
@@ -225,10 +238,10 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         <div className="mt-4 p-4 bg-opacity-10 bg-destructive border border-destructive/40 rounded-md">
           <div className="flex items-center gap-2 text-destructive mb-1">
             <AlertCircle className="h-4 w-4" />
-            <p className="font-medium">Verarbeitung fehlgeschlagen</p>
+            <p className="font-medium">Screparsed Verarbeitung fehlgeschlagen</p>
           </div>
           <p className="text-xs text-muted-foreground mb-2">
-            {errorDetails || statusMessage || 'Fehler beim Parsen der Replay-Datei'}
+            {errorDetails || statusMessage || 'Fehler beim Parsen der SC:BW Replay-Datei'}
           </p>
           <div className="flex gap-2 mt-2">
             <Button 
@@ -254,13 +267,13 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     return null;
   };
 
-  // Update the parser status indicator to show it's using the unified parser
+  // Update the parser status indicator to show screparsed support
   const renderParserStatus = () => {
     return (
       <div className="mt-4 flex items-center">
         <div className="h-2 w-2 rounded-full mr-2 bg-green-500 animate-pulse" />
         <p className="text-xs text-muted-foreground">
-          Unified Parser bereit
+          Screparsed Parser bereit (SC:BW Classic + Remastered)
         </p>
       </div>
     );
@@ -280,9 +293,10 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
           <div className="h-14 w-14 rounded-full bg-primary/20 flex items-center justify-center mb-4">
             <Upload className="h-7 w-7 text-primary" />
           </div>
-          <h3 className="text-lg font-semibold mb-2">Replay-Datei hochladen</h3>
+          <h3 className="text-lg font-semibold mb-2">SC:BW Replay-Datei hochladen</h3>
           <p className="text-sm text-muted-foreground mb-4 text-center">
-            Ziehe deine .rep Datei hierher oder klicke zum Auswählen
+            Ziehe deine .rep Datei hierher oder klicke zum Auswählen<br />
+            <span className="text-xs text-green-600">Unterstützt Classic & Remastered</span>
           </p>
           <Button onClick={open} variant="default" className="transition-all hover:shadow-md">
             Datei auswählen
@@ -292,7 +306,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
             accept=".rep"
           />
           <p className="text-xs text-muted-foreground mt-4">
-            Max. Dateigröße: {maxFileSize}MB | Unterstütztes Format: .rep
+            Max. Dateigröße: {maxFileSize}MB | Format: .rep
           </p>
           
           {/* Parser status indicator */}
