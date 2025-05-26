@@ -74,7 +74,7 @@ export function useReplayParser(): ReplayParserResult {
       setProgress(prev => {
         // Increase progress continuously up to 95%
         if (prev >= 95) return 95;
-        return Math.min(prev + 0.3, 95); // Slower progress over 60 seconds
+        return Math.min(prev + 0.5, 95); // Slightly faster progress
       });
     }, 100);
     
@@ -103,14 +103,29 @@ export function useReplayParser(): ReplayParserResult {
     }, 60000); // 60 seconds timeout
     
     try {
-      // Validate file
+      // Enhanced file validation
       if (!file || file.size === 0) {
         throw new Error('Ungültige oder leere Datei');
+      }
+      
+      if (file.size < 1024) {
+        throw new Error('Datei ist zu klein für eine gültige Replay-Datei');
+      }
+      
+      if (file.size > 10 * 1024 * 1024) { // 10MB limit
+        throw new Error('Datei ist zu groß (Maximum: 10MB)');
       }
       
       const fileExtension = file.name.split('.').pop()?.toLowerCase();
       if (fileExtension !== 'rep') {
         throw new Error('Nur StarCraft Replay Dateien (.rep) sind erlaubt');
+      }
+      
+      // Check if file is readable
+      try {
+        await file.arrayBuffer();
+      } catch (fileError) {
+        throw new Error('Datei kann nicht gelesen werden - möglicherweise beschädigt');
       }
       
       // Parse using our unified parser
@@ -119,35 +134,18 @@ export function useReplayParser(): ReplayParserResult {
       const parsedData: ParsedReplayData = await parseReplay(file);
       
       // Enhanced debugging - log the full structure
-      console.log('[useReplayParser] Raw parsed data structure:', 
-        Object.keys(parsedData).join(', '));
+      console.log('[useReplayParser] Parsing successful!');
       console.log('[useReplayParser] Player data:', {
-        primary: parsedData.primaryPlayer ? {
+        primary: {
           name: parsedData.primaryPlayer.name,
-          race: parsedData.primaryPlayer.race
-        } : 'Missing',
-        secondary: parsedData.secondaryPlayer ? {
+          race: parsedData.primaryPlayer.race,
+          buildOrderItems: parsedData.primaryPlayer.buildOrder?.length || 0
+        },
+        secondary: {
           name: parsedData.secondaryPlayer.name,
-          race: parsedData.secondaryPlayer.race
-        } : 'Missing'
-      });
-      
-      console.log('[useReplayParser] Build order items count:', 
-        parsedData.primaryPlayer.buildOrder?.length || 0);
-        
-      if (parsedData.primaryPlayer.buildOrder && parsedData.primaryPlayer.buildOrder.length > 0) {
-        console.log('[useReplayParser] Sample build order items:', 
-          parsedData.primaryPlayer.buildOrder.slice(0, 3));
-      } else {
-        console.warn('[useReplayParser] No build order items found in parsed data');
-      }
-      
-      // Log the parsed data player and race information
-      console.log('[useReplayParser] Parser returned player data:', {
-        player1: `${parsedData.primaryPlayer.name} (${parsedData.primaryPlayer.race})`,
-        player2: `${parsedData.secondaryPlayer.name} (${parsedData.secondaryPlayer.race})`,
-        primaryBuildOrderItems: parsedData.primaryPlayer.buildOrder?.length || 0,
-        secondaryBuildOrderItems: parsedData.secondaryPlayer.buildOrder?.length || 0
+          race: parsedData.secondaryPlayer.race,
+          buildOrderItems: parsedData.secondaryPlayer.buildOrder?.length || 0
+        }
       });
       
       // Final progress update
@@ -173,14 +171,19 @@ export function useReplayParser(): ReplayParserResult {
     } catch (err) {
       let errorMessage = err instanceof Error ? err.message : 'Fehler beim Parsen der Replay-Datei';
       
-      // Special handling for WASM memory errors
-      if (typeof errorMessage === 'string' && (
-          errorMessage.includes('makeslice') || 
-          errorMessage.includes('runtime error') ||
-          errorMessage.includes('out of bounds') ||
-          errorMessage.includes('screparsed module'))) {
-        errorMessage = 'Browser-Kompatibilitätsproblem beim Parsen.';
-        console.warn('[useReplayParser] WASM compatibility issues detected');
+      // Enhanced error handling
+      if (typeof errorMessage === 'string') {
+        if (errorMessage.includes('makeslice') || 
+            errorMessage.includes('runtime error') ||
+            errorMessage.includes('out of bounds') ||
+            errorMessage.includes('screparsed module')) {
+          errorMessage = 'Browser-Kompatibilitätsproblem beim Parsen. Versuche es mit einem anderen Browser oder einer anderen Replay-Datei.';
+          console.warn('[useReplayParser] WASM compatibility issues detected');
+        } else if (errorMessage.includes('Failed to fetch')) {
+          errorMessage = 'Netzwerkfehler beim Laden des Parsers. Überprüfe deine Internetverbindung.';
+        } else if (errorMessage.includes('Cannot read properties')) {
+          errorMessage = 'Replay-Datei hat ein unerwartetes Format oder ist beschädigt.';
+        }
       }
       
       setError(errorMessage);
@@ -199,8 +202,15 @@ export function useReplayParser(): ReplayParserResult {
       setIsProcessing(false);
       setProgress(100);
       
-      // Just throw the error to be handled by the UI
-      throw err;
+      // Show user-friendly error message
+      toast({
+        title: 'Replay-Analyse fehlgeschlagen',
+        description: errorMessage,
+        variant: 'destructive',
+      });
+      
+      // Don't throw error, return null to allow for graceful handling
+      return null;
     }
   }, [isProcessing, toast]);
 
