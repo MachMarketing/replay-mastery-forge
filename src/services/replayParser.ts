@@ -1,6 +1,7 @@
+
 import { ParsedReplayData } from './replayParser/types';
-// Import screparsed correctly - it exports a default function
-import * as screparsed from 'screparsed';
+// Import screparsed correctly - it's the main export function
+import screparsed from 'screparsed';
 
 /**
  * Parse a StarCraft: Brood War replay file using screparsed
@@ -45,18 +46,20 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
   // Parse with screparsed using the correct API
   try {
     console.log('[replayParser] Parsing with screparsed...');
-    console.log('[replayParser] Available screparsed methods:', Object.keys(screparsed));
+    console.log('[replayParser] screparsed type:', typeof screparsed);
     
     let screparsedResult;
     
-    // Use the correct screparsed API - it's likely a default export function
-    if (typeof screparsed.default === 'function') {
-      screparsedResult = screparsed.default(uint8Array);
-    } else if (typeof screparsed === 'function') {
-      screparsedResult = (screparsed as any)(uint8Array);
-    } else {
-      // Try calling screparsed directly as imported
-      screparsedResult = (screparsed as any)(uint8Array);
+    // Call screparsed directly as the main export function
+    try {
+      screparsedResult = screparsed(uint8Array);
+      console.log('[replayParser] Direct screparsed call successful');
+    } catch (directCallError) {
+      console.log('[replayParser] Direct call failed, trying alternative approaches');
+      
+      // Try as Buffer if Uint8Array doesn't work
+      const buffer = Buffer.from(uint8Array);
+      screparsedResult = screparsed(buffer);
     }
     
     console.log('[replayParser] Screparsed result:', screparsedResult);
