@@ -1,4 +1,3 @@
-
 import { ParsedReplayData } from './replayParser/types';
 
 /**
@@ -26,7 +25,6 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     // Use type assertion to bypass TypeScript's strict checking
     if (screparsed.ReplayParser) {
       console.log('[replayParser] Found ReplayParser, attempting to use it');
-      // Use any type to bypass TypeScript checks since we're dynamically checking functionality
       const replayParser = screparsed.ReplayParser as any;
       if (typeof replayParser.parse === 'function') {
         console.log('[replayParser] Using ReplayParser.parse');
@@ -47,7 +45,7 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     }
     else if (screparsed.default && typeof screparsed.default === 'function') {
       console.log('[replayParser] Using default export as function');
-      parsedData = await Promise.resolve(screparsed.default(uint8Array));
+      parsedData = await Promise.resolve((screparsed.default as any)(uint8Array));
     }
     else if (screparsed.default && typeof (screparsed.default as any).parse === 'function') {
       console.log('[replayParser] Using default.parse');
