@@ -2,7 +2,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { ParsedReplayData } from '@/services/replayParser/types';
 import { useToast } from '@/hooks/use-toast';
-import { hasBrowserWasmIssues } from '@/utils/browserDetection';
 import { parseReplay } from '@/services/replayParser';
 
 interface ReplayParserResult {
@@ -21,16 +20,8 @@ export function useReplayParser(): ReplayParserResult {
   const progressIntervalRef = useRef<number | null>(null);
   const processingTimeoutRef = useRef<number | null>(null);
   
+  // Clean up intervals and timeouts on unmount
   useEffect(() => {
-    if (hasBrowserWasmIssues()) {
-      console.warn('[useReplayParser] WASM issues detected');
-      toast({
-        title: "Browser Compatibility Notice",
-        description: "Your browser may have limited support for replay parsing features.",
-        variant: "default",
-      });
-    }
-    
     return () => {
       if (progressIntervalRef.current) {
         window.clearInterval(progressIntervalRef.current);
@@ -39,7 +30,7 @@ export function useReplayParser(): ReplayParserResult {
         window.clearTimeout(processingTimeoutRef.current);
       }
     };
-  }, [toast]);
+  }, []);
 
   const clearError = useCallback(() => {
     setError(null);
@@ -58,12 +49,6 @@ export function useReplayParser(): ReplayParserResult {
     }
     
     console.log('[useReplayParser] Starting to process file:', file.name);
-    console.log('[useReplayParser] File details:', {
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      lastModified: new Date(file.lastModified).toISOString()
-    });
     
     setIsProcessing(true);
     setError(null);
@@ -73,69 +58,16 @@ export function useReplayParser(): ReplayParserResult {
       window.clearInterval(progressIntervalRef.current);
     }
     
+    // Simulate progress
     progressIntervalRef.current = window.setInterval(() => {
       setProgress(prev => {
-        if (prev >= 95) return 95;
-        return Math.min(prev + 0.5, 95);
+        if (prev >= 90) return 90;
+        return Math.min(prev + 10, 90);
       });
-    }, 100);
-    
-    if (processingTimeoutRef.current) {
-      window.clearTimeout(processingTimeoutRef.current);
-    }
-    
-    processingTimeoutRef.current = window.setTimeout(() => {
-      if (isProcessing) {
-        console.error('[useReplayParser] Processing timed out after 60 seconds');
-        setError('Zeitüberschreitung bei der Verarbeitung');
-        setIsProcessing(false);
-        
-        if (progressIntervalRef.current) {
-          window.clearInterval(progressIntervalRef.current);
-          progressIntervalRef.current = null;
-        }
-        
-        toast({
-          title: 'Verarbeitung abgebrochen',
-          description: 'Die Verarbeitung hat zu lange gedauert. Bitte versuche es erneut.',
-          variant: 'destructive',
-        });
-      }
-    }, 60000);
+    }, 200);
     
     try {
-      // Enhanced file validation with detailed logging
-      console.log('[useReplayParser] Starting file validation...');
-      
-      if (!file || file.size === 0) {
-        throw new Error('Ungültige oder leere Datei');
-      }
-      
-      if (file.size < 1024) {
-        throw new Error('Datei ist zu klein für eine gültige Replay-Datei');
-      }
-      
-      if (file.size > 10 * 1024 * 1024) {
-        throw new Error('Datei ist zu groß (Maximum: 10MB)');
-      }
-      
-      const fileExtension = file.name.split('.').pop()?.toLowerCase();
-      if (fileExtension !== 'rep') {
-        throw new Error('Nur StarCraft Replay Dateien (.rep) sind erlaubt');
-      }
-      
-      console.log('[useReplayParser] File validation passed');
-      
-      // Test file readability
-      try {
-        const testBuffer = await file.arrayBuffer();
-        console.log('[useReplayParser] File readability test passed, size:', testBuffer.byteLength);
-      } catch (fileError) {
-        console.error('[useReplayParser] File readability test failed:', fileError);
-        throw new Error('Datei kann nicht gelesen werden - möglicherweise beschädigt');
-      }
-      
-      console.log('[useReplayParser] Calling unified parseReplay with file:', file.name);
+      console.log('[useReplayParser] Calling parseReplay with file:', file.name);
       
       const parsedData: ParsedReplayData = await parseReplay(file);
       
@@ -155,10 +87,6 @@ export function useReplayParser(): ReplayParserResult {
       
       setProgress(100);
       
-      if (processingTimeoutRef.current) {
-        window.clearTimeout(processingTimeoutRef.current);
-        processingTimeoutRef.current = null;
-      }
       if (progressIntervalRef.current) {
         window.clearInterval(progressIntervalRef.current);
         progressIntervalRef.current = null;
@@ -172,47 +100,11 @@ export function useReplayParser(): ReplayParserResult {
       return parsedData;
     } catch (err) {
       console.error('[useReplayParser] Replay parsing error:', err);
-      console.error('[useReplayParser] Error type:', typeof err);
-      console.error('[useReplayParser] Error details:', err instanceof Error ? {
-        message: err.message,
-        stack: err.stack,
-        name: err.name
-      } : err);
       
       let errorMessage = err instanceof Error ? err.message : 'Fehler beim Parsen der Replay-Datei';
       
-      // Enhanced error classification
-      if (typeof errorMessage === 'string') {
-        if (errorMessage.includes('makeslice') || 
-            errorMessage.includes('runtime error') ||
-            errorMessage.includes('out of bounds') ||
-            errorMessage.includes('screparsed module') ||
-            errorMessage.includes('wasm')) {
-          errorMessage = 'Browser-Kompatibilitätsproblem beim Parsen. Versuche es mit einem anderen Browser oder einer anderen Replay-Datei.';
-          console.warn('[useReplayParser] WASM compatibility issues detected');
-        } else if (errorMessage.includes('Failed to fetch') || 
-                   errorMessage.includes('network') ||
-                   errorMessage.includes('load')) {
-          errorMessage = 'Netzwerkfehler beim Laden des Parsers. Überprüfe deine Internetverbindung.';
-        } else if (errorMessage.includes('Cannot read properties') ||
-                   errorMessage.includes('undefined') ||
-                   errorMessage.includes('null')) {
-          errorMessage = 'Replay-Datei hat ein unerwartetes Format oder ist beschädigt.';
-        } else if (errorMessage.includes('memory') ||
-                   errorMessage.includes('allocation')) {
-          errorMessage = 'Speicherfehler beim Parsen. Datei möglicherweise zu groß oder beschädigt.';
-        } else if (errorMessage.includes('format') ||
-                   errorMessage.includes('invalid')) {
-          errorMessage = 'Ungültiges Dateiformat. Stelle sicher, dass es eine echte StarCraft-Replay ist.';
-        }
-      }
-      
       setError(errorMessage);
       
-      if (processingTimeoutRef.current) {
-        window.clearTimeout(processingTimeoutRef.current);
-        processingTimeoutRef.current = null;
-      }
       if (progressIntervalRef.current) {
         window.clearInterval(progressIntervalRef.current);
         progressIntervalRef.current = null;
