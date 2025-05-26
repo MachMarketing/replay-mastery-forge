@@ -32,7 +32,7 @@ export const useReplays = () => {
       setIsLoading(true);
       setError(null);
       
-      // First check if user is authenticated
+      // Check if user is authenticated
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
       if (authError) {
@@ -47,6 +47,8 @@ export const useReplays = () => {
       }
       
       console.log('Fetching replays for user:', user.id);
+      
+      // With RLS policies in place, this will automatically filter to the user's replays
       const { data, error } = await supabase
         .from('replays')
         .select('*')
@@ -62,11 +64,15 @@ export const useReplays = () => {
       const errorMessage = err.message || 'Unknown error occurred when fetching replays';
       console.error('Error in fetchReplays:', errorMessage);
       setError(errorMessage);
-      toast({
-        title: 'Error fetching replays',
-        description: errorMessage,
-        variant: 'destructive',
-      });
+      
+      // Only show toast for actual errors, not for unauthenticated users
+      if (!errorMessage.includes('Authentication error') && !errorMessage.includes('No authenticated user')) {
+        toast({
+          title: 'Error fetching replays',
+          description: errorMessage,
+          variant: 'destructive',
+        });
+      }
     } finally {
       setIsLoading(false);
     }

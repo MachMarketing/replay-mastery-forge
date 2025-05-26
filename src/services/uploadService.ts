@@ -10,10 +10,20 @@ export async function uploadReplayFile(file: File): Promise<{
   };
 }> {
   try {
-    // Generate a unique filename
+    // Get the current user
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+      console.error('Authentication error:', authError);
+      return { error: new Error('User must be authenticated to upload files') };
+    }
+
+    // Generate a unique filename with user folder structure
     const fileExt = file.name.split('.').pop();
     const fileName = `${uuidv4()}.${fileExt}`;
-    const filePath = `${fileName}`;
+    const filePath = `${user.id}/${fileName}`;
+
+    console.log('Uploading file to path:', filePath);
 
     // Upload file to Supabase Storage
     const { error: uploadError } = await supabase.storage
@@ -66,7 +76,7 @@ export async function saveReplayMetadata(
     const { data, error } = await supabase
       .from('replays')
       .insert({
-        user_id: user.id,  // Add the user_id from the authenticated user
+        user_id: user.id,  // This now properly references the profiles table
         filename,
         original_filename: originalFilename,
         player_name: metadata.playerName,
