@@ -1,7 +1,7 @@
 
 import { ParsedReplayData } from './replayParser/types';
-// Import screparsed instead of screp-js
-import { parseReplay as screparsedParse } from 'screparsed';
+// Import screparsed correctly - it likely exports a default function or different named export
+import screparsed from 'screparsed';
 
 /**
  * Parse a StarCraft: Brood War replay file using screparsed
@@ -43,11 +43,28 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
   const uint8Array = new Uint8Array(arrayBuffer);
   console.log('[replayParser] Created Uint8Array, length:', uint8Array.length);
   
-  // Parse with screparsed - supports both Classic and Remastered
+  // Parse with screparsed - try different possible API patterns
   try {
     console.log('[replayParser] Parsing with screparsed...');
     
-    const screparsedResult = screparsedParse(uint8Array);
+    let screparsedResult;
+    
+    // Try different possible API patterns for screparsed
+    if (typeof screparsed === 'function') {
+      // If screparsed is a default export function
+      screparsedResult = screparsed(uint8Array);
+    } else if (screparsed && typeof screparsed.parse === 'function') {
+      // If screparsed has a parse method
+      screparsedResult = screparsed.parse(uint8Array);
+    } else if (screparsed && typeof screparsed.parseReplay === 'function') {
+      // If screparsed has a parseReplay method
+      screparsedResult = screparsed.parseReplay(uint8Array);
+    } else {
+      // Log what's actually available in screparsed
+      console.log('[replayParser] Screparsed exports:', Object.keys(screparsed || {}));
+      throw new Error('Screparsed API nicht gefunden');
+    }
+    
     console.log('[replayParser] Screparsed result:', screparsedResult);
     
     if (!screparsedResult || !screparsedResult.header || !screparsedResult.players) {
