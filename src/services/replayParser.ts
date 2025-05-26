@@ -1,7 +1,6 @@
-
 import { ParsedReplayData } from './replayParser/types';
-// Import screparsed correctly - it likely exports a default function or different named export
-import screparsed from 'screparsed';
+// Import screparsed correctly - it exports a default function
+import * as screparsed from 'screparsed';
 
 /**
  * Parse a StarCraft: Brood War replay file using screparsed
@@ -43,35 +42,37 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
   const uint8Array = new Uint8Array(arrayBuffer);
   console.log('[replayParser] Created Uint8Array, length:', uint8Array.length);
   
-  // Parse with screparsed - try different possible API patterns
+  // Parse with screparsed using the correct API
   try {
     console.log('[replayParser] Parsing with screparsed...');
+    console.log('[replayParser] Available screparsed methods:', Object.keys(screparsed));
     
     let screparsedResult;
     
-    // Try different possible API patterns for screparsed
-    if (typeof screparsed === 'function') {
-      // If screparsed is a default export function
-      screparsedResult = screparsed(uint8Array);
-    } else if (screparsed && typeof screparsed.parse === 'function') {
-      // If screparsed has a parse method
-      screparsedResult = screparsed.parse(uint8Array);
-    } else if (screparsed && typeof screparsed.parseReplay === 'function') {
-      // If screparsed has a parseReplay method
-      screparsedResult = screparsed.parseReplay(uint8Array);
+    // Use the correct screparsed API - it's likely a default export function
+    if (typeof screparsed.default === 'function') {
+      screparsedResult = screparsed.default(uint8Array);
+    } else if (typeof screparsed === 'function') {
+      screparsedResult = (screparsed as any)(uint8Array);
     } else {
-      // Log what's actually available in screparsed
-      console.log('[replayParser] Screparsed exports:', Object.keys(screparsed || {}));
-      throw new Error('Screparsed API nicht gefunden');
+      // Try calling screparsed directly as imported
+      screparsedResult = (screparsed as any)(uint8Array);
     }
     
     console.log('[replayParser] Screparsed result:', screparsedResult);
     
-    if (!screparsedResult || !screparsedResult.header || !screparsedResult.players) {
+    if (!screparsedResult) {
+      throw new Error('Screparsed konnte keine Daten extrahieren');
+    }
+    
+    // Validate that we have basic required data
+    if (!screparsedResult.header && !screparsedResult.players) {
       throw new Error('Screparsed konnte keine gültigen Replay-Daten extrahieren');
     }
     
-    if (screparsedResult.players.length < 2) {
+    // Handle different possible result structures
+    const players = screparsedResult.players || [];
+    if (players.length < 2) {
       throw new Error('Replay muss mindestens 2 Spieler enthalten');
     }
     
@@ -98,7 +99,7 @@ function createParsedDataFromScreparsed(screparsedResult: any, filename: string)
   const players = screparsedResult.players || [];
   
   // Filter human players only (exclude computer players)
-  const humanPlayers = players.filter((p: any) => p.human || p.type === 'human' || p.playerType === 1);
+  const humanPlayers = players.filter((p: any) => p.human !== false && p.type !== 'computer');
   console.log('[replayParser] Found human players:', humanPlayers.length);
   
   if (humanPlayers.length < 2) {
