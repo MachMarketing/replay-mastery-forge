@@ -45,7 +45,7 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
         parsedData = await Promise.resolve(parsedReplay.parse(uint8Array));
       }
     }
-    else if (typeof screparsed.default === 'function') {
+    else if (screparsed.default && typeof screparsed.default === 'function') {
       console.log('[replayParser] Using default export as function');
       parsedData = await Promise.resolve(screparsed.default(uint8Array));
     }
