@@ -73,10 +73,33 @@ export async function saveReplayMetadata(
       return { data: null, error: new Error('No authenticated user found') };
     }
 
+    // First ensure the user has a profile (in case the trigger didn't work)
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('id', user.id)
+      .single();
+
+    if (!profile) {
+      // Create profile if it doesn't exist
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert({
+          id: user.id,
+          username: user.email,
+          avatar_url: null
+        });
+      
+      if (profileError) {
+        console.error('Error creating profile:', profileError);
+        return { data: null, error: profileError };
+      }
+    }
+
     const { data, error } = await supabase
       .from('replays')
       .insert({
-        user_id: user.id,  // This now properly references the profiles table
+        user_id: user.id,
         filename,
         original_filename: originalFilename,
         player_name: metadata.playerName,

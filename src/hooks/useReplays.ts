@@ -36,7 +36,9 @@ export const useReplays = () => {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
       if (authError) {
-        throw new Error(`Authentication error: ${authError.message}`);
+        console.error('Authentication error:', authError);
+        setReplays([]);
+        return;
       }
       
       if (!user) {
@@ -65,8 +67,8 @@ export const useReplays = () => {
       console.error('Error in fetchReplays:', errorMessage);
       setError(errorMessage);
       
-      // Only show toast for actual errors, not for unauthenticated users
-      if (!errorMessage.includes('Authentication error') && !errorMessage.includes('No authenticated user')) {
+      // Only show toast for actual database errors
+      if (!errorMessage.includes('Authentication error')) {
         toast({
           title: 'Error fetching replays',
           description: errorMessage,
