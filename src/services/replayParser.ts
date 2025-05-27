@@ -1,4 +1,3 @@
-
 import { ParsedReplayData } from './replayParser/types';
 
 /**
@@ -45,25 +44,8 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     // Import screparsed dynamically
     const screparsed = await import('screparsed');
     
-    // Try different ways to access the parsing functionality
-    let screparsedResult;
-    
-    if (screparsed.default && typeof screparsed.default === 'function') {
-      // If default export is a function, use it directly
-      screparsedResult = await screparsed.default(new Uint8Array(arrayBuffer));
-    } else if (screparsed.default && screparsed.default.parse) {
-      // If default export has a parse method
-      screparsedResult = await screparsed.default.parse(new Uint8Array(arrayBuffer));
-    } else if (screparsed.ReplayParser && screparsed.ReplayParser.parse) {
-      // If ReplayParser has a static parse method
-      screparsedResult = await screparsed.ReplayParser.parse(new Uint8Array(arrayBuffer));
-    } else if (screparsed.parse) {
-      // If there's a direct parse export
-      screparsedResult = await screparsed.parse(new Uint8Array(arrayBuffer));
-    } else {
-      // Try to use the default export directly
-      screparsedResult = await screparsed.default(arrayBuffer);
-    }
+    // Use the default export function directly
+    const screparsedResult = screparsed.default(new Uint8Array(arrayBuffer));
     
     if (!screparsedResult) {
       throw new Error('Screparsed konnte keine gültigen Daten extrahieren');
