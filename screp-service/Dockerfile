@@ -5,13 +5,16 @@ FROM golang:1.21-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache git
 
-# Copy only go.mod first for better caching
-COPY go.mod ./
-RUN go mod tidy && go mod download
+# Copy go.mod and go.sum for better caching
+COPY go.mod go.sum ./
 
-# Now copy the rest of the source code
+# Download dependencies
+RUN go mod download
+
+# Copy source code
 COPY . .
 
+# Build the application
 RUN go build -o screp-service .
 
 # Production-Stage

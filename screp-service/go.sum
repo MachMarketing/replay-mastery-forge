@@ -1,9 +1,9 @@
 
-github.com/gorilla/mux v1.8.1 h1:HYiMw3CaN1U59J7W0f1gG9mN0uwqZRI+kXkeUu3X5Ck=
-github.com/gorilla/mux v1.8.1/go.mod h1:7BNV4eARSRL3OZg7Qn5vPZ6CW9StPvYTSi6eMZnzzkU=
+github.com/gorilla/mux v1.8.1 h1:TuBL49tXwgrFYWhqrNgrUNEY92u81SPhu7sTdzQEiWY=
+github.com/gorilla/mux v1.8.1/go.mod h1:AKf9I4AEqPTmMytcMc0KkNouC66V3BtZ4qD5fmWSiMQ=
 github.com/icza/screp v1.12.11 h1:kp7WfHk8k3i5U5mYHd0mjGrOY4ndzy5oWJcr9O8wU+c=
 github.com/icza/screp v1.12.11/go.mod h1:LQ14vTWvH3OPlSKMHOGlDOp6Bd8owuUqKeYmOkAt1Kk=
-github.com/joho/godotenv v1.5.1 h1:qR7KLL4W+lraEczKwAx9yo9Lcb5DZmIliLDMBp7rDiY=
-github.com/joho/godotenv v1.5.1/go.mod h1:ABwqZX0Wn1k6eLg1SlMOvV7R0CI7PZHFqBrRpK5Lmvg=
-golang.org/x/text v0.14.0 h1:12aSKcVZ6mM/1+V1HbhwgmUvES/3lKnd4QdbLfIbYbg=
-golang.org/x/text v0.14.0/go.mod h1:Q5sjC2o8vPXvFhEUwT7k0Hq1PVmP+nJr3mqzWqlH05k=
+github.com/joho/godotenv v1.5.1 h1:7eLL/+HRGLY0ldzfGMeQkb7vMd0as4CfYvUVzLqw0N0=
+github.com/joho/godotenv v1.5.1/go.mod h1:f4LDr5Voq0i2e/R5DDNOoa2zzDfwtkZa6DnEwAbqwq4=
+golang.org/x/text v0.14.0 h1:ScX5w1eTa3QqT8oi6+ziP7dTV1S2+ALU0bI+0zXKWiQ=
+golang.org/x/text v0.14.0/go.mod h1:18ZOQIKpY8NJVqYksKHtTdi31H5itFRjB5/qKTNYzSU=
