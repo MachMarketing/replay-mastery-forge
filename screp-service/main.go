@@ -10,7 +10,8 @@ import (
 	"os"
 
 	"github.com/gorilla/mux"
-	"github.com/icza/screp"
+	"github.com/icza/screp/rep"
+	"github.com/icza/screp/repparser"
 	"github.com/joho/godotenv"
 )
 
@@ -97,8 +98,8 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpFile.Close() // Close file so it can be read by ParseFile
 
-	// Parse the replay using the correct icza/screp API
-	replay, err := screp.ParseFile(tmpFile.Name())
+	// Parse the replay using the correct icza/screp v1.12.11 API
+	replay, err := repparser.ParseFile(tmpFile.Name())
 	if err != nil {
 		log.Printf("Error parsing replay: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to parse replay: %v", err), http.StatusBadRequest)
@@ -109,7 +110,7 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 	var players []Player
 	var commands []Command
 
-	// Extract player data from the parsed replay using correct API
+	// Extract player data from the parsed replay using correct v1.12.11 API
 	if replay.Header != nil && replay.Header.Players != nil {
 		for _, player := range replay.Header.Players {
 			if player.Name != "" {
@@ -119,8 +120,8 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 				// Calculate APM from commands - get total commands for this player
 				playerCommands := 0
 				if replay.Commands != nil {
-					for _, cmd := range replay.Commands {
-						if cmd.PlayerID == player.ID {
+					for _, cmd := range replay.Commands.Cmds {
+						if cmd.PlayerID() == player.ID {
 							playerCommands++
 						}
 					}
@@ -129,8 +130,8 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 				// Calculate APM (Actions Per Minute)
 				// Game duration in frames, convert to minutes (assuming ~24 FPS)
 				gameDurationMinutes := 1.0
-				if replay.Header.Duration > 0 {
-					gameDurationMinutes = float64(replay.Header.Duration) / (24.0 * 60.0)
+				if replay.Header.Frames > 0 {
+					gameDurationMinutes = float64(replay.Header.Frames) / (24.0 * 60.0)
 				}
 				
 				apm := 0
@@ -153,16 +154,16 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 	maxCommands := 100
 	
 	if replay.Commands != nil {
-		for _, cmd := range replay.Commands {
+		for _, cmd := range replay.Commands.Cmds {
 			if commandCount >= maxCommands {
 				break
 			}
 			
 			// Create a basic command representation
 			commands = append(commands, Command{
-				Frame: int(cmd.Frame),
-				Type:  getCommandTypeString(cmd.Type),
-				Data:  fmt.Sprintf("Player: %d", cmd.PlayerID),
+				Frame: int(cmd.Frame()),
+				Type:  getCommandTypeString(cmd.Type()),
+				Data:  fmt.Sprintf("Player: %d", cmd.PlayerID()),
 			})
 			commandCount++
 		}
@@ -176,7 +177,7 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 		if replay.Header.Map != "" {
 			mapName = replay.Header.Map
 		}
-		frames = int(replay.Header.Duration)
+		frames = int(replay.Header.Frames)
 	}
 
 	response := ParseResponse{
@@ -199,15 +200,15 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // Helper function to convert race ID to string
-func getRaceString(race byte) string {
+func getRaceString(race rep.Race) string {
 	switch race {
-	case 0:
+	case rep.RaceZerg:
 		return "Zerg"
-	case 1:
+	case rep.RaceTerran:
 		return "Terran"
-	case 2:
+	case rep.RaceProtoss:
 		return "Protoss"
-	case 6:
+	case rep.RaceRandom:
 		return "Random"
 	default:
 		return "Unknown"
@@ -215,27 +216,27 @@ func getRaceString(race byte) string {
 }
 
 // Helper function to convert command type to string
-func getCommandTypeString(cmdType byte) string {
+func getCommandTypeString(cmdType rep.CmdType) string {
 	switch cmdType {
-	case 0x09:
+	case rep.CmdTypeSelect:
 		return "Select"
-	case 0x0A:
+	case rep.CmdTypeShiftSelect:
 		return "Shift_Select"
-	case 0x0B:
+	case rep.CmdTypeShiftDeselect:
 		return "Shift_Deselect"
-	case 0x0C:
+	case rep.CmdTypeBuild:
 		return "Build"
-	case 0x0D:
+	case rep.CmdTypeVision:
 		return "Vision"
-	case 0x0E:
+	case rep.CmdTypeAlly:
 		return "Ally"
-	case 0x12:
+	case rep.CmdTypeHotkey:
 		return "Hotkey"
-	case 0x13:
+	case rep.CmdTypeMove:
 		return "Move"
-	case 0x14:
+	case rep.CmdTypeAttack:
 		return "Attack"
-	case 0x15:
+	case rep.CmdTypeUseTech:
 		return "Use_Tech"
 	default:
 		return "Command"
