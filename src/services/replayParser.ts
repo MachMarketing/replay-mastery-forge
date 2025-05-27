@@ -1,13 +1,14 @@
 
 import { ParsedReplayData } from './replayParser/types';
+import { parseReplay as parseWithScreparsed } from 'screparsed';
 
 /**
- * Parse a StarCraft: Brood War replay file using the Go service
+ * Parse a StarCraft: Brood War replay file using screparsed (browser-based)
  * This supports both Classic and Remastered replay formats
- * Only returns real parsed data - no fallback data
+ * Works entirely in the browser without requiring any local services
  */
 export async function parseReplay(file: File): Promise<ParsedReplayData> {
-  console.log('[replayParser] Starting to parse replay file:', file.name);
+  console.log('[replayParser] Starting to parse replay file with screparsed:', file.name);
   console.log('[replayParser] File size:', file.size, 'bytes');
   
   // Enhanced file validation
@@ -28,7 +29,7 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     throw new Error('Nur .rep Dateien werden unterstützt');
   }
   
-  // Read file as ArrayBuffer for validation
+  // Read file as ArrayBuffer for screparsed
   console.log('[replayParser] Reading file as ArrayBuffer...');
   let arrayBuffer: ArrayBuffer;
   try {
@@ -39,129 +40,42 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     throw new Error('Konnte Datei nicht lesen - möglicherweise beschädigt');
   }
   
-  // Check if Go service is available with timeout controller
-  console.log('[replayParser] Checking Go service availability...');
+  // Parse with screparsed (browser-based)
+  console.log('[replayParser] Parsing with screparsed...');
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-    
-    const healthCheck = await fetch('http://localhost:8000/health', {
-      method: 'GET',
-      signal: controller.signal
-    });
-    
-    clearTimeout(timeoutId);
-    
-    if (!healthCheck.ok) {
-      throw new Error('Go service health check failed');
+    const screparsedResult = await parseWithScreparsed(new Uint8Array(arrayBuffer));
+    if (!screparsedResult) {
+      throw new Error('Screparsed konnte keine gültigen Daten extrahieren');
     }
-    console.log('[replayParser] Go service is available');
-  } catch (healthError) {
-    console.error('[replayParser] Go service health check failed:', healthError);
-    throw new Error(`Go-Service ist nicht verfügbar. 
-    
-Bitte starten Sie den SCREP-Service:
-
-1. Terminal öffnen und zum screp-service Verzeichnis navigieren:
-   cd screp-service
-
-2. Go-Service starten:
-   go run main.go
-   
-   ODER mit Docker:
-   docker build -t screp-service .
-   docker run -p 8000:8000 screp-service
-
-3. Service sollte auf http://localhost:8000 verfügbar sein
-
-Der Service muss laufen, bevor Replays analysiert werden können.`);
-  }
-  
-  // Parse with the Go service
-  console.log('[replayParser] Attempting to parse with Go service...');
-  try {
-    const goServiceResult = await parseWithGoService(file);
-    if (!goServiceResult) {
-      throw new Error('Go-Service konnte keine gültigen Daten extrahieren');
-    }
-    console.log('[replayParser] Successfully parsed with Go service');
-    return goServiceResult;
-  } catch (goError) {
-    console.error('[replayParser] Go service failed:', goError);
-    throw new Error(`Replay-Parsing fehlgeschlagen: ${goError instanceof Error ? goError.message : 'Unbekannter Fehler'}`);
+    console.log('[replayParser] Successfully parsed with screparsed');
+    return transformScreparsedResponse(screparsedResult, file.name);
+  } catch (screparsedError) {
+    console.error('[replayParser] Screparsed failed:', screparsedError);
+    throw new Error(`Replay-Parsing fehlgeschlagen: ${screparsedError instanceof Error ? screparsedError.message : 'Unbekannter Fehler'}`);
   }
 }
 
 /**
- * Parse with the Go service - this is our only parsing method
+ * Transform screparsed response to our format
  */
-async function parseWithGoService(file: File): Promise<ParsedReplayData | null> {
-  try {
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    console.log('[replayParser] Sending request to Go service...');
-    const response = await fetch('http://localhost:8000/parse', {
-      method: 'POST',
-      body: formData,
-      headers: {
-        // Don't set Content-Type - let browser set it for FormData
-      }
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('[replayParser] Go service returned error:', response.status, errorText);
-      throw new Error(`Go service returned ${response.status}: ${errorText}`);
-    }
-    
-    const data = await response.json();
-    console.log('[replayParser] Raw Go service response:', data);
-    
-    return transformGoServiceResponse(data, file.name);
-  } catch (error) {
-    console.error('[replayParser] Go service error:', error);
-    
-    // Re-throw with more context
-    if (error instanceof Error) {
-      if (error.message.includes('Failed to fetch') || error.message.includes('fetch')) {
-        throw new Error(`Go-Service ist nicht erreichbar. 
-
-Bitte überprüfen Sie:
-
-1. Ist der SCREP-Service gestartet?
-   cd screp-service
-   go run main.go
-
-2. Läuft der Service auf Port 8000?
-   curl http://localhost:8000/health
-
-3. Firewall-Einstellungen erlauben Verbindungen zu localhost:8000?
-
-Der Service muss laufen, damit Replays analysiert werden können.`);
-      }
-      throw error;
-    }
-    
-    throw new Error('Unbekannter Fehler beim Kommunizieren mit dem Go-Service');
-  }
-}
-
-/**
- * Transform Go service response to our format
- */
-function transformGoServiceResponse(data: any, filename: string): ParsedReplayData {
+function transformScreparsedResponse(data: any, filename: string): ParsedReplayData {
   const players = data.players || [];
-  const buildOrders = data.buildOrders || {};
-  const metadata = data.metadata || {};
+  const commands = data.commands || [];
+  const header = data.header || {};
   
   if (players.length < 2) {
     throw new Error('Nicht genügend Spieler in der Replay-Datei gefunden (mindestens 2 erforderlich)');
   }
   
-  // Validate that we have real player data
-  const player1 = players[0];
-  const player2 = players[1];
+  // Find human players
+  const humanPlayers = players.filter((p: any) => p.type === 'Human');
+  
+  if (humanPlayers.length < 2) {
+    throw new Error('Nicht genügend menschliche Spieler gefunden');
+  }
+  
+  const player1 = humanPlayers[0];
+  const player2 = humanPlayers[1];
   
   if (!player1.name || player1.name.trim() === '') {
     throw new Error('Ungültige Spielerdaten: Spieler 1 Name fehlt');
@@ -171,12 +85,16 @@ function transformGoServiceResponse(data: any, filename: string): ParsedReplayDa
     throw new Error('Ungültige Spielerdaten: Spieler 2 Name fehlt');
   }
   
+  // Calculate APM from commands
+  const player1APM = calculateAPMFromCommands(commands, player1.id, header.frames || 0);
+  const player2APM = calculateAPMFromCommands(commands, player2.id, header.frames || 0);
+  
   const primaryPlayer = {
     name: player1.name,
     race: normalizeRaceName(player1.race),
-    apm: player1.apm || 0,
-    eapm: player1.eapm || Math.round((player1.apm || 0) * 0.7),
-    buildOrder: transformBuildOrder(buildOrders[player1.id] || []),
+    apm: player1APM,
+    eapm: Math.round(player1APM * 0.7),
+    buildOrder: extractBuildOrderFromCommands(commands, player1.id),
     strengths: [],
     weaknesses: [],
     recommendations: []
@@ -185,9 +103,9 @@ function transformGoServiceResponse(data: any, filename: string): ParsedReplayDa
   const secondaryPlayer = {
     name: player2.name,
     race: normalizeRaceName(player2.race),
-    apm: player2.apm || 0,
-    eapm: player2.eapm || Math.round((player2.apm || 0) * 0.7),
-    buildOrder: transformBuildOrder(buildOrders[player2.id] || []),
+    apm: player2APM,
+    eapm: Math.round(player2APM * 0.7),
+    buildOrder: extractBuildOrderFromCommands(commands, player2.id),
     strengths: [],
     weaknesses: [],
     recommendations: []
@@ -196,15 +114,15 @@ function transformGoServiceResponse(data: any, filename: string): ParsedReplayDa
   const matchup = `${getRaceShortName(primaryPlayer.race)}v${getRaceShortName(secondaryPlayer.race)}`;
   
   // Generate analysis based on real data
-  const analysis = generateAnalysis(primaryPlayer, secondaryPlayer, metadata);
+  const analysis = generateAnalysis(primaryPlayer, secondaryPlayer, header);
   
   return {
     primaryPlayer: { ...primaryPlayer, ...analysis.primaryAnalysis },
     secondaryPlayer,
-    map: metadata.map || 'Unknown Map',
+    map: header.mapName || 'Unknown Map',
     matchup,
-    duration: metadata.duration || '0:00',
-    durationMS: metadata.durationFrames ? metadata.durationFrames * (1000/24) : 0,
+    duration: formatDuration(header.frames || 0),
+    durationMS: header.frames ? header.frames * (1000/24) : 0,
     date: new Date().toISOString(),
     result: determineResult(player1, player2),
     strengths: analysis.primaryAnalysis.strengths,
@@ -224,23 +142,76 @@ function transformGoServiceResponse(data: any, filename: string): ParsedReplayDa
 }
 
 /**
- * Transform build order from Go service format
+ * Calculate APM from command data
  */
-function transformBuildOrder(buildOrder: any[]): Array<{time: string; supply: number; action: string}> {
-  if (!Array.isArray(buildOrder)) {
-    console.warn('[replayParser] Invalid build order data received');
-    return [];
-  }
+function calculateAPMFromCommands(commands: any[], playerId: number, totalFrames: number): number {
+  if (!commands || commands.length === 0 || totalFrames === 0) return 0;
   
-  return buildOrder.map(item => ({
-    time: item.time || '0:00',
-    supply: item.supply || 0,
-    action: item.action || 'Unknown Action'
-  }));
+  const playerCommands = commands.filter(cmd => cmd.playerId === playerId);
+  const minutes = totalFrames / (24 * 60); // 24 frames per second
+  
+  return minutes > 0 ? Math.round(playerCommands.length / minutes) : 0;
 }
 
 /**
- * Determine game result based on player data
+ * Extract build order from commands
+ */
+function extractBuildOrderFromCommands(commands: any[], playerId: number): Array<{time: string; supply: number; action: string}> {
+  if (!commands || commands.length === 0) return [];
+  
+  const playerCommands = commands
+    .filter(cmd => cmd.playerId === playerId)
+    .filter(cmd => isBuildCommand(cmd))
+    .slice(0, 30) // Limit to first 30 build actions
+    .map((cmd, index) => ({
+      time: formatDuration(cmd.frame || 0),
+      supply: Math.min(4 + index, 200), // Estimate supply progression
+      action: getActionName(cmd)
+    }));
+    
+  return playerCommands;
+}
+
+/**
+ * Check if command is a build command
+ */
+function isBuildCommand(cmd: any): boolean {
+  if (!cmd.type) return false;
+  
+  // Common build command types in StarCraft
+  const buildCommandTypes = [
+    'Build', 'Train', 'Research', 'Upgrade',
+    'BuildUnit', 'BuildBuilding', 'TrainUnit'
+  ];
+  
+  return buildCommandTypes.some(type => 
+    cmd.type.toString().toLowerCase().includes(type.toLowerCase())
+  );
+}
+
+/**
+ * Get action name from command
+ */
+function getActionName(cmd: any): string {
+  if (cmd.unitType) return cmd.unitType;
+  if (cmd.buildingType) return cmd.buildingType;
+  if (cmd.upgrade) return cmd.upgrade;
+  if (cmd.action) return cmd.action;
+  return 'Unknown Action';
+}
+
+/**
+ * Format duration from frames
+ */
+function formatDuration(frames: number): string {
+  const seconds = Math.floor(frames / 24);
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Determine game result
  */
 function determineResult(player1: any, player2: any): 'win' | 'loss' | 'unknown' {
   if (player1.isWinner === true) return 'win';
@@ -251,7 +222,7 @@ function determineResult(player1: any, player2: any): 'win' | 'loss' | 'unknown'
 /**
  * Generate analysis based on real player data
  */
-function generateAnalysis(player1: any, player2: any, metadata: any): {
+function generateAnalysis(player1: any, player2: any, header: any): {
   primaryAnalysis: { strengths: string[]; weaknesses: string[]; recommendations: string[] };
   trainingPlan: Array<{ day: number; focus: string; drill: string }>;
 } {
@@ -259,7 +230,7 @@ function generateAnalysis(player1: any, player2: any, metadata: any): {
   const weaknesses = [];
   const recommendations = [];
   
-  // APM analysis based on real data
+  // APM analysis
   if (player1.apm > 150) {
     strengths.push(`Hohe APM (${player1.apm})`);
   } else if (player1.apm < 100) {
@@ -269,14 +240,12 @@ function generateAnalysis(player1: any, player2: any, metadata: any): {
     strengths.push(`Solide APM (${player1.apm})`);
   }
   
-  // Build order analysis based on real data
+  // Build order analysis
   if (player1.buildOrder && player1.buildOrder.length > 10) {
     strengths.push('Detaillierte Build Order verfügbar');
   } else if (player1.buildOrder && player1.buildOrder.length > 0) {
     weaknesses.push('Kurze Build Order - längere Spiele empfohlen');
     recommendations.push('Längere Spiele für bessere Analyse spielen');
-  } else {
-    weaknesses.push('Keine Build Order Daten verfügbar');
   }
   
   // Race-specific analysis
@@ -291,7 +260,7 @@ function generateAnalysis(player1: any, player2: any, metadata: any): {
     recommendations.push('Creep Spread verbessern');
   }
   
-  // APM comparison with opponent
+  // APM comparison
   if (player1.apm > 0 && player2.apm > 0) {
     if (player1.apm > player2.apm + 20) {
       strengths.push('Höhere APM als Gegner');
@@ -301,7 +270,6 @@ function generateAnalysis(player1: any, player2: any, metadata: any): {
     }
   }
   
-  // Create training plan based on real data analysis
   const trainingPlan = [
     { day: 1, focus: "APM Training", drill: `${player1.race} Hotkeys üben` },
     { day: 2, focus: "Build Order", drill: `Standard ${player1.race} Build perfektionieren` },

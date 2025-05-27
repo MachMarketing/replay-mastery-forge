@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
@@ -20,7 +19,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'parsing' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
-  const [serviceAvailable, setServiceAvailable] = useState<boolean>(false);
+  const [serviceAvailable] = useState<boolean>(true); // Always true for browser-based parsing
   const progressIntervalRef = useRef<number | null>(null);
   const processingTimeoutRef = useRef<number | null>(null);
   const { toast } = useToast();
@@ -29,19 +28,18 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   // Update UI based on screparsed parser progress
   useEffect(() => {
     if (isProcessing && uploadStatus === 'parsing') {
-      // Update status message based on parser progress
       if (parserProgress < 25) {
-        setStatusMessage('Initialisiere Screparsed Parser...');
+        setStatusMessage('Initialisiere Browser-Parser...');
       } else if (parserProgress < 50) {
         setStatusMessage('Lese SC:BW Replay-Struktur...');
       } else if (parserProgress < 75) {
-        setStatusMessage('Extrahiere echte Spielerdaten...');
+        setStatusMessage('Extrahiere Spielerdaten...');
       } else if (parserProgress < 95) {
         setStatusMessage('Analysiere Build Order & APM...');
       } else if (parserProgress === 100) {
-        setStatusMessage('Screparsed Analyse abgeschlossen!');
+        setStatusMessage('Browser-Analyse abgeschlossen!');
       } else {
-        setStatusMessage('Verarbeite SC:BW Remastered Daten...');
+        setStatusMessage('Verarbeite SC:BW Replay-Daten...');
       }
     }
   }, [isProcessing, parserProgress, uploadStatus]);
@@ -120,32 +118,30 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   };
 
   const processFile = async (file: File) => {
-    console.log("[UploadBox] Starting screparsed file processing:", file.name);
+    console.log("[UploadBox] Starting browser-based file processing:", file.name);
     clearError();
     setFile(file);
     setErrorDetails(null);
     setUploadStatus('parsing');
-    setStatusMessage('Verbinde mit Screparsed Parser...');
+    setStatusMessage('Verbinde mit Browser-Parser...');
     resetProgress();
     clearTimeouts();
     
     try {
-      console.log("[UploadBox] Starting parsing with screparsed for SC:BW Remastered support:", file.name);
+      console.log("[UploadBox] Starting parsing with screparsed (browser-based):", file.name);
       
-      // Use the screparsed-based parser
       const parsedData = await parseReplay(file);
       
       if (!parsedData) {
-        throw new Error(parsingError || 'Screparsed konnte die Replay-Datei nicht verarbeiten');
+        throw new Error(parsingError || 'Browser-Parser konnte die Replay-Datei nicht verarbeiten');
       }
       
-      // Log the real extracted data for verification
-      console.log("[UploadBox] Real screparsed data extracted:", {
+      console.log("[UploadBox] Browser-based parsing successful:", {
         primaryPlayer: {
           name: parsedData.primaryPlayer.name,
           race: parsedData.primaryPlayer.race,
           apm: parsedData.primaryPlayer.apm,
-          realBuildOrder: parsedData.primaryPlayer.buildOrder?.slice(0, 5)
+          buildOrderItems: parsedData.primaryPlayer.buildOrder?.length || 0
         },
         secondaryPlayer: {
           name: parsedData.secondaryPlayer.name,
@@ -157,48 +153,28 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
           matchup: parsedData.matchup,
           duration: parsedData.duration,
           result: parsedData.result
-        },
-        analysis: {
-          strengths: parsedData.strengths?.length || 0,
-          weaknesses: parsedData.weaknesses?.length || 0,
-          recommendations: parsedData.recommendations?.length || 0
         }
       });
-      
-      // Validate that we have real player names (not fallback data)
-      if (!parsedData.primaryPlayer.name || parsedData.primaryPlayer.name === 'Player 1') {
-        console.warn("[UploadBox] Warning: Still getting fallback player names");
-      }
-      
-      // Validate that we have real build order data
-      if (!parsedData.primaryPlayer.buildOrder || parsedData.primaryPlayer.buildOrder.length === 0) {
-        console.warn("[UploadBox] Warning: No build order data extracted");
-      } else {
-        console.log("[UploadBox] Successfully extracted", parsedData.primaryPlayer.buildOrder.length, "build order items");
-      }
       
       clearTimeouts();
       resetProgress();
       
       setUploadStatus('success');
-      setStatusMessage('Screparsed Analyse erfolgreich abgeschlossen!');
+      setStatusMessage('Browser-Analyse erfolgreich abgeschlossen!');
       
       toast({
         title: "SC:BW Replay analysiert",
-        description: `${file.name} wurde mit echten Daten erfolgreich analysiert.`,
+        description: `${file.name} wurde erfolgreich analysiert (browser-basiert).`,
       });
       
-      // Ensure we wait a moment before transitioning to the analysis view
       setTimeout(() => {
         if (onUploadComplete && parsedData) {
-          console.log("[UploadBox] Sending real screparsed data to parent component");
+          console.log("[UploadBox] Sending parsed data to parent component");
           onUploadComplete(file, parsedData);
-        } else {
-          console.warn("[UploadBox] Cannot complete upload: onUploadComplete missing or no data");
         }
       }, 500);
     } catch (error) {
-      console.error("[UploadBox] Screparsed file processing error:", error);
+      console.error("[UploadBox] Browser parsing error:", error);
       
       resetProgress();
       clearTimeouts();
@@ -206,10 +182,10 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       const errorMessage = error instanceof Error ? error.message : 'Unbekannter Fehler beim Parsen der SC:BW Replay-Datei';
       setErrorDetails(errorMessage);
       setUploadStatus('error');
-      setStatusMessage('Screparsed-Fehler bei der Verarbeitung');
+      setStatusMessage('Browser-Parser Fehler');
       
       toast({
-        title: "Screparsed Verarbeitung fehlgeschlagen",
+        title: "Browser-Verarbeitung fehlgeschlagen",
         description: errorMessage,
         variant: "destructive",
       });
@@ -275,7 +251,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       <div className="mt-4 flex items-center">
         <div className="h-2 w-2 rounded-full mr-2 bg-green-500 animate-pulse" />
         <p className="text-xs text-muted-foreground">
-          Screparsed Parser bereit (SC:BW Classic + Remastered)
+          Browser-Parser bereit (SC:BW Classic + Remastered, kein Service erforderlich)
         </p>
       </div>
     );
@@ -283,7 +259,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
 
   return (
     <div className="w-full">
-      <ServiceStatusChecker onStatusChange={setServiceAvailable} />
+      <ServiceStatusChecker onStatusChange={() => {}} />
       
       {uploadStatus === 'idle' ? (
         <div
@@ -291,45 +267,27 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
           className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center transition-all ${
             isDragging 
               ? 'border-primary bg-primary/10 animate-pulse' 
-              : serviceAvailable 
-                ? 'border-border hover:border-primary/50 hover:bg-secondary/50'
-                : 'border-gray-300 bg-gray-50 cursor-not-allowed opacity-50'
+              : 'border-border hover:border-primary/50 hover:bg-secondary/50'
           }`}
         >
-          <div className={`h-14 w-14 rounded-full flex items-center justify-center mb-4 ${
-            serviceAvailable ? 'bg-primary/20' : 'bg-gray-200'
-          }`}>
-            <Upload className={`h-7 w-7 ${serviceAvailable ? 'text-primary' : 'text-gray-400'}`} />
+          <div className="h-14 w-14 rounded-full flex items-center justify-center mb-4 bg-primary/20">
+            <Upload className="h-7 w-7 text-primary" />
           </div>
-          <h3 className={`text-lg font-semibold mb-2 ${serviceAvailable ? '' : 'text-gray-500'}`}>
+          <h3 className="text-lg font-semibold mb-2">
             SC:BW Replay-Datei hochladen
           </h3>
-          <p className={`text-sm mb-4 text-center ${serviceAvailable ? 'text-muted-foreground' : 'text-gray-400'}`}>
-            {serviceAvailable ? (
-              <>
-                Ziehe deine .rep Datei hierher oder klicke zum Auswählen<br />
-                <span className="text-xs text-green-600">SCREP-Service bereit</span>
-              </>
-            ) : (
-              <>
-                SCREP-Service nicht verfügbar<br />
-                <span className="text-xs text-red-600">Service muss gestartet werden</span>
-              </>
-            )}
+          <p className="text-sm mb-4 text-center text-muted-foreground">
+            Ziehe deine .rep Datei hierher oder klicke zum Auswählen<br />
+            <span className="text-xs text-green-600">Browser-basierte Analyse bereit</span>
           </p>
           <Button 
             onClick={open} 
             variant="default" 
             className="transition-all hover:shadow-md"
-            disabled={!serviceAvailable}
           >
             Datei auswählen
           </Button>
-          <input
-            {...getInputProps()}
-            accept=".rep"
-            disabled={!serviceAvailable}
-          />
+          <input {...getInputProps()} accept=".rep" />
           <p className="text-xs text-muted-foreground mt-4">
             Max. Dateigröße: {maxFileSize}MB | Format: .rep
           </p>
