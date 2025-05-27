@@ -50,8 +50,8 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     console.log('[replayParser] screparsed module loaded');
     
     // According to GitHub repo, screparsed exports a default function
-    // Type assertion to fix TypeScript issue
-    const screparsed = screparsedModule.default as ((data: Uint8Array) => any) | undefined;
+    // Use proper type assertion through unknown to fix TypeScript issue
+    const screparsed = screparsedModule.default as unknown as ((data: Uint8Array) => any);
     
     if (typeof screparsed !== 'function') {
       throw new Error('Screparsed default export is not a function');
