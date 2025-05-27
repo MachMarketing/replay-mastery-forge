@@ -1,9 +1,8 @@
-
 import { ParsedReplayData } from './replayParser/types';
 
 /**
- * Versucht zuerst, das Replay via HTTP-Service zu parsen.
- * Wenn das fehlschlägt, fällt es auf das alte Browser-Parsing (screparsed) zurück.
+ * Versucht zuerst, das Replay via Supabase Edge Function zu parsen.
+ * Wenn das fehlschlägt, fällt es auf das Browser-Parsing (screparsed) zurück.
  */
 export async function parseReplay(file: File): Promise<ParsedReplayData> {
   console.log('[replayParser] Starting to parse replay file:', file.name);
@@ -22,28 +21,29 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
   // 2. ArrayBuffer lesen
   const arrayBuffer = await file.arrayBuffer();
 
-  // 3. HTTP-Service aufrufen
-  const parserUrl = import.meta.env.VITE_PARSER_URL;
-  if (parserUrl) {
-    try {
-      console.log('[replayParser] Using remote parser at', parserUrl);
-      const response = await fetch(`${parserUrl.replace(/\/$/, '')}/parse`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/octet-stream' },
-        body: arrayBuffer
-      });
-      if (response.ok) {
-        const data = await response.json();
-        console.log('[replayParser] Remote parse successful');
-        return transformScreparsedResponse(data, file.name);
-      } else {
-        console.warn('[replayParser] Remote parser returned', response.status);
-      }
-    } catch (err) {
-      console.warn('[replayParser] Remote parser failed:', err);
+  // 3. Supabase Edge Function aufrufen
+  try {
+    console.log('[replayParser] Using Supabase Edge Function for parsing');
+    const response = await fetch('https://ijletuopynpqyundrfdq.supabase.co/functions/v1/parseReplay', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/octet-stream',
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlqbGV0dW9weW5wcXl1bmRyZmRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU5NjYzMjgsImV4cCI6MjA2MTU0MjMyOH0.Trf4z1Cv9aJeXka9omVYEbgzPNgPK8IcLzEsWSM3wZo'
+      },
+      body: arrayBuffer
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      console.log('[replayParser] Supabase Edge Function parse successful');
+      return transformBwscrepResponse(data, file.name);
+    } else {
+      const errorData = await response.json().catch(() => null);
+      console.warn('[replayParser] Supabase Edge Function returned', response.status, errorData);
+      throw new Error(`Edge Function failed: ${response.status}`);
     }
-  } else {
-    console.warn('[replayParser] No VITE_PARSER_URL configured – skipping remote parse');
+  } catch (err) {
+    console.warn('[replayParser] Supabase Edge Function failed, falling back to browser parser:', err);
   }
 
   // 4. Fallback: Browser-Parsing via screparsed
@@ -58,6 +58,102 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     console.error('[replayParser] Browser parser also failed:', err);
     throw new Error('Replay-Parsing komplett fehlgeschlagen');
   }
+}
+
+/**
+ * Transformiert die Antwort vom bwscrep Parser (Supabase Edge Function)
+ */
+function transformBwscrepResponse(data: any, filename: string): ParsedReplayData {
+  console.log('[replayParser] Transforming bwscrep data for file:', filename);
+  console.log('[replayParser] Available bwscrep data keys:', Object.keys(data));
+  
+  // Spieler extrahieren
+  const players = data.players || [];
+  if (players.length < 2) {
+    throw new Error('Nicht genügend Spieler gefunden (mindestens 2 erforderlich)');
+  }
+  
+  const player1 = players[0];
+  const player2 = players[1];
+  
+  if (!player1?.name || !player2?.name) {
+    throw new Error('Ungültige Spielerdaten - Spielernamen fehlen');
+  }
+  
+  // Spiel-Metadaten
+  const gameFrames = data.frames || data.header?.frames || 0;
+  const gameDurationMs = data.durationMs || (gameFrames * (1000/24));
+  const mapName = data.mapName || data.header?.map || 'Unbekannte Karte';
+  
+  // APM-Daten
+  const player1APM = player1.apm || 0;
+  const player2APM = player2.apm || 0;
+  const player1EAPM = player1.eapm || Math.round(player1APM * 0.7);
+  const player2EAPM = player2.eapm || Math.round(player2APM * 0.7);
+  
+  // Build Orders aus Commands extrahieren
+  const player1BuildOrder = extractBuildOrder(data.commands || [], player1.id || 0);
+  const player2BuildOrder = extractBuildOrder(data.commands || [], player2.id || 1);
+  
+  // Analyse generieren
+  const analysis = generateGameAnalysis(player1, player2, {
+    frames: gameFrames,
+    mapName: mapName,
+    commands: data.commands || []
+  });
+  
+  // Primären Spieler erstellen
+  const primaryPlayer = {
+    name: player1.name,
+    race: normalizeRace(player1.race),
+    apm: player1APM,
+    eapm: player1EAPM,
+    buildOrder: player1BuildOrder,
+    strengths: analysis.player1Analysis.strengths,
+    weaknesses: analysis.player1Analysis.weaknesses,
+    recommendations: analysis.player1Analysis.recommendations
+  };
+  
+  // Sekundären Spieler erstellen
+  const secondaryPlayer = {
+    name: player2.name,
+    race: normalizeRace(player2.race),
+    apm: player2APM,
+    eapm: player2EAPM,
+    buildOrder: player2BuildOrder,
+    strengths: analysis.player2Analysis.strengths,
+    weaknesses: analysis.player2Analysis.weaknesses,
+    recommendations: analysis.player2Analysis.recommendations
+  };
+  
+  const matchup = `${getRaceInitial(primaryPlayer.race)}v${getRaceInitial(secondaryPlayer.race)}`;
+  
+  return {
+    primaryPlayer,
+    secondaryPlayer,
+    map: mapName,
+    matchup,
+    duration: formatDuration(gameFrames),
+    durationMS: gameDurationMs,
+    date: new Date().toISOString(),
+    result: determineGameResult(player1, player2),
+    strengths: analysis.player1Analysis.strengths,
+    weaknesses: analysis.player1Analysis.weaknesses,
+    recommendations: analysis.player1Analysis.recommendations,
+    
+    // Legacy-Eigenschaften für Rückwärtskompatibilität
+    playerName: primaryPlayer.name,
+    opponentName: secondaryPlayer.name,
+    playerRace: primaryPlayer.race,
+    opponentRace: secondaryPlayer.race,
+    apm: primaryPlayer.apm,
+    eapm: primaryPlayer.eapm,
+    opponentApm: secondaryPlayer.apm,
+    opponentEapm: secondaryPlayer.eapm,
+    buildOrder: primaryPlayer.buildOrder,
+    
+    trainingPlan: analysis.trainingPlan
+  };
 }
 
 /**
