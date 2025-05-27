@@ -1,4 +1,3 @@
-
 import { ParsedReplayData } from './replayParser/types';
 
 /**
@@ -57,7 +56,8 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
       playersCount: screparsedResult.players?.length || 0,
       hasDurationMs: !!screparsedResult.durationMs,
       hasFrames: !!screparsedResult.frames,
-      hasMapName: !!screparsedResult.mapName,
+      hasMap: !!(screparsedResult as any).map,
+      hasMapName: !!(screparsedResult as any).mapName,
       hasCommands: !!screparsedResult.commands,
       commandsLength: screparsedResult.commands?.length || 0
     });
@@ -101,8 +101,8 @@ function transformScreparsedResponse(data: any, filename: string): ParsedReplayD
   console.log('[replayParser] Data structure check:', {
     durationMs: data.durationMs,
     frames: data.frames,
-    mapName: data.mapName,
-    map: data.map
+    mapName: (data as any).mapName,
+    map: (data as any).map
   });
   
   if (players.length < 2) {
@@ -184,7 +184,7 @@ function transformScreparsedResponse(data: any, filename: string): ParsedReplayD
   // Extract game duration and map info - use correct property names
   const frames = data.frames || 0;
   const durationMs = data.durationMs || 0;
-  const mapName = data.mapName || data.map || 'Unknown Map';
+  const mapName = (data as any).mapName || (data as any).map || 'Unknown Map';
   
   console.log('[replayParser] Game metadata:', {
     frames,
