@@ -43,50 +43,29 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     console.log('[replayParser] Loading screparsed...');
     
     // Use dynamic import for screparsed
-    const screparsedModule = await import('screparsed');
-    console.log('[replayParser] screparsed module loaded:', Object.keys(screparsedModule));
+    const screparsed = await import('screparsed');
+    console.log('[replayParser] screparsed module loaded');
     
     // Convert ArrayBuffer to Uint8Array for screparsed
     const uint8Array = new Uint8Array(arrayBuffer);
     console.log('[replayParser] Converted to Uint8Array, length:', uint8Array.length);
     
-    // Try to find the correct parse function with proper type handling
+    // Parse using screparsed - based on the package documentation, it should export a default function
     let parsedReplay: any = null;
     
-    // Cast the module to any to bypass TypeScript strict checking
-    const screparsed = screparsedModule as any;
-    
-    // Try different API access patterns
     try {
-      // Method 1: Check if default export is a function
-      if (screparsed.default && typeof screparsed.default === 'function') {
-        console.log('[replayParser] Trying screparsed.default as function');
+      // Try the most common export pattern for screparsed
+      if (typeof screparsed.default === 'function') {
+        console.log('[replayParser] Using screparsed default export');
         parsedReplay = screparsed.default(uint8Array);
-      }
-      // Method 2: Check if there's a named parse export
-      else if (screparsed.parse && typeof screparsed.parse === 'function') {
-        console.log('[replayParser] Trying screparsed.parse method');
-        parsedReplay = screparsed.parse(uint8Array);
-      }
-      // Method 3: Check if default export has a parse method
-      else if (screparsed.default && screparsed.default.parse && typeof screparsed.default.parse === 'function') {
-        console.log('[replayParser] Trying screparsed.default.parse method');
-        parsedReplay = screparsed.default.parse(uint8Array);
-      }
-      // Method 4: Try to call the module itself
-      else if (typeof screparsed === 'function') {
-        console.log('[replayParser] Trying screparsed module as function');
-        parsedReplay = screparsed(uint8Array);
-      }
-      else {
-        console.error('[replayParser] Available screparsed exports:', Object.keys(screparsed));
-        console.error('[replayParser] screparsed.default:', screparsed.default);
-        console.error('[replayParser] screparsed.default type:', typeof screparsed.default);
-        throw new Error('Could not find valid parse function in screparsed module');
+      } else {
+        // Fallback: try the module itself
+        console.log('[replayParser] Trying direct module call');
+        parsedReplay = (screparsed as any)(uint8Array);
       }
     } catch (parseError) {
-      console.error('[replayParser] Error during parsing attempt:', parseError);
-      throw parseError;
+      console.error('[replayParser] screparsed parsing error:', parseError);
+      throw new Error(`screparsed failed to parse replay: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
     }
     
     console.log('[replayParser] screparsed parsing completed');
