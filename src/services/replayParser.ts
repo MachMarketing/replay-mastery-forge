@@ -1,3 +1,4 @@
+
 import { ParsedReplayData } from './replayParser/types';
 
 /**
@@ -40,7 +41,7 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
   const uint8Array = new Uint8Array(arrayBuffer);
   console.log('[replayParser] Created Uint8Array, length:', uint8Array.length);
   
-  // Parse with screparsed using correct API
+  // Parse with screparsed using the ReplayParser class
   try {
     console.log('[replayParser] Loading screparsed...');
     
@@ -50,29 +51,37 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     
     let screparsedResult: any = null;
     
-    // Try different API patterns based on actual screparsed exports
-    if (typeof screparsedModule.parse === 'function') {
-      console.log('[replayParser] Using screparsedModule.parse()...');
-      screparsedResult = screparsedModule.parse(uint8Array);
-    } else if (typeof screparsedModule.parseReplay === 'function') {
-      console.log('[replayParser] Using screparsedModule.parseReplay()...');
-      screparsedResult = screparsedModule.parseReplay(uint8Array);
-    } else if (screparsedModule.default && typeof screparsedModule.default === 'function') {
-      console.log('[replayParser] Using screparsedModule.default() as function...');
-      screparsedResult = screparsedModule.default(uint8Array);
-    } else if (screparsedModule.default && typeof screparsedModule.default.parse === 'function') {
-      console.log('[replayParser] Using screparsedModule.default.parse()...');
-      screparsedResult = screparsedModule.default.parse(uint8Array);
-    } else if (screparsedModule.default && typeof screparsedModule.default.parseReplay === 'function') {
-      console.log('[replayParser] Using screparsedModule.default.parseReplay()...');
-      screparsedResult = screparsedModule.default.parseReplay(uint8Array);
-    } else {
-      // Log available methods for debugging
-      console.log('[replayParser] Available module exports:', Object.keys(screparsedModule));
-      if (screparsedModule.default) {
-        console.log('[replayParser] Available default exports:', Object.keys(screparsedModule.default));
+    // Use the ReplayParser class correctly
+    if (screparsedModule.ReplayParser) {
+      console.log('[replayParser] Using ReplayParser class...');
+      try {
+        const parser = new screparsedModule.ReplayParser();
+        console.log('[replayParser] ReplayParser instance created, available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(parser)));
+        
+        // Try to parse the buffer - the method might be different
+        if (typeof parser.parse === 'function') {
+          console.log('[replayParser] Calling parser.parse()...');
+          screparsedResult = parser.parse(uint8Array);
+        } else if (typeof parser.parseBuffer === 'function') {
+          console.log('[replayParser] Calling parser.parseBuffer()...');
+          screparsedResult = parser.parseBuffer(uint8Array);
+        } else if (typeof parser.parseReplay === 'function') {
+          console.log('[replayParser] Calling parser.parseReplay()...');
+          screparsedResult = parser.parseReplay(uint8Array);
+        } else {
+          // Log all available methods for debugging
+          const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(parser)).filter(name => typeof parser[name] === 'function');
+          console.log('[replayParser] Available parser methods:', methods);
+          throw new Error(`Keine unterstützte Parse-Methode gefunden. Verfügbare Methoden: ${methods.join(', ')}`);
+        }
+      } catch (parserError) {
+        console.error('[replayParser] Error creating or using ReplayParser:', parserError);
+        throw new Error(`ReplayParser Fehler: ${parserError instanceof Error ? parserError.message : String(parserError)}`);
       }
-      throw new Error('Screparsed API nicht gefunden - keine unterstützte Parse-Funktion verfügbar');
+    } else {
+      // Log available exports for debugging
+      console.log('[replayParser] Available module exports:', Object.keys(screparsedModule));
+      throw new Error('ReplayParser class nicht gefunden in screparsed module');
     }
     
     if (!screparsedResult) {
