@@ -6,8 +6,8 @@ RUN apk add --no-cache git
 
 # Module und Code kopieren, dann bauen
 COPY go.mod ./
-RUN go mod tidy && go mod download
 COPY . ./
+RUN go mod tidy && go mod download
 RUN go build -o screp-service .
 
 # Production-Stage
