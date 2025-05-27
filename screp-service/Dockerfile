@@ -14,8 +14,8 @@ RUN go mod tidy && go mod download
 # Copy source code
 COPY . .
 
-# Build the application
-RUN go build -o screp-service .
+# Run go mod tidy again to ensure everything is up to date, then build
+RUN go mod tidy && go build -o screp-service .
 
 # Production-Stage
 FROM alpine:latest
