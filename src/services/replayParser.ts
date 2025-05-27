@@ -1,3 +1,4 @@
+
 import { ParsedReplayData } from './replayParser/types';
 
 /**
@@ -44,8 +45,9 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     // Import screparsed dynamically
     const screparsed = await import('screparsed');
     
-    // Use the default export function directly
-    const screparsedResult = screparsed.default(new Uint8Array(arrayBuffer));
+    // Create a new ReplayParser instance and parse
+    const parser = new screparsed.ReplayParser();
+    const screparsedResult = parser.parse(new Uint8Array(arrayBuffer));
     
     if (!screparsedResult) {
       throw new Error('Screparsed konnte keine gültigen Daten extrahieren');
@@ -54,7 +56,25 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     return transformScreparsedResponse(screparsedResult, file.name);
   } catch (screparsedError) {
     console.error('[replayParser] Screparsed failed:', screparsedError);
-    throw new Error(`Replay-Parsing fehlgeschlagen: ${screparsedError instanceof Error ? screparsedError.message : 'Unbekannter Fehler'}`);
+    
+    // If ReplayParser constructor fails, try alternative approach
+    try {
+      const screparsed = await import('screparsed');
+      
+      // Try using ParsedReplay if available
+      if (screparsed.ParsedReplay) {
+        const parsedReplay = screparsed.ParsedReplay.fromBuffer(new Uint8Array(arrayBuffer));
+        if (parsedReplay) {
+          console.log('[replayParser] Successfully parsed with ParsedReplay');
+          return transformScreparsedResponse(parsedReplay, file.name);
+        }
+      }
+      
+      throw new Error('Alle Parsing-Methoden fehlgeschlagen');
+    } catch (fallbackError) {
+      console.error('[replayParser] Fallback parsing failed:', fallbackError);
+      throw new Error(`Replay-Parsing fehlgeschlagen: ${screparsedError instanceof Error ? screparsedError.message : 'Unbekannter Fehler'}`);
+    }
   }
 }
 
