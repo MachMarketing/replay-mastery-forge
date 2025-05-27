@@ -1,5 +1,4 @@
 
-
 # ─── Builder Stage ───────────────────────────────────────────────────────────
 FROM golang:1.19-alpine AS builder
 WORKDIR /app
@@ -19,6 +18,9 @@ RUN go build -o screp-service .
 FROM alpine:latest
 WORKDIR /root/
 
+# Install wget for health check
+RUN apk add --no-cache wget
+
 # Binary aus Builder kopieren
 COPY --from=builder /app/screp-service .
 
@@ -29,4 +31,3 @@ HEALTHCHECK --interval=30s --timeout=5s \
 
 # Start-Kommando
 CMD ["./screp-service"]
-

@@ -1,3 +1,4 @@
+
 package main
 
 import (
@@ -22,13 +23,34 @@ func main() {
         port = "8080"
     }
 
-    // Router setup
+    // Router setup mit CORS
     router := mux.NewRouter()
+    
+    // CORS Middleware
+    router.Use(corsMiddleware)
+    
     router.HandleFunc("/health", healthHandler).Methods("GET")
-    router.HandleFunc("/parse", parseHandler).Methods("POST")
+    router.HandleFunc("/parse", parseHandler).Methods("POST", "OPTIONS")
 
     log.Printf("Server listening on :%s\n", port)
     log.Fatal(http.ListenAndServe(":"+port, router))
+}
+
+// CORS Middleware
+func corsMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Access-Control-Allow-Origin", "*")
+        w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+        w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+        w.Header().Set("Access-Control-Max-Age", "3600")
+        
+        if r.Method == "OPTIONS" {
+            w.WriteHeader(http.StatusOK)
+            return
+        }
+        
+        next.ServeHTTP(w, r)
+    })
 }
 
 // GET /health
@@ -47,12 +69,17 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
+    log.Printf("Received replay data: %d bytes", len(data))
+
     // Replay parsen
     parsed, err := rep.ParseReplay(data)
     if err != nil {
+        log.Printf("Parse error: %v", err)
         http.Error(w, "Parse error: "+err.Error(), http.StatusInternalServerError)
         return
     }
+
+    log.Printf("Successfully parsed replay with %d players", len(parsed.Players))
 
     // Ergebnis normalisieren
     out := struct {
@@ -70,5 +97,11 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
     out.Header.MapName = parsed.Header.MapName
 
     w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(out)
+    if err := json.NewEncoder(w).Encode(out); err != nil {
+        log.Printf("JSON encoding error: %v", err)
+        http.Error(w, "JSON encoding error", http.StatusInternalServerError)
+        return
+    }
+    
+    log.Printf("Successfully returned parsed data")
 }

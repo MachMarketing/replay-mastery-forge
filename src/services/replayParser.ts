@@ -21,14 +21,16 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     const parserUrl = import.meta.env.VITE_PARSER_URL;
     console.log('[replayParser] Fetching parser URL:', parserUrl);
     
-    // Create FormData for multipart upload
-    const formData = new FormData();
-    formData.append('file', file);
+    // Convert file to ArrayBuffer
+    const arrayBuffer = await file.arrayBuffer();
     
     const res = await fetch(`${parserUrl}/parse`, {
       method: 'POST',
       mode: 'cors',
-      body: formData,
+      headers: {
+        'Content-Type': 'application/octet-stream',
+      },
+      body: arrayBuffer,
     });
     
     console.log('[replayParser] Response status:', res.status);
@@ -69,10 +71,10 @@ function transformGoScrepResponse(data: any, filename: string): ParsedReplayData
   }
   
   // Spiel-Metadaten
-  const metadata = data.metadata || {};
-  const gameDurationMs = metadata.durationFrames ? metadata.durationFrames * (1000/24) : 0;
-  const mapName = metadata.mapName || metadata.map || 'Unbekannte Karte';
-  const duration = metadata.duration || '0:00';
+  const header = data.header || {};
+  const gameDurationMs = header.frames ? header.frames * (1000/24) : 0;
+  const mapName = header.mapName || 'Unbekannte Karte';
+  const duration = formatDuration(header.frames || 0);
   
   // APM-Daten
   const player1APM = player1.apm || 0;
@@ -80,12 +82,12 @@ function transformGoScrepResponse(data: any, filename: string): ParsedReplayData
   const player1EAPM = player1.eapm || Math.round(player1APM * 0.7);
   const player2EAPM = player2.eapm || Math.round(player2APM * 0.7);
   
-  // Build Orders aus BuildOrders extrahieren
-  const player1BuildOrder = transformBuildOrder(data.buildOrders?.[player1.id] || []);
-  const player2BuildOrder = transformBuildOrder(data.buildOrders?.[player2.id] || []);
+  // Build Orders aus Commands extrahieren
+  const player1BuildOrder = extractBuildOrderFromCommands(data.commands, player1.id);
+  const player2BuildOrder = extractBuildOrderFromCommands(data.commands, player2.id);
   
   // Analyse generieren
-  const analysis = generateGameAnalysis(player1, player2, metadata);
+  const analysis = generateGameAnalysis(player1, player2, header);
   
   // Primären Spieler erstellen
   const primaryPlayer = {
@@ -121,7 +123,7 @@ function transformGoScrepResponse(data: any, filename: string): ParsedReplayData
     duration: duration,
     durationMS: gameDurationMs,
     date: new Date().toISOString(),
-    result: player1.isWinner ? 'win' : (player1.isWinner === false ? 'loss' : 'unknown'),
+    result: determineGameResult(player1, player2),
     strengths: analysis.player1Analysis.strengths,
     weaknesses: analysis.player1Analysis.weaknesses,
     recommendations: analysis.player1Analysis.recommendations,
@@ -139,6 +141,33 @@ function transformGoScrepResponse(data: any, filename: string): ParsedReplayData
     
     trainingPlan: analysis.trainingPlan
   };
+}
+
+/**
+ * Extrahiert Build Order aus Commands für einen bestimmten Spieler
+ */
+function extractBuildOrderFromCommands(commands: any[], playerId: number): Array<{time: string; supply: number; action: string}> {
+  if (!Array.isArray(commands)) {
+    return generateBasicBuildOrder();
+  }
+
+  const playerCommands = commands.filter(cmd => cmd.playerId === playerId);
+  const buildOrder: Array<{time: string; supply: number; action: string}> = [];
+  
+  playerCommands.slice(0, 20).forEach((cmd, index) => {
+    const timeInSeconds = (cmd.frame || index * 240) / 24; // 24 FPS
+    const minutes = Math.floor(timeInSeconds / 60);
+    const seconds = Math.floor(timeInSeconds % 60);
+    const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    
+    buildOrder.push({
+      time: timeStr,
+      supply: cmd.supply || (9 + index),
+      action: cmd.action || `Action ${index + 1}`
+    });
+  });
+  
+  return buildOrder.length > 0 ? buildOrder : generateBasicBuildOrder();
 }
 
 /**
