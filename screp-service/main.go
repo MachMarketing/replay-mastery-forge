@@ -11,7 +11,7 @@ import (
 	"os"
 
 	"github.com/gorilla/mux"
-	"github.com/icza/screp/rep"
+	"github.com/icza/screp/repparser"
 	"github.com/joho/godotenv"
 )
 
@@ -80,9 +80,9 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Received replay file of size: %d bytes", len(body))
 
-	// Parse the replay using icza/screp - use rep.New() with bytes.NewReader
+	// Parse the replay using icza/screp repparser - use repparser.ParseReplay
 	reader := bytes.NewReader(body)
-	replay, err := rep.New(reader)
+	replay, err := repparser.ParseReplay(reader)
 	if err != nil {
 		log.Printf("Error parsing replay: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to parse replay: %v", err), http.StatusBadRequest)
