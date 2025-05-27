@@ -69,40 +69,26 @@ export function useReplays() {
     }
   }, []); // Remove isLoading from dependencies to prevent infinite loops
 
-  // Filter replays function
-  const filterReplays = useCallback((filters: {
-    race?: string;
-    matchup?: string;
-    result?: string;
-    dateRange?: string;
-  }) => {
+  // Filter replays function - fixed to match ReplaysPage.tsx usage
+  const filterReplays = useCallback((searchQuery: string, raceFilter: string, resultFilter: string) => {
     return replays.filter(replay => {
-      if (filters.race && replay.player_race !== filters.race) {
+      // Search query filter
+      if (searchQuery && !replay.player_name?.toLowerCase().includes(searchQuery.toLowerCase()) &&
+          !replay.opponent_name?.toLowerCase().includes(searchQuery.toLowerCase()) &&
+          !replay.map?.toLowerCase().includes(searchQuery.toLowerCase())) {
         return false;
       }
-      if (filters.matchup && replay.matchup !== filters.matchup) {
+      
+      // Race filter
+      if (raceFilter && replay.player_race !== raceFilter) {
         return false;
       }
-      if (filters.result && replay.result !== filters.result) {
+      
+      // Result filter
+      if (resultFilter && replay.result !== resultFilter) {
         return false;
       }
-      if (filters.dateRange) {
-        const replayDate = new Date(replay.created_at);
-        const now = new Date();
-        
-        switch (filters.dateRange) {
-          case 'today':
-            return replayDate.toDateString() === now.toDateString();
-          case 'week':
-            const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-            return replayDate >= weekAgo;
-          case 'month':
-            const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-            return replayDate >= monthAgo;
-          default:
-            return true;
-        }
-      }
+      
       return true;
     });
   }, [replays]);
