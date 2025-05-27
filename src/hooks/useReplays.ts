@@ -1,120 +1,95 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
 
 export interface Replay {
   id: string;
+  filename: string;
+  original_filename: string;
   player_name: string | null;
   opponent_name: string | null;
   player_race: string | null;
   opponent_race: string | null;
   map: string | null;
-  matchup: string | null;
+  duration: string | null;
   date: string | null;
   result: string | null;
-  duration: string | null;
   apm: number | null;
   eapm: number | null;
+  matchup: string | null;
   created_at: string;
-  filename: string;
-  original_filename: string;
+  user_id: string;
 }
 
-export const useReplays = () => {
+export function useReplays() {
   const [replays, setReplays] = useState<Replay[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { toast } = useToast();
 
-  const fetchReplays = async () => {
+  const fetchReplays = useCallback(async () => {
+    // Prevent multiple concurrent fetches
+    if (isLoading) {
+      console.log('Already fetching replays, skipping...');
+      return;
+    }
+
     try {
       setIsLoading(true);
       setError(null);
-      
-      // Check if user is authenticated
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      
-      if (authError) {
-        console.error('Authentication error:', authError);
-        setReplays([]);
-        return;
-      }
+
+      const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
-        // User is not authenticated, don't try to fetch replays
-        console.log('No authenticated user found, skipping replay fetch');
+        console.log('No authenticated user found');
         setReplays([]);
         return;
       }
-      
+
       console.log('Fetching replays for user:', user.id);
-      
-      // With RLS policies in place, this will automatically filter to the user's replays
-      const { data, error } = await supabase
+
+      const { data, error: fetchError } = await supabase
         .from('replays')
         .select('*')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
-      
-      if (error) {
-        throw new Error(`Database error: ${error.message}`);
+
+      if (fetchError) {
+        console.error('Error fetching replays:', fetchError);
+        setError(fetchError.message);
+        return;
       }
-      
+
       console.log('Fetched replays:', data?.length || 0);
       setReplays(data || []);
-    } catch (err: any) {
-      const errorMessage = err.message || 'Unknown error occurred when fetching replays';
-      console.error('Error in fetchReplays:', errorMessage);
-      setError(errorMessage);
-      
-      // Only show toast for actual database errors
-      if (!errorMessage.includes('Authentication error')) {
-        toast({
-          title: 'Error fetching replays',
-          description: errorMessage,
-          variant: 'destructive',
-        });
-      }
+    } catch (err) {
+      console.error('Unexpected error fetching replays:', err);
+      setError('An unexpected error occurred');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isLoading]); // Add isLoading to dependencies to prevent infinite loops
 
+  // Only fetch on mount, not on every render
   useEffect(() => {
-    fetchReplays();
-  }, []);
+    let mounted = true;
+    
+    const initFetch = async () => {
+      if (mounted) {
+        await fetchReplays();
+      }
+    };
+    
+    initFetch();
+    
+    return () => {
+      mounted = false;
+    };
+  }, []); // Empty dependency array to only run on mount
 
-  const filterReplays = (
-    searchQuery: string, 
-    raceFilter: string, 
-    resultFilter: string
-  ) => {
-    return replays.filter(replay => {
-      // Search query filter
-      const query = searchQuery.toLowerCase();
-      if (
-        query && 
-        !replay.player_name?.toLowerCase().includes(query) &&
-        !replay.opponent_name?.toLowerCase().includes(query) &&
-        !replay.map?.toLowerCase().includes(query) &&
-        !replay.matchup?.toLowerCase().includes(query)
-      ) {
-        return false;
-      }
-      
-      // Race filter
-      if (raceFilter && replay.matchup?.indexOf(raceFilter) === -1) {
-        return false;
-      }
-      
-      // Result filter
-      if (resultFilter && replay.result !== resultFilter) {
-        return false;
-      }
-      
-      return true;
-    });
+  return {
+    replays,
+    isLoading,
+    error,
+    fetchReplays
   };
-
-  return { replays, isLoading, error, fetchReplays, filterReplays };
-};
+}
