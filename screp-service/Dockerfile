@@ -1,33 +1,25 @@
-
-# ─── Builder Stage ───────────────────────────────────────────────────────────
+# Stage 1: Build the Go binary
 FROM golang:1.19-alpine AS builder
 WORKDIR /app
 
-# Disable Go checksum verification to bypass checksum mismatch issues
+# Copy go.mod/go.sum and disable checksum DB
+COPY go.mod go.sum ./
 ENV GOSUMDB=off
 
-# Module-Caching & tidy
-COPY go.mod go.sum ./
+# Download & tidy modules
 RUN go mod download && go mod tidy
 
-# Quellcode kopieren und bauen
+# Copy source and build
 COPY . ./
 RUN go build -o screp-service .
 
-# ─── Production Stage ────────────────────────────────────────────────────────
+# Stage 2: Production image
 FROM alpine:latest
 WORKDIR /root/
-
-# Install wget for health check
-RUN apk add --no-cache wget
-
-# Binary aus Builder kopieren
 COPY --from=builder /app/screp-service .
 
-# Port und Health-Check
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s \
   CMD wget -qO- http://localhost:8080/health || exit 1
 
-# Start-Kommando
 CMD ["./screp-service"]
