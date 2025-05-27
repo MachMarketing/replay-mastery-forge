@@ -1,0 +1,45 @@
+
+name: Tidy Go Modules
+
+on:
+  workflow_dispatch:      # Manual trigger via GitHub UI
+  schedule:
+    - cron: '0 3 * * *'   # Daily at 03:00 UTC
+
+jobs:
+  tidy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: '1.19'
+
+      - name: Tidy in screp-service
+        run: |
+          cd screp-service
+          go mod tidy
+
+      - name: Check for changes
+        id: verify-changed-files
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push changes
+        if: steps.verify-changed-files.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          cd screp-service
+          git add go.mod go.sum
+          git commit -m "chore: go mod tidy (update module checksums)"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
