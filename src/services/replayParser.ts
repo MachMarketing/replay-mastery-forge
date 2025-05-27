@@ -1,6 +1,5 @@
 
 import { ParsedReplayData } from './replayParser/types';
-import { parseReplay as parseWithScreparsed } from 'screparsed';
 
 /**
  * Parse a StarCraft: Brood War replay file using screparsed (browser-based)
@@ -43,7 +42,22 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
   // Parse with screparsed (browser-based)
   console.log('[replayParser] Parsing with screparsed...');
   try {
-    const screparsedResult = await parseWithScreparsed(new Uint8Array(arrayBuffer));
+    // Import screparsed dynamically to handle different export formats
+    const screparsed = await import('screparsed');
+    
+    // Try different possible export names
+    let parseFunction;
+    if (screparsed.parseReplay) {
+      parseFunction = screparsed.parseReplay;
+    } else if (screparsed.default && screparsed.default.parseReplay) {
+      parseFunction = screparsed.default.parseReplay;
+    } else if (screparsed.default) {
+      parseFunction = screparsed.default;
+    } else {
+      throw new Error('Screparsed parsing function not found');
+    }
+    
+    const screparsedResult = await parseFunction(new Uint8Array(arrayBuffer));
     if (!screparsedResult) {
       throw new Error('Screparsed konnte keine gültigen Daten extrahieren');
     }
