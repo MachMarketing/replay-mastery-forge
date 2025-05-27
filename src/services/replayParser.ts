@@ -1,6 +1,7 @@
+
 import { ParsedReplayData } from './replayParser/types';
 // Import screparsed correctly - check the actual API
-import * as screparsed from 'screparsed';
+import screparsed from 'screparsed';
 
 /**
  * Parse a StarCraft: Brood War replay file using screparsed
@@ -45,35 +46,53 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
   // Parse with screparsed using the correct API
   try {
     console.log('[replayParser] Parsing with screparsed...');
-    console.log('[replayParser] Available screparsed methods:', Object.keys(screparsed));
+    console.log('[replayParser] screparsed type:', typeof screparsed);
     console.log('[replayParser] screparsed object:', screparsed);
     
     let screparsedResult;
     
     // Try different possible API patterns for screparsed
-    // First check if there's a direct callable function
     if (typeof screparsed === 'function') {
       console.log('[replayParser] Using screparsed as direct function');
-      screparsedResult = (screparsed as any)(uint8Array);
-    } else if (typeof (screparsed as any).parse === 'function') {
+      screparsedResult = screparsed(uint8Array);
+    } else if (screparsed && typeof screparsed.parse === 'function') {
       console.log('[replayParser] Using screparsed.parse');
-      screparsedResult = (screparsed as any).parse(uint8Array);
-    } else if (typeof (screparsed as any).parseReplay === 'function') {
+      screparsedResult = screparsed.parse(uint8Array);
+    } else if (screparsed && typeof screparsed.parseReplay === 'function') {
       console.log('[replayParser] Using screparsed.parseReplay');
-      screparsedResult = (screparsed as any).parseReplay(uint8Array);
+      screparsedResult = screparsed.parseReplay(uint8Array);
+    } else if (screparsed && typeof screparsed.default === 'function') {
+      console.log('[replayParser] Using screparsed.default');
+      screparsedResult = screparsed.default(uint8Array);
     } else {
       // Check if screparsed exports any callable functions
-      const exportedFunctions = Object.keys(screparsed).filter(key => 
-        typeof (screparsed as any)[key] === 'function'
-      );
-      console.log('[replayParser] Available functions in screparsed:', exportedFunctions);
+      const exportedKeys = screparsed ? Object.keys(screparsed) : [];
+      console.log('[replayParser] Available properties in screparsed:', exportedKeys);
       
-      if (exportedFunctions.length > 0) {
-        const mainFunction = exportedFunctions[0];
-        console.log('[replayParser] Using first available function:', mainFunction);
-        screparsedResult = (screparsed as any)[mainFunction](uint8Array);
+      // Find the first function that might be the parser
+      const parserFunction = exportedKeys.find(key => {
+        const prop = (screparsed as any)[key];
+        return typeof prop === 'function' && 
+               (key.toLowerCase().includes('parse') || key === 'default');
+      });
+      
+      if (parserFunction) {
+        console.log('[replayParser] Using found parser function:', parserFunction);
+        screparsedResult = (screparsed as any)[parserFunction](uint8Array);
       } else {
-        throw new Error('Screparsed hat keine verfügbaren Parser-Funktionen');
+        // Try to use it as a constructor if it's a class
+        try {
+          console.log('[replayParser] Trying screparsed as constructor');
+          const parser = new (screparsed as any)();
+          if (typeof parser.parse === 'function') {
+            screparsedResult = parser.parse(uint8Array);
+          } else {
+            throw new Error('Screparsed constructor created object without parse method');
+          }
+        } catch (constructorError) {
+          console.error('[replayParser] Constructor approach failed:', constructorError);
+          throw new Error('Screparsed hat keine verfügbaren Parser-Funktionen oder -Konstruktoren');
+        }
       }
     }
     
