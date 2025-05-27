@@ -1,14 +1,14 @@
 
 module github.com/MachMarketing/replay-mastery-forge/screp-service
 
-go 1.19
+go 1.21
 
 require (
-	github.com/gorilla/mux v1.8.0
-	github.com/joho/godotenv v1.4.0
+	github.com/gorilla/mux v1.8.1
+	github.com/joho/godotenv v1.5.1
 	github.com/icza/screp v1.8.0
 )
 
 require (
-	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/text v0.14.0 // indirect
 )

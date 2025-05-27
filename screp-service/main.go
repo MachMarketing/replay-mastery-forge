@@ -11,6 +11,7 @@ import (
 	"os"
 
 	"github.com/gorilla/mux"
+	"github.com/icza/screp/rep"
 	"github.com/icza/screp/repparser"
 	"github.com/joho/godotenv"
 )
@@ -80,8 +81,10 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Received replay file of size: %d bytes", len(body))
 
-	// Parse the replay using icza/screp repparser - use repparser.ParseReplay
+	// Parse the replay using icza/screp repparser
 	reader := bytes.NewReader(body)
+	
+	// Use the correct parsing method from the latest icza/screp
 	replay, err := repparser.ParseReplay(reader)
 	if err != nil {
 		log.Printf("Error parsing replay: %v", err)
@@ -93,43 +96,98 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 	var players []Player
 	var commands []Command
 
-	// Extract player data
-	for _, player := range replay.Header.Players {
-		if player.Name != "" {
-			race := "Unknown"
-			switch player.Race {
-			case 0:
-				race = "Zerg"
-			case 1:
-				race = "Terran"
-			case 2:
-				race = "Protoss"
+	// Extract player data from the parsed replay
+	if replay.Header != nil && replay.Header.Players != nil {
+		for _, player := range replay.Header.Players {
+			if player.Name != "" {
+				race := "Unknown"
+				switch player.Race {
+				case rep.RaceZerg:
+					race = "Zerg"
+				case rep.RaceTerran:
+					race = "Terran"
+				case rep.RaceProtoss:
+					race = "Protoss"
+				default:
+					race = "Unknown"
+				}
+
+				// Calculate APM if computed data is available
+				apm := 0
+				if replay.Computed != nil && len(replay.Computed.PlayerDescs) > len(players) {
+					playerDesc := replay.Computed.PlayerDescs[len(players)]
+					if playerDesc != nil {
+						apm = int(playerDesc.APM)
+					}
+				}
+
+				players = append(players, Player{
+					Name: player.Name,
+					Race: race,
+					APM:  apm,
+					EAPM: apm, // Use APM as EAPM for now
+				})
+			}
+		}
+	}
+
+	// Extract commands from the replay
+	if replay.Commands != nil {
+		for i, cmd := range replay.Commands.Cmds {
+			if i >= 100 { // Limit to first 100 commands to avoid huge responses
+				break
+			}
+			
+			cmdType := "Unknown"
+			cmdData := ""
+			
+			// Determine command type based on the command structure
+			if cmd != nil {
+				switch cmd.BaseCmd().Type {
+				case rep.CmdTypeRightClick:
+					cmdType = "RightClick"
+				case rep.CmdTypeTrain:
+					cmdType = "Train"
+				case rep.CmdTypeBuild:
+					cmdType = "Build"
+				case rep.CmdTypeStop:
+					cmdType = "Stop"
+				case rep.CmdTypeAttack:
+					cmdType = "Attack"
+				default:
+					cmdType = fmt.Sprintf("Type_%d", cmd.BaseCmd().Type)
+				}
+				
+				cmdData = fmt.Sprintf("Player: %d", cmd.BaseCmd().PlayerID)
 			}
 
-			players = append(players, Player{
-				Name: player.Name,
-				Race: race,
-				APM:  int(player.APM),
-				EAPM: int(player.APM), // Use APM as EAPM for now
+			commands = append(commands, Command{
+				Frame: int(cmd.BaseCmd().Frame),
+				Type:  cmdType,
+				Data:  cmdData,
 			})
 		}
 	}
 
-	// Extract commands (sample) - create some mock commands for now
-	for i := 0; i < 50; i++ {
-		commands = append(commands, Command{
-			Frame: i * 24, // 24 frames per second
-			Type:  "Build",
-			Data:  fmt.Sprintf("Command %d", i),
-		})
+	// Create response with proper header information
+	mapName := "Unknown Map"
+	frames := 0
+	
+	if replay.Header != nil {
+		if replay.Header.Map != "" {
+			mapName = replay.Header.Map
+		}
+		if replay.Computed != nil {
+			frames = int(replay.Computed.Frames)
+		}
 	}
 
 	response := ParseResponse{
 		Players:  players,
 		Commands: commands,
 		Header: Header{
-			Frames:  int(replay.Header.Frames),
-			MapName: replay.Header.Map,
+			Frames:  frames,
+			MapName: mapName,
 		},
 	}
 
@@ -140,7 +198,7 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Successfully parsed replay with %d players", len(players))
+	log.Printf("Successfully parsed replay with %d players and %d commands", len(players), len(commands))
 }
 
 func main() {
