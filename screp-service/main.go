@@ -1,3 +1,4 @@
+
 package main
 
 import (
@@ -79,8 +80,9 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Received replay file of size: %d bytes", len(body))
 
-	// Parse the replay using icza/screp - use ParseReplay with byte slice
-	replay, err := rep.ParseReplay(body)
+	// Parse the replay using icza/screp - use New() with bytes.NewReader
+	reader := bytes.NewReader(body)
+	replay, err := rep.New(reader)
 	if err != nil {
 		log.Printf("Error parsing replay: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to parse replay: %v", err), http.StatusBadRequest)
