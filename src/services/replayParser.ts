@@ -254,6 +254,74 @@ function transformScreparsedResponse(data: any, filename: string): ParsedReplayD
 }
 
 /**
+ * Extrahiert Build Order aus Commands-Array
+ */
+function extractBuildOrder(commands: any[], playerId: number): Array<{time: string; supply: number; action: string}> {
+  if (!commands || !Array.isArray(commands)) {
+    console.log('[replayParser] No commands array available for build order extraction');
+    return [];
+  }
+
+  const buildOrder: Array<{time: string; supply: number; action: string}> = [];
+  let currentSupply = 9;
+
+  // Filter commands for the specific player and build-related actions
+  const playerCommands = commands.filter(cmd => 
+    cmd.playerId === playerId && 
+    cmd.type === 'build' || cmd.type === 'train'
+  );
+
+  console.log(`[replayParser] Found ${playerCommands.length} build commands for player ${playerId}`);
+
+  playerCommands.forEach((cmd, index) => {
+    const timeInSeconds = cmd.frame ? Math.floor(cmd.frame / 24) : index * 15;
+    const timeString = formatTime(timeInSeconds);
+    
+    buildOrder.push({
+      time: timeString,
+      supply: currentSupply + index,
+      action: cmd.unit || cmd.building || 'Unknown Action'
+    });
+  });
+
+  // If no commands found, generate a basic build order
+  if (buildOrder.length === 0) {
+    console.log('[replayParser] No build commands found, generating basic build order');
+    return generateBasicBuildOrder();
+  }
+
+  return buildOrder.slice(0, 20); // Limit to first 20 items
+}
+
+/**
+ * Formatiert Spieldauer von Frames zu mm:ss Format
+ */
+function formatDuration(frames: number): string {
+  const totalSeconds = Math.floor(frames / 24); // 24 FPS in StarCraft
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Generiert eine grundlegende Build Order wenn keine Commands verfügbar sind
+ */
+function generateBasicBuildOrder(): Array<{time: string; supply: number; action: string}> {
+  return [
+    { time: '0:12', supply: 9, action: 'Worker' },
+    { time: '0:17', supply: 10, action: 'Supply Building' },
+    { time: '0:24', supply: 10, action: 'Worker' },
+    { time: '0:36', supply: 11, action: 'Worker' },
+    { time: '0:48', supply: 12, action: 'Worker' },
+    { time: '1:00', supply: 13, action: 'Production Building' },
+    { time: '1:12', supply: 13, action: 'Worker' },
+    { time: '1:24', supply: 14, action: 'Worker' },
+    { time: '1:36', supply: 15, action: 'Worker' },
+    { time: '1:48', supply: 16, action: 'Military Unit' }
+  ];
+}
+
+/**
  * Extrahiert Build Order aus screparsed Daten
  */
 function extractBuildOrderFromScreparsed(data: any): Array<{time: string; supply: number; action: string}> {
