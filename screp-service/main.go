@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -10,7 +9,7 @@ import (
 
     "github.com/gorilla/mux"
     "github.com/joho/godotenv"
-    "github.com/icza/screp/rep"
+    rep "github.com/nicklaw5/go-starscape-replay/replay"
 )
 
 func main() {
@@ -59,8 +58,8 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
             MapName string `json:"mapName"`
         } `json:"header"`
     }{Players: parsed.Players, Commands: parsed.Commands}
-    out.Header.Frames = int(parsed.Header.Frames)
-    out.Header.MapName = parsed.Header.Map
+    out.Header.Frames = parsed.Header.Frames
+    out.Header.MapName = parsed.Header.MapName
 
     w.Header().Set("Content-Type", "application/json")
     json.NewEncoder(w).Encode(out)
