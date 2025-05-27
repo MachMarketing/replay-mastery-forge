@@ -1,3 +1,4 @@
+
 import { ParsedReplayData } from './replayParser/types';
 
 /**
@@ -47,14 +48,25 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     
     let parsedReplay: any = null;
     
-    // Try the correct screparsed API - use parse function instead of constructor
+    // Use the correct screparsed API - ReplayParser class
     try {
-      console.log('[replayParser] Calling screparsed.parse function...');
-      parsedReplay = screparsed.parse(arrayBuffer);
-      console.log('[replayParser] screparsed.parse completed successfully');
+      console.log('[replayParser] Creating ReplayParser instance...');
+      const parser = new screparsed.ReplayParser();
+      console.log('[replayParser] Parsing with ReplayParser...');
+      parsedReplay = parser.parse(new Uint8Array(arrayBuffer));
+      console.log('[replayParser] ReplayParser.parse completed successfully');
     } catch (parseError) {
-      console.error('[replayParser] screparsed.parse failed:', parseError);
-      throw new Error(`Screparsed parsing failed: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
+      console.error('[replayParser] ReplayParser failed:', parseError);
+      
+      // Fallback to ParsedReplay constructor if ReplayParser fails
+      try {
+        console.log('[replayParser] Trying ParsedReplay constructor as fallback...');
+        parsedReplay = new screparsed.ParsedReplay(new Uint8Array(arrayBuffer));
+        console.log('[replayParser] ParsedReplay constructor succeeded');
+      } catch (fallbackError) {
+        console.error('[replayParser] ParsedReplay constructor also failed:', fallbackError);
+        throw new Error(`Screparsed parsing failed: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
+      }
     }
     
     if (!parsedReplay) {
