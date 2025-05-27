@@ -1,3 +1,4 @@
+
 import { ParsedReplayData } from './replayParser/types';
 
 /**
@@ -49,37 +50,37 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     const uint8Array = new Uint8Array(arrayBuffer);
     console.log('[replayParser] Converted to Uint8Array, length:', uint8Array.length);
     
-    let parsedReplay: any = null;
-    
-    try {
-      // First try ParsedReplay class (most likely correct approach)
-      if (screparsedModule.ParsedReplay) {
-        console.log('[replayParser] Using ParsedReplay class constructor...');
-        const parseInstance = new screparsedModule.ParsedReplay(uint8Array);
-        parsedReplay = parseInstance;
+    // Use the correct ParsedReplay constructor with proper arguments and callback
+    const parsedReplay = await new Promise((resolve, reject) => {
+      try {
+        console.log('[replayParser] Creating ParsedReplay instance with callback...');
+        
+        // ParsedReplay constructor: (data, options?, callback?)
+        const options = {}; // Empty options for default behavior
+        
+        const replayInstance = new screparsedModule.ParsedReplay(uint8Array, options, (error: any, result: any) => {
+          if (error) {
+            console.error('[replayParser] ParsedReplay callback error:', error);
+            reject(new Error(`screparsed parsing failed: ${error.message || String(error)}`));
+          } else {
+            console.log('[replayParser] ParsedReplay callback success');
+            resolve(result || replayInstance);
+          }
+        });
+        
+        // If no callback was triggered immediately, resolve with the instance
+        setTimeout(() => {
+          if (replayInstance) {
+            console.log('[replayParser] Using replay instance directly');
+            resolve(replayInstance);
+          }
+        }, 100);
+        
+      } catch (constructorError) {
+        console.error('[replayParser] ParsedReplay constructor error:', constructorError);
+        reject(new Error(`Failed to create ParsedReplay instance: ${constructorError instanceof Error ? constructorError.message : String(constructorError)}`));
       }
-      // Try ReplayParser class as alternative
-      else if (screparsedModule.ReplayParser) {
-        console.log('[replayParser] Using ReplayParser class constructor...');
-        const parseInstance = new screparsedModule.ReplayParser(uint8Array);
-        parsedReplay = parseInstance;
-      }
-      // Fallback to trying a parse method if available
-      else if (typeof screparsedModule.default === 'function') {
-        console.log('[replayParser] Using default export as parse function...');
-        parsedReplay = screparsedModule.default(uint8Array);
-      }
-      else {
-        console.error('[replayParser] Available exports:', Object.keys(screparsedModule));
-        throw new Error('No valid parser class or function found in screparsed module');
-      }
-      
-    } catch (parseError) {
-      console.error('[replayParser] screparsed parsing error:', parseError);
-      throw new Error(`screparsed failed to parse replay: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
-    }
-    
-    console.log('[replayParser] screparsed parsing completed');
+    });
     
     if (!parsedReplay) {
       throw new Error('Keine Daten von screparsed erhalten');
