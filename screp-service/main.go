@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -10,7 +9,7 @@ import (
 	"os"
 
 	"github.com/gorilla/mux"
-	"github.com/icza/screp/parser"
+	"github.com/icza/screp"
 	"github.com/joho/godotenv"
 )
 
@@ -104,7 +103,7 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse the replay using the correct icza/screp API
-	replay, err := parser.Parse(tmpFile)
+	replay, err := screp.Parse(tmpFile)
 	if err != nil {
 		log.Printf("Error parsing replay: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to parse replay: %v", err), http.StatusBadRequest)
