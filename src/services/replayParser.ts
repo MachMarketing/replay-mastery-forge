@@ -44,7 +44,7 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
   try {
     const healthCheck = await fetch('http://localhost:8000/health', {
       method: 'GET',
-      timeout: 5000
+      signal: AbortSignal.timeout(5000)
     });
     
     if (!healthCheck.ok) {
