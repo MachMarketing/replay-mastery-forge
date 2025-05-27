@@ -1,24 +1,24 @@
+
 import { ParsedReplayData } from './replayParser/types';
 
 /**
- * Parse a StarCraft: Brood War replay file using screparsed (browser-based)
- * This supports both Classic and Remastered replay formats
- * Works entirely in the browser without requiring any local services
+ * Parse a StarCraft: Brood War replay file using screparsed
+ * Clean implementation based on actual screparsed API
  */
 export async function parseReplay(file: File): Promise<ParsedReplayData> {
-  console.log('[replayParser] Starting to parse replay file with screparsed:', file.name);
+  console.log('[replayParser] Starting screparsed parsing for:', file.name);
   console.log('[replayParser] File size:', file.size, 'bytes');
   
-  // Enhanced file validation
+  // Basic file validation
   if (!file || file.size === 0) {
     throw new Error('Datei ist leer oder ungültig');
   }
   
   if (file.size < 1024) {
-    throw new Error('Datei ist zu klein für eine gültige Replay-Datei (minimum 1KB)');
+    throw new Error('Datei ist zu klein für eine gültige Replay-Datei');
   }
   
-  if (file.size > 10 * 1024 * 1024) { // 10MB limit
+  if (file.size > 10 * 1024 * 1024) {
     throw new Error('Datei ist zu groß (Maximum: 10MB)');
   }
   
@@ -27,211 +27,195 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     throw new Error('Nur .rep Dateien werden unterstützt');
   }
   
-  // Read file as ArrayBuffer for screparsed
+  // Read file as ArrayBuffer
   console.log('[replayParser] Reading file as ArrayBuffer...');
   let arrayBuffer: ArrayBuffer;
   try {
     arrayBuffer = await file.arrayBuffer();
-    console.log('[replayParser] Successfully read ArrayBuffer, size:', arrayBuffer.byteLength);
-  } catch (fileError) {
-    console.error('[replayParser] Failed to read file:', fileError);
-    throw new Error('Konnte Datei nicht lesen - möglicherweise beschädigt');
+    console.log('[replayParser] File read successfully, size:', arrayBuffer.byteLength);
+  } catch (error) {
+    console.error('[replayParser] Failed to read file:', error);
+    throw new Error('Konnte Datei nicht lesen');
   }
   
-  // Parse with screparsed (browser-based)
+  // Parse with screparsed
   console.log('[replayParser] Parsing with screparsed...');
   try {
-    // Simplify parser initialization: use ReplayParser instance parse()
     const { ReplayParser } = await import('screparsed');
     const parser = ReplayParser.fromArrayBuffer(arrayBuffer);
-    const screparsedResult = await parser.parse();
+    const replayData = await parser.parse();
     
-    if (!screparsedResult) {
-      throw new Error('Screparsed konnte keine gültigen Daten extrahieren');
-    }
-    console.log('[replayParser] Successfully parsed with screparsed');
-    console.log('[replayParser] Full screparsed result structure:', {
-      keys: Object.keys(screparsedResult),
-      hasPlayers: !!screparsedResult.players,
-      playersCount: screparsedResult.players?.length || 0,
-      hasDurationMs: !!screparsedResult.durationMs,
-      hasFrames: !!screparsedResult.frames,
-      hasMap: !!(screparsedResult as any).map,
-      hasMapName: !!(screparsedResult as any).mapName,
-      hasCommands: !!screparsedResult.commands,
-      commandsLength: screparsedResult.commands?.length || 0
-    });
-    
-    // Log detailed player information from screparsed
-    if (screparsedResult.players) {
-      console.log('[replayParser] Detailed player data from screparsed:');
-      screparsedResult.players.forEach((player: any, index: number) => {
-        console.log(`[replayParser] Player ${index}:`, {
-          allProperties: Object.keys(player),
-          name: player.name,
-          race: player.race,
-          type: player.type,
-          id: player.id || player.ID,
-          slotID: player.slotID,
-          apm: player.apm,
-          eapm: player.eapm,
-          team: player.team,
-          color: player.color
-        });
-      });
+    if (!replayData) {
+      throw new Error('Screparsed konnte keine Daten extrahieren');
     }
     
-    return transformScreparsedResponse(screparsedResult, file.name);
-  } catch (screparsedError) {
-    console.error('[replayParser] Screparsed failed:', screparsedError);
-    throw new Error(`Replay-Parsing fehlgeschlagen: ${screparsedError instanceof Error ? screparsedError.message : 'Unbekannter Fehler'}`);
+    console.log('[replayParser] Screparsed parsing successful!');
+    console.log('[replayParser] Available properties:', Object.keys(replayData));
+    
+    // Log the actual structure we get from screparsed
+    logScreparsedStructure(replayData);
+    
+    return transformScreparsedData(replayData, file.name);
+    
+  } catch (error) {
+    console.error('[replayParser] Screparsed parsing failed:', error);
+    throw new Error(`Replay-Parsing fehlgeschlagen: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
   }
 }
 
 /**
- * Transform screparsed response to our format
+ * Log the actual structure we get from screparsed to understand the API
  */
-function transformScreparsedResponse(data: any, filename: string): ParsedReplayData {
-  const players = data.players || [];
-  const commands = data.commands || [];
+function logScreparsedStructure(data: any): void {
+  console.log('[replayParser] 🔍 Screparsed Data Structure Analysis:');
+  console.log('[replayParser] Top-level keys:', Object.keys(data));
   
-  console.log('[replayParser] Transforming data with players:', players);
-  console.log('[replayParser] Available data keys:', Object.keys(data));
-  console.log('[replayParser] Commands length:', commands.length);
-  console.log('[replayParser] Data structure check:', {
-    durationMs: data.durationMs,
+  // Check for players
+  if (data.players) {
+    console.log('[replayParser] Players found:', data.players.length);
+    data.players.forEach((player: any, index: number) => {
+      console.log(`[replayParser] Player ${index}:`, {
+        name: player.name,
+        race: player.race,
+        type: player.type,
+        id: player.id,
+        apm: player.apm,
+        eapm: player.eapm,
+        allKeys: Object.keys(player)
+      });
+    });
+  }
+  
+  // Check for game metadata
+  console.log('[replayParser] Game metadata:', {
     frames: data.frames,
-    mapName: (data as any).mapName,
-    map: (data as any).map
+    durationMs: data.durationMs,
+    mapName: data.mapName,
+    mapWidth: data.mapWidth,
+    mapHeight: data.mapHeight
   });
+  
+  // Check for commands
+  if (data.commands) {
+    console.log('[replayParser] Commands found:', data.commands.length);
+    if (data.commands.length > 0) {
+      console.log('[replayParser] Sample command:', data.commands[0]);
+    }
+  }
+  
+  // Check for any build order data
+  if (data.buildOrders) {
+    console.log('[replayParser] Build orders found:', data.buildOrders);
+  }
+  
+  // Log all available properties for debugging
+  console.log('[replayParser] All data properties:', JSON.stringify(Object.keys(data), null, 2));
+}
+
+/**
+ * Transform screparsed data to our application format
+ */
+function transformScreparsedData(data: any, filename: string): ParsedReplayData {
+  console.log('[replayParser] Transforming screparsed data...');
+  
+  // Extract players
+  const players = data.players || [];
+  console.log('[replayParser] Processing players:', players.length);
   
   if (players.length < 2) {
-    throw new Error('Nicht genügend Spieler in der Replay-Datei gefunden (mindestens 2 erforderlich)');
+    throw new Error('Nicht genügend Spieler gefunden (mindestens 2 erforderlich)');
   }
   
-  // Find human players - try multiple type patterns
-  let humanPlayers = players.filter((p: any) => {
-    // Try different possible type values
-    const isHuman = p.type === 'Human' || 
-                   p.type === 1 || 
-                   p.type === 'human' ||
-                   p.playerType === 'Human' ||
-                   p.playerType === 1 ||
-                   !p.isComputer;
-    
-    console.log('[replayParser] Player check:', {
-      name: p.name,
-      type: p.type,
-      typeOf: typeof p.type,
-      playerType: p.playerType,
-      isComputer: p.isComputer,
-      isHuman
-    });
-    
-    return isHuman;
+  // Get first two players (assuming 1v1)
+  const player1 = players[0];
+  const player2 = players[1];
+  
+  // Validate player data
+  if (!player1?.name || !player2?.name) {
+    throw new Error('Ungültige Spielerdaten - Spielernamen fehlen');
+  }
+  
+  // Extract game metadata
+  const gameFrames = data.frames || 0;
+  const gameDurationMs = data.durationMs || (gameFrames * (1000/24)); // 24 FPS
+  const mapName = data.mapName || 'Unbekannte Karte';
+  
+  console.log('[replayParser] Game info:', {
+    frames: gameFrames,
+    durationMs: gameDurationMs,
+    mapName: mapName,
+    formattedDuration: formatDuration(gameFrames)
   });
   
-  // If no human players found with strict filtering, take first two players
-  if (humanPlayers.length < 2) {
-    console.log('[replayParser] Insufficient human players, using first two players');
-    humanPlayers = players.slice(0, 2);
-  }
-  
-  if (humanPlayers.length < 2) {
-    throw new Error('Nicht genügend Spieler für eine 1v1 Analyse gefunden');
-  }
-  
-  const player1 = humanPlayers[0];
-  const player2 = humanPlayers[1];
-  
-  if (!player1.name || player1.name.trim() === '') {
-    throw new Error('Ungültige Spielerdaten: Spieler 1 Name fehlt');
-  }
-  
-  if (!player2.name || player2.name.trim() === '') {
-    throw new Error('Ungültige Spielerdaten: Spieler 2 Name fehlt');
-  }
-  
-  // Extract real APM values from screparsed data
+  // Extract APM data
   const player1APM = player1.apm || 0;
   const player2APM = player2.apm || 0;
   const player1EAPM = player1.eapm || Math.round(player1APM * 0.7);
   const player2EAPM = player2.eapm || Math.round(player2APM * 0.7);
   
-  console.log('[replayParser] Extracted APM values:', {
+  console.log('[replayParser] APM data:', {
     player1: { name: player1.name, apm: player1APM, eapm: player1EAPM },
     player2: { name: player2.name, apm: player2APM, eapm: player2EAPM }
   });
   
-  // Extract build orders from commands data
-  const player1ID = player1.id || player1.ID || player1.slotID || 0;
-  const player2ID = player2.id || player2.ID || player2.slotID || 1;
-  
-  console.log('[replayParser] Player IDs for build order extraction:', {
-    player1ID,
-    player2ID,
-    commandsAvailable: commands.length
-  });
-  
-  const player1BuildOrder = extractBuildOrderFromCommands(commands, player1ID);
-  const player2BuildOrder = extractBuildOrderFromCommands(commands, player2ID);
+  // Extract build orders from commands
+  const player1BuildOrder = extractBuildOrder(data.commands, player1.id);
+  const player2BuildOrder = extractBuildOrder(data.commands, player2.id);
   
   console.log('[replayParser] Build orders extracted:', {
     player1Items: player1BuildOrder.length,
     player2Items: player2BuildOrder.length
   });
   
-  // Extract game duration and map info - use correct property names
-  const frames = data.frames || 0;
-  const durationMs = data.durationMs || 0;
-  const mapName = (data as any).mapName || (data as any).map || 'Unknown Map';
-  
-  console.log('[replayParser] Game metadata:', {
-    frames,
-    durationMs,
-    mapName,
-    duration: formatDuration(frames)
+  // Generate analysis
+  const analysis = generateGameAnalysis(player1, player2, {
+    frames: gameFrames,
+    mapName: mapName,
+    commands: data.commands || []
   });
   
+  // Create primary player data
   const primaryPlayer = {
     name: player1.name,
-    race: normalizeRaceName(player1.race),
+    race: normalizeRace(player1.race),
     apm: player1APM,
     eapm: player1EAPM,
     buildOrder: player1BuildOrder,
-    strengths: [],
-    weaknesses: [],
-    recommendations: []
+    strengths: analysis.player1Analysis.strengths,
+    weaknesses: analysis.player1Analysis.weaknesses,
+    recommendations: analysis.player1Analysis.recommendations
   };
   
+  // Create secondary player data
   const secondaryPlayer = {
     name: player2.name,
-    race: normalizeRaceName(player2.race),
+    race: normalizeRace(player2.race),
     apm: player2APM,
     eapm: player2EAPM,
     buildOrder: player2BuildOrder,
-    strengths: [],
-    weaknesses: [],
-    recommendations: []
+    strengths: analysis.player2Analysis.strengths,
+    weaknesses: analysis.player2Analysis.weaknesses,
+    recommendations: analysis.player2Analysis.recommendations
   };
   
-  const matchup = `${getRaceShortName(primaryPlayer.race)}v${getRaceShortName(secondaryPlayer.race)}`;
+  // Create matchup string
+  const matchup = `${getRaceInitial(primaryPlayer.race)}v${getRaceInitial(secondaryPlayer.race)}`;
   
-  // Generate analysis based on real data
-  const analysis = generateAnalysis(primaryPlayer, secondaryPlayer, { frames, mapName });
-  
+  // Return complete parsed data
   return {
-    primaryPlayer: { ...primaryPlayer, ...analysis.primaryAnalysis },
+    primaryPlayer,
     secondaryPlayer,
     map: mapName,
     matchup,
-    duration: formatDuration(frames),
-    durationMS: durationMs || frames * (1000/24), // fallback calculation
+    duration: formatDuration(gameFrames),
+    durationMS: gameDurationMs,
     date: new Date().toISOString(),
-    result: determineResult(player1, player2),
-    strengths: analysis.primaryAnalysis.strengths,
-    weaknesses: analysis.primaryAnalysis.weaknesses,
-    recommendations: analysis.primaryAnalysis.recommendations,
+    result: determineGameResult(player1, player2),
+    strengths: analysis.player1Analysis.strengths,
+    weaknesses: analysis.player1Analysis.weaknesses,
+    recommendations: analysis.player1Analysis.recommendations,
+    
+    // Legacy properties for backward compatibility
     playerName: primaryPlayer.name,
     opponentName: secondaryPlayer.name,
     playerRace: primaryPlayer.race,
@@ -241,191 +225,253 @@ function transformScreparsedResponse(data: any, filename: string): ParsedReplayD
     opponentApm: secondaryPlayer.apm,
     opponentEapm: secondaryPlayer.eapm,
     buildOrder: primaryPlayer.buildOrder,
+    
     trainingPlan: analysis.trainingPlan
   };
 }
 
 /**
- * Calculate APM from command data
+ * Extract build order from replay commands
  */
-function calculateAPMFromCommands(commands: any[], playerId: number, totalFrames: number): number {
-  if (!commands || commands.length === 0 || totalFrames === 0) return 0;
-  
-  const playerCommands = commands.filter(cmd => cmd.playerId === playerId);
-  const minutes = totalFrames / (24 * 60); // 24 frames per second
-  
-  return minutes > 0 ? Math.round(playerCommands.length / minutes) : 0;
-}
-
-/**
- * Extract build order from commands
- */
-function extractBuildOrderFromCommands(commands: any[], playerId: number): Array<{time: string; supply: number; action: string}> {
-  if (!commands || commands.length === 0) {
+function extractBuildOrder(commands: any[], playerId: number): Array<{time: string; supply: number; action: string}> {
+  if (!commands || !Array.isArray(commands) || commands.length === 0) {
     console.log('[replayParser] No commands available for build order extraction');
     return [];
   }
   
   console.log('[replayParser] Extracting build order for player ID:', playerId);
-  console.log('[replayParser] Sample commands:', commands.slice(0, 5).map(cmd => ({
-    type: cmd.type,
-    player: cmd.player || cmd.playerId || cmd.playerID,
-    frame: cmd.frame,
-    data: cmd.data
-  })));
+  console.log('[replayParser] Total commands:', commands.length);
   
+  const buildActions: Array<{time: string; supply: number; action: string}> = [];
+  let currentSupply = 4; // Starting supply for most races
+  
+  // Filter commands for this player and build-related actions
   const playerCommands = commands
-    .filter(cmd => {
-      const cmdPlayerId = cmd.player || cmd.playerId || cmd.playerID;
-      return cmdPlayerId === playerId;
-    })
+    .filter(cmd => cmd.playerId === playerId || cmd.player === playerId)
     .filter(cmd => isBuildCommand(cmd))
-    .slice(0, 30) // Limit to first 30 build actions
-    .map((cmd, index) => ({
-      time: formatDuration(cmd.frame || 0),
-      supply: Math.min(4 + index * 2, 200), // Estimate supply progression
-      action: getActionName(cmd)
-    }));
+    .slice(0, 30); // Limit to first 30 build actions
+  
+  console.log('[replayParser] Filtered build commands for player:', playerCommands.length);
+  
+  playerCommands.forEach((cmd, index) => {
+    const timeInFrames = cmd.frame || cmd.time || 0;
+    const actionName = getBuildActionName(cmd);
     
-  console.log('[replayParser] Extracted build order items:', playerCommands.length);
-  return playerCommands;
+    // Estimate supply progression
+    if (actionName.toLowerCase().includes('worker') || 
+        actionName.toLowerCase().includes('probe') ||
+        actionName.toLowerCase().includes('scv') ||
+        actionName.toLowerCase().includes('drone')) {
+      currentSupply += 1;
+    } else if (actionName.toLowerCase().includes('unit')) {
+      currentSupply += 2;
+    }
+    
+    buildActions.push({
+      time: formatDuration(timeInFrames),
+      supply: Math.min(currentSupply, 200),
+      action: actionName
+    });
+  });
+  
+  return buildActions;
 }
 
 /**
- * Check if command is a build command
+ * Check if a command is a build-related command
  */
 function isBuildCommand(cmd: any): boolean {
-  if (!cmd.type && !cmd.action && !cmd.command) return false;
+  if (!cmd) return false;
   
-  // Common build command types in StarCraft
-  const buildCommandTypes = [
-    'Build', 'Train', 'Research', 'Upgrade',
-    'BuildUnit', 'BuildBuilding', 'TrainUnit',
-    'build', 'train', 'research', 'upgrade'
-  ];
+  // Check command type
+  const cmdType = (cmd.type || '').toString().toLowerCase();
+  const cmdName = (cmd.name || '').toString().toLowerCase();
   
-  const cmdType = cmd.type || cmd.action || cmd.command || '';
-  return buildCommandTypes.some(type => 
-    cmdType.toString().toLowerCase().includes(type.toLowerCase())
-  );
+  return cmdType.includes('build') ||
+         cmdType.includes('train') ||
+         cmdType.includes('research') ||
+         cmdName.includes('build') ||
+         cmdName.includes('train') ||
+         cmdName.includes('research');
 }
 
 /**
- * Get action name from command
+ * Extract action name from build command
  */
-function getActionName(cmd: any): string {
+function getBuildActionName(cmd: any): string {
   if (cmd.unitType) return cmd.unitType;
   if (cmd.buildingType) return cmd.buildingType;
-  if (cmd.upgrade) return cmd.upgrade;
+  if (cmd.name) return cmd.name;
   if (cmd.action) return cmd.action;
-  if (cmd.type) return cmd.type;
-  if (cmd.data && cmd.data.unitType) return cmd.data.unitType;
-  if (cmd.data && cmd.data.buildingType) return cmd.data.buildingType;
-  return 'Unknown Action';
+  return 'Build Action';
 }
 
 /**
- * Format duration from frames
+ * Format frames to time string (mm:ss)
  */
 function formatDuration(frames: number): string {
-  const seconds = Math.floor(frames / 24);
+  const seconds = Math.floor(frames / 24); // 24 FPS
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
 /**
+ * Normalize race name
+ */
+function normalizeRace(race: any): string {
+  const raceStr = String(race || '').toLowerCase();
+  if (raceStr.includes('protoss') || raceStr === 'p') return 'Protoss';
+  if (raceStr.includes('terran') || raceStr === 't') return 'Terran';
+  if (raceStr.includes('zerg') || raceStr === 'z') return 'Zerg';
+  return 'Protoss'; // Default fallback
+}
+
+/**
+ * Get race initial for matchup
+ */
+function getRaceInitial(race: string): string {
+  return race.charAt(0).toUpperCase();
+}
+
+/**
  * Determine game result
  */
-function determineResult(player1: any, player2: any): 'win' | 'loss' | 'unknown' {
+function determineGameResult(player1: any, player2: any): 'win' | 'loss' | 'unknown' {
+  // screparsed might have winner information
   if (player1.isWinner === true) return 'win';
   if (player1.isWinner === false) return 'loss';
   return 'unknown';
 }
 
 /**
- * Generate analysis based on real player data
+ * Generate comprehensive game analysis
  */
-function generateAnalysis(player1: any, player2: any, gameInfo: any): {
-  primaryAnalysis: { strengths: string[]; weaknesses: string[]; recommendations: string[] };
+function generateGameAnalysis(player1: any, player2: any, gameData: any): {
+  player1Analysis: { strengths: string[]; weaknesses: string[]; recommendations: string[] };
+  player2Analysis: { strengths: string[]; weaknesses: string[]; recommendations: string[] };
   trainingPlan: Array<{ day: number; focus: string; drill: string }>;
 } {
-  const strengths = [];
-  const weaknesses = [];
-  const recommendations = [];
-  
-  // APM analysis
-  if (player1.apm > 150) {
-    strengths.push(`Hohe APM (${player1.apm})`);
-  } else if (player1.apm < 100 && player1.apm > 0) {
-    weaknesses.push(`Niedrige APM (${player1.apm})`);
-    recommendations.push('APM durch Hotkey-Training verbessern');
-  } else if (player1.apm > 0) {
-    strengths.push(`Solide APM (${player1.apm})`);
-  } else {
-    weaknesses.push('APM-Daten nicht verfügbar');
-    recommendations.push('Spiele länger für bessere APM-Messung');
-  }
-  
-  // Build order analysis
-  if (player1.buildOrder && player1.buildOrder.length > 10) {
-    strengths.push('Detaillierte Build Order verfügbar');
-  } else if (player1.buildOrder && player1.buildOrder.length > 0) {
-    weaknesses.push('Kurze Build Order - längere Spiele empfohlen');
-    recommendations.push('Längere Spiele für bessere Analyse spielen');
-  } else {
-    weaknesses.push('Keine Build Order Daten verfügbar');
-    recommendations.push('Commands-Daten für detaillierte Analyse benötigt');
-  }
-  
-  // Race-specific analysis
-  if (player1.race === 'Terran') {
-    strengths.push('Terran Mechanik');
-    recommendations.push('Marine/Tank Kontrolle üben');
-  } else if (player1.race === 'Protoss') {
-    strengths.push('Protoss Technologie');
-    recommendations.push('Zealot/Dragoon Balance optimieren');
-  } else if (player1.race === 'Zerg') {
-    strengths.push('Zerg Expansion');
-    recommendations.push('Creep Spread verbessern');
-  }
-  
-  // APM comparison
-  if (player1.apm > 0 && player2.apm > 0) {
-    if (player1.apm > player2.apm + 20) {
-      strengths.push('Höhere APM als Gegner');
-    } else if (player1.apm < player2.apm - 20) {
-      weaknesses.push('Niedrigere APM als Gegner');
-      recommendations.push('Geschwindigkeit trainieren');
-    }
-  }
-  
-  const trainingPlan = [
-    { day: 1, focus: "APM Training", drill: `${player1.race} Hotkeys üben` },
-    { day: 2, focus: "Build Order", drill: `Standard ${player1.race} Build perfektionieren` },
-    { day: 3, focus: "Makro", drill: "Kontinuierliche Produktion" },
-    { day: 4, focus: "Mikro", drill: `${player1.race} Einheiten-Kontrolle` },
-    { day: 5, focus: "Strategie", drill: `${player1.race} vs ${player2.race} Matchup` }
-  ];
+  const p1Analysis = analyzePlayer(player1, gameData);
+  const p2Analysis = analyzePlayer(player2, gameData);
+  const trainingPlan = generateTrainingPlan(player1, gameData);
   
   return {
-    primaryAnalysis: { strengths, weaknesses, recommendations },
+    player1Analysis: p1Analysis,
+    player2Analysis: p2Analysis,
     trainingPlan
   };
 }
 
-function getRaceShortName(race: string): string {
-  const raceStr = String(race).toLowerCase();
-  if (raceStr.includes('terran') || raceStr.includes('t')) return 'T';
-  if (raceStr.includes('protoss') || raceStr.includes('p')) return 'P';
-  if (raceStr.includes('zerg') || raceStr.includes('z')) return 'Z';
-  return 'T';
+/**
+ * Analyze individual player performance
+ */
+function analyzePlayer(player: any, gameData: any): { strengths: string[]; weaknesses: string[]; recommendations: string[] } {
+  const strengths: string[] = [];
+  const weaknesses: string[] = [];
+  const recommendations: string[] = [];
+  
+  // APM Analysis
+  const apm = player.apm || 0;
+  if (apm > 150) {
+    strengths.push(`Hohe APM (${apm})`);
+  } else if (apm < 80 && apm > 0) {
+    weaknesses.push(`Niedrige APM (${apm})`);
+    recommendations.push('APM durch Hotkey-Training verbessern');
+  } else if (apm > 0) {
+    strengths.push(`Solide APM (${apm})`);
+  }
+  
+  // Race-specific analysis
+  const race = normalizeRace(player.race);
+  if (race === 'Protoss') {
+    strengths.push('Protoss Technologie-Vorteile');
+    recommendations.push('Zealot/Dragoon Balance optimieren');
+  } else if (race === 'Terran') {
+    strengths.push('Terran Vielseitigkeit');
+    recommendations.push('Marine/Tank Kontrolle üben');
+  } else if (race === 'Zerg') {
+    strengths.push('Zerg Schwarm-Taktiken');
+    recommendations.push('Creep Spread und Makro verbessern');
+  }
+  
+  // Game length analysis
+  const gameMinutes = (gameData.frames || 0) / (24 * 60);
+  if (gameMinutes > 15) {
+    strengths.push('Gute Ausdauer in langen Spielen');
+  } else if (gameMinutes < 5) {
+    recommendations.push('Defensive Strategien für frühe Angriffe entwickeln');
+  }
+  
+  // Ensure minimum content
+  if (strengths.length === 0) {
+    strengths.push('Grundsolide Spielweise');
+  }
+  if (weaknesses.length === 0) {
+    weaknesses.push('Weitere Analyse für detailliertere Schwächen erforderlich');
+  }
+  if (recommendations.length === 0) {
+    recommendations.push('Build Order Timing optimieren');
+  }
+  
+  return { strengths, weaknesses, recommendations };
 }
 
-function normalizeRaceName(race: any): string {
-  const raceStr = String(race).toLowerCase();
-  if (raceStr.includes('terran') || raceStr.includes('t')) return 'Terran';
-  if (raceStr.includes('protoss') || raceStr.includes('p')) return 'Protoss';
-  if (raceStr.includes('zerg') || raceStr.includes('z')) return 'Zerg';
-  return 'Terran';
+/**
+ * Generate personalized training plan
+ */
+function generateTrainingPlan(player: any, gameData: any): Array<{ day: number; focus: string; drill: string }> {
+  const race = normalizeRace(player.race);
+  const apm = player.apm || 0;
+  
+  const plan: Array<{ day: number; focus: string; drill: string }> = [];
+  
+  // Day 1: APM focused
+  if (apm < 100) {
+    plan.push({
+      day: 1,
+      focus: "APM Training",
+      drill: `${race} Hotkey-Sequenzen 30 Minuten täglich üben`
+    });
+  } else {
+    plan.push({
+      day: 1,
+      focus: "Präzision",
+      drill: `${race} Build Order perfekt ausführen ohne Fehler`
+    });
+  }
+  
+  // Day 2: Race specific
+  plan.push({
+    day: 2,
+    focus: "Rassen-Mechaniken",
+    drill: race === 'Protoss' ? 'Pylon/Gateway Timing optimieren' :
+           race === 'Terran' ? 'Supply Depot/Barracks Timing' :
+           'Overlord/Spawning Pool Timing'
+  });
+  
+  // Day 3: Macro focus
+  plan.push({
+    day: 3,
+    focus: "Makromanagement",
+    drill: "Konstante Arbeiterproduktion ohne Unterbrechung"
+  });
+  
+  // Day 4: Micro practice
+  plan.push({
+    day: 4,
+    focus: "Mikromanagement",
+    drill: race === 'Protoss' ? 'Stalker Blink-Micro' :
+           race === 'Terran' ? 'Marine Splitting' :
+           'Zergling Surrounding'
+  });
+  
+  // Day 5: Strategy
+  plan.push({
+    day: 5,
+    focus: "Strategisches Denken",
+    drill: `${race} Matchup-spezifische Build Orders studieren`
+  });
+  
+  return plan;
 }
