@@ -1,41 +1,22 @@
-
-# Stage 1: Vendor dependencies
-FROM golang:1.19-alpine AS vendor
-
-# Install git for module download
-RUN apk add --no-cache git
-
-WORKDIR /app
-COPY go.mod go.sum ./
-
-# Clean module cache and download with fresh checksums
-RUN go clean -modcache && \
-    go mod download && \
-    go mod vendor
-
-# Stage 2: Build binary using vendor directory
+# Stage: Build
 FROM golang:1.19-alpine AS builder
 WORKDIR /app
+RUN apk add --no-cache git
 
-# Copy vendored modules and source
-COPY --from=vendor /app/vendor ./vendor
-COPY . ./
+COPY go.mod go.sum ./
+RUN go mod download
 
-# Build with vendor
-RUN go build -mod=vendor -o screp-service .
+COPY . .
+RUN go build -o screp-service .
 
-# Stage 3: Production image
+# Stage: Production
 FROM alpine:latest
 WORKDIR /root/
-
-# Install wget for healthcheck
 RUN apk add --no-cache wget
 
-# Copy built binary
 COPY --from=builder /app/screp-service .
-
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s \
-  CMD wget -qO- http://localhost:8080/health || exit 1
+    CMD wget -qO- http://localhost:8080/health || exit 1
 
-CMD ["./screp-service"]
+    CMD ["./screp-service"]
