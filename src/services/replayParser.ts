@@ -1,4 +1,5 @@
 
+
 import { ParsedReplayData } from './replayParser/types';
 
 /**
@@ -45,10 +46,30 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     // Import screparsed dynamically
     const screparsed = await import('screparsed');
     
-    // Create a ReplayParser instance and parse the data
-    const parser = new screparsed.ReplayParser();
-    const uint8Array = new Uint8Array(arrayBuffer);
-    const screparsedResult = parser.parse(uint8Array);
+    // Try different API patterns to find the correct one
+    let screparsedResult;
+    
+    try {
+      // Pattern 1: Static method on the class
+      const uint8Array = new Uint8Array(arrayBuffer);
+      if (screparsed.ReplayParser && typeof screparsed.ReplayParser.parse === 'function') {
+        screparsedResult = screparsed.ReplayParser.parse(uint8Array);
+      } else if (typeof screparsed.parse === 'function') {
+        // Pattern 2: Direct parse function export
+        screparsedResult = screparsed.parse(uint8Array);
+      } else if (typeof screparsed.default === 'function') {
+        // Pattern 3: Default export is a function
+        screparsedResult = screparsed.default(uint8Array);
+      } else if (screparsed.default && typeof screparsed.default.parse === 'function') {
+        // Pattern 4: Default export has parse method
+        screparsedResult = screparsed.default.parse(uint8Array);
+      } else {
+        throw new Error('Could not find valid parse method in screparsed library');
+      }
+    } catch (apiError) {
+      console.error('[replayParser] API call failed:', apiError);
+      throw new Error(`Screparsed API error: ${apiError instanceof Error ? apiError.message : 'Unknown API error'}`);
+    }
     
     if (!screparsedResult) {
       throw new Error('Screparsed konnte keine gültigen Daten extrahieren');
