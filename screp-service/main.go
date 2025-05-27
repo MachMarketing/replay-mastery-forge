@@ -38,26 +38,32 @@ type ParseResponse struct {
 	Header   Header    `json:"header"`
 }
 
-func enableCORS(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+// CORS middleware to handle all CORS headers properly
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set CORS headers for all requests
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Max-Age", "86400")
+
+		// Handle preflight OPTIONS requests
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// Call the next handler
+		next.ServeHTTP(w, r)
+	})
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
 }
 
 func parseHandler(w http.ResponseWriter, r *http.Request) {
-	enableCORS(w)
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
 	if r.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -147,9 +153,13 @@ func main() {
 	}
 
 	r := mux.NewRouter()
+	
+	// Apply CORS middleware to all routes
+	r.Use(corsMiddleware)
+	
 	r.HandleFunc("/health", healthHandler).Methods("GET", "OPTIONS")
 	r.HandleFunc("/parse", parseHandler).Methods("POST", "OPTIONS")
 
-	log.Printf("Starting server on port %s", port)
+	log.Printf("Starting server on port %s with CORS enabled", port)
 	log.Fatal(http.ListenAndServe(":"+port, r))
 }
