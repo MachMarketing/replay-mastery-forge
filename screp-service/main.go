@@ -11,6 +11,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/icza/screp/rep"
+	"github.com/icza/screp/rep/repcmd"
 	"github.com/icza/screp/repparser"
 	"github.com/joho/godotenv"
 )
@@ -216,27 +217,27 @@ func getRaceString(race rep.Race) string {
 }
 
 // Helper function to convert command type to string
-func getCommandTypeString(cmdType rep.CmdType) string {
+func getCommandTypeString(cmdType repcmd.Type) string {
 	switch cmdType {
-	case rep.CmdTypeSelect:
+	case repcmd.TypeSelect:
 		return "Select"
-	case rep.CmdTypeShiftSelect:
+	case repcmd.TypeShiftSelect:
 		return "Shift_Select"
-	case rep.CmdTypeShiftDeselect:
+	case repcmd.TypeShiftDeselect:
 		return "Shift_Deselect"
-	case rep.CmdTypeBuild:
+	case repcmd.TypeBuild:
 		return "Build"
-	case rep.CmdTypeVision:
+	case repcmd.TypeVision:
 		return "Vision"
-	case rep.CmdTypeAlly:
+	case repcmd.TypeAlly:
 		return "Ally"
-	case rep.CmdTypeHotkey:
+	case repcmd.TypeHotkey:
 		return "Hotkey"
-	case rep.CmdTypeMove:
+	case repcmd.TypeMove:
 		return "Move"
-	case rep.CmdTypeAttack:
+	case repcmd.TypeAttack:
 		return "Attack"
-	case rep.CmdTypeUseTech:
+	case repcmd.TypeUseTech:
 		return "Use_Tech"
 	default:
 		return "Command"
