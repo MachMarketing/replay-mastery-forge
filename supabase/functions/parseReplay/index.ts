@@ -1,4 +1,5 @@
 
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const corsHeaders = {
@@ -30,7 +31,7 @@ serve(async (req) => {
     }
     
     // Import and use bwscrep for parsing
-    const { parse } = await import("npm:bwscrep@latest")
+    const { parse } = await import("npm:bwscrep")
     
     console.log('[parseReplay] Starting bwscrep parsing...')
     const parsed = await parse(uint8Array)
@@ -73,3 +74,4 @@ serve(async (req) => {
     })
   }
 })
+
