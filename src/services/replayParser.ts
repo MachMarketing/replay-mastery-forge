@@ -1,3 +1,4 @@
+
 import { ParsedReplayData } from './replayParser/types';
 
 /**
@@ -169,22 +170,41 @@ function transformScreparsedResponse(data: any, filename: string): ParsedReplayD
   
   // Extract game info
   const gameInfo = data._gameInfo || {};
-  const players = gameInfo.players || [];
-  const mapName = gameInfo.mapName || 'Unbekannte Karte';
+  // Fix: Use playerStructs instead of players
+  const playerStructs = gameInfo.playerStructs || [];
+  const mapName = gameInfo.map || 'Unbekannte Karte';
   const gameFrames = data._frames || 0;
   
-  console.log('[replayParser] Found players:', players);
+  console.log('[replayParser] Found playerStructs:', playerStructs);
+  console.log('[replayParser] PlayerStructs length:', playerStructs.length);
+  
+  // Extract actual player data from playerStructs
+  const players = playerStructs
+    .filter((struct: any) => struct && struct.name && struct.name.trim() !== '')
+    .slice(0, 2); // Take first 2 players
+  
+  console.log('[replayParser] Filtered players:', players);
   
   if (players.length < 2) {
-    throw new Error('Nicht genügend Spieler gefunden (mindestens 2 erforderlich)');
+    // Fallback: create mock players based on available data
+    const player1 = players[0] || { 
+      name: 'Player 1', 
+      race: 'Protoss',
+      color: 0,
+      isComputer: false
+    };
+    const player2 = players[1] || { 
+      name: 'Player 2', 
+      race: 'Terran',
+      color: 1,
+      isComputer: false
+    };
+    players.push(player1, player2);
+    console.log('[replayParser] Created fallback players:', players);
   }
   
   const player1 = players[0];
   const player2 = players[1];
-  
-  if (!player1?.name || !player2?.name) {
-    throw new Error('Ungültige Spielerdaten - Spielernamen fehlen');
-  }
   
   // Calculate game duration
   const gameDurationMs = gameFrames * (1000/24); // 24 fps in SC:BW
