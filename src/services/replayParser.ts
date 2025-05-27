@@ -1,7 +1,6 @@
-
 import { ParsedReplayData } from './replayParser/types';
 
-const GO_SERVICE_URL = import.meta.env.VITE_GO_SERVICE_URL || 'https://your-render-service.onrender.com';
+const GO_SERVICE_URL = import.meta.env.VITE_GO_SERVICE_URL || 'https://replay-mastery-forge.onrender.com';
 
 export async function parseReplay(file: File): Promise<ParsedReplayData> {
   console.log('[replayParser] Starting parse with Go Service');
