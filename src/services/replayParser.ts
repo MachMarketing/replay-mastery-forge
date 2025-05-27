@@ -52,36 +52,31 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     let parsedReplay: any = null;
     
     try {
-      // Use the correct screparsed API - instantiate ReplayParser and call parse
-      const { ReplayParser } = screparsedModule;
-      
-      if (!ReplayParser) {
-        throw new Error('ReplayParser not found in screparsed module');
-      }
-      
-      console.log('[replayParser] Creating ReplayParser instance...');
-      
-      // Try to instantiate the parser - handle potential initialization errors
-      let parser: any;
-      try {
-        parser = new ReplayParser();
-      } catch (constructorError) {
-        console.error('[replayParser] Constructor error:', constructorError);
-        // Try alternative instantiation patterns if the direct constructor fails
-        if (typeof ReplayParser.new === 'function') {
-          console.log('[replayParser] Trying ReplayParser.new() factory method...');
-          parser = ReplayParser.new();
+      // Try using screparsed as a direct function (most common pattern for WASM modules)
+      if (typeof screparsedModule.default === 'function') {
+        console.log('[replayParser] Using default export as parse function...');
+        parsedReplay = screparsedModule.default(uint8Array);
+      } else if (typeof (screparsedModule as any).parse === 'function') {
+        console.log('[replayParser] Using named parse export...');
+        parsedReplay = (screparsedModule as any).parse(uint8Array);
+      } else if (typeof (screparsedModule as any).parseReplay === 'function') {
+        console.log('[replayParser] Using parseReplay export...');
+        parsedReplay = (screparsedModule as any).parseReplay(uint8Array);
+      } else {
+        // Try to find any function that might be the parser
+        const moduleEntries = Object.entries(screparsedModule);
+        const parseFunction = moduleEntries.find(([key, value]) => 
+          typeof value === 'function' && (key.includes('parse') || key.includes('Parse'))
+        );
+        
+        if (parseFunction) {
+          console.log('[replayParser] Using found parse function:', parseFunction[0]);
+          parsedReplay = (parseFunction[1] as Function)(uint8Array);
         } else {
-          throw new Error(`Failed to create ReplayParser instance: ${constructorError}`);
+          console.error('[replayParser] Available exports:', Object.keys(screparsedModule));
+          throw new Error('No valid parse function found in screparsed module');
         }
       }
-      
-      if (!parser) {
-        throw new Error('Failed to create ReplayParser instance');
-      }
-      
-      console.log('[replayParser] Calling parse method with replay data...');
-      parsedReplay = parser.parse(uint8Array);
       
     } catch (parseError) {
       console.error('[replayParser] screparsed parsing error:', parseError);
