@@ -55,12 +55,11 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
       keys: Object.keys(screparsedResult),
       hasPlayers: !!screparsedResult.players,
       playersCount: screparsedResult.players?.length || 0,
-      hasHeader: !!screparsedResult.header,
-      hasCommands: !!screparsedResult.commands,
-      commandsLength: screparsedResult.commands?.length || 0,
-      hasDuration: !!screparsedResult.duration,
+      hasDurationMs: !!screparsedResult.durationMs,
       hasFrames: !!screparsedResult.frames,
-      hasMap: !!screparsedResult.map
+      hasMapName: !!screparsedResult.mapName,
+      hasCommands: !!screparsedResult.commands,
+      commandsLength: screparsedResult.commands?.length || 0
     });
     
     // Log detailed player information from screparsed
@@ -95,12 +94,16 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
 function transformScreparsedResponse(data: any, filename: string): ParsedReplayData {
   const players = data.players || [];
   const commands = data.commands || [];
-  const header = data.header || {};
   
   console.log('[replayParser] Transforming data with players:', players);
   console.log('[replayParser] Available data keys:', Object.keys(data));
   console.log('[replayParser] Commands length:', commands.length);
-  console.log('[replayParser] Header info:', header);
+  console.log('[replayParser] Data structure check:', {
+    durationMs: data.durationMs,
+    frames: data.frames,
+    mapName: data.mapName,
+    map: data.map
+  });
   
   if (players.length < 2) {
     throw new Error('Nicht genügend Spieler in der Replay-Datei gefunden (mindestens 2 erforderlich)');
@@ -178,15 +181,15 @@ function transformScreparsedResponse(data: any, filename: string): ParsedReplayD
     player2Items: player2BuildOrder.length
   });
   
-  // Extract game duration and map info
-  const frames = data.frames || header.frames || 0;
-  const mapName = data.map || header.map || header.mapName || 'Unknown Map';
-  const durationMS = frames ? frames * (1000/24) : 0; // 24 frames per second
+  // Extract game duration and map info - use correct property names
+  const frames = data.frames || 0;
+  const durationMs = data.durationMs || 0;
+  const mapName = data.mapName || data.map || 'Unknown Map';
   
   console.log('[replayParser] Game metadata:', {
     frames,
+    durationMs,
     mapName,
-    durationMS,
     duration: formatDuration(frames)
   });
   
@@ -223,7 +226,7 @@ function transformScreparsedResponse(data: any, filename: string): ParsedReplayD
     map: mapName,
     matchup,
     duration: formatDuration(frames),
-    durationMS,
+    durationMS: durationMs || frames * (1000/24), // fallback calculation
     date: new Date().toISOString(),
     result: determineResult(player1, player2),
     strengths: analysis.primaryAnalysis.strengths,
