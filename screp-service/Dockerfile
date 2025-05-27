@@ -1,26 +1,26 @@
-
-# builder stage
+# ─── Builder Stage ───────────────────────────────────────────────────────────
 FROM golang:1.19-alpine AS builder
 WORKDIR /app
-# Copy go.mod and go.sum first for dependency caching
+
+# Module-Caching & tidy
 COPY go.mod go.sum ./
-# Download modules
-RUN go mod download
-# Copy the full source code
+RUN go mod download && go mod tidy
+
+# Quellcode kopieren und bauen
 COPY . ./
-# Tidy modules to include subpackages
-RUN go mod tidy
-# Build the service binary
 RUN go build -o screp-service .
 
-# final stage
+# ─── Production Stage ────────────────────────────────────────────────────────
 FROM alpine:latest
 WORKDIR /root/
-# Copy the built binary
+
+# Binary aus Builder kopieren
 COPY --from=builder /app/screp-service .
-# Expose port
+
+# Port und Health-Check
 EXPOSE 8080
-# Healthcheck
-HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO- http://localhost:8080/health || exit 1
-# Start command
+HEALTHCHECK --interval=30s --timeout=5s \
+  CMD wget -qO- http://localhost:8080/health || exit 1
+
+# Start-Kommando
 CMD ["./screp-service"]
