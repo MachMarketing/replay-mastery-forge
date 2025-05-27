@@ -5,11 +5,11 @@ FROM golang:1.21-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache git
 
-# Copy go.mod and go.sum for better caching
-COPY go.mod go.sum ./
+# Copy go.mod first and let Go regenerate go.sum
+COPY go.mod ./
 
-# Download dependencies
-RUN go mod download
+# Initialize and download dependencies - this will create a fresh go.sum
+RUN go mod tidy && go mod download
 
 # Copy source code
 COPY . .
