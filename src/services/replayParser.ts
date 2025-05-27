@@ -1,4 +1,3 @@
-
 import { ParsedReplayData } from './replayParser/types';
 
 /**
@@ -42,22 +41,13 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
   // Parse with screparsed (browser-based)
   console.log('[replayParser] Parsing with screparsed...');
   try {
-    // Import screparsed dynamically to handle different export formats
+    // Import screparsed dynamically
     const screparsed = await import('screparsed');
     
-    // Try different possible export names
-    let parseFunction;
-    if (screparsed.parseReplay) {
-      parseFunction = screparsed.parseReplay;
-    } else if (screparsed.default && screparsed.default.parseReplay) {
-      parseFunction = screparsed.default.parseReplay;
-    } else if (screparsed.default) {
-      parseFunction = screparsed.default;
-    } else {
-      throw new Error('Screparsed parsing function not found');
-    }
+    // Use ReplayParser class from screparsed
+    const parser = new screparsed.ReplayParser();
+    const screparsedResult = await parser.parse(new Uint8Array(arrayBuffer));
     
-    const screparsedResult = await parseFunction(new Uint8Array(arrayBuffer));
     if (!screparsedResult) {
       throw new Error('Screparsed konnte keine gültigen Daten extrahieren');
     }
