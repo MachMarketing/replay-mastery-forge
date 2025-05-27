@@ -10,7 +10,7 @@ import (
 
     "github.com/gorilla/mux"
     "github.com/joho/godotenv"
-    "github.com/nicklaw5/go-starscape-replay/replay"
+    github.com/nicktornow/starparse/pkg/screp/replay
 )
 
 func main() {
