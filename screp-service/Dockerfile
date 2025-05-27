@@ -2,11 +2,18 @@
 FROM golang:1.19-alpine as builder
 
 WORKDIR /app
-COPY . .
 
-# Install dependencies and build
+# Copy go mod files first for better caching
+COPY go.mod go.sum ./
+
+# Download dependencies
 RUN go mod download
-RUN go build -o screp-server .
+
+# Copy source code
+COPY main.go ./
+
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o screp-server .
 
 # Create production image
 FROM alpine:latest
