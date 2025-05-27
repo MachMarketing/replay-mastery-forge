@@ -1,18 +1,12 @@
 
-# Stage 1: Build & Vendor
+# Stage 1: Build using local vendor directory
 FROM golang:1.19-alpine AS builder
 WORKDIR /app
 
-# Modul-Dateien kopieren
-COPY go.mod go.sum ./
-
-# Dependencies herunterladen & ins vendor-Verzeichnis schreiben
-RUN go mod download && go mod vendor
-
-# Quellcode kopieren
+# Copy entire source, including vendor
 COPY . ./
 
-# Aus dem lokalen vendor bauen, kein Online-fetch mehr
+# Build with vendor modules only (no network access needed)
 RUN go build -mod=vendor -o screp-service .
 
 # Stage 2: Production
