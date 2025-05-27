@@ -37,9 +37,6 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     throw new Error('Konnte Datei nicht lesen - möglicherweise beschädigt');
   }
   
-  const uint8Array = new Uint8Array(arrayBuffer);
-  console.log('[replayParser] Created Uint8Array, length:', uint8Array.length);
-  
   // Parse with screparsed using the correct API
   try {
     console.log('[replayParser] Loading screparsed...');
@@ -50,13 +47,13 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     
     let parsedReplay: any = null;
     
-    // Use the correct screparsed API - ParsedReplay constructor
+    // Try the correct screparsed API - use parse function instead of constructor
     try {
-      console.log('[replayParser] Creating ParsedReplay instance...');
-      parsedReplay = new screparsed.ParsedReplay(arrayBuffer);
-      console.log('[replayParser] ParsedReplay instance created successfully');
+      console.log('[replayParser] Calling screparsed.parse function...');
+      parsedReplay = screparsed.parse(arrayBuffer);
+      console.log('[replayParser] screparsed.parse completed successfully');
     } catch (parseError) {
-      console.error('[replayParser] ParsedReplay creation failed:', parseError);
+      console.error('[replayParser] screparsed.parse failed:', parseError);
       throw new Error(`Screparsed parsing failed: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
     }
     
