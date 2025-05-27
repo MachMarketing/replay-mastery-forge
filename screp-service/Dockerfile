@@ -1,11 +1,11 @@
 
 # Build-Stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 WORKDIR /app
 RUN apk add --no-cache git
 
-# Copy go.mod first and let Go regenerate go.sum
+# Copy go.mod first for better caching
 COPY go.mod ./
 
 # Initialize and download dependencies - this will create a fresh go.sum
