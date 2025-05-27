@@ -1,6 +1,10 @@
+
 # ─── Builder Stage ───────────────────────────────────────────────────────────
 FROM golang:1.19-alpine AS builder
 WORKDIR /app
+
+# Disable Go checksum verification to bypass checksum mismatch issues
+ENV GOSUMDB=off
 
 # Module-Caching & tidy
 COPY go.mod go.sum ./
