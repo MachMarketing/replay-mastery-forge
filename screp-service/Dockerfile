@@ -1,22 +1,25 @@
 
-# Stage 1: Build the Go binary
+# Stage 1: Build & Vendor
 FROM golang:1.19-alpine AS builder
 WORKDIR /app
 
-# Copy go.mod/go.sum and disable checksum DB
+# Modul-Dateien kopieren
 COPY go.mod go.sum ./
-ENV GOSUMDB=off
 
-# Download & tidy modules
-RUN go mod download && go mod tidy
+# Dependencies herunterladen & ins vendor-Verzeichnis schreiben
+RUN go mod download && go mod vendor
 
-# Copy source and build
+# Quellcode kopieren
 COPY . ./
-RUN go build -o screp-service .
 
-# Stage 2: Production image
+# Aus dem lokalen vendor bauen, kein Online-fetch mehr
+RUN go build -mod=vendor -o screp-service .
+
+# Stage 2: Production
 FROM alpine:latest
 WORKDIR /root/
+
+# Binary aus der Builder-Stage
 COPY --from=builder /app/screp-service .
 
 EXPOSE 8080
