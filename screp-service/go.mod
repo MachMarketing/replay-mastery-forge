@@ -8,3 +8,7 @@ require (
 	github.com/joho/godotenv v1.4.0
 	github.com/icza/screp v1.8.0
 )
+
+require (
+	golang.org/x/text v0.3.7 // indirect
+)

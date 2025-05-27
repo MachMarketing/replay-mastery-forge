@@ -5,3 +5,5 @@ github.com/joho/godotenv v1.4.0 h1:3l4+N6zfMWnkbPEXKng2o2/MR5mSwTrBih4ZEkkz1lg=
 github.com/joho/godotenv v1.4.0/go.mod h1:f4LDr5Voq0i2e/R5DDNOoa2zzDfwtkZa6DnEwAbqwq4=
 github.com/icza/screp v1.8.0 h1:zKiWEIOvnmZ9dikzhDvLEzuIxsIytStJgwOS7WQmJ6c=
 github.com/icza/screp v1.8.0/go.mod h1:MG2MAhUCyFt3v1Oq9FCkIaRNtV6nthLT1SfUZLDB8aM=
+golang.org/x/text v0.3.7 h1:olpwvP2KacW1ZWvsR7uQhoyTYvKAupfQrRGBFM352Gk=
+golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=
