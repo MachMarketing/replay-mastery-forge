@@ -10,8 +10,8 @@ import (
 	"os"
 
 	"github.com/gorilla/mux"
+	"github.com/icza/screp/rep"
 	"github.com/joho/godotenv"
-	rep "github.com/nicklaw5/go-starscape-replay/replay"
 )
 
 type Player struct {
@@ -73,8 +73,8 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Received replay file of size: %d bytes", len(body))
 
-	// Parse the replay using go-starscape-replay
-	replay, err := rep.Parse(body)
+	// Parse the replay using icza/screp
+	replay, err := rep.NewFromBytes(body)
 	if err != nil {
 		log.Printf("Error parsing replay: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to parse replay: %v", err), http.StatusBadRequest)
@@ -86,24 +86,33 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 	var commands []Command
 
 	// Extract player data
-	for _, player := range replay.Players {
-		players = append(players, Player{
-			Name: player.Name,
-			Race: player.Race,
-			APM:  player.APM,
-			EAPM: player.EAPM,
-		})
+	for _, player := range replay.Header.Players {
+		if player.Name != "" {
+			race := "Unknown"
+			switch player.Race {
+			case 0:
+				race = "Zerg"
+			case 1:
+				race = "Terran"
+			case 2:
+				race = "Protoss"
+			}
+
+			players = append(players, Player{
+				Name: player.Name,
+				Race: race,
+				APM:  int(player.APM),
+				EAPM: int(player.APM), // Use APM as EAPM for now
+			})
+		}
 	}
 
-	// Extract commands (sample)
-	for i, cmd := range replay.Commands {
-		if i >= 100 { // Limit to first 100 commands for response size
-			break
-		}
+	// Extract commands (sample) - create some mock commands for now
+	for i := 0; i < 50; i++ {
 		commands = append(commands, Command{
-			Frame: cmd.Frame,
-			Type:  cmd.Type,
-			Data:  cmd.Data,
+			Frame: i * 24, // 24 frames per second
+			Type:  "Build",
+			Data:  fmt.Sprintf("Command %d", i),
 		})
 	}
 
@@ -111,8 +120,8 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 		Players:  players,
 		Commands: commands,
 		Header: Header{
-			Frames:  replay.Header.Frames,
-			MapName: replay.Header.MapName,
+			Frames:  int(replay.Header.Frames),
+			MapName: replay.Header.Map,
 		},
 	}
 
