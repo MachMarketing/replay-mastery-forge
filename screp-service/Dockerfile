@@ -1,12 +1,15 @@
+
 # Build-Stage
 FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
 RUN apk add --no-cache git
 
-COPY go.mod go.sum ./
+# Copy only go.mod first for better caching
+COPY go.mod ./
 RUN go mod tidy && go mod download
 
+# Now copy the rest of the source code
 COPY . .
 
 RUN go build -o screp-service .

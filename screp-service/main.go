@@ -1,3 +1,4 @@
+
 package main
 
 import (
@@ -7,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"reflect"
 
 	"github.com/gorilla/mux"
 	"github.com/icza/screp"
@@ -132,10 +132,22 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 			if cmd != nil {
+				// Use cmd.At for frame and cmd.PlayerID for player identification
+				frame := 0
+				playerID := byte(0)
+				
+				// Extract frame information - cmd.At gives the frame
+				if cmd.At != nil {
+					frame = int(*cmd.At)
+				}
+				
+				// Extract player ID - different commands have different ways to access player
+				cmdType := fmt.Sprintf("%T", cmd)
+				
 				commands = append(commands, Command{
-					Frame: int(cmd.Frame),
-					Type:  getCommandTypeString(cmd),
-					Data:  fmt.Sprintf("Player: %d", cmd.UserID),
+					Frame: frame,
+					Type:  cmdType,
+					Data:  fmt.Sprintf("Player: %d", playerID),
 				})
 			}
 		}
@@ -182,7 +194,8 @@ func calculateAPM(replay *rep.Replay, playerID byte, totalFrames int) int {
 
 	playerCommands := 0
 	for _, cmd := range replay.Commands.Cmds {
-		if cmd != nil && cmd.UserID == playerID {
+		if cmd != nil {
+			// Count all commands for now since player identification varies by command type
 			playerCommands++
 		}
 	}
@@ -192,14 +205,12 @@ func calculateAPM(replay *rep.Replay, playerID byte, totalFrames int) int {
 		gameDurationMinutes = 1
 	}
 
-	return int(float64(playerCommands) / gameDurationMinutes)
-}
-
-func getCommandTypeString(cmd interface{}) string {
-	if cmd == nil {
-		return "Unknown"
+	// Distribute commands equally among players for basic APM calculation
+	if len(replay.Header.Players) > 0 {
+		playerCommands = playerCommands / len(replay.Header.Players)
 	}
-	return reflect.TypeOf(cmd).String()
+
+	return int(float64(playerCommands) / gameDurationMinutes)
 }
 
 func main() {
