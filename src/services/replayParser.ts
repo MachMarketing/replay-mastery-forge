@@ -53,18 +53,43 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     let parsedReplay: any = null;
     
     try {
-      // Based on screparsed documentation, we need to use ReplayParser class
+      // Try different API patterns based on common WASM parser implementations
       const { ReplayParser } = screparsedModule;
       
       if (ReplayParser) {
-        console.log('[replayParser] Creating ReplayParser instance...');
-        const parser = new ReplayParser();
-        console.log('[replayParser] Calling parse method with replay data...');
-        parsedReplay = parser.parse(uint8Array);
+        // Check if ReplayParser has static methods or factory functions
+        if (typeof ReplayParser.create === 'function') {
+          console.log('[replayParser] Using ReplayParser.create() factory method...');
+          const parser = ReplayParser.create();
+          parsedReplay = parser.parse(uint8Array);
+        } else if (typeof ReplayParser.parse === 'function') {
+          console.log('[replayParser] Using ReplayParser.parse() static method...');
+          parsedReplay = ReplayParser.parse(uint8Array);
+        } else if (typeof ReplayParser === 'function') {
+          console.log('[replayParser] Using ReplayParser as function...');
+          parsedReplay = ReplayParser(uint8Array);
+        } else {
+          // Try the default export as a function
+          const parseFunction = (screparsedModule as any).default;
+          if (typeof parseFunction === 'function') {
+            console.log('[replayParser] Using default export as parse function...');
+            parsedReplay = parseFunction(uint8Array);
+          } else {
+            console.error('[replayParser] Could not find valid parse method');
+            console.error('[replayParser] ReplayParser properties:', Object.getOwnPropertyNames(ReplayParser));
+            throw new Error('Unable to find valid parse method in screparsed module');
+          }
+        }
       } else {
-        console.error('[replayParser] ReplayParser class not found in screparsed module');
-        console.error('[replayParser] Available exports:', Object.keys(screparsedModule));
-        throw new Error('ReplayParser class not found in screparsed module');
+        // Try using the module as a direct function
+        const parseFunction = (screparsedModule as any).default || (screparsedModule as any).parse;
+        if (typeof parseFunction === 'function') {
+          console.log('[replayParser] Using module function directly...');
+          parsedReplay = parseFunction(uint8Array);
+        } else {
+          console.error('[replayParser] No valid parser found in screparsed module');
+          throw new Error('No valid parser found in screparsed module');
+        }
       }
     } catch (parseError) {
       console.error('[replayParser] screparsed parsing error:', parseError);
