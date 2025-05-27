@@ -40,46 +40,26 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
   const uint8Array = new Uint8Array(arrayBuffer);
   console.log('[replayParser] Created Uint8Array, length:', uint8Array.length);
   
-  // Parse with screparsed using correct API pattern
+  // Parse with screparsed using correct API
   try {
     console.log('[replayParser] Loading screparsed...');
     
     // Use dynamic import for screparsed
-    const screparsedModule = await import('screparsed');
-    console.log('[replayParser] screparsed module loaded:', Object.keys(screparsedModule));
+    const screparsed = await import('screparsed');
+    console.log('[replayParser] screparsed module loaded');
     
     let screparsedResult: any = null;
     
-    // Try using static methods or the default export since constructor is private
-    if (screparsedModule.ReplayParser && typeof screparsedModule.ReplayParser.parse === 'function') {
-      console.log('[replayParser] Using ReplayParser.parse() static method...');
-      screparsedResult = screparsedModule.ReplayParser.parse(uint8Array);
-    } else if (screparsedModule.ReplayParser && typeof screparsedModule.ReplayParser.parseReplay === 'function') {
-      console.log('[replayParser] Using ReplayParser.parseReplay() static method...');
-      screparsedResult = screparsedModule.ReplayParser.parseReplay(uint8Array);
-    } else if (screparsedModule.default && typeof screparsedModule.default === 'function') {
-      console.log('[replayParser] Using default export as function...');
-      screparsedResult = screparsedModule.default(uint8Array);
-    } else if (screparsedModule.ParsedReplay && typeof screparsedModule.ParsedReplay.fromBuffer === 'function') {
-      console.log('[replayParser] Using ParsedReplay.fromBuffer()...');
-      screparsedResult = screparsedModule.ParsedReplay.fromBuffer(uint8Array);
-    } else if (screparsedModule.ParsedReplay && typeof screparsedModule.ParsedReplay.parse === 'function') {
-      console.log('[replayParser] Using ParsedReplay.parse()...');
-      screparsedResult = screparsedModule.ParsedReplay.parse(uint8Array);
+    // Use the default export which should be the main parse function
+    if (typeof screparsed.default === 'function') {
+      console.log('[replayParser] Using default screparsed function...');
+      screparsedResult = screparsed.default(uint8Array);
+    } else if (screparsed.ParsedReplay) {
+      console.log('[replayParser] Using ParsedReplay constructor...');
+      screparsedResult = new screparsed.ParsedReplay(uint8Array);
     } else {
-      // Log available exports and their methods for debugging
-      console.log('[replayParser] Available module exports:', Object.keys(screparsedModule));
-      
-      if (screparsedModule.ReplayParser) {
-        const replayParserMethods = Object.getOwnPropertyNames(screparsedModule.ReplayParser).filter(name => typeof screparsedModule.ReplayParser[name] === 'function');
-        console.log('[replayParser] ReplayParser static methods:', replayParserMethods);
-      }
-      
-      if (screparsedModule.ParsedReplay) {
-        const parsedReplayMethods = Object.getOwnPropertyNames(screparsedModule.ParsedReplay).filter(name => typeof screparsedModule.ParsedReplay[name] === 'function');
-        console.log('[replayParser] ParsedReplay static methods:', parsedReplayMethods);
-      }
-      
+      // Log what's actually available
+      console.log('[replayParser] Available exports:', Object.keys(screparsed));
       throw new Error('Keine unterstützte Parse-Methode in screparsed gefunden');
     }
     
