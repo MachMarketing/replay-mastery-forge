@@ -1,7 +1,5 @@
 
 import { ParsedReplayData } from './replayParser/types';
-// Import screparsed correctly - check the actual API
-import screparsed from 'screparsed';
 
 /**
  * Parse a StarCraft: Brood War replay file using screparsed
@@ -43,30 +41,30 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
   const uint8Array = new Uint8Array(arrayBuffer);
   console.log('[replayParser] Created Uint8Array, length:', uint8Array.length);
   
-  // Parse with screparsed using the correct API
+  // Parse with screparsed using dynamic import to avoid TypeScript issues
   try {
-    console.log('[replayParser] Parsing with screparsed...');
-    console.log('[replayParser] screparsed type:', typeof screparsed);
-    console.log('[replayParser] screparsed object:', screparsed);
+    console.log('[replayParser] Loading screparsed dynamically...');
     
-    let screparsedResult;
+    // Use dynamic import to avoid TypeScript compilation issues
+    const screparsed = await import('screparsed');
+    console.log('[replayParser] screparsed loaded:', typeof screparsed);
+    console.log('[replayParser] screparsed keys:', Object.keys(screparsed));
     
-    // Try different possible API patterns for screparsed
-    if (typeof screparsed === 'function') {
-      console.log('[replayParser] Using screparsed as direct function');
-      screparsedResult = screparsed(uint8Array);
-    } else if (screparsed && typeof screparsed.parse === 'function') {
-      console.log('[replayParser] Using screparsed.parse');
-      screparsedResult = screparsed.parse(uint8Array);
-    } else if (screparsed && typeof screparsed.parseReplay === 'function') {
-      console.log('[replayParser] Using screparsed.parseReplay');
-      screparsedResult = screparsed.parseReplay(uint8Array);
-    } else if (screparsed && typeof screparsed.default === 'function') {
-      console.log('[replayParser] Using screparsed.default');
+    let screparsedResult: any;
+    
+    // Try different possible API patterns for screparsed with proper type handling
+    if (typeof screparsed.default === 'function') {
+      console.log('[replayParser] Using screparsed.default as function');
       screparsedResult = screparsed.default(uint8Array);
+    } else if (typeof (screparsed as any).parse === 'function') {
+      console.log('[replayParser] Using screparsed.parse');
+      screparsedResult = (screparsed as any).parse(uint8Array);
+    } else if (typeof (screparsed as any).parseReplay === 'function') {
+      console.log('[replayParser] Using screparsed.parseReplay');
+      screparsedResult = (screparsed as any).parseReplay(uint8Array);
     } else {
       // Check if screparsed exports any callable functions
-      const exportedKeys = screparsed ? Object.keys(screparsed) : [];
+      const exportedKeys = Object.keys(screparsed);
       console.log('[replayParser] Available properties in screparsed:', exportedKeys);
       
       // Find the first function that might be the parser
@@ -80,14 +78,18 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
         console.log('[replayParser] Using found parser function:', parserFunction);
         screparsedResult = (screparsed as any)[parserFunction](uint8Array);
       } else {
-        // Try to use it as a constructor if it's a class
+        // Try to use default export as a constructor if it's a class
         try {
-          console.log('[replayParser] Trying screparsed as constructor');
-          const parser = new (screparsed as any)();
-          if (typeof parser.parse === 'function') {
-            screparsedResult = parser.parse(uint8Array);
+          console.log('[replayParser] Trying screparsed.default as constructor');
+          if (screparsed.default) {
+            const parser = new (screparsed.default as any)();
+            if (typeof parser.parse === 'function') {
+              screparsedResult = parser.parse(uint8Array);
+            } else {
+              throw new Error('Screparsed constructor created object without parse method');
+            }
           } else {
-            throw new Error('Screparsed constructor created object without parse method');
+            throw new Error('No screparsed.default available');
           }
         } catch (constructorError) {
           console.error('[replayParser] Constructor approach failed:', constructorError);
