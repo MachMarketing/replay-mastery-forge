@@ -161,7 +161,7 @@ function transformBuildOrder(buildOrder: any[]): Array<{time: string; supply: nu
 /**
  * Determine game result based on player data
  */
-function determineResult(player1: any, player2: any): string {
+function determineResult(player1: any, player2: any): 'win' | 'loss' | 'unknown' {
   if (player1.isWinner === true) return 'win';
   if (player1.isWinner === false) return 'loss';
   return 'unknown';
