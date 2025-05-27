@@ -1,3 +1,4 @@
+
 import { ParsedReplayData } from './replayParser/types';
 
 /**
@@ -48,36 +49,24 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     const screparsedModule = await import('screparsed');
     console.log('[replayParser] screparsed module loaded:', Object.keys(screparsedModule));
     
-    // Try different API patterns based on the actual screparsed exports
+    // Use the ReplayParser class correctly
     let screparsedResult: any = null;
     
-    // Method 1: Check for parse function on the module
-    if (typeof screparsedModule.parse === 'function') {
-      console.log('[replayParser] Using screparsed.parse function...');
-      screparsedResult = screparsedModule.parse(uint8Array);
-    }
-    // Method 2: Check for parseReplay function
-    else if (typeof screparsedModule.parseReplay === 'function') {
-      console.log('[replayParser] Using screparsed.parseReplay function...');
-      screparsedResult = screparsedModule.parseReplay(uint8Array);
-    }
-    // Method 3: Check if default export has a parse method
-    else if (screparsedModule.default && typeof screparsedModule.default.parse === 'function') {
-      console.log('[replayParser] Using default.parse method...');
-      screparsedResult = screparsedModule.default.parse(uint8Array);
-    }
-    // Method 4: Try calling default export directly if it's a function
-    else if (typeof screparsedModule.default === 'function') {
-      console.log('[replayParser] Trying default export as function...');
-      try {
-        screparsedResult = screparsedModule.default(uint8Array);
-      } catch (callError) {
-        console.log('[replayParser] Default function call failed:', callError);
-      }
+    if (screparsedModule.ReplayParser) {
+      console.log('[replayParser] Using ReplayParser class...');
+      // Create an instance and call parse method
+      const parser = new screparsedModule.ReplayParser();
+      screparsedResult = parser.parse(uint8Array);
+    } else if (screparsedModule.default && screparsedModule.default.ReplayParser) {
+      console.log('[replayParser] Using default.ReplayParser class...');
+      const parser = new screparsedModule.default.ReplayParser();
+      screparsedResult = parser.parse(uint8Array);
+    } else {
+      throw new Error('ReplayParser class not found in screparsed module');
     }
     
     if (!screparsedResult) {
-      throw new Error('Screparsed konnte keine Daten extrahieren - keine passende API gefunden');
+      throw new Error('Screparsed konnte keine Daten extrahieren');
     }
     
     console.log('[replayParser] Screparsed result:', screparsedResult);
@@ -86,10 +75,7 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     
   } catch (screparsedError) {
     console.error('[replayParser] Screparsed parsing failed:', screparsedError);
-    
-    // Fallback to filename parsing for real player names
-    console.log('[replayParser] Falling back to mock data for development');
-    return createMockDataFromFilename(file.name);
+    throw new Error(`Screparsed parsing failed: ${screparsedError instanceof Error ? screparsedError.message : String(screparsedError)}`);
   }
 }
 
@@ -118,8 +104,7 @@ function createParsedDataFromScreparsed(screparsedResult: any, filename: string)
   console.log('[replayParser] Found players:', players.length, players);
   
   if (players.length < 2) {
-    console.warn('[replayParser] Not enough players found, trying to extract from filename');
-    return extractFromFilename(filename);
+    throw new Error('Nicht genügend Spieler in der Replay-Datei gefunden');
   }
   
   // Get the first two players
@@ -197,213 +182,6 @@ function createParsedDataFromScreparsed(screparsedResult: any, filename: string)
 }
 
 /**
- * Create mock data from filename for development/fallback
- */
-function createMockDataFromFilename(filename: string): ParsedReplayData {
-  console.log('[replayParser] Creating mock data for:', filename);
-  
-  // Extract info from filename if possible
-  const cleanName = filename.replace('.rep', '');
-  const parts = cleanName.split(' vs ');
-  
-  let player1Name = 'Player';
-  let player2Name = 'Opponent';
-  let matchup = 'TvP';
-  
-  if (parts.length >= 2) {
-    player1Name = parts[0].trim();
-    player2Name = parts[1].trim();
-    
-    // Check if filename starts with matchup
-    const matchupMatch = cleanName.match(/^([TPZ]v[TPZ])/);
-    if (matchupMatch) {
-      matchup = matchupMatch[1];
-      player1Name = player1Name.replace(/^[TPZ]v[TPZ]\s+/, '');
-    }
-  }
-  
-  const primaryPlayer = {
-    name: player1Name,
-    race: matchup.charAt(0) === 'T' ? 'Terran' : matchup.charAt(0) === 'P' ? 'Protoss' : 'Zerg',
-    apm: Math.floor(Math.random() * 100) + 80,
-    eapm: 0,
-    buildOrder: generateMockBuildOrder(),
-    strengths: ['Good macro management', 'Solid unit positioning'],
-    weaknesses: ['Could improve APM', 'Late game transitions need work'],
-    recommendations: ['Practice more hotkey usage', 'Work on late game strategies']
-  };
-  
-  primaryPlayer.eapm = Math.round(primaryPlayer.apm * 0.7);
-  
-  const secondaryPlayer = {
-    name: player2Name,
-    race: matchup.charAt(2) === 'T' ? 'Terran' : matchup.charAt(2) === 'P' ? 'Protoss' : 'Zerg',
-    apm: Math.floor(Math.random() * 100) + 80,
-    eapm: 0,
-    buildOrder: [],
-    strengths: [],
-    weaknesses: [],
-    recommendations: []
-  };
-  
-  secondaryPlayer.eapm = Math.round(secondaryPlayer.apm * 0.7);
-  
-  return {
-    primaryPlayer,
-    secondaryPlayer,
-    map: 'Lost Temple',
-    matchup,
-    duration: '12:34',
-    durationMS: 754000,
-    date: new Date().toISOString(),
-    result: 'unknown',
-    strengths: primaryPlayer.strengths,
-    weaknesses: primaryPlayer.weaknesses,
-    recommendations: primaryPlayer.recommendations,
-    playerName: primaryPlayer.name,
-    opponentName: secondaryPlayer.name,
-    playerRace: primaryPlayer.race,
-    opponentRace: secondaryPlayer.race,
-    apm: primaryPlayer.apm,
-    eapm: primaryPlayer.eapm,
-    opponentApm: secondaryPlayer.apm,
-    opponentEapm: secondaryPlayer.eapm,
-    buildOrder: primaryPlayer.buildOrder,
-    trainingPlan: [
-      { day: 1, focus: "APM Training", drill: `${primaryPlayer.race} Hotkeys üben` },
-      { day: 2, focus: "Build Order", drill: `Standard ${primaryPlayer.race} Build perfektionieren` },
-      { day: 3, focus: "Makro", drill: "Kontinuierliche Produktion" }
-    ]
-  };
-}
-
-/**
- * Generate mock build order for development
- */
-function generateMockBuildOrder(): Array<{time: string; supply: number; action: string}> {
-  const actions = [
-    'SCV', 'Supply Depot', 'SCV', 'SCV', 'Barracks', 'SCV', 'Marine', 'SCV', 'Supply Depot', 'Marine'
-  ];
-  
-  return actions.map((action, index) => ({
-    time: formatDuration(index * 30), // 30 seconds between actions
-    supply: 9 + index,
-    action
-  }));
-}
-
-/**
- * Extract player names from filename if available
- */
-function extractFromFilename(filename: string): ParsedReplayData {
-  console.log('[replayParser] Extracting data from filename:', filename);
-  
-  // Try to parse filename for player info
-  // Common formats: "PlayerName vs OpponentName.rep", "PvT PlayerName vs OpponentName.rep"
-  const cleanName = filename.replace('.rep', '');
-  const parts = cleanName.split(' vs ');
-  
-  let player1Name = 'Player 1';
-  let player2Name = 'Player 2';
-  let matchup = 'TvP';
-  
-  if (parts.length >= 2) {
-    player1Name = parts[0].trim();
-    player2Name = parts[1].trim();
-    
-    // Check if filename starts with matchup
-    const matchupMatch = cleanName.match(/^([TPZ]v[TPZ])/);
-    if (matchupMatch) {
-      matchup = matchupMatch[1];
-      player1Name = player1Name.replace(/^[TPZ]v[TPZ]\s+/, '');
-    }
-  }
-  
-  const primaryPlayer = {
-    name: player1Name,
-    race: matchup.charAt(0) === 'T' ? 'Terran' : matchup.charAt(0) === 'P' ? 'Protoss' : 'Zerg',
-    apm: 0,
-    eapm: 0,
-    buildOrder: [],
-    strengths: ['Spiel abgeschlossen'],
-    weaknesses: ['Begrenzte Analysedaten verfügbar'],
-    recommendations: ['Lade mehr Replays für detaillierte Analyse hoch']
-  };
-  
-  const secondaryPlayer = {
-    name: player2Name,
-    race: matchup.charAt(2) === 'T' ? 'Terran' : matchup.charAt(2) === 'P' ? 'Protoss' : 'Zerg',
-    apm: 0,
-    eapm: 0,
-    buildOrder: [],
-    strengths: [],
-    weaknesses: [],
-    recommendations: []
-  };
-  
-  return {
-    primaryPlayer,
-    secondaryPlayer,
-    map: 'Unknown Map',
-    matchup,
-    duration: '5:00',
-    durationMS: 300000,
-    date: new Date().toISOString(),
-    result: 'unknown',
-    strengths: primaryPlayer.strengths,
-    weaknesses: primaryPlayer.weaknesses,
-    recommendations: primaryPlayer.recommendations,
-    playerName: primaryPlayer.name,
-    opponentName: secondaryPlayer.name,
-    playerRace: primaryPlayer.race,
-    opponentRace: secondaryPlayer.race,
-    apm: 0,
-    eapm: 0,
-    opponentApm: 0,
-    opponentEapm: 0,
-    buildOrder: [],
-    trainingPlan: [
-      { day: 1, focus: "Grundlagen", drill: `${primaryPlayer.race} Build Order üben` },
-      { day: 2, focus: "Makro", drill: "Wirtschaftsmanagement verbessern" },
-      { day: 3, focus: "Mikro", drill: "Einheitenkontrolle trainieren" }
-    ]
-  };
-}
-
-/**
- * Extract player names from raw replay data
- */
-function extractPlayerNamesFromRaw(data: Uint8Array): {
-  player1Name?: string;
-  player2Name?: string;
-  player1Race?: string;
-  player2Race?: string;
-} {
-  // Implementation for extracting player names from raw bytes
-  // This is a simplified version - the actual implementation would be more complex
-  return {
-    player1Name: undefined,
-    player2Name: undefined,
-    player1Race: undefined,
-    player2Race: undefined
-  };
-}
-
-/**
- * Extract header info from raw replay data
- */
-function extractHeaderInfoFromRaw(data: Uint8Array): {
-  mapName?: string;
-  duration?: string;
-} {
-  // Implementation for extracting header info from raw bytes
-  return {
-    mapName: undefined,
-    duration: undefined
-  };
-}
-
-/**
  * Extract build order from screparsed result
  */
 function extractBuildOrderFromResult(result: any, playerIndex: number): Array<{time: string; supply: number; action: string}> {
@@ -470,190 +248,6 @@ function generateRealAnalysis(player1: any, player2: any, screparsedResult: any)
     primaryAnalysis: { strengths, weaknesses, recommendations },
     trainingPlan
   };
-}
-
-/**
- * Utility functions for extracting information from replay file bytes
- */
-
-/**
- * Extracts header information from a replay file
- * @param data Uint8Array of the replay file
- */
-export function extractReplayHeaderInfo(data: Uint8Array): {
-  frameCount?: number;
-  mapName?: string;
-} {
-  const result: { frameCount?: number; mapName?: string } = {};
-  
-  try {
-    // Alle Validierungen wurden entfernt, um jede Datei zu verarbeiten
-    // Einfach versuchen, nutzbaren Inhalt zu extrahieren
-    
-    // Try to find a map name (rough extraction based on known offset patterns)
-    // This is a simplified approach and may not work for all replays
-    let mapNameCandidate = '';
-    
-    // Common offsets where map name can be found
-    for (let offset of [0x61, 0x65, 0x69, 0x6D]) {
-      let mapBytes = [];
-      for (let i = offset; i < offset + 32; i++) {
-        if (i >= data.length || data[i] === 0) break;
-        mapBytes.push(data[i]);
-      }
-      
-      if (mapBytes.length > 2) {
-        const mapName = String.fromCharCode(...mapBytes).trim();
-        if (mapName.length > 3 && /^[\x20-\x7E]+$/.test(mapName)) {
-          mapNameCandidate = mapName;
-          break;
-        }
-      }
-    }
-    
-    if (mapNameCandidate) {
-      result.mapName = mapNameCandidate;
-    }
-    
-    // Try to extract frame count (game duration)
-    // Frame count is often stored around offset 0x0C for 4 bytes
-    if (data.length > 16) {
-      const frameBytes = data.slice(0x0C, 0x10);
-      const frameCount = frameBytes[0] + (frameBytes[1] << 8) + (frameBytes[2] << 16) + (frameBytes[3] << 24);
-      if (frameCount > 0 && frameCount < 1000000) { // Sanity check
-        result.frameCount = frameCount;
-      }
-    }
-    
-    return result;
-  } catch (error) {
-    console.error('Error extracting replay header info:', error);
-    return result;
-  }
-}
-
-/**
- * Extracts player information from a replay file
- * @param data Uint8Array of the replay file
- */
-export function extractPlayerInfo(data: Uint8Array): {
-  playerName: string;
-  opponentName: string;
-  playerRace: string;
-  opponentRace: string;
-} {
-  const result = {
-    playerName: 'Player',
-    opponentName: 'Opponent',
-    playerRace: 'T',
-    opponentRace: 'P',
-  };
-  
-  try {
-    // Look for player names - usually found after the string "OwnerName"
-    const ownerBytes = [0x4F, 0x77, 0x6E, 0x65, 0x72, 0x4E, 0x61, 0x6D, 0x65]; // "OwnerName"
-    
-    let playerNamesStart = -1;
-    for (let i = 0; i < data.length - ownerBytes.length; i++) {
-      let match = true;
-      for (let j = 0; j < ownerBytes.length; j++) {
-        if (data[i + j] !== ownerBytes[j]) {
-          match = false;
-          break;
-        }
-      }
-      if (match) {
-        playerNamesStart = i + ownerBytes.length + 2; // Skip "OwnerName" and a few bytes
-        break;
-      }
-    }
-    
-    if (playerNamesStart > 0) {
-      // Extract first player name
-      let nameBytes = [];
-      for (let i = playerNamesStart; i < playerNamesStart + 32; i++) {
-        if (i >= data.length || data[i] === 0) break;
-        nameBytes.push(data[i]);
-      }
-      
-      if (nameBytes.length > 0) {
-        result.playerName = String.fromCharCode(...nameBytes).trim();
-      }
-      
-      // Try to find second player name after the first
-      const nextNameOffset = playerNamesStart + nameBytes.length + 8;
-      if (nextNameOffset < data.length) {
-        nameBytes = [];
-        for (let i = nextNameOffset; i < nextNameOffset + 32; i++) {
-          if (i >= data.length || data[i] === 0) break;
-          nameBytes.push(data[i]);
-        }
-        
-        if (nameBytes.length > 0) {
-          result.opponentName = String.fromCharCode(...nameBytes).trim();
-        }
-      }
-    }
-    
-    // Look for race information - a simple approach is to look for race letter sequences
-    // This is not reliable for all replays but works for many
-    // Race markers can be 'T', 'P', 'Z' for Terran, Protoss, Zerg
-    const raceMarkers = [
-      { race: 'T', bytes: [0x54, 0x65, 0x72, 0x72, 0x61, 0x6E] }, // "Terran"
-      { race: 'P', bytes: [0x50, 0x72, 0x6F, 0x74, 0x6F, 0x73, 0x73] }, // "Protoss"
-      { race: 'Z', bytes: [0x5A, 0x65, 0x72, 0x67] }, // "Zerg"
-    ];
-    
-    let races = [];
-    for (const marker of raceMarkers) {
-      for (let i = 0; i < data.length - marker.bytes.length; i++) {
-        let match = true;
-        for (let j = 0; j < marker.bytes.length; j++) {
-          if (data[i + j] !== marker.bytes[j]) {
-            match = false;
-            break;
-          }
-        }
-        if (match) {
-          races.push({ offset: i, race: marker.race });
-        }
-      }
-    }
-    
-    // Sort by offset to get races in order
-    races.sort((a, b) => a.offset - b.offset);
-    
-    if (races.length > 0) {
-      result.playerRace = races[0].race;
-    }
-    
-    if (races.length > 1) {
-      result.opponentRace = races[1].race;
-    }
-    
-    return result;
-  } catch (error) {
-    console.error('Error extracting player info:', error);
-    return result;
-  }
-}
-
-/**
- * Maps a race letter/abbreviation to the full race name
- */
-export function mapRace(race: string): string {
-  if (!race) return 'Unknown';
-  
-  switch (race.toUpperCase()) {
-    case 'T':
-      return 'Terran';
-    case 'P':
-      return 'Protoss';
-    case 'Z':
-      return 'Zerg';
-    default:
-      return race;
-  }
 }
 
 function formatDuration(seconds: number): string {
