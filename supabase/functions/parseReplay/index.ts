@@ -37,6 +37,20 @@ serve(async (req) => {
     const parsed = await parse(uint8Array);
     console.log('[parseReplay] Parse successful');
 
+    // Log header information to verify Classic vs Remastered
+    console.log('[parseReplay] parsed.header:', parsed.header);
+    console.log('[parseReplay] gameVersion:', parsed.header?.gameVersion);
+    console.log('[parseReplay] commands.length:', parsed.commands?.length || 0);
+    console.log('[parseReplay] players.length:', parsed.players?.length || 0);
+    
+    // Additional logging for Remastered verification
+    if (parsed.header?.gameVersion) {
+      const version = parsed.header.gameVersion;
+      const isRemastered = version >= '1.18';
+      console.log('[parseReplay] Detected format:', isRemastered ? 'StarCraft: Remastered' : 'Classic Brood War');
+      console.log('[parseReplay] Version comparison: gameVersion >=1.18 ?', isRemastered);
+    }
+
     // Normalize response
     const result = {
       players: parsed.players,
@@ -44,6 +58,7 @@ serve(async (req) => {
       header: {
         frames: parsed.header.frames,
         mapName: parsed.header.mapName,
+        gameVersion: parsed.header.gameVersion,
       },
     };
 
