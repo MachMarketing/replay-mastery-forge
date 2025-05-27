@@ -2,9 +2,9 @@
 import { ParsedReplayData } from './replayParser/types';
 
 /**
- * Parse a StarCraft: Brood War replay file using screparsed
+ * Parse a StarCraft: Brood War replay file using the Go service
  * This supports both Classic and Remastered replay formats
- * Only returns real parsed data - no mock/fallback data
+ * Only returns real parsed data - no fallback data
  */
 export async function parseReplay(file: File): Promise<ParsedReplayData> {
   console.log('[replayParser] Starting to parse replay file:', file.name);
@@ -39,7 +39,40 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     throw new Error('Konnte Datei nicht lesen - möglicherweise beschädigt');
   }
   
-  // Only use the Go service - no fallback to mock data
+  // Check if Go service is available
+  console.log('[replayParser] Checking Go service availability...');
+  try {
+    const healthCheck = await fetch('http://localhost:8000/health', {
+      method: 'GET',
+      timeout: 5000
+    });
+    
+    if (!healthCheck.ok) {
+      throw new Error('Go service health check failed');
+    }
+    console.log('[replayParser] Go service is available');
+  } catch (healthError) {
+    console.error('[replayParser] Go service health check failed:', healthError);
+    throw new Error(`Go-Service ist nicht verfügbar. 
+    
+Bitte starten Sie den SCREP-Service:
+
+1. Terminal öffnen und zum screp-service Verzeichnis navigieren:
+   cd screp-service
+
+2. Go-Service starten:
+   go run main.go
+   
+   ODER mit Docker:
+   docker build -t screp-service .
+   docker run -p 8000:8000 screp-service
+
+3. Service sollte auf http://localhost:8000 verfügbar sein
+
+Der Service muss laufen, bevor Replays analysiert werden können.`);
+  }
+  
+  // Parse with the Go service
   console.log('[replayParser] Attempting to parse with Go service...');
   try {
     const goServiceResult = await parseWithGoService(file);
@@ -62,13 +95,18 @@ async function parseWithGoService(file: File): Promise<ParsedReplayData | null> 
     const formData = new FormData();
     formData.append('file', file);
     
+    console.log('[replayParser] Sending request to Go service...');
     const response = await fetch('http://localhost:8000/parse', {
       method: 'POST',
       body: formData,
+      headers: {
+        // Don't set Content-Type - let browser set it for FormData
+      }
     });
     
     if (!response.ok) {
       const errorText = await response.text();
+      console.error('[replayParser] Go service returned error:', response.status, errorText);
       throw new Error(`Go service returned ${response.status}: ${errorText}`);
     }
     
@@ -81,8 +119,21 @@ async function parseWithGoService(file: File): Promise<ParsedReplayData | null> 
     
     // Re-throw with more context
     if (error instanceof Error) {
-      if (error.message.includes('Failed to fetch')) {
-        throw new Error('Go-Service ist nicht verfügbar. Stellen Sie sicher, dass der SCREP-Service läuft.');
+      if (error.message.includes('Failed to fetch') || error.message.includes('fetch')) {
+        throw new Error(`Go-Service ist nicht erreichbar. 
+
+Bitte überprüfen Sie:
+
+1. Ist der SCREP-Service gestartet?
+   cd screp-service
+   go run main.go
+
+2. Läuft der Service auf Port 8000?
+   curl http://localhost:8000/health
+
+3. Firewall-Einstellungen erlauben Verbindungen zu localhost:8000?
+
+Der Service muss laufen, damit Replays analysiert werden können.`);
       }
       throw error;
     }

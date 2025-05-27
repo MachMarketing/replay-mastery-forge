@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Upload, X, FileText, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 import { ParsedReplayData } from '@/services/replayParser/types';
 import { useReplayParser } from '@/hooks/useReplayParser';
+import ServiceStatusChecker from './ServiceStatusChecker';
 
 interface UploadBoxProps {
   onUploadComplete?: (file: File, replayData: ParsedReplayData) => void;
@@ -19,6 +20,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'parsing' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
+  const [serviceAvailable, setServiceAvailable] = useState<boolean>(false);
   const progressIntervalRef = useRef<number | null>(null);
   const processingTimeoutRef = useRef<number | null>(null);
   const { toast } = useToast();
@@ -281,36 +283,56 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
 
   return (
     <div className="w-full">
+      <ServiceStatusChecker onStatusChange={setServiceAvailable} />
+      
       {uploadStatus === 'idle' ? (
         <div
           {...getRootProps()}
           className={`border-2 border-dashed rounded-lg p-6 flex flex-col items-center justify-center transition-all ${
             isDragging 
               ? 'border-primary bg-primary/10 animate-pulse' 
-              : 'border-border hover:border-primary/50 hover:bg-secondary/50'
+              : serviceAvailable 
+                ? 'border-border hover:border-primary/50 hover:bg-secondary/50'
+                : 'border-gray-300 bg-gray-50 cursor-not-allowed opacity-50'
           }`}
         >
-          <div className="h-14 w-14 rounded-full bg-primary/20 flex items-center justify-center mb-4">
-            <Upload className="h-7 w-7 text-primary" />
+          <div className={`h-14 w-14 rounded-full flex items-center justify-center mb-4 ${
+            serviceAvailable ? 'bg-primary/20' : 'bg-gray-200'
+          }`}>
+            <Upload className={`h-7 w-7 ${serviceAvailable ? 'text-primary' : 'text-gray-400'}`} />
           </div>
-          <h3 className="text-lg font-semibold mb-2">SC:BW Replay-Datei hochladen</h3>
-          <p className="text-sm text-muted-foreground mb-4 text-center">
-            Ziehe deine .rep Datei hierher oder klicke zum Auswählen<br />
-            <span className="text-xs text-green-600">Unterstützt Classic & Remastered</span>
+          <h3 className={`text-lg font-semibold mb-2 ${serviceAvailable ? '' : 'text-gray-500'}`}>
+            SC:BW Replay-Datei hochladen
+          </h3>
+          <p className={`text-sm mb-4 text-center ${serviceAvailable ? 'text-muted-foreground' : 'text-gray-400'}`}>
+            {serviceAvailable ? (
+              <>
+                Ziehe deine .rep Datei hierher oder klicke zum Auswählen<br />
+                <span className="text-xs text-green-600">SCREP-Service bereit</span>
+              </>
+            ) : (
+              <>
+                SCREP-Service nicht verfügbar<br />
+                <span className="text-xs text-red-600">Service muss gestartet werden</span>
+              </>
+            )}
           </p>
-          <Button onClick={open} variant="default" className="transition-all hover:shadow-md">
+          <Button 
+            onClick={open} 
+            variant="default" 
+            className="transition-all hover:shadow-md"
+            disabled={!serviceAvailable}
+          >
             Datei auswählen
           </Button>
           <input
             {...getInputProps()}
             accept=".rep"
+            disabled={!serviceAvailable}
           />
           <p className="text-xs text-muted-foreground mt-4">
             Max. Dateigröße: {maxFileSize}MB | Format: .rep
           </p>
-          
-          {/* Parser status indicator */}
-          {renderParserStatus()}
         </div>
       ) : (
         <div className="border rounded-lg p-6 bg-card shadow-sm">
