@@ -11,7 +11,6 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/icza/screp/rep"
-	"github.com/icza/screp/rep/repcmd"
 	"github.com/icza/screp/repparser"
 	"github.com/joho/godotenv"
 )
@@ -40,22 +39,19 @@ type ParseResponse struct {
 	Header   Header    `json:"header"`
 }
 
-// CORS middleware to handle all CORS headers properly
+// CORS middleware
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Set CORS headers for all requests
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		w.Header().Set("Access-Control-Max-Age", "86400")
 
-		// Handle preflight OPTIONS requests
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
 
-		// Call the next handler
 		next.ServeHTTP(w, r)
 	})
 }
@@ -81,7 +77,7 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Received replay file of size: %d bytes", len(body))
 
-	// Create a temporary file to parse the replay
+	// Create a temporary file
 	tmpFile, err := os.CreateTemp("", "replay*.rep")
 	if err != nil {
 		log.Printf("Error creating temp file: %v", err)
@@ -97,9 +93,9 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to write temp file", http.StatusInternalServerError)
 		return
 	}
-	tmpFile.Close() // Close file so it can be read by ParseFile
+	tmpFile.Close()
 
-	// Parse the replay using the correct icza/screp v1.12.11 API
+	// Parse the replay using screp
 	replay, err := repparser.ParseFile(tmpFile.Name())
 	if err != nil {
 		log.Printf("Error parsing replay: %v", err)
@@ -107,80 +103,61 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Convert to our response format
+	// Extract basic information
 	var players []Player
 	var commands []Command
+	
+	// Default values
+	mapName := "Unknown Map"
+	frames := 0
 
-	// Extract player data from the parsed replay using correct v1.12.11 API
-	if replay.Header != nil && replay.Header.Players != nil {
-		for _, player := range replay.Header.Players {
-			if player.Name != "" {
-				// Get race as string - convert from race ID to string
-				raceStr := getRaceString(player.Race)
-				
-				// Calculate APM from commands - get total commands for this player
-				playerCommands := 0
-				if replay.Commands != nil {
-					for _, cmd := range replay.Commands.Cmds {
-						if cmd.UserID == player.ID {
-							playerCommands++
-						}
-					}
-				}
-				
-				// Calculate APM (Actions Per Minute)
-				// Game duration in frames, convert to minutes (assuming ~24 FPS)
-				gameDurationMinutes := 1.0
-				if replay.Header.Frames > 0 {
-					gameDurationMinutes = float64(replay.Header.Frames) / (24.0 * 60.0)
-				}
-				
-				apm := 0
-				if gameDurationMinutes > 0 {
-					apm = int(float64(playerCommands) / gameDurationMinutes)
-				}
+	// Extract header information
+	if replay.Header != nil {
+		frames = int(replay.Header.Frames)
+		if replay.Header.Map != "" {
+			mapName = replay.Header.Map
+		}
 
-				players = append(players, Player{
-					Name: player.Name,
-					Race: raceStr,
-					APM:  apm,
-					EAPM: apm, // Use APM as EAPM for now
+		// Extract player information
+		if replay.Header.Players != nil {
+			for _, player := range replay.Header.Players {
+				if player != nil && player.Name != "" {
+					// Convert race to string
+					raceStr := getRaceString(player.Race)
+					
+					// Calculate basic APM (simplified)
+					apm := calculateAPM(replay, player.ID, frames)
+					
+					players = append(players, Player{
+						Name: player.Name,
+						Race: raceStr,
+						APM:  apm,
+						EAPM: apm, // Use same value for now
+					})
+				}
+			}
+		}
+	}
+
+	// Extract some basic commands (limit to avoid huge responses)
+	if replay.Commands != nil && replay.Commands.Cmds != nil {
+		maxCommands := 100
+		for i, cmd := range replay.Commands.Cmds {
+			if i >= maxCommands {
+				break
+			}
+			
+			if cmd != nil {
+				commands = append(commands, Command{
+					Frame: int(cmd.Frame),
+					Type:  getCommandTypeString(cmd),
+					Data:  fmt.Sprintf("Player: %d", cmd.UserID),
 				})
 			}
 		}
 	}
 
-	// Extract some basic commands - limit to avoid huge responses
-	commandCount := 0
-	maxCommands := 100
-	
-	if replay.Commands != nil {
-		for _, cmd := range replay.Commands.Cmds {
-			if commandCount >= maxCommands {
-				break
-			}
-			
-			// Create a basic command representation
-			commands = append(commands, Command{
-				Frame: int(cmd.Frame),
-				Type:  getCommandTypeString(cmd.Type),
-				Data:  fmt.Sprintf("Player: %d", cmd.UserID),
-			})
-			commandCount++
-		}
-	}
-
-	// Create response with proper header information
-	mapName := "Unknown Map"
-	frames := 0
-	
-	if replay.Header != nil {
-		if replay.Header.Map != "" {
-			mapName = replay.Header.Map
-		}
-		frames = int(replay.Header.Frames)
-	}
-
+	// Create response
 	response := ParseResponse{
 		Players:  players,
 		Commands: commands,
@@ -200,7 +177,7 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Successfully parsed replay with %d players and %d commands", len(players), len(commands))
 }
 
-// Helper function to convert race ID to string
+// Helper function to convert race to string
 func getRaceString(race rep.Race) string {
 	switch race {
 	case rep.RaceZerg:
@@ -216,36 +193,33 @@ func getRaceString(race rep.Race) string {
 	}
 }
 
-// Helper function to convert command type to string
-func getCommandTypeString(cmdType *repcmd.Type) string {
-	if cmdType == nil {
-		return "Unknown"
+// Helper function to calculate APM
+func calculateAPM(replay *rep.Replay, playerID byte, totalFrames int) int {
+	if replay.Commands == nil || replay.Commands.Cmds == nil || totalFrames <= 0 {
+		return 0
 	}
 	
-	switch *cmdType {
-	case repcmd.TypeSelect:
-		return "Select"
-	case repcmd.TypeShiftSelect:
-		return "Shift_Select"
-	case repcmd.TypeShiftDeselect:
-		return "Shift_Deselect"
-	case repcmd.TypeBuild:
-		return "Build"
-	case repcmd.TypeVision:
-		return "Vision"
-	case repcmd.TypeAlly:
-		return "Ally"
-	case repcmd.TypeHotkey:
-		return "Hotkey"
-	case repcmd.TypeMove:
-		return "Move"
-	case repcmd.TypeAttack:
-		return "Attack"
-	case repcmd.TypeUseTech:
-		return "Use_Tech"
-	default:
-		return "Command"
+	playerCommands := 0
+	for _, cmd := range replay.Commands.Cmds {
+		if cmd != nil && cmd.UserID == playerID {
+			playerCommands++
+		}
 	}
+	
+	// Convert frames to minutes (assuming ~24 FPS)
+	gameDurationMinutes := float64(totalFrames) / (24.0 * 60.0)
+	if gameDurationMinutes <= 0 {
+		return 0
+	}
+	
+	return int(float64(playerCommands) / gameDurationMinutes)
+}
+
+// Helper function to get command type as string
+func getCommandTypeString(cmd interface{}) string {
+	// For now, return a simple string representation
+	// This can be extended based on the actual command structure
+	return "Command"
 }
 
 func main() {
@@ -260,13 +234,11 @@ func main() {
 	}
 
 	r := mux.NewRouter()
-	
-	// Apply CORS middleware to all routes
 	r.Use(corsMiddleware)
 	
 	r.HandleFunc("/health", healthHandler).Methods("GET", "OPTIONS")
 	r.HandleFunc("/parse", parseHandler).Methods("POST", "OPTIONS")
 
-	log.Printf("Starting server on port %s with CORS enabled", port)
+	log.Printf("Starting server on port %s", port)
 	log.Fatal(http.ListenAndServe(":"+port, r))
 }
