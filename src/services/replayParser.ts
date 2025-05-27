@@ -1,11 +1,11 @@
+
 import { ParsedReplayData } from './replayParser/types';
-import { parseReplayInBrowser } from './browserReplayParser';
 
 /**
- * Parse a replay file using the browser-based screparsed parser
+ * Parse a replay file using the Supabase Edge Function with bwscrep
  */
 export async function parseReplay(file: File): Promise<ParsedReplayData> {
-  console.log('[replayParser] Starting to parse replay file with screparsed (browser-based):', file.name);
+  console.log('[replayParser] Starting to parse replay file:', file.name);
 
   // File validation
   if (!file || file.size === 0) {
@@ -19,13 +19,32 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
   }
 
   try {
-    // Use the browser-based parser directly
-    const parsedData = await parseReplayInBrowser(file);
-    console.log('[replayParser] Browser-based parsing successful');
-    return parsedData;
+    const buf = await file.arrayBuffer();
+
+    const parserUrl = import.meta.env.VITE_PARSER_URL;
+    console.log('[replayParser] Fetching parser URL:', parserUrl);
+    
+    const res = await fetch(parserUrl, {
+      method: 'POST',
+      mode: 'cors',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: buf,
+    });
+    
+    console.log('[replayParser] Response status:', res.status);
+    
+    if (!res.ok) {
+      const err = await res.json().catch(() => null);
+      throw new Error(`Parsing fehlgeschlagen: ${err?.error || res.statusText}`);
+    }
+    
+    const data = await res.json();
+    console.log('[replayParser] Parsed data keys:', Object.keys(data));
+    
+    return transformBwscrepResponse(data, file.name);
   } catch (error) {
-    console.error('[replayParser] Browser parsing error:', error);
-    throw new Error(`Browser-Parser Fehler: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
+    console.error('[replayParser] Error:', error);
+    throw new Error(`Parser Fehler: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
   }
 }
 

@@ -19,27 +19,27 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'parsing' | 'success' | 'error'>('idle');
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
-  const [serviceAvailable] = useState<boolean>(true); // Always true for browser-based parsing
+  const [serviceAvailable] = useState<boolean>(true); // Always true for Supabase Edge Function
   const progressIntervalRef = useRef<number | null>(null);
   const processingTimeoutRef = useRef<number | null>(null);
   const { toast } = useToast();
   const { parseReplay, isProcessing, error: parsingError, clearError, progress: parserProgress } = useReplayParser();
   
-  // Update UI based on screparsed parser progress
+  // Update UI based on Supabase Edge Function progress
   useEffect(() => {
     if (isProcessing && uploadStatus === 'parsing') {
       if (parserProgress < 25) {
-        setStatusMessage('Initialisiere Browser-Parser...');
+        setStatusMessage('Verbinde mit Supabase Edge Function...');
       } else if (parserProgress < 50) {
-        setStatusMessage('Lese SC:BW Replay-Struktur...');
+        setStatusMessage('Verwende bwscrep für Replay-Parsing...');
       } else if (parserProgress < 75) {
-        setStatusMessage('Extrahiere Spielerdaten...');
+        setStatusMessage('Extrahiere echte Spielerdaten...');
       } else if (parserProgress < 95) {
-        setStatusMessage('Analysiere Build Order & APM...');
+        setStatusMessage('Analysiere Commands & Build Order...');
       } else if (parserProgress === 100) {
-        setStatusMessage('Browser-Analyse abgeschlossen!');
+        setStatusMessage('Supabase Edge Function Analyse abgeschlossen!');
       } else {
-        setStatusMessage('Verarbeite SC:BW Replay-Daten...');
+        setStatusMessage('Verarbeite SC:BW Replay mit bwscrep...');
       }
     }
   }, [isProcessing, parserProgress, uploadStatus]);
@@ -118,25 +118,25 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
   };
 
   const processFile = async (file: File) => {
-    console.log("[UploadBox] Starting browser-based file processing:", file.name);
+    console.log("[UploadBox] Starting Supabase Edge Function file processing:", file.name);
     clearError();
     setFile(file);
     setErrorDetails(null);
     setUploadStatus('parsing');
-    setStatusMessage('Verbinde mit Browser-Parser...');
+    setStatusMessage('Verbinde mit Supabase Edge Function...');
     resetProgress();
     clearTimeouts();
     
     try {
-      console.log("[UploadBox] Starting parsing with screparsed (browser-based):", file.name);
+      console.log("[UploadBox] Starting parsing with Supabase Edge Function (bwscrep):", file.name);
       
       const parsedData = await parseReplay(file);
       
       if (!parsedData) {
-        throw new Error(parsingError || 'Browser-Parser konnte die Replay-Datei nicht verarbeiten');
+        throw new Error(parsingError || 'Supabase Edge Function konnte die Replay-Datei nicht verarbeiten');
       }
       
-      console.log("[UploadBox] Browser-based parsing successful:", {
+      console.log("[UploadBox] Supabase Edge Function parsing successful:", {
         primaryPlayer: {
           name: parsedData.primaryPlayer.name,
           race: parsedData.primaryPlayer.race,
@@ -160,11 +160,11 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       resetProgress();
       
       setUploadStatus('success');
-      setStatusMessage('Browser-Analyse erfolgreich abgeschlossen!');
+      setStatusMessage('Supabase Edge Function Analyse erfolgreich abgeschlossen!');
       
       toast({
         title: "SC:BW Replay analysiert",
-        description: `${file.name} wurde erfolgreich analysiert (browser-basiert).`,
+        description: `${file.name} wurde erfolgreich mit bwscrep analysiert.`,
       });
       
       setTimeout(() => {
@@ -174,7 +174,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         }
       }, 500);
     } catch (error) {
-      console.error("[UploadBox] Browser parsing error:", error);
+      console.error("[UploadBox] Supabase Edge Function parsing error:", error);
       
       resetProgress();
       clearTimeouts();
@@ -182,10 +182,10 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       const errorMessage = error instanceof Error ? error.message : 'Unbekannter Fehler beim Parsen der SC:BW Replay-Datei';
       setErrorDetails(errorMessage);
       setUploadStatus('error');
-      setStatusMessage('Browser-Parser Fehler');
+      setStatusMessage('Supabase Edge Function Fehler');
       
       toast({
-        title: "Browser-Verarbeitung fehlgeschlagen",
+        title: "Supabase Edge Function Verarbeitung fehlgeschlagen",
         description: errorMessage,
         variant: "destructive",
       });
@@ -245,13 +245,13 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     return null;
   };
 
-  // Update the parser status indicator to show screparsed support
+  // Update the parser status indicator to show Supabase Edge Function support
   const renderParserStatus = () => {
     return (
       <div className="mt-4 flex items-center">
         <div className="h-2 w-2 rounded-full mr-2 bg-green-500 animate-pulse" />
         <p className="text-xs text-muted-foreground">
-          Browser-Parser bereit (SC:BW Classic + Remastered, kein Service erforderlich)
+          Supabase Edge Function bereit (bwscrep Parser, 24/7 verfügbar)
         </p>
       </div>
     );
@@ -278,7 +278,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
           </h3>
           <p className="text-sm mb-4 text-center text-muted-foreground">
             Ziehe deine .rep Datei hierher oder klicke zum Auswählen<br />
-            <span className="text-xs text-green-600">Browser-basierte Analyse bereit</span>
+            <span className="text-xs text-green-600">Supabase Edge Function (bwscrep) bereit</span>
           </p>
           <Button 
             onClick={open} 
@@ -353,6 +353,8 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
           {uploadStatus === 'error' && renderFileError()}
         </div>
       )}
+      
+      {renderParserStatus()}
     </div>
   );
 };
