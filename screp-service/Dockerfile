@@ -7,7 +7,11 @@ RUN apk add --no-cache git
 
 WORKDIR /app
 COPY go.mod go.sum ./
-RUN go mod download && go mod vendor
+
+# Clean module cache and download with fresh checksums
+RUN go clean -modcache && \
+    go mod download && \
+    go mod vendor
 
 # Stage 2: Build binary using vendor directory
 FROM golang:1.19-alpine AS builder
@@ -23,6 +27,9 @@ RUN go build -mod=vendor -o screp-service .
 # Stage 3: Production image
 FROM alpine:latest
 WORKDIR /root/
+
+# Install wget for healthcheck
+RUN apk add --no-cache wget
 
 # Copy built binary
 COPY --from=builder /app/screp-service .
