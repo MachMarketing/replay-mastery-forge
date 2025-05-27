@@ -1,8 +1,7 @@
-
 import { ParsedReplayData } from './replayParser/types';
 
 /**
- * Parse a replay file using the Supabase Edge Function with bwscrep
+ * Parse a replay file using the Go-based microservice with icza/screp
  */
 export async function parseReplay(file: File): Promise<ParsedReplayData> {
   console.log('[replayParser] Starting to parse replay file:', file.name);
@@ -19,16 +18,17 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
   }
 
   try {
-    const buf = await file.arrayBuffer();
-
     const parserUrl = import.meta.env.VITE_PARSER_URL;
     console.log('[replayParser] Fetching parser URL:', parserUrl);
     
-    const res = await fetch(parserUrl, {
+    // Create FormData for multipart upload
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    const res = await fetch(`${parserUrl}/parse`, {
       method: 'POST',
       mode: 'cors',
-      headers: { 'Content-Type': 'application/octet-stream' },
-      body: buf,
+      body: formData,
     });
     
     console.log('[replayParser] Response status:', res.status);
@@ -41,7 +41,7 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     const data = await res.json();
     console.log('[replayParser] Parsed data keys:', Object.keys(data));
     
-    return transformBwscrepResponse(data, file.name);
+    return transformGoScrepResponse(data, file.name);
   } catch (error) {
     console.error('[replayParser] Error:', error);
     throw new Error(`Parser Fehler: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
@@ -49,11 +49,11 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
 }
 
 /**
- * Transformiert die Antwort vom bwscrep Parser (Supabase Edge Function)
+ * Transformiert die Antwort vom Go-basierten icza/screp Parser
  */
-function transformBwscrepResponse(data: any, filename: string): ParsedReplayData {
-  console.log('[replayParser] Transforming bwscrep data for file:', filename);
-  console.log('[replayParser] Available bwscrep data keys:', Object.keys(data));
+function transformGoScrepResponse(data: any, filename: string): ParsedReplayData {
+  console.log('[replayParser] Transforming Go screp data for file:', filename);
+  console.log('[replayParser] Available screp data keys:', Object.keys(data));
   
   // Spieler extrahieren
   const players = data.players || [];
@@ -69,9 +69,10 @@ function transformBwscrepResponse(data: any, filename: string): ParsedReplayData
   }
   
   // Spiel-Metadaten
-  const gameFrames = data.header?.frames || 0;
-  const gameDurationMs = gameFrames * (1000/24);
-  const mapName = data.header?.mapName || 'Unbekannte Karte';
+  const metadata = data.metadata || {};
+  const gameDurationMs = metadata.durationFrames ? metadata.durationFrames * (1000/24) : 0;
+  const mapName = metadata.mapName || metadata.map || 'Unbekannte Karte';
+  const duration = metadata.duration || '0:00';
   
   // APM-Daten
   const player1APM = player1.apm || 0;
@@ -79,16 +80,12 @@ function transformBwscrepResponse(data: any, filename: string): ParsedReplayData
   const player1EAPM = player1.eapm || Math.round(player1APM * 0.7);
   const player2EAPM = player2.eapm || Math.round(player2APM * 0.7);
   
-  // Build Orders aus Commands extrahieren
-  const player1BuildOrder = extractBuildOrder(data.commands || [], player1.id || 0);
-  const player2BuildOrder = extractBuildOrder(data.commands || [], player2.id || 1);
+  // Build Orders aus BuildOrders extrahieren
+  const player1BuildOrder = transformBuildOrder(data.buildOrders?.[player1.id] || []);
+  const player2BuildOrder = transformBuildOrder(data.buildOrders?.[player2.id] || []);
   
   // Analyse generieren
-  const analysis = generateGameAnalysis(player1, player2, {
-    frames: gameFrames,
-    mapName: mapName,
-    commands: data.commands || []
-  });
+  const analysis = generateGameAnalysis(player1, player2, metadata);
   
   // Primären Spieler erstellen
   const primaryPlayer = {
@@ -121,10 +118,10 @@ function transformBwscrepResponse(data: any, filename: string): ParsedReplayData
     secondaryPlayer,
     map: mapName,
     matchup,
-    duration: formatDuration(gameFrames),
+    duration: duration,
     durationMS: gameDurationMs,
     date: new Date().toISOString(),
-    result: determineGameResult(player1, player2),
+    result: player1.isWinner ? 'win' : (player1.isWinner === false ? 'loss' : 'unknown'),
     strengths: analysis.player1Analysis.strengths,
     weaknesses: analysis.player1Analysis.weaknesses,
     recommendations: analysis.player1Analysis.recommendations,
@@ -145,43 +142,18 @@ function transformBwscrepResponse(data: any, filename: string): ParsedReplayData
 }
 
 /**
- * Extrahiert Build Order aus Commands-Array
+ * Transformiert Build Order vom Go-Format ins erwartete Format
  */
-function extractBuildOrder(commands: any[], playerId: number): Array<{time: string; supply: number; action: string}> {
-  if (!commands || !Array.isArray(commands)) {
-    console.log('[replayParser] No commands array available for build order extraction');
-    return [];
-  }
-
-  const buildOrder: Array<{time: string; supply: number; action: string}> = [];
-  let currentSupply = 9;
-
-  // Filter commands for the specific player and build-related actions
-  const playerCommands = commands.filter(cmd => 
-    cmd.playerId === playerId && 
-    cmd.type === 'build' || cmd.type === 'train'
-  );
-
-  console.log(`[replayParser] Found ${playerCommands.length} build commands for player ${playerId}`);
-
-  playerCommands.forEach((cmd, index) => {
-    const timeInSeconds = cmd.frame ? Math.floor(cmd.frame / 24) : index * 15;
-    const timeString = formatTime(timeInSeconds);
-    
-    buildOrder.push({
-      time: timeString,
-      supply: currentSupply + index,
-      action: cmd.unit || cmd.building || 'Unknown Action'
-    });
-  });
-
-  // If no commands found, generate a basic build order
-  if (buildOrder.length === 0) {
-    console.log('[replayParser] No build commands found, generating basic build order');
+function transformBuildOrder(buildOrders: any[]): Array<{time: string; supply: number; action: string}> {
+  if (!Array.isArray(buildOrders)) {
     return generateBasicBuildOrder();
   }
 
-  return buildOrder.slice(0, 20); // Limit to first 20 items
+  return buildOrders.map(order => ({
+    time: order.time || '0:00',
+    supply: order.supply || 0,
+    action: order.action || 'Unknown Action'
+  })).slice(0, 20); // Limit to first 20 items
 }
 
 /**

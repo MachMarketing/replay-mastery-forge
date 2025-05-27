@@ -18,16 +18,12 @@ export function useReplayParser(): ReplayParserResult {
   const [progress, setProgress] = useState(0);
   const { toast } = useToast();
   const progressIntervalRef = useRef<number | null>(null);
-  const processingTimeoutRef = useRef<number | null>(null);
   
-  // Clean up intervals and timeouts on unmount
+  // Clean up intervals on unmount
   useEffect(() => {
     return () => {
       if (progressIntervalRef.current) {
         window.clearInterval(progressIntervalRef.current);
-      }
-      if (processingTimeoutRef.current) {
-        window.clearTimeout(processingTimeoutRef.current);
       }
     };
   }, []);
@@ -48,7 +44,7 @@ export function useReplayParser(): ReplayParserResult {
       return null;
     }
     
-    console.log('[useReplayParser] Starting to process file with screparsed:', file.name);
+    console.log('[useReplayParser] Starting to process file with Go microservice:', file.name);
     
     setIsProcessing(true);
     setError(null);
@@ -58,20 +54,20 @@ export function useReplayParser(): ReplayParserResult {
       window.clearInterval(progressIntervalRef.current);
     }
     
-    // Simulate progress for screparsed parsing
+    // Simulate progress for Go microservice parsing
     progressIntervalRef.current = window.setInterval(() => {
       setProgress(prev => {
         if (prev >= 90) return 90;
-        return Math.min(prev + 15, 90);
+        return Math.min(prev + 20, 90);
       });
-    }, 300);
+    }, 400);
     
     try {
-      console.log('[useReplayParser] Calling screparsed parser with file:', file.name);
+      console.log('[useReplayParser] Calling Go microservice parser with file:', file.name);
       
       const parsedData: ParsedReplayData = await parseReplay(file);
       
-      console.log('[useReplayParser] Screparsed parsing successful!');
+      console.log('[useReplayParser] Go microservice parsing successful!');
       console.log('[useReplayParser] Real player data extracted:', {
         primary: {
           name: parsedData.primaryPlayer.name,
@@ -101,17 +97,17 @@ export function useReplayParser(): ReplayParserResult {
       await new Promise(resolve => setTimeout(resolve, 500));
       
       setIsProcessing(false);
-      console.log('[useReplayParser] Successfully parsed SC:BW replay with real data');
+      console.log('[useReplayParser] Successfully parsed SC:BW replay with Go microservice');
       
       return parsedData;
     } catch (err) {
-      console.error('[useReplayParser] Screparsed parsing error:', err);
+      console.error('[useReplayParser] Go microservice parsing error:', err);
       
-      let errorMessage = err instanceof Error ? err.message : 'Fehler beim Parsen der Replay-Datei mit screparsed';
+      let errorMessage = err instanceof Error ? err.message : 'Fehler beim Parsen der Replay-Datei mit Go-Mikroservice';
       
       // Add specific guidance for different error types
-      if (errorMessage.includes('screparsed')) {
-        errorMessage += ' - Möglicherweise beschädigte oder nicht unterstützte Replay-Datei';
+      if (errorMessage.includes('fetch')) {
+        errorMessage += ' - Mikroservice möglicherweise nicht erreichbar';
       }
       
       setError(errorMessage);
@@ -125,7 +121,7 @@ export function useReplayParser(): ReplayParserResult {
       setProgress(100);
       
       toast({
-        title: 'Screparsed Replay-Analyse fehlgeschlagen',
+        title: 'Go-Mikroservice Replay-Analyse fehlgeschlagen',
         description: errorMessage,
         variant: 'destructive',
       });

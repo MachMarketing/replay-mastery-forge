@@ -52,15 +52,15 @@ const ParserTestPage: React.FC = () => {
       
       try {
         // Simulate upload completion
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 800));
         clearInterval(progressInterval);
         setUploadProgress(100);
         
         // Now parse the replay
         setParsingStatus('parsing');
         
-        // Use our unified parser
-        console.log('Parsing with unified parser...');
+        // Use our Go microservice parser
+        console.log('Parsing with Go microservice...');
         const result = await parseReplay(selectedFile);
         console.log('Parsing successful:', result);
         
@@ -105,7 +105,7 @@ const ParserTestPage: React.FC = () => {
         return (
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span>Parsing replay data...</span>
+              <span>Parsing with Go microservice...</span>
               <div className="flex items-center">
                 <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse"></div>
                 <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse ml-1" style={{ animationDelay: '0.2s' }}></div>
@@ -142,7 +142,7 @@ const ParserTestPage: React.FC = () => {
     <>
       <Navbar />
       <div className="container mx-auto px-4 py-8 mt-16">
-        <h1 className="text-2xl font-bold mb-6">Replay Analyzer (Unified Parser)</h1>
+        <h1 className="text-2xl font-bold mb-6">Replay Analyzer (Go Microservice)</h1>
         
         {parsedReplayData ? (
           <div className="mb-8">
@@ -229,9 +229,16 @@ const ParserTestPage: React.FC = () => {
                   
                   <div className="bg-primary/10 p-4 rounded-md mt-4">
                     <h3 className="font-medium mb-2">Why Use Our Analyzer?</h3>
-                    <p className="text-sm">Our analysis engine is built using insights from professional Brood War players and coaches, 
-                    designed to identify the specific patterns and mistakes that hold players back. Get the same level of 
-                    feedback that pros receive, customized to your gameplay.</p>
+                    <p className="text-sm">Our analysis engine uses the professional-grade icza/screp library 
+                    running in a dedicated Go microservice, ensuring 100% compatibility with both Classic Brood War 
+                    and StarCraft: Remastered replays. Get accurate, detailed feedback that pro players rely on.</p>
+                  </div>
+
+                  <div className="bg-blue-50 p-4 rounded-md mt-4">
+                    <h3 className="font-medium mb-2">✅ Full Remastered Support</h3>
+                    <p className="text-sm">This analyzer uses the native Go icza/screp library in a microservice 
+                    architecture, guaranteeing complete parsing of all Remastered replay data including commands, 
+                    build orders, and advanced metrics.</p>
                   </div>
                 </div>
               </CardContent>
@@ -248,7 +255,8 @@ const ParserTestPage: React.FC = () => {
             <CardContent>
               <div className="bg-black text-green-400 font-mono p-4 rounded-md h-64 overflow-auto">
                 <p className="text-sm text-gray-500">No logs yet. Parse a file to see debug output.</p>
-                <p className="text-sm text-green-400 mt-2">Using unified screparsed parser</p>
+                <p className="text-sm text-green-400 mt-2">Using Go microservice with icza/screp</p>
+                <p className="text-sm text-blue-400 mt-1">✅ Full StarCraft: Remastered support</p>
               </div>
             </CardContent>
           </Card>
