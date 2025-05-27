@@ -1,4 +1,3 @@
-
 # Stage: Build
 FROM golang:1.19-alpine AS builder
 WORKDIR /app
@@ -20,4 +19,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s \
     CMD wget -qO- http://localhost:8080/health || exit 1
 
-CMD ["./screp-service"]
+    CMD ["./screp-service"]
