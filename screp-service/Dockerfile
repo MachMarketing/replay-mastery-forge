@@ -6,9 +6,11 @@ RUN apk add --no-cache git
 
 COPY go.mod go.sum ./
 RUN go mod tidy
-
 COPY . .
+RUN go mod tidy
 RUN go build -o screp-service .
+
+
 
 # Stage: Production
 FROM alpine:latest
