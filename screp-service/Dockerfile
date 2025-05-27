@@ -5,9 +5,9 @@ WORKDIR /app
 RUN apk add --no-cache git
 
 # Module und Code kopieren, dann bauen
-COPY screp-service/go.mod screp-service/go.sum ./
+COPY go.mod go.sum ./
 RUN go mod download
-COPY screp-service ./
+COPY . ./
 RUN go build -o screp-service .
 
 # Production-Stage
