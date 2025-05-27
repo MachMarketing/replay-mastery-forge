@@ -42,8 +42,17 @@ serve(async (req) => {
       console.log('[parseReplay] Players found:', parsed.players.length)
     }
     
-    // Return the parsed data
-    return new Response(JSON.stringify(parsed), {
+    // Return structured data with exactly the keys specified
+    const result = {
+      players: parsed.players,
+      commands: parsed.commands,
+      header: {
+        frames: parsed.header.frames,
+        mapName: parsed.header.mapName
+      }
+    }
+    
+    return new Response(JSON.stringify(result), {
       headers: { 
         ...corsHeaders,
         "Content-Type": "application/json" 
