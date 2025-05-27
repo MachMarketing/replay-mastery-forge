@@ -1,5 +1,5 @@
 
-module screp-service
+module github.com/MachMarketing/replay-mastery-forge/screp-service
 
 go 1.19
 
