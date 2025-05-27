@@ -1,4 +1,3 @@
-
 import { ParsedReplayData } from './replayParser/types';
 
 /**
@@ -51,37 +50,29 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     
     let screparsedResult: any = null;
     
-    // Use the ReplayParser class correctly
-    if (screparsedModule.ReplayParser) {
-      console.log('[replayParser] Using ReplayParser class...');
-      const parser = new screparsedModule.ReplayParser();
-      // Try different method names that might exist on the parser
-      if (typeof parser.parse === 'function') {
-        screparsedResult = parser.parse(uint8Array);
-      } else if (typeof parser.parseReplay === 'function') {
-        screparsedResult = parser.parseReplay(uint8Array);
-      } else if (typeof parser.parseBuffer === 'function') {
-        screparsedResult = parser.parseBuffer(uint8Array);
-      } else {
-        // Check what methods are available
-        console.log('[replayParser] Available parser methods:', Object.getOwnPropertyNames(parser));
-        throw new Error('Keine unterstützte Parse-Methode auf ReplayParser gefunden');
-      }
-    } else if (screparsedModule.default && screparsedModule.default.ReplayParser) {
-      console.log('[replayParser] Using default.ReplayParser class...');
-      const parser = new screparsedModule.default.ReplayParser();
-      if (typeof parser.parse === 'function') {
-        screparsedResult = parser.parse(uint8Array);
-      } else if (typeof parser.parseReplay === 'function') {
-        screparsedResult = parser.parseReplay(uint8Array);
-      } else if (typeof parser.parseBuffer === 'function') {
-        screparsedResult = parser.parseBuffer(uint8Array);
-      } else {
-        console.log('[replayParser] Available parser methods:', Object.getOwnPropertyNames(parser));
-        throw new Error('Keine unterstützte Parse-Methode auf default.ReplayParser gefunden');
-      }
+    // Try different API patterns based on actual screparsed exports
+    if (typeof screparsedModule.parse === 'function') {
+      console.log('[replayParser] Using screparsedModule.parse()...');
+      screparsedResult = screparsedModule.parse(uint8Array);
+    } else if (typeof screparsedModule.parseReplay === 'function') {
+      console.log('[replayParser] Using screparsedModule.parseReplay()...');
+      screparsedResult = screparsedModule.parseReplay(uint8Array);
+    } else if (screparsedModule.default && typeof screparsedModule.default === 'function') {
+      console.log('[replayParser] Using screparsedModule.default() as function...');
+      screparsedResult = screparsedModule.default(uint8Array);
+    } else if (screparsedModule.default && typeof screparsedModule.default.parse === 'function') {
+      console.log('[replayParser] Using screparsedModule.default.parse()...');
+      screparsedResult = screparsedModule.default.parse(uint8Array);
+    } else if (screparsedModule.default && typeof screparsedModule.default.parseReplay === 'function') {
+      console.log('[replayParser] Using screparsedModule.default.parseReplay()...');
+      screparsedResult = screparsedModule.default.parseReplay(uint8Array);
     } else {
-      throw new Error('ReplayParser class nicht gefunden in screparsed module');
+      // Log available methods for debugging
+      console.log('[replayParser] Available module exports:', Object.keys(screparsedModule));
+      if (screparsedModule.default) {
+        console.log('[replayParser] Available default exports:', Object.keys(screparsedModule.default));
+      }
+      throw new Error('Screparsed API nicht gefunden - keine unterstützte Parse-Funktion verfügbar');
     }
     
     if (!screparsedResult) {
