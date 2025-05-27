@@ -1,12 +1,13 @@
 import { ParsedReplayData } from './replayParser/types';
+import { parseReplayInBrowser } from './browserReplayParser';
 
 /**
- * Parse a replay file using the Supabase Edge Function
+ * Parse a replay file using the browser-based screparsed parser
  */
 export async function parseReplay(file: File): Promise<ParsedReplayData> {
-  console.log('[replayParser] Starting to parse replay file:', file.name);
+  console.log('[replayParser] Starting to parse replay file with screparsed (browser-based):', file.name);
 
-  // 1. File validation
+  // File validation
   if (!file || file.size === 0) {
     throw new Error('Datei ist leer oder ungültig');
   }
@@ -17,28 +18,15 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     throw new Error('Nur .rep-Dateien werden unterstützt');
   }
 
-  // 2. Convert file to ArrayBuffer
-  const buf = await file.arrayBuffer();
-
-  // 3. Call Supabase Edge Function
-  const parserUrl = 'https://ijletuopynpqyundrfdq.supabase.co/functions/v1';
-  const res = await fetch(`${parserUrl}/parseReplay`, {
-    method: 'POST',
-    headers: { 
-      'Content-Type': 'application/octet-stream',
-      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlqbGV0dW9weW5wcXl1bmRyZmRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU5NjYzMjgsImV4cCI6MjA2MTU0MjMyOH0.Trf4z1Cv9aJeXka9omVYEbgzPNgPK8IcLzEsWSM3wZo'
-    },
-    body: buf
-  });
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => null);
-    throw new Error(`Parsing failed: ${errorData?.error || res.statusText}`);
+  try {
+    // Use the browser-based parser directly
+    const parsedData = await parseReplayInBrowser(file);
+    console.log('[replayParser] Browser-based parsing successful');
+    return parsedData;
+  } catch (error) {
+    console.error('[replayParser] Browser parsing error:', error);
+    throw new Error(`Browser-Parser Fehler: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
   }
-
-  const data = await res.json();
-  console.log('[replayParser] Edge Function parse successful');
-  return transformBwscrepResponse(data, file.name);
 }
 
 /**
