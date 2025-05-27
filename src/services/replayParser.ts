@@ -1,3 +1,4 @@
+
 import { ParsedReplayData } from './replayParser/types';
 
 /**
@@ -50,21 +51,41 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     
     let screparsedResult: any = null;
     
-    // Use the default export which should be the main parse function
-    if (typeof screparsed.default === 'function') {
-      console.log('[replayParser] Using default screparsed function...');
-      screparsedResult = screparsed.default(uint8Array);
-    } else if (screparsed.ParsedReplay) {
-      console.log('[replayParser] Using ParsedReplay constructor...');
-      screparsedResult = new screparsed.ParsedReplay(uint8Array);
-    } else {
-      // Log what's actually available
-      console.log('[replayParser] Available exports:', Object.keys(screparsed));
-      throw new Error('Keine unterstützte Parse-Methode in screparsed gefunden');
+    // Try different approaches to use screparsed
+    try {
+      // Method 1: Try using ParsedReplay with proper constructor arguments
+      if (screparsed.ParsedReplay) {
+        console.log('[replayParser] Using ParsedReplay constructor...');
+        // ParsedReplay constructor typically expects (buffer, options?, callback?)
+        screparsedResult = new screparsed.ParsedReplay(uint8Array, {}, null);
+      }
+    } catch (constructorError) {
+      console.log('[replayParser] ParsedReplay constructor failed:', constructorError);
+      
+      // Method 2: Try using ReplayParser if available
+      try {
+        if (screparsed.ReplayParser) {
+          console.log('[replayParser] Trying ReplayParser...');
+          const parser = screparsed.ReplayParser;
+          if (typeof parser.parse === 'function') {
+            screparsedResult = parser.parse(uint8Array);
+          }
+        }
+      } catch (parserError) {
+        console.log('[replayParser] ReplayParser failed:', parserError);
+        
+        // Method 3: Check if default export is usable
+        if (screparsed.default && typeof screparsed.default.parse === 'function') {
+          console.log('[replayParser] Using default export parse method...');
+          screparsedResult = screparsed.default.parse(uint8Array);
+        }
+      }
     }
     
     if (!screparsedResult) {
-      throw new Error('Screparsed konnte keine Daten extrahieren');
+      // Log what's actually available for debugging
+      console.log('[replayParser] Available exports:', Object.keys(screparsed));
+      throw new Error('Keine unterstützte Parse-Methode in screparsed gefunden');
     }
     
     console.log('[replayParser] Screparsed result:', screparsedResult);
