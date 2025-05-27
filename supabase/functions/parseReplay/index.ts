@@ -1,77 +1,61 @@
-
-
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { serve } from "https://deno.land/std@0.181.0/http/server.ts";
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
 serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
-  }
+    // Handle CORS preflight
+        if (req.method === 'OPTIONS') {
+              return new Response(null, { headers: corsHeaders });
+        }
 
-  try {
-    console.log('[parseReplay] Processing replay file...')
-    
-    // Get the replay file as ArrayBuffer
-    const arrayBuffer = await req.arrayBuffer()
-    const uint8Array = new Uint8Array(arrayBuffer)
-    
-    console.log(`[parseReplay] Received file of size: ${uint8Array.length} bytes`)
-    
-    // Basic file validation
-    if (uint8Array.length < 1024) {
-      throw new Error('File too small to be a valid replay')
-    }
-    if (uint8Array.length > 10 * 1024 * 1024) {
-      throw new Error('File too large (max 10MB)')
-    }
-    
-    // Import and use bwscrep for parsing
-    const { parse } = await import("npm:bwscrep")
-    
-    console.log('[parseReplay] Starting bwscrep parsing...')
-    const parsed = await parse(uint8Array)
-    console.log('[parseReplay] Parsing successful')
-    
-    // Log the structure for debugging
-    console.log('[parseReplay] Parsed data keys:', Object.keys(parsed))
-    if (parsed.players) {
-      console.log('[parseReplay] Players found:', parsed.players.length)
-    }
-    
-    // Return structured data with exactly the keys specified
-    const result = {
-      players: parsed.players,
-      commands: parsed.commands,
-      header: {
-        frames: parsed.header.frames,
-        mapName: parsed.header.mapName
-      }
-    }
-    
-    return new Response(JSON.stringify(result), {
-      headers: { 
-        ...corsHeaders,
-        "Content-Type": "application/json" 
-      },
-    })
-  } catch (error) {
-    console.error('[parseReplay] Error:', error)
-    
-    return new Response(JSON.stringify({ 
-      error: error.message || 'Failed to parse replay file',
-      details: error.toString()
-    }), {
-      status: 500,
-      headers: { 
-        ...corsHeaders,
-        "Content-Type": "application/json" 
-      },
-    })
-  }
-})
+        try {
+              console.log('[parseReplay] Processing replay...');
+              const arrayBuffer = await req.arrayBuffer();
+              const uint8Array = new Uint8Array(arrayBuffer);
 
+      // Validation
+      if (uint8Array.length < 1024) throw new Error('File too small');
+              if (uint8Array.length > 10 * 1024 * 1024) throw new Error('File too large');
+
+      // Import bwscrep from ESM CDN
+      const bwscrepMod = await import('https://esm.sh/bwscrep@2.0.0');
+              console.log('[parseReplay] bwscrepMod keys:', Object.keys(bwscrepMod));
+              const parse = bwscrepMod.parse || bwscrepMod.default?.parse;
+              if (typeof parse !== 'function') throw new Error('bwscrep.parse not found');
+
+      // Parse replay
+      console.log('[parseReplay] Starting parse');
+              const parsed = await parse(uint8Array);
+              console.log('[parseReplay] Parse successful');
+
+      // Normalize response
+      const result = {
+              players: parsed.players,
+              commands: parsed.commands,
+              header: {
+                        frames: parsed.header.frames,
+                        mapName: parsed.header.mapName,
+              },
+      };
+
+      return new Response(JSON.stringify(result), {
+              status: 200,
+              headers: {
+                        ...corsHeaders,
+                        'Content-Type': 'application/json',
+              },
+      });
+        } catch (err: any) {
+    console.error('[parseReplay] Error:', err);
+              return new Response(JSON.stringify({ error: err.message }), {
+                      status: 500,
+                      headers: {
+                                ...corsHeaders,
+                                'Content-Type': 'application/json',
+                      },
+              });
+        }
+});
