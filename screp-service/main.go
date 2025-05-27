@@ -1,3 +1,4 @@
+
 package main
 
 import (
@@ -94,16 +95,10 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to write temp file", http.StatusInternalServerError)
 		return
 	}
-
-	// Seek to beginning of file
-	if _, err := tmpFile.Seek(0, 0); err != nil {
-		log.Printf("Error seeking temp file: %v", err)
-		http.Error(w, "Failed to seek temp file", http.StatusInternalServerError)
-		return
-	}
+	tmpFile.Close() // Close file so it can be read by ParseFile
 
 	// Parse the replay using the correct icza/screp API
-	replay, err := screp.Parse(tmpFile)
+	replay, err := screp.ParseFile(tmpFile.Name())
 	if err != nil {
 		log.Printf("Error parsing replay: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to parse replay: %v", err), http.StatusBadRequest)
@@ -114,21 +109,42 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 	var players []Player
 	var commands []Command
 
-	// Extract player data from the parsed replay
-	for _, player := range replay.Players {
-		if player.Name != "" {
-			// Get race as string directly from the player
-			race := string(player.Race)
-			
-			// Calculate APM
-			apm := int(player.APM())
+	// Extract player data from the parsed replay using correct API
+	if replay.Header != nil && replay.Header.Players != nil {
+		for _, player := range replay.Header.Players {
+			if player.Name != "" {
+				// Get race as string - convert from race ID to string
+				raceStr := getRaceString(player.Race)
+				
+				// Calculate APM from commands - get total commands for this player
+				playerCommands := 0
+				if replay.Commands != nil {
+					for _, cmd := range replay.Commands {
+						if cmd.PlayerID == player.ID {
+							playerCommands++
+						}
+					}
+				}
+				
+				// Calculate APM (Actions Per Minute)
+				// Game duration in frames, convert to minutes (assuming ~24 FPS)
+				gameDurationMinutes := 1.0
+				if replay.Header.Duration > 0 {
+					gameDurationMinutes = float64(replay.Header.Duration) / (24.0 * 60.0)
+				}
+				
+				apm := 0
+				if gameDurationMinutes > 0 {
+					apm = int(float64(playerCommands) / gameDurationMinutes)
+				}
 
-			players = append(players, Player{
-				Name: player.Name,
-				Race: race,
-				APM:  apm,
-				EAPM: apm, // Use APM as EAPM for now
-			})
+				players = append(players, Player{
+					Name: player.Name,
+					Race: raceStr,
+					APM:  apm,
+					EAPM: apm, // Use APM as EAPM for now
+				})
+			}
 		}
 	}
 
@@ -136,7 +152,6 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 	commandCount := 0
 	maxCommands := 100
 	
-	// Access commands through the replay structure
 	if replay.Commands != nil {
 		for _, cmd := range replay.Commands {
 			if commandCount >= maxCommands {
@@ -146,7 +161,7 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 			// Create a basic command representation
 			commands = append(commands, Command{
 				Frame: int(cmd.Frame),
-				Type:  "Command", // Generic type since detailed command types require more complex parsing
+				Type:  getCommandTypeString(cmd.Type),
 				Data:  fmt.Sprintf("Player: %d", cmd.PlayerID),
 			})
 			commandCount++
@@ -157,13 +172,11 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 	mapName := "Unknown Map"
 	frames := 0
 	
-	if replay.Map != "" {
-		mapName = replay.Map
-	}
-	
-	// Convert duration to frames (approximate)
-	if replay.Duration > 0 {
-		frames = int(replay.Duration.Seconds() * 24) // Assuming ~24 FPS
+	if replay.Header != nil {
+		if replay.Header.Map != "" {
+			mapName = replay.Header.Map
+		}
+		frames = int(replay.Header.Duration)
 	}
 
 	response := ParseResponse{
@@ -183,6 +196,50 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("Successfully parsed replay with %d players and %d commands", len(players), len(commands))
+}
+
+// Helper function to convert race ID to string
+func getRaceString(race byte) string {
+	switch race {
+	case 0:
+		return "Zerg"
+	case 1:
+		return "Terran"
+	case 2:
+		return "Protoss"
+	case 6:
+		return "Random"
+	default:
+		return "Unknown"
+	}
+}
+
+// Helper function to convert command type to string
+func getCommandTypeString(cmdType byte) string {
+	switch cmdType {
+	case 0x09:
+		return "Select"
+	case 0x0A:
+		return "Shift_Select"
+	case 0x0B:
+		return "Shift_Deselect"
+	case 0x0C:
+		return "Build"
+	case 0x0D:
+		return "Vision"
+	case 0x0E:
+		return "Ally"
+	case 0x12:
+		return "Hotkey"
+	case 0x13:
+		return "Move"
+	case 0x14:
+		return "Attack"
+	case 0x15:
+		return "Use_Tech"
+	default:
+		return "Command"
+	}
 }
 
 func main() {
