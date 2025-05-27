@@ -51,6 +51,18 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
       throw new Error('Screparsed konnte keine gültigen Daten extrahieren');
     }
     console.log('[replayParser] Successfully parsed with screparsed');
+    console.log('[replayParser] Raw screparsed result structure:', {
+      hasPlayers: !!screparsedResult.players,
+      playersCount: screparsedResult.players?.length || 0,
+      players: screparsedResult.players?.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        race: p.race,
+        type: p.type,
+        typeOf: typeof p.type
+      })) || []
+    });
+    
     return transformScreparsedResponse(screparsedResult, file.name);
   } catch (screparsedError) {
     console.error('[replayParser] Screparsed failed:', screparsedError);
@@ -66,15 +78,42 @@ function transformScreparsedResponse(data: any, filename: string): ParsedReplayD
   const commands = data.commands || [];
   const header = data.header || {};
   
+  console.log('[replayParser] Transforming data with players:', players);
+  
   if (players.length < 2) {
     throw new Error('Nicht genügend Spieler in der Replay-Datei gefunden (mindestens 2 erforderlich)');
   }
   
-  // Find human players
-  const humanPlayers = players.filter((p: any) => p.type === 'Human');
+  // Find human players - try multiple type patterns
+  let humanPlayers = players.filter((p: any) => {
+    // Try different possible type values
+    const isHuman = p.type === 'Human' || 
+                   p.type === 1 || 
+                   p.type === 'human' ||
+                   p.playerType === 'Human' ||
+                   p.playerType === 1 ||
+                   !p.isComputer;
+    
+    console.log('[replayParser] Player check:', {
+      name: p.name,
+      type: p.type,
+      typeOf: typeof p.type,
+      playerType: p.playerType,
+      isComputer: p.isComputer,
+      isHuman
+    });
+    
+    return isHuman;
+  });
+  
+  // If no human players found with strict filtering, take first two players
+  if (humanPlayers.length < 2) {
+    console.log('[replayParser] Insufficient human players, using first two players');
+    humanPlayers = players.slice(0, 2);
+  }
   
   if (humanPlayers.length < 2) {
-    throw new Error('Nicht genügend menschliche Spieler gefunden');
+    throw new Error('Nicht genügend Spieler für eine 1v1 Analyse gefunden');
   }
   
   const player1 = humanPlayers[0];
