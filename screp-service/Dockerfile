@@ -1,7 +1,11 @@
 
+
 # Stage 1: Prepare vendor directory
 FROM golang:1.19-alpine AS vendor
 WORKDIR /app
+
+# Install git for go mod download
+RUN apk add --no-cache git
 
 # Copy go files
 COPY go.mod go.sum ./
@@ -37,3 +41,4 @@ HEALTHCHECK --interval=30s --timeout=5s \
   CMD wget -qO- http://localhost:8080/health || exit 1
 
 CMD ["./screp-service"]
+
