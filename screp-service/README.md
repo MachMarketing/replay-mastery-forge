@@ -1,99 +1,94 @@
 
 # SCREP Parsing Service
 
-This is a simple web service that utilizes the [SCREP](https://github.com/icza/screp) Go library to parse StarCraft: Brood War replay files.
+Ein einfacher Go-Microservice, der die icza/screp-Bibliothek nutzt, um StarCraft: Brood War-Replays zu parsen (inkl. Remastered).
 
-## Prerequisites
+## Voraussetzungen
 
-- Go 1.19 or later
-- Basic knowledge of running Go applications
+- Go 1.19 oder neuer
+- Docker (optional)
 
-## Setup and Installation
+## Installation & Build
 
-1. First, make sure you have Go installed on your system. If not, you can download it from [golang.org](https://golang.org/dl/).
+1. Klone das Repo und wechsle ins Service-Verzeichnis:
+   ```bash
+   git clone https://github.com/MachMarketing/replay-mastery-forge.git
+   cd replay-mastery-forge/screp-service
+   ```
 
-2. Install the dependencies:
+2. Module herunterladen und aufräumen:
+   ```bash
+   go mod download
+   go mod tidy
+   ```
 
-```bash
-go mod download
-```
+3. Binary bauen:
+   ```bash
+   go build -o screp-service .
+   ```
 
-3. Build the application:
+## Konfiguration
 
-```bash
-go build -o screp-server .
-```
+- Der Service hört standardmäßig auf Port `8080`.  
+- Du kannst mit der Umgebungsvariable `PORT` einen anderen Port setzen:
+  ```bash
+  PORT=9000 ./screp-service
+  ```
 
-## Running the Service
+## API
 
-Execute the compiled binary:
+### GET /health
 
-```bash
-./screp-server
-```
-
-By default, the server will listen on port 8080. You can change this by setting the PORT environment variable:
-
-```bash
-PORT=9000 ./screp-server
-```
-
-## API Endpoint
+Einfache Health-Check-Route. Gibt `200 OK` zurück, wenn der Service läuft.
 
 ### POST /parse
 
-Parses a StarCraft: Brood War replay file (.rep).
+Parst eine `.rep`-Datei und liefert JSON mit den Feldern `players`, `commands` und `header` (`frames`, `mapName`).
 
-#### Request
+- **Content-Type**: `application/octet-stream`  
+- **Body**: rohes Replay-File (ArrayBuffer)
 
-- Content-Type: `multipart/form-data`
-- Body: Include a file field named "file" containing the replay data
-
-#### Response
-
-- Content-Type: `application/json`
-- Body: JSON object containing the parsed replay data
-
-#### Example
-
+**Beispiel**:
 ```bash
-curl -X POST -F "file=@path/to/replay.rep" http://localhost:8080/parse
+curl -X POST http://localhost:8080/parse \
+     -H "Content-Type: application/octet-stream" \
+     --data-binary @path/to/replay.rep
 ```
 
-## Deployment Options
-
-### Docker
-
-You can containerize this service using Docker:
-
-1. Create a Dockerfile in this directory:
-```dockerfile
-FROM golang:1.19-alpine as builder
-WORKDIR /app
-COPY . .
-RUN go mod download
-RUN go build -o screp-server .
-
-FROM alpine:latest
-WORKDIR /app
-COPY --from=builder /app/screp-server .
-EXPOSE 8080
-CMD ["./screp-server"]
+**Response** (200):
+```json
+{
+  "players": [ /* Array mit Player-Objekten */ ],
+  "commands": [ /* Array mit Command-Objekten */ ],
+  "header": {
+    "frames": 12345,
+    "mapName": "Lost Temple"
+  }
+}
 ```
 
-2. Build and run the Docker image:
-```bash
-docker build -t screp-service .
-docker run -p 8080:8080 screp-service
-```
+## Docker
 
-### Cloud Deployment
+1. Im `screp-service`-Ordner liegt bereits das Dockerfile, das das Binary baut und einen Health-Check konfiguriert.  
+2. Build & Run:
+   ```bash
+   docker build -t screp-service .
+   docker run -p 8080:8080 screp-service
+   ```
 
-This service can be deployed to various cloud platforms:
+## Deployment
 
+Am einfachsten via Container-Plattform deiner Wahl:
+
+- Render.com (Docker-Web-Service, Port 8080, Root `screp-service`, Startkommando `./screp-service`)
 - Google Cloud Run
-- AWS Lambda with API Gateway
-- Heroku
-- DigitalOcean App Platform
+- AWS Fargate / ECS
+- Azure Container Instances
+- Heroku Container Registry  
+- u.v.m.
 
-Choose the platform that best suits your needs and follow their deployment documentation.
+Achte darauf, in deiner Umgebung die **Health-Check-URL** `/health` und den **Parse-Endpoint** `/parse` zu verwenden.
+
+---
+
+So bist du auf alle Änderungen abgestimmt und der Service lässt sich ohne weitere Anpassungen bauen, deployen und betreiben.
