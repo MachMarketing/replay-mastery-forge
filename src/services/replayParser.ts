@@ -1,4 +1,3 @@
-
 import { ParsedReplayData } from './replayParser/types';
 // Import screparsed correctly - check the actual API
 import * as screparsed from 'screparsed';
@@ -52,9 +51,10 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     let screparsedResult;
     
     // Try different possible API patterns for screparsed
-    if (typeof screparsed.default === 'function') {
-      console.log('[replayParser] Using screparsed.default');
-      screparsedResult = screparsed.default(uint8Array);
+    // First check if there's a direct callable function
+    if (typeof screparsed === 'function') {
+      console.log('[replayParser] Using screparsed as direct function');
+      screparsedResult = (screparsed as any)(uint8Array);
     } else if (typeof (screparsed as any).parse === 'function') {
       console.log('[replayParser] Using screparsed.parse');
       screparsedResult = (screparsed as any).parse(uint8Array);
