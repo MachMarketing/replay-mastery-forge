@@ -1,4 +1,5 @@
 
+
 # ─── Builder Stage ───────────────────────────────────────────────────────────
 FROM golang:1.19-alpine AS builder
 WORKDIR /app
@@ -28,3 +29,4 @@ HEALTHCHECK --interval=30s --timeout=5s \
 
 # Start-Kommando
 CMD ["./screp-service"]
+
