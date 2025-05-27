@@ -1,4 +1,3 @@
-
 import { ParsedReplayData } from './replayParser/types';
 
 /**
@@ -158,107 +157,91 @@ function transformBwscrepResponse(data: any, filename: string): ParsedReplayData
 }
 
 /**
- * Transformiert die Antwort vom screparsed Parser (Browser)
+ * Transformiert die Antwort vom screparsed Parser (Browser) - Enhanced Version
  */
 function transformScreparsedResponse(data: any, filename: string): ParsedReplayData {
-  console.log('[replayParser] Transforming screparsed data for file:', filename);
-  console.log('[replayParser] Available screparsed data structure:', {
-    gameInfo: data._gameInfo ? Object.keys(data._gameInfo) : 'none',
-    frames: data._frames ? 'available' : 'none',
-    colors: data._colors ? Object.keys(data._colors) : 'none'
-  });
-  
-  // Extract game info
-  const gameInfo = data._gameInfo || {};
-  // Fix: Use playerStructs instead of players
-  const playerStructs = gameInfo.playerStructs || [];
-  const mapName = gameInfo.map || 'Unbekannte Karte';
-  const gameFrames = data._frames || 0;
-  
-  console.log('[replayParser] Found playerStructs:', playerStructs);
-  console.log('[replayParser] PlayerStructs length:', playerStructs.length);
-  
-  // Extract actual player data from playerStructs
-  const players = playerStructs
-    .filter((struct: any) => struct && struct.name && struct.name.trim() !== '')
-    .slice(0, 2); // Take first 2 players
-  
-  console.log('[replayParser] Filtered players:', players);
-  
+  console.log('[transform] raw data:', data);
+  console.log('[transform] data keys:', Object.keys(data));
+
+  // Normalize players list
+  const players = data.players || data.Players || data.replay?.players || data.Replay?.players || [];
+
+  // Normalize commands/events list
+  const commands = data.commands || data.Commands || data.events || data.Events || data.replay?.commands || data.replay?.Commands || [];
+
+  // Normalize header/game info
+  const hdr = data.header || data.Header || data.replay?.header || data.Replay?.Header || data.replay?.gameInfo || data.Replay?.GameInfo || {};
+
+  // Extract frames count from possible keys
+  const frames = hdr.frames || hdr.Frames || hdr.frameCount || hdr.FrameCount || hdr.gameLengthFrames || hdr.GameLengthFrames || 0;
+
+  // Extract map name
+  const mapName = hdr.mapName || hdr.MapName || hdr.map || hdr.MapName || 'Unknown Map';
+
   if (players.length < 2) {
-    // Fallback: create mock players based on available data
-    const player1 = players[0] || { 
-      name: 'Player 1', 
-      race: 'Protoss',
-      color: 0,
-      isComputer: false
-    };
-    const player2 = players[1] || { 
-      name: 'Player 2', 
-      race: 'Terran',
-      color: 1,
-      isComputer: false
-    };
-    players.push(player1, player2);
-    console.log('[replayParser] Created fallback players:', players);
+    throw new Error('Nicht genügend Spieler in der Replay-Datei gefunden (mindestens 2 erforderlich)');
   }
-  
-  const player1 = players[0];
-  const player2 = players[1];
-  
-  // Calculate game duration
-  const gameDurationMs = gameFrames * (1000/24); // 24 fps in SC:BW
-  
-  // Extract build order from game actions/commands if available
-  const buildOrder = extractBuildOrderFromScreparsed(data);
-  
-  // Generate analysis
-  const analysis = generateGameAnalysis(player1, player2, {
-    frames: gameFrames,
-    mapName: mapName,
-    buildOrder: buildOrder
-  });
-  
-  // Create primary player data
+
+  // Filter only human players
+  const humanPlayers = players.filter((p: any) => p.type === 'Human' || p.Type === 'Human');
+
+  if (humanPlayers.length < 2) {
+    throw new Error('Nicht genügend menschliche Spieler gefunden');
+  }
+
+  const player1 = humanPlayers[0];
+  const player2 = humanPlayers[1];
+
+  // Extract IDs and names
+  const player1Id = player1.id || player1.Id || player1.playerId || 0;
+  const player2Id = player2.id || player2.Id || player2.playerId || 0;
+  const player1Name = player1.name || player1.Name || '';
+  const player2Name = player2.name || player2.Name || '';
+
+  // Calculate APM
+  const player1APM = calculateAPMFromCommands(commands, player1Id, frames);
+  const player2APM = calculateAPMFromCommands(commands, player2Id, frames);
+
   const primaryPlayer = {
-    name: player1.name,
-    race: normalizeRace(player1.race),
-    apm: calculateAPM(player1, gameFrames),
-    eapm: Math.round(calculateAPM(player1, gameFrames) * 0.7),
-    buildOrder: buildOrder,
-    strengths: analysis.player1Analysis.strengths,
-    weaknesses: analysis.player1Analysis.weaknesses,
-    recommendations: analysis.player1Analysis.recommendations
+    name: player1Name,
+    race: normalizeRaceName(player1.race || player1.Race),
+    apm: player1APM,
+    eapm: Math.round(player1APM * 0.7),
+    buildOrder: extractBuildOrderFromCommands(commands, player1Id),
+    strengths: [],
+    weaknesses: [],
+    recommendations: []
   };
-  
-  // Create secondary player data
+
   const secondaryPlayer = {
-    name: player2.name,
-    race: normalizeRace(player2.race),
-    apm: calculateAPM(player2, gameFrames),
-    eapm: Math.round(calculateAPM(player2, gameFrames) * 0.7),
-    buildOrder: [],
-    strengths: analysis.player2Analysis.strengths,
-    weaknesses: analysis.player2Analysis.weaknesses,
-    recommendations: analysis.player2Analysis.recommendations
+    name: player2Name,
+    race: normalizeRaceName(player2.race || player2.Race),
+    apm: player2APM,
+    eapm: Math.round(player2APM * 0.7),
+    buildOrder: extractBuildOrderFromCommands(commands, player2Id),
+    strengths: [],
+    weaknesses: [],
+    recommendations: []
   };
-  
-  const matchup = `${getRaceInitial(primaryPlayer.race)}v${getRaceInitial(secondaryPlayer.race)}`;
-  
+
+  const matchup = `${getRaceShortName(primaryPlayer.race)}v${getRaceShortName(secondaryPlayer.race)}`;
+  const analysis = generateAnalysis(primaryPlayer, secondaryPlayer, hdr);
+
   return {
-    primaryPlayer,
+    primaryPlayer: {
+      ...primaryPlayer,
+      ...analysis.primaryAnalysis
+    },
     secondaryPlayer,
     map: mapName,
     matchup,
-    duration: formatDuration(gameFrames),
-    durationMS: gameDurationMs,
+    duration: formatDuration(frames),
+    durationMS: frames * (1000 / 24),
     date: new Date().toISOString(),
-    result: determineGameResult(player1, player2),
-    strengths: analysis.player1Analysis.strengths,
-    weaknesses: analysis.player1Analysis.weaknesses,
-    recommendations: analysis.player1Analysis.recommendations,
-    
-    // Legacy-Eigenschaften für Rückwärtskompatibilität
+    result: determineResult(player1, player2),
+    strengths: analysis.primaryAnalysis.strengths,
+    weaknesses: analysis.primaryAnalysis.weaknesses,
+    recommendations: analysis.primaryAnalysis.recommendations,
     playerName: primaryPlayer.name,
     opponentName: secondaryPlayer.name,
     playerRace: primaryPlayer.race,
@@ -268,9 +251,96 @@ function transformScreparsedResponse(data: any, filename: string): ParsedReplayD
     opponentApm: secondaryPlayer.apm,
     opponentEapm: secondaryPlayer.eapm,
     buildOrder: primaryPlayer.buildOrder,
-    
     trainingPlan: analysis.trainingPlan
   };
+}
+
+/**
+ * Calculate APM from commands data
+ */
+function calculateAPMFromCommands(commands: any[], playerId: number, totalFrames: number): number {
+  if (!commands || commands.length === 0 || totalFrames === 0) {
+    return 0;
+  }
+
+  const playerCommands = commands.filter((cmd: any) => 
+    (cmd.playerId || cmd.PlayerId || cmd.player_id) === playerId
+  );
+
+  const gameMinutes = totalFrames / (24 * 60); // 24 FPS, 60 seconds per minute
+  if (gameMinutes <= 0) return 0;
+
+  return Math.round(playerCommands.length / gameMinutes);
+}
+
+/**
+ * Extract build order from commands
+ */
+function extractBuildOrderFromCommands(commands: any[], playerId: number): Array<{time: string; supply: number; action: string}> {
+  if (!commands || commands.length === 0) {
+    return [];
+  }
+
+  const buildCommands = commands.filter((cmd: any) => {
+    const cmdPlayerId = cmd.playerId || cmd.PlayerId || cmd.player_id;
+    const cmdType = cmd.type || cmd.Type || cmd.command_type;
+    return cmdPlayerId === playerId && (cmdType === 'build' || cmdType === 'train' || cmdType === 'Build' || cmdType === 'Train');
+  });
+
+  return buildCommands.slice(0, 20).map((cmd: any, index: number) => {
+    const frame = cmd.frame || cmd.Frame || (index * 30);
+    const timeInSeconds = Math.floor(frame / 24);
+    const unit = cmd.unit || cmd.Unit || cmd.building || cmd.Building || 'Unknown';
+    
+    return {
+      time: formatTime(timeInSeconds),
+      supply: 9 + index,
+      action: unit
+    };
+  });
+}
+
+/**
+ * Normalize race name to standard format
+ */
+function normalizeRaceName(race: any): string {
+  const raceStr = String(race || '').toLowerCase();
+  if (raceStr.includes('protoss') || raceStr === 'p') return 'Protoss';
+  if (raceStr.includes('terran') || raceStr === 't') return 'Terran';
+  if (raceStr.includes('zerg') || raceStr === 'z') return 'Zerg';
+  return 'Protoss';
+}
+
+/**
+ * Get race short name for matchup
+ */
+function getRaceShortName(race: string): string {
+  return race.charAt(0).toUpperCase();
+}
+
+/**
+ * Generate analysis for players
+ */
+function generateAnalysis(player1: any, player2: any, header: any): {
+  primaryAnalysis: { strengths: string[]; weaknesses: string[]; recommendations: string[] };
+  trainingPlan: Array<{ day: number; focus: string; drill: string }>;
+} {
+  const analysis = analyzePlayer(player1, header);
+  const trainingPlan = generateTrainingPlan(player1, header);
+  
+  return {
+    primaryAnalysis: analysis,
+    trainingPlan
+  };
+}
+
+/**
+ * Determine game result
+ */
+function determineResult(player1: any, player2: any): 'win' | 'loss' | 'unknown' {
+  if (player1.isWinner === true || player1.IsWinner === true) return 'win';
+  if (player1.isWinner === false || player1.IsWinner === false) return 'loss';
+  return 'unknown';
 }
 
 /**
