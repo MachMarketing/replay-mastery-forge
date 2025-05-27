@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -10,7 +9,7 @@ import (
 
     "github.com/gorilla/mux"
     "github.com/joho/godotenv"
-    github.com/nicktornow/starparse/pkg/screp/replay
+    rep "github.com/nicklaw5/go-starscape-replay/replay"
 )
 
 func main() {
@@ -45,7 +44,7 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    parsed, err := replay.ParseReplay(data)
+    parsed, err := rep.ParseReplay(data)
     if err != nil {
         http.Error(w, "Parse error: "+err.Error(), http.StatusInternalServerError)
         return
