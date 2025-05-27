@@ -42,9 +42,9 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
   try {
     console.log('[replayParser] Loading screparsed...');
     
-    // Use dynamic import for screparsed with proper type handling
+    // Use dynamic import for screparsed
     const screparsedModule = await import('screparsed');
-    console.log('[replayParser] screparsed module loaded, checking exports...');
+    console.log('[replayParser] screparsed module loaded, available exports:', Object.keys(screparsedModule));
     
     // Convert ArrayBuffer to Uint8Array for screparsed
     const uint8Array = new Uint8Array(arrayBuffer);
@@ -53,15 +53,18 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     let parsedReplay: any = null;
     
     try {
-      // screparsed typically exports a default function, use type assertion to bypass TS strict checking
-      const parseFunction = (screparsedModule as any).default || (screparsedModule as any);
+      // Based on screparsed documentation, we need to use ReplayParser class
+      const { ReplayParser } = screparsedModule;
       
-      if (typeof parseFunction === 'function') {
-        console.log('[replayParser] Found parse function, calling with replay data...');
-        parsedReplay = parseFunction(uint8Array);
+      if (ReplayParser) {
+        console.log('[replayParser] Creating ReplayParser instance...');
+        const parser = new ReplayParser();
+        console.log('[replayParser] Calling parse method with replay data...');
+        parsedReplay = parser.parse(uint8Array);
       } else {
-        console.error('[replayParser] screparsed module structure:', Object.keys(screparsedModule));
-        throw new Error('screparsed module does not export a callable function');
+        console.error('[replayParser] ReplayParser class not found in screparsed module');
+        console.error('[replayParser] Available exports:', Object.keys(screparsedModule));
+        throw new Error('ReplayParser class not found in screparsed module');
       }
     } catch (parseError) {
       console.error('[replayParser] screparsed parsing error:', parseError);
