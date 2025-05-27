@@ -122,7 +122,7 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 				playerCommands := 0
 				if replay.Commands != nil {
 					for _, cmd := range replay.Commands.Cmds {
-						if cmd.PlayerID() == player.ID {
+						if cmd.UserID == player.ID {
 							playerCommands++
 						}
 					}
@@ -162,9 +162,9 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 			
 			// Create a basic command representation
 			commands = append(commands, Command{
-				Frame: int(cmd.Frame()),
-				Type:  getCommandTypeString(cmd.Type()),
-				Data:  fmt.Sprintf("Player: %d", cmd.PlayerID()),
+				Frame: int(cmd.Frame),
+				Type:  getCommandTypeString(cmd.Type),
+				Data:  fmt.Sprintf("Player: %d", cmd.UserID),
 			})
 			commandCount++
 		}
@@ -217,8 +217,12 @@ func getRaceString(race rep.Race) string {
 }
 
 // Helper function to convert command type to string
-func getCommandTypeString(cmdType repcmd.Type) string {
-	switch cmdType {
+func getCommandTypeString(cmdType *repcmd.Type) string {
+	if cmdType == nil {
+		return "Unknown"
+	}
+	
+	switch *cmdType {
 	case repcmd.TypeSelect:
 		return "Select"
 	case repcmd.TypeShiftSelect:
