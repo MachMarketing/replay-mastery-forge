@@ -39,13 +39,18 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     throw new Error('Konnte Datei nicht lesen - möglicherweise beschädigt');
   }
   
-  // Check if Go service is available
+  // Check if Go service is available with timeout controller
   console.log('[replayParser] Checking Go service availability...');
   try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
     const healthCheck = await fetch('http://localhost:8000/health', {
       method: 'GET',
-      signal: AbortSignal.timeout(5000)
+      signal: controller.signal
     });
+    
+    clearTimeout(timeoutId);
     
     if (!healthCheck.ok) {
       throw new Error('Go service health check failed');
