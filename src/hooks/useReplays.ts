@@ -67,7 +67,45 @@ export function useReplays() {
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading]); // Add isLoading to dependencies to prevent infinite loops
+  }, []); // Remove isLoading from dependencies to prevent infinite loops
+
+  // Filter replays function
+  const filterReplays = useCallback((filters: {
+    race?: string;
+    matchup?: string;
+    result?: string;
+    dateRange?: string;
+  }) => {
+    return replays.filter(replay => {
+      if (filters.race && replay.player_race !== filters.race) {
+        return false;
+      }
+      if (filters.matchup && replay.matchup !== filters.matchup) {
+        return false;
+      }
+      if (filters.result && replay.result !== filters.result) {
+        return false;
+      }
+      if (filters.dateRange) {
+        const replayDate = new Date(replay.created_at);
+        const now = new Date();
+        
+        switch (filters.dateRange) {
+          case 'today':
+            return replayDate.toDateString() === now.toDateString();
+          case 'week':
+            const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            return replayDate >= weekAgo;
+          case 'month':
+            const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+            return replayDate >= monthAgo;
+          default:
+            return true;
+        }
+      }
+      return true;
+    });
+  }, [replays]);
 
   // Only fetch on mount, not on every render
   useEffect(() => {
@@ -90,6 +128,7 @@ export function useReplays() {
     replays,
     isLoading,
     error,
-    fetchReplays
+    fetchReplays,
+    filterReplays
   };
 }

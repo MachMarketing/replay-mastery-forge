@@ -40,28 +40,23 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
   const uint8Array = new Uint8Array(arrayBuffer);
   console.log('[replayParser] Created Uint8Array, length:', uint8Array.length);
   
-  // Parse with screparsed using correct API
+  // Parse with screparsed using correct API from GitHub
   try {
     console.log('[replayParser] Loading screparsed...');
     
-    // Use dynamic import for screparsed
+    // Use dynamic import for screparsed - it exports a default function
     const screparsedModule = await import('screparsed');
     console.log('[replayParser] screparsed module loaded');
     
-    let screparsedResult: any;
+    // According to GitHub repo, screparsed exports a default function
+    const screparsed = screparsedModule.default;
     
-    // Try the correct screparsed API based on documentation
-    if (screparsedModule.default) {
-      // screparsed typically exports a default function
-      console.log('[replayParser] Using screparsed default export');
-      screparsedResult = screparsedModule.default(uint8Array);
-    } else if (typeof screparsedModule === 'function') {
-      // In case the module itself is the function
-      console.log('[replayParser] Using screparsed module as function');
-      screparsedResult = (screparsedModule as any)(uint8Array);
-    } else {
-      throw new Error('Screparsed API nicht verfügbar');
+    if (typeof screparsed !== 'function') {
+      throw new Error('Screparsed default export is not a function');
     }
+    
+    console.log('[replayParser] Calling screparsed function...');
+    const screparsedResult = screparsed(uint8Array);
     
     console.log('[replayParser] Screparsed result:', screparsedResult);
     
