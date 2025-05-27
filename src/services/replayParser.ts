@@ -1,5 +1,3 @@
-
-
 import { ParsedReplayData } from './replayParser/types';
 
 /**
@@ -42,7 +40,7 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
   const uint8Array = new Uint8Array(arrayBuffer);
   console.log('[replayParser] Created Uint8Array, length:', uint8Array.length);
   
-  // Parse with screparsed using correct API
+  // Parse with screparsed using the correct API
   try {
     console.log('[replayParser] Loading screparsed...');
     
@@ -50,71 +48,24 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
     const screparsed = await import('screparsed');
     console.log('[replayParser] screparsed module loaded');
     
-    let screparsedResult: any = null;
+    let parsedReplay: any = null;
     
-    // Try different approaches to use screparsed correctly
+    // Use the correct screparsed API - ParsedReplay constructor
     try {
-      // Method 1: Try using the module directly as a function if it's callable
-      if (typeof screparsed.default === 'function') {
-        console.log('[replayParser] Using default export as function...');
-        screparsedResult = screparsed.default(uint8Array);
-      } else if (screparsed.default && typeof screparsed.default === 'object') {
-        console.log('[replayParser] Checking default export object...');
-        // Check if default export has useful methods
-        if (typeof screparsed.default.parseReplay === 'function') {
-          screparsedResult = screparsed.default.parseReplay(uint8Array);
-        } else if (typeof screparsed.default.parse === 'function') {
-          screparsedResult = screparsed.default.parse(uint8Array);
-        }
-      }
-    } catch (defaultError) {
-      console.log('[replayParser] Default export failed:', defaultError);
-      
-      // Method 2: Try using named exports
-      try {
-        if (screparsed.parseReplay && typeof screparsed.parseReplay === 'function') {
-          console.log('[replayParser] Using named parseReplay function...');
-          screparsedResult = screparsed.parseReplay(uint8Array);
-        } else if (screparsed.ParsedReplay) {
-          console.log('[replayParser] Trying ParsedReplay with buffer...');
-          // Try creating ParsedReplay instance without parameters or with buffer
-          screparsedResult = new screparsed.ParsedReplay();
-          if (screparsedResult && typeof screparsedResult.load === 'function') {
-            screparsedResult.load(uint8Array);
-          }
-        }
-      } catch (namedError) {
-        console.log('[replayParser] Named exports failed:', namedError);
-        
-        // Method 3: Try any available parsing function
-        const availableKeys = Object.keys(screparsed);
-        console.log('[replayParser] Available screparsed keys:', availableKeys);
-        
-        for (const key of availableKeys) {
-          const exportedItem = (screparsed as any)[key];
-          if (typeof exportedItem === 'function') {
-            try {
-              console.log(`[replayParser] Trying function: ${key}`);
-              screparsedResult = exportedItem(uint8Array);
-              if (screparsedResult) break;
-            } catch (funcError) {
-              console.log(`[replayParser] Function ${key} failed:`, funcError);
-            }
-          }
-        }
-      }
+      console.log('[replayParser] Creating ParsedReplay instance...');
+      parsedReplay = new screparsed.ParsedReplay(arrayBuffer);
+      console.log('[replayParser] ParsedReplay instance created successfully');
+    } catch (parseError) {
+      console.error('[replayParser] ParsedReplay creation failed:', parseError);
+      throw new Error(`Screparsed parsing failed: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
     }
     
-    if (!screparsedResult) {
-      // Log what's actually available for debugging
-      console.log('[replayParser] Available exports:', Object.keys(screparsed));
-      console.log('[replayParser] Default export type:', typeof screparsed.default);
-      throw new Error('Keine unterstützte Parse-Methode in screparsed gefunden');
+    if (!parsedReplay) {
+      throw new Error('Keine Daten von screparsed erhalten');
     }
     
-    console.log('[replayParser] Screparsed result:', screparsedResult);
     console.log('[replayParser] Successfully parsed with screparsed');
-    return createParsedDataFromScreparsed(screparsedResult, file.name);
+    return createParsedDataFromScreparsed(parsedReplay, file.name);
     
   } catch (screparsedError) {
     console.error('[replayParser] Screparsed parsing failed:', screparsedError);
@@ -125,23 +76,23 @@ export async function parseReplay(file: File): Promise<ParsedReplayData> {
 /**
  * Create parsed data from screparsed result with real data extraction
  */
-function createParsedDataFromScreparsed(screparsedResult: any, filename: string): ParsedReplayData {
+function createParsedDataFromScreparsed(parsedReplay: any, filename: string): ParsedReplayData {
   console.log('[replayParser] Processing screparsed result structure:', {
-    hasHeader: !!screparsedResult.header,
-    hasPlayers: !!screparsedResult.players,
-    hasGameData: !!screparsedResult.gameData,
-    hasCommands: !!screparsedResult.commands,
-    resultKeys: Object.keys(screparsedResult)
+    hasHeader: !!parsedReplay.header,
+    hasPlayers: !!parsedReplay.players,
+    hasGameData: !!parsedReplay.gameData,
+    hasCommands: !!parsedReplay.commands,
+    resultKeys: Object.keys(parsedReplay)
   });
   
   // Extract players from various possible locations
   let players = [];
-  if (screparsedResult.players && Array.isArray(screparsedResult.players)) {
-    players = screparsedResult.players;
-  } else if (screparsedResult.gameData?.players) {
-    players = screparsedResult.gameData.players;
-  } else if (screparsedResult.header?.players) {
-    players = screparsedResult.header.players;
+  if (parsedReplay.players && Array.isArray(parsedReplay.players)) {
+    players = parsedReplay.players;
+  } else if (parsedReplay.gameData?.players) {
+    players = parsedReplay.gameData.players;
+  } else if (parsedReplay.header?.players) {
+    players = parsedReplay.header.players;
   }
   
   console.log('[replayParser] Found players:', players.length, players);
@@ -158,8 +109,8 @@ function createParsedDataFromScreparsed(screparsedResult: any, filename: string)
   console.log('[replayParser] Player 2:', player2);
   
   // Extract game info
-  const header = screparsedResult.header || {};
-  const gameData = screparsedResult.gameData || {};
+  const header = parsedReplay.header || {};
+  const gameData = parsedReplay.gameData || {};
   
   // Map name
   const mapName = header.mapName || header.map || gameData.mapName || 'Unknown Map';
@@ -176,7 +127,7 @@ function createParsedDataFromScreparsed(screparsedResult: any, filename: string)
     race: normalizeRaceName(player1.race),
     apm: player1.apm || 0,
     eapm: player1.eapm || Math.round((player1.apm || 0) * 0.7),
-    buildOrder: extractBuildOrderFromResult(screparsedResult, 0),
+    buildOrder: extractBuildOrderFromResult(parsedReplay, 0),
     strengths: [],
     weaknesses: [],
     recommendations: []
@@ -187,7 +138,7 @@ function createParsedDataFromScreparsed(screparsedResult: any, filename: string)
     race: normalizeRaceName(player2.race),
     apm: player2.apm || 0,
     eapm: player2.eapm || Math.round((player2.apm || 0) * 0.7),
-    buildOrder: extractBuildOrderFromResult(screparsedResult, 1),
+    buildOrder: extractBuildOrderFromResult(parsedReplay, 1),
     strengths: [],
     weaknesses: [],
     recommendations: []
@@ -197,7 +148,7 @@ function createParsedDataFromScreparsed(screparsedResult: any, filename: string)
   const matchup = `${getRaceShortName(primaryPlayer.race)}v${getRaceShortName(secondaryPlayer.race)}`;
   
   // Generate analysis
-  const analysis = generateRealAnalysis(primaryPlayer, secondaryPlayer, screparsedResult);
+  const analysis = generateRealAnalysis(primaryPlayer, secondaryPlayer, parsedReplay);
   
   return {
     primaryPlayer: { ...primaryPlayer, ...analysis.primaryAnalysis },
