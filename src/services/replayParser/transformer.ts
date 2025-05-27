@@ -1,4 +1,3 @@
-
 import { ParsedReplayData, PlayerData } from './types';
 
 interface SCREPPlayer {
@@ -36,141 +35,10 @@ interface SCREPReplayData {
 }
 
 /**
- * Transform scraped parsed replay data to our application format
+ * Transform screparsed data to our application format
  */
-export function transformJSSUHData(rawData: any): ParsedReplayData | null {
-  if (!rawData) {
-    console.error('[transformer] Invalid scraped data format');
-    return null;
-  }
-
-  try {
-    console.log('[transformer] Raw data structure:', Object.keys(rawData));
-    
-    // First check if this is coming from our Go SCREP service
-    if (rawData.players && Array.isArray(rawData.players) && rawData.metadata) {
-      console.log('[transformer] Detected SCREP service data format, using direct mapping');
-      return transformSCREPData(rawData as SCREPReplayData);
-    }
-    
-    // Extract metadata from JSSUH format (fallback)
-    const metadata = rawData.metadata || {};
-    const playerIndex = 0;
-    const opponentIndex = 1;
-
-    // Extract player names
-    const playerName = metadata.playerNames?.[playerIndex] || 'Unknown Player';
-    const opponentName = metadata.playerNames?.[opponentIndex] || 'Unknown Opponent';
-
-    // Extract races
-    const playerRace = mapRace(metadata.playerRaces?.[playerIndex]);
-    const opponentRace = mapRace(metadata.playerRaces?.[opponentIndex]);
-
-    // Extract match result
-    const isWinner = metadata.winners?.[0] === playerIndex;
-
-    // Extract APM
-    const playerApm = metadata.apm?.[playerIndex] || 0;
-    const opponentApm = metadata.apm?.[opponentIndex] || 0;
-
-    // EAPM (effective APM) - estimate as 70% of APM if not available
-    const playerEapm = metadata.eapm?.[playerIndex] || Math.round(playerApm * 0.7);
-    const opponentEapm = metadata.eapm?.[opponentIndex] || Math.round(opponentApm * 0.7);
-
-    // Extract game duration
-    const durationMS = metadata.frames || 0;
-    const durationSeconds = Math.floor(durationMS / 24); // Brood War runs at 24 frames per second
-    const duration = formatDuration(durationSeconds);
-
-    // Create build order array
-    const buildOrder = extractBuildOrder(rawData, playerIndex);
-
-    // Match timestamp
-    const date = metadata.startTime 
-      ? new Date(metadata.startTime).toISOString()
-      : new Date().toISOString();
-
-    // Map name
-    const map = metadata.mapName || 'Unknown Map';
-
-    // Create the matchup string (e.g., "TvZ")
-    const matchup = `${playerRace.charAt(0)}v${opponentRace.charAt(0)}`;
-
-    // Create analysis insights (normally these would come from AI)
-    const strengths = generateStrengths(rawData, playerIndex);
-    const weaknesses = generateWeaknesses(rawData, playerIndex);
-    const recommendations = generateRecommendations(weaknesses);
-
-    // Player data objects
-    const primaryPlayer: PlayerData = {
-      name: playerName,
-      race: playerRace,
-      apm: playerApm,
-      eapm: playerEapm,
-      buildOrder: buildOrder,
-      strengths: strengths,
-      weaknesses: weaknesses,
-      recommendations: recommendations
-    };
-
-    const secondaryPlayer: PlayerData = {
-      name: opponentName,
-      race: opponentRace,
-      apm: opponentApm,
-      eapm: opponentEapm,
-      buildOrder: extractBuildOrder(rawData, opponentIndex),
-      strengths: [],
-      weaknesses: [],
-      recommendations: []
-    };
-
-    // Create the training plan
-    const trainingPlan = generateTrainingPlan(weaknesses);
-
-    // Return structured data
-    return {
-      // Primary data structure
-      primaryPlayer,
-      secondaryPlayer,
-      
-      // Game info
-      map,
-      matchup,
-      duration,
-      durationMS,
-      date,
-      result: isWinner ? 'win' : 'loss',
-      
-      // Analysis results
-      strengths,
-      weaknesses,
-      recommendations,
-      
-      // Legacy properties for backward compatibility
-      playerName,
-      opponentName,
-      playerRace,
-      opponentRace,
-      apm: playerApm,
-      eapm: playerEapm,
-      opponentApm,
-      opponentEapm,
-      buildOrder,
-      
-      // Optional training plan
-      trainingPlan
-    };
-  } catch (error) {
-    console.error('[transformer] Error transforming replay data:', error);
-    return null;
-  }
-}
-
-/**
- * Transform data from our SCREP service into application format
- */
-function transformSCREPData(data: SCREPReplayData): ParsedReplayData {
-  console.log('[transformer] Processing SCREP data with', data.players.length, 'players');
+export function transformSCREPData(data: SCREPReplayData): ParsedReplayData {
+  console.log('[transformer] Processing screparsed data with', data.players.length, 'players');
   
   // Ensure we have at least one player
   if (!data.players || data.players.length === 0) {
@@ -260,7 +128,7 @@ function transformSCREPData(data: SCREPReplayData): ParsedReplayData {
   // Format date from metadata
   const date = data.metadata.startTime || new Date().toISOString();
   
-  // Format to expected ParsedReplayData
+  // Return structured data
   return {
     // Primary data structure
     primaryPlayer: primaryPlayerData,
@@ -410,69 +278,7 @@ function extractTimeInSeconds(timeString: string): number {
 }
 
 /**
- * Helper function to map race strings
- */
-function mapRace(race: string | undefined): string {
-  if (!race) return 'Terran';
-  const lowerRace = race.toLowerCase();
-  if (lowerRace.includes('zerg')) return 'Zerg';
-  if (lowerRace.includes('protoss')) return 'Protoss';
-  if (lowerRace.includes('random')) return 'Random';
-  return 'Terran';
-}
-
-/**
- * Helper function to format duration
- */
-function formatDuration(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  const formattedSeconds = String(remainingSeconds).padStart(2, '0');
-  return `${minutes}:${formattedSeconds}`;
-}
-
-/**
- * Helper function to extract build order
- */
-function extractBuildOrder(rawData: any, playerIndex: number): Array<{ time: string; supply: number; action: string }> {
-  const buildOrder = rawData.buildOrder?.[playerIndex] || [];
-  return buildOrder.map((item: any) => ({
-    time: formatDuration(Math.floor(item.time / 24)),
-    supply: item.supply,
-    action: item.name
-  }));
-}
-
-/**
- * Generate strengths based on replay data
- */
-function generateStrengths(rawData: any, playerIndex: number): string[] {
-  const strengths: string[] = [];
-  if (rawData.metadata?.apm?.[playerIndex] > 100) {
-    strengths.push('Hohe Aktionsgeschwindigkeit');
-  }
-  if (rawData.metadata?.largestArmySize?.[playerIndex] > 50) {
-    strengths.push('Große Armee aufgebaut');
-  }
-  return strengths;
-}
-
-/**
- * Generate weaknesses based on replay data
- */
-function generateWeaknesses(rawData: any, playerIndex: number): string[] {
-  const weaknesses: string[] = [];
-  if (rawData.metadata?.idleProductionTimePercentage?.[playerIndex] > 10) {
-    weaknesses.push('Hohe Produktionsleerlaufzeit');
-  }
-  if (rawData.metadata?.resourcesLostPercentage?.[playerIndex] > 15) {
-    weaknesses.push('Viele Ressourcen verloren');
-  }
-  return weaknesses;
-}
-
-/**
- * Generate recommendations based on weaknesses
+ * Helper function to generate recommendations based on weaknesses
  */
 function generateRecommendations(weaknesses: string[]): string[] {
   const recommendations: string[] = [];
@@ -492,7 +298,7 @@ function generateRecommendations(weaknesses: string[]): string[] {
 }
 
 /**
- * Generate a training plan based on weaknesses
+ * Helper function to generate a training plan based on weaknesses
  */
 function generateTrainingPlan(weaknesses: string[]): Array<{ day: number; focus: string; drill: string }> {
   const trainingPlan: Array<{ day: number; focus: string; drill: string }> = [];

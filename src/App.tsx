@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from "./components/theme-provider";
@@ -12,7 +11,6 @@ import UploadPage from './pages/UploadPage';
 import ReplaysPage from './pages/ReplaysPage';
 import NotFound from './pages/NotFound';
 import ParserTest from './pages/ParserTestPage';
-import JSSUHTest from './components/JSSUHTest';
 import ParserDebug from './pages/ParserDebug';
 import { useAuth } from './context/AuthContext';
 
@@ -26,7 +24,6 @@ function App() {
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/features" element={<FeaturesPage />} />
         <Route path="/parser-test" element={<ParserTest />} />
-        <Route path="/jssuh-test" element={<JSSUHTest />} />
         <Route path="/parser-debug" element={<ParserDebug />} />
         
         <Route path="/upload" element={
