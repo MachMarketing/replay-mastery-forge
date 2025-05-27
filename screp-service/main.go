@@ -2,7 +2,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,8 +10,7 @@ import (
 	"os"
 
 	"github.com/gorilla/mux"
-	"github.com/icza/screp/rep"
-	"github.com/icza/screp/repparser"
+	"github.com/icza/screp/parser"
 	"github.com/joho/godotenv"
 )
 
@@ -81,11 +79,32 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Received replay file of size: %d bytes", len(body))
 
-	// Parse the replay using icza/screp repparser
-	reader := bytes.NewReader(body)
-	
-	// Use the correct parsing method from the latest icza/screp
-	replay, err := repparser.ParseReplay(reader)
+	// Create a temporary file to parse the replay
+	tmpFile, err := os.CreateTemp("", "replay*.rep")
+	if err != nil {
+		log.Printf("Error creating temp file: %v", err)
+		http.Error(w, "Failed to create temp file", http.StatusInternalServerError)
+		return
+	}
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
+
+	// Write the body to temp file
+	if _, err := tmpFile.Write(body); err != nil {
+		log.Printf("Error writing to temp file: %v", err)
+		http.Error(w, "Failed to write temp file", http.StatusInternalServerError)
+		return
+	}
+
+	// Seek to beginning of file
+	if _, err := tmpFile.Seek(0, 0); err != nil {
+		log.Printf("Error seeking temp file: %v", err)
+		http.Error(w, "Failed to seek temp file", http.StatusInternalServerError)
+		return
+	}
+
+	// Parse the replay using the correct icza/screp API
+	replay, err := parser.Parse(tmpFile)
 	if err != nil {
 		log.Printf("Error parsing replay: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to parse replay: %v", err), http.StatusBadRequest)
@@ -97,75 +116,41 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 	var commands []Command
 
 	// Extract player data from the parsed replay
-	if replay.Header != nil && replay.Header.Players != nil {
-		for _, player := range replay.Header.Players {
-			if player.Name != "" {
-				race := "Unknown"
-				switch player.Race {
-				case rep.RaceZerg:
-					race = "Zerg"
-				case rep.RaceTerran:
-					race = "Terran"
-				case rep.RaceProtoss:
-					race = "Protoss"
-				default:
-					race = "Unknown"
-				}
+	for _, player := range replay.Players {
+		if player.Name != "" {
+			// Get race as string directly from the player
+			race := string(player.Race)
+			
+			// Calculate APM
+			apm := int(player.APM())
 
-				// Calculate APM if computed data is available
-				apm := 0
-				if replay.Computed != nil && len(replay.Computed.PlayerDescs) > len(players) {
-					playerDesc := replay.Computed.PlayerDescs[len(players)]
-					if playerDesc != nil {
-						apm = int(playerDesc.APM)
-					}
-				}
-
-				players = append(players, Player{
-					Name: player.Name,
-					Race: race,
-					APM:  apm,
-					EAPM: apm, // Use APM as EAPM for now
-				})
-			}
+			players = append(players, Player{
+				Name: player.Name,
+				Race: race,
+				APM:  apm,
+				EAPM: apm, // Use APM as EAPM for now
+			})
 		}
 	}
 
-	// Extract commands from the replay
+	// Extract some basic commands - limit to avoid huge responses
+	commandCount := 0
+	maxCommands := 100
+	
+	// Access commands through the replay structure
 	if replay.Commands != nil {
-		for i, cmd := range replay.Commands.Cmds {
-			if i >= 100 { // Limit to first 100 commands to avoid huge responses
+		for _, cmd := range replay.Commands {
+			if commandCount >= maxCommands {
 				break
 			}
 			
-			cmdType := "Unknown"
-			cmdData := ""
-			
-			// Determine command type based on the command structure
-			if cmd != nil {
-				switch cmd.BaseCmd().Type {
-				case rep.CmdTypeRightClick:
-					cmdType = "RightClick"
-				case rep.CmdTypeTrain:
-					cmdType = "Train"
-				case rep.CmdTypeBuild:
-					cmdType = "Build"
-				case rep.CmdTypeStop:
-					cmdType = "Stop"
-				case rep.CmdTypeAttack:
-					cmdType = "Attack"
-				default:
-					cmdType = fmt.Sprintf("Type_%d", cmd.BaseCmd().Type)
-				}
-				
-				cmdData = fmt.Sprintf("Player: %d", cmd.BaseCmd().PlayerID)
-			}
-
+			// Create a basic command representation
 			commands = append(commands, Command{
-				Frame: int(cmd.BaseCmd().Frame),
-				Type:  cmdType,
-				Data:  cmdData,
+				Frame: int(cmd.Frame),
+				Type:  "Command", // Generic type since detailed command types require more complex parsing
+				Data:  fmt.Sprintf("Player: %d", cmd.PlayerID),
 			})
+			commandCount++
 		}
 	}
 
@@ -173,13 +158,13 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 	mapName := "Unknown Map"
 	frames := 0
 	
-	if replay.Header != nil {
-		if replay.Header.Map != "" {
-			mapName = replay.Header.Map
-		}
-		if replay.Computed != nil {
-			frames = int(replay.Computed.Frames)
-		}
+	if replay.Map != "" {
+		mapName = replay.Map
+	}
+	
+	// Convert duration to frames (approximate)
+	if replay.Duration > 0 {
+		frames = int(replay.Duration.Seconds() * 24) // Assuming ~24 FPS
 	}
 
 	response := ParseResponse{
