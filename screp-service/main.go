@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -8,10 +7,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"reflect"
 
 	"github.com/gorilla/mux"
+	"github.com/icza/screp"
 	"github.com/icza/screp/rep"
-	"github.com/icza/screp/repparser"
 	"github.com/joho/godotenv"
 )
 
@@ -39,7 +39,6 @@ type ParseResponse struct {
 	Header   Header    `json:"header"`
 }
 
-// CORS middleware
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -57,17 +56,19 @@ func corsMiddleware(next http.Handler) http.Handler {
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
 }
 
 func parseHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
 	if r.Method != "POST" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Read the replay file data
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Printf("Error reading request body: %v", err)
@@ -75,9 +76,6 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Received replay file of size: %d bytes", len(body))
-
-	// Create a temporary file
 	tmpFile, err := os.CreateTemp("", "replay*.rep")
 	if err != nil {
 		log.Printf("Error creating temp file: %v", err)
@@ -87,7 +85,6 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 	defer os.Remove(tmpFile.Name())
 	defer tmpFile.Close()
 
-	// Write the body to temp file
 	if _, err := tmpFile.Write(body); err != nil {
 		log.Printf("Error writing to temp file: %v", err)
 		http.Error(w, "Failed to write temp file", http.StatusInternalServerError)
@@ -95,58 +92,45 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpFile.Close()
 
-	// Parse the replay using screp
-	replay, err := repparser.ParseFile(tmpFile.Name())
+	replay, err := screp.ParseFile(tmpFile.Name())
 	if err != nil {
 		log.Printf("Error parsing replay: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to parse replay: %v", err), http.StatusBadRequest)
 		return
 	}
 
-	// Extract basic information
 	var players []Player
 	var commands []Command
-	
-	// Default values
 	mapName := "Unknown Map"
 	frames := 0
 
-	// Extract header information
 	if replay.Header != nil {
 		frames = int(replay.Header.Frames)
 		if replay.Header.Map != "" {
 			mapName = replay.Header.Map
 		}
 
-		// Extract player information
-		if replay.Header.Players != nil {
-			for _, player := range replay.Header.Players {
-				if player != nil && player.Name != "" {
-					// Convert race to string
-					raceStr := getRaceString(player.Race)
-					
-					// Calculate basic APM (simplified)
-					apm := calculateAPM(replay, player.ID, frames)
-					
-					players = append(players, Player{
-						Name: player.Name,
-						Race: raceStr,
-						APM:  apm,
-						EAPM: apm, // Use same value for now
-					})
-				}
+		for _, player := range replay.Header.Players {
+			if player != nil && player.Name != "" {
+				raceStr := getRaceString(player.Race)
+				apm := calculateAPM(replay, player.ID, frames)
+
+				players = append(players, Player{
+					Name: player.Name,
+					Race: raceStr,
+					APM:  apm,
+					EAPM: apm,
+				})
 			}
 		}
 	}
 
-	// Extract some basic commands (limit to avoid huge responses)
 	if replay.Commands != nil && replay.Commands.Cmds != nil {
 		maxCommands := 100
 		for i, cmd := range replay.Commands.Cmds {
 			if i >= maxCommands {
 				break
 			}
-			
 			if cmd != nil {
 				commands = append(commands, Command{
 					Frame: int(cmd.Frame),
@@ -157,7 +141,6 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Create response
 	response := ParseResponse{
 		Players:  players,
 		Commands: commands,
@@ -174,10 +157,9 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Successfully parsed replay with %d players and %d commands", len(players), len(commands))
+	log.Printf("Parsed replay: %d players, %d commands", len(players), len(commands))
 }
 
-// Helper function to convert race to string
 func getRaceString(race rep.Race) string {
 	switch race {
 	case rep.RaceZerg:
@@ -193,37 +175,34 @@ func getRaceString(race rep.Race) string {
 	}
 }
 
-// Helper function to calculate APM
 func calculateAPM(replay *rep.Replay, playerID byte, totalFrames int) int {
 	if replay.Commands == nil || replay.Commands.Cmds == nil || totalFrames <= 0 {
 		return 0
 	}
-	
+
 	playerCommands := 0
 	for _, cmd := range replay.Commands.Cmds {
 		if cmd != nil && cmd.UserID == playerID {
 			playerCommands++
 		}
 	}
-	
-	// Convert frames to minutes (assuming ~24 FPS)
+
 	gameDurationMinutes := float64(totalFrames) / (24.0 * 60.0)
-	if gameDurationMinutes <= 0 {
-		return 0
+	if gameDurationMinutes < 1 {
+		gameDurationMinutes = 1
 	}
-	
+
 	return int(float64(playerCommands) / gameDurationMinutes)
 }
 
-// Helper function to get command type as string
 func getCommandTypeString(cmd interface{}) string {
-	// For now, return a simple string representation
-	// This can be extended based on the actual command structure
-	return "Command"
+	if cmd == nil {
+		return "Unknown"
+	}
+	return reflect.TypeOf(cmd).String()
 }
 
 func main() {
-	// Load environment variables
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using system environment")
 	}
@@ -235,10 +214,9 @@ func main() {
 
 	r := mux.NewRouter()
 	r.Use(corsMiddleware)
-	
 	r.HandleFunc("/health", healthHandler).Methods("GET", "OPTIONS")
 	r.HandleFunc("/parse", parseHandler).Methods("POST", "OPTIONS")
 
-	log.Printf("Starting server on port %s", port)
+	log.Printf("Server started on port %s", port)
 	log.Fatal(http.ListenAndServe(":"+port, r))
 }
