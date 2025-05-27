@@ -1,10 +1,11 @@
 # Stage: Build
+# Stage: Build
 FROM golang:1.19-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache git
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN go mod tidy
 
 COPY . .
 RUN go build -o screp-service .
