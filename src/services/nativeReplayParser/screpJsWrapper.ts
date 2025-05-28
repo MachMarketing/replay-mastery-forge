@@ -1,4 +1,3 @@
-
 /**
  * Enhanced screp-js wrapper with bulletproof Remastered command extraction
  */
@@ -200,9 +199,10 @@ export class ScrepJsWrapper {
       console.log('[ScrepJsWrapper] Using fallback header and player data');
     }
 
-    const dataSource = headerSuccess ? 'hybrid' : 'remastered-extractor';
+    // Ensure dataSource is one of the allowed types
+    const dataSource: 'screp-js' | 'remastered-extractor' | 'hybrid' = headerSuccess ? 'hybrid' : 'remastered-extractor';
     
-    const result = {
+    const result: ReplayParseResult = {
       header,
       players,
       commands: [], // Don't include commands for performance
