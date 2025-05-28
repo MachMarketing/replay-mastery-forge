@@ -98,7 +98,7 @@ export class SeRSParser {
       return decompressed;
     } catch (error) {
       console.error('[SeRSParser] Decompression failed:', error);
-      throw new Error(`seRS decompression failed: ${error.message}`);
+      throw new Error(`seRS decompression failed: ${(error as Error).message}`);
     }
   }
 
