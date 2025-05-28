@@ -1,64 +1,41 @@
 
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App.tsx';
-import './index.css';
-import { BrowserRouter } from "react-router-dom";
-import { Toaster } from '@/components/ui/sonner';
-import { AuthProvider } from './context/AuthContext';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App.tsx'
+import './index.css'
+import { BrowserRouter } from 'react-router-dom'
+import { ThemeProvider } from "@/components/theme-provider"
+import { Toaster } from "@/components/ui/sonner"
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { AuthProvider } from '@/context/AuthContext'
 
-// Create React Query client
+// Initialize buffer polyfills immediately
+import { ensureBufferPolyfills } from '@/services/nativeReplayParser/bufferUtils'
+
+// Setup polyfills for Node.js modules in browser
+ensureBufferPolyfills();
+
+// Create a client
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 1000 * 60 * 5, // 5 minutes
-      refetchOnWindowFocus: false,
+      retry: 1,
     },
   },
-});
+})
 
-// Explicit polyfill for process.nextTick using queueMicrotask
-if (typeof window !== 'undefined') {
-  if (typeof window.process === 'undefined') {
-    // Use 'as any' to bypass TypeScript's strict type checking
-    // This is acceptable as we're just creating a minimal polyfill
-    (window as any).process = { 
-      env: {},
-      nextTick: function(callback: Function, ...args: any[]) {
-        queueMicrotask(() => callback(...args));
-      }
-    };
-    console.log('✅ Explicit process.nextTick polyfill applied in main.tsx with queueMicrotask');
-  } else if (typeof window.process.nextTick !== 'function') {
-    // Add nextTick if process exists but nextTick doesn't
-    window.process.nextTick = function(callback: Function, ...args: any[]) {
-      queueMicrotask(() => callback(...args));
-    };
-    console.log('✅ Added process.nextTick using queueMicrotask to existing process object');
-  }
-}
-
-// Log environment details to help debugging
-console.log('Environment info:');
-console.log('- process exists:', typeof process !== 'undefined');
-console.log('- process.env exists:', typeof process !== 'undefined' && typeof process.env !== 'undefined');
-console.log('- process.nextTick exists:', typeof process !== 'undefined' && typeof process.nextTick === 'function');
-console.log('- window.process exists:', typeof window !== 'undefined' && typeof window.process !== 'undefined');
-
-// Make sure there's only ONE BrowserRouter wrapping the entire application
-ReactDOM.createRoot(document.getElementById('root')!).render(
+ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <App />
-          <Toaster />
+          <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+            <App />
+            <Toaster />
+          </ThemeProvider>
         </AuthProvider>
       </QueryClientProvider>
     </BrowserRouter>
   </React.StrictMode>,
-);
-
-// Log successful render
-console.log('✅ App successfully rendered');
+)

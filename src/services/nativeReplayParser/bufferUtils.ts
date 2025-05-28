@@ -9,15 +9,29 @@
  */
 export function arrayBufferToBuffer(arrayBuffer: ArrayBuffer): Buffer {
   // Check if Buffer is available (should be polyfilled)
-  if (typeof Buffer !== 'undefined') {
+  if (typeof Buffer !== 'undefined' && Buffer.from) {
     return Buffer.from(arrayBuffer);
   }
   
-  // Fallback: create a Buffer-like object
+  // Fallback: create a Buffer-like object with polyfill
   const uint8Array = new Uint8Array(arrayBuffer);
-  const bufferLike = Object.create(Buffer.prototype);
-  Object.assign(bufferLike, uint8Array);
-  return bufferLike;
+  
+  // Create a Buffer-like object that should work with screp-js
+  const bufferLike = Object.assign(new Uint8Array(arrayBuffer), {
+    constructor: Buffer,
+    // Add Buffer methods that screp-js might need
+    toString(encoding?: string) {
+      if (encoding === 'hex') {
+        return Array.from(this).map(b => b.toString(16).padStart(2, '0')).join('');
+      }
+      return new TextDecoder().decode(this);
+    },
+    slice(start?: number, end?: number) {
+      return this.subarray(start, end);
+    }
+  });
+  
+  return bufferLike as Buffer;
 }
 
 /**
@@ -32,18 +46,34 @@ export async function fileToBuffer(file: File): Promise<Buffer> {
  * Ensure Buffer polyfills are available
  */
 export function ensureBufferPolyfills(): boolean {
-  if (typeof Buffer === 'undefined') {
-    console.warn('[BufferUtils] Buffer polyfill not available');
-    return false;
+  // Check if global Buffer is available
+  if (typeof globalThis.Buffer === 'undefined') {
+    console.warn('[BufferUtils] Buffer polyfill not available, creating minimal implementation');
+    
+    // Create minimal Buffer implementation
+    globalThis.Buffer = {
+      from: (data: any) => {
+        if (data instanceof ArrayBuffer) {
+          return new Uint8Array(data);
+        }
+        if (typeof data === 'string') {
+          return new TextEncoder().encode(data);
+        }
+        return new Uint8Array(data);
+      },
+      alloc: (size: number) => new Uint8Array(size),
+      isBuffer: (obj: any) => obj instanceof Uint8Array
+    } as any;
   }
   
-  if (typeof process === 'undefined') {
-    // Create minimal process object for screp-js
-    (globalThis as any).process = {
+  // Ensure process object exists for screp-js
+  if (typeof globalThis.process === 'undefined') {
+    globalThis.process = {
       env: {},
       version: 'v16.0.0',
-      platform: 'browser'
-    };
+      platform: 'browser',
+      nextTick: (fn: Function) => setTimeout(fn, 0)
+    } as any;
   }
   
   return true;
@@ -54,10 +84,13 @@ export function ensureBufferPolyfills(): boolean {
  */
 export function safeBufferAlloc(size: number): Buffer {
   try {
-    return Buffer.alloc(size);
+    if (typeof Buffer !== 'undefined' && Buffer.alloc) {
+      return Buffer.alloc(size);
+    }
+    return arrayBufferToBuffer(new ArrayBuffer(size));
   } catch (error) {
     console.warn('[BufferUtils] Buffer.alloc failed, using fallback');
-    return Buffer.from(new ArrayBuffer(size));
+    return arrayBufferToBuffer(new ArrayBuffer(size));
   }
 }
 
@@ -71,10 +104,6 @@ export function toUint8Array(data: any): Uint8Array {
   
   if (data instanceof ArrayBuffer) {
     return new Uint8Array(data);
-  }
-  
-  if (Buffer.isBuffer(data)) {
-    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
   }
   
   if (data && typeof data.length === 'number') {
