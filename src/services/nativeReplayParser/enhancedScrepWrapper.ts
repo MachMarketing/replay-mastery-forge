@@ -1,4 +1,3 @@
-
 /**
  * Enhanced screp-js wrapper with native action parsing for Remastered replays
  * Combines screp-js metadata with detailed action extraction
@@ -35,10 +34,12 @@ export class EnhancedScrepWrapper {
     console.log('[EnhancedScrepWrapper] File:', file.name, 'Size:', file.size);
     const startTime = Date.now();
 
-    // Initialize debug info
+    // Initialize debug info with all properties
     const debugInfo = {
       screpJsSuccess: false,
       nativeParserSuccess: false,
+      screpJsError: undefined as string | undefined,
+      nativeParserError: undefined as string | undefined,
       actionsExtracted: 0,
       buildOrdersGenerated: 0
     };
