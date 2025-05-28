@@ -10,7 +10,7 @@ import (
 	"os"
 
 	"github.com/gorilla/mux"
-	"github.com/icza/screp"
+	"github.com/icza/screp/screp"
 	"github.com/icza/screp/rep"
 	"github.com/joho/godotenv"
 )
