@@ -1,4 +1,3 @@
-
 /**
  * Types for the native replay parser
  */
@@ -138,5 +137,12 @@ export interface DirectParserResult {
   eapm: number[];
   buildOrders: BuildOrderItem[][];
   totalFrames: number;
+  debugInfo?: {
+    commandsExtracted: number;
+    firstCommands: Record<number, string[]>;
+    firstUnits: Record<number, string[]>;
+    playerActionCounts: Record<number, number>;
+    apmBreakdown: Record<number, { build: number, train: number, select: number, move: number }>;
+  };
   error?: string;
 }
