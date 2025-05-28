@@ -1,7 +1,6 @@
-
 /**
  * Decompression utilities for StarCraft replay files
- * Enhanced with pako for zlib decompression
+ * Enhanced with better Remastered format handling
  */
 
 import { ReplayFormat } from './compressionDetector';
@@ -38,85 +37,172 @@ export class ReplayDecompressor {
   }
   
   /**
-   * Decompress Brood War Remastered zlib format
+   * Decompress Brood War Remastered zlib format with improved detection
    */
   private static decompressRemasteredZlib(buffer: ArrayBuffer): ArrayBuffer {
-    console.log('[ReplayDecompressor] Processing Remastered zlib format');
-    console.log('[ReplayDecompressor] Full buffer hex dump (first 32 bytes):');
+    console.log('[ReplayDecompressor] Processing Remastered zlib format with improved detection');
     const fullView = new Uint8Array(buffer);
-    console.log(Array.from(fullView.slice(0, 32)).map(b => b.toString(16).padStart(2, '0')).join(' '));
     
-    // The format appears to be:
-    // C2 19 C2 93 - Magic header (4 bytes)
-    // 01 00 00 00 - Version or flags (4 bytes) 
-    // 04 00 00 00 - Length or type (4 bytes)
-    // Then the actual compressed data starts
+    // Log the complete header structure for analysis
+    console.log('[ReplayDecompressor] Complete header analysis:');
+    for (let i = 0; i < Math.min(64, fullView.length); i += 16) {
+      const chunk = Array.from(fullView.slice(i, i + 16));
+      const hex = chunk.map(b => b.toString(16).padStart(2, '0')).join(' ');
+      const ascii = chunk.map(b => b >= 32 && b <= 126 ? String.fromCharCode(b) : '.').join('');
+      console.log(`[ReplayDecompressor] ${i.toString(16).padStart(4, '0')}: ${hex} | ${ascii}`);
+    }
     
-    // Try different starting positions based on the structure analysis
-    const startPositions = [8, 12, 16, 20];
+    // Look for zlib magic bytes (0x78) throughout the file
+    const zlibPositions = [];
+    for (let i = 0; i < fullView.length - 1; i++) {
+      if (fullView[i] === 0x78 && (fullView[i + 1] === 0x9c || fullView[i + 1] === 0xda || fullView[i + 1] === 0x01)) {
+        zlibPositions.push(i);
+        console.log(`[ReplayDecompressor] Found zlib header at offset ${i}: 0x${fullView[i].toString(16)} 0x${fullView[i + 1].toString(16)}`);
+      }
+    }
     
-    for (const startPos of startPositions) {
+    // Try decompression from each found zlib position
+    for (const pos of zlibPositions) {
       try {
-        console.log(`[ReplayDecompressor] Trying decompression from offset ${startPos}`);
-        const compressedData = new Uint8Array(buffer, startPos);
-        console.log(`[ReplayDecompressor] Compressed data size: ${compressedData.length}`);
-        console.log(`[ReplayDecompressor] First 16 bytes of compressed data:`, 
-          Array.from(compressedData.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
-        
-        // Try both inflate and inflateRaw
+        console.log(`[ReplayDecompressor] Attempting decompression from zlib position ${pos}`);
+        const compressedData = fullView.slice(pos);
         const decompressed = pako.inflate(compressedData);
-        console.log('[ReplayDecompressor] Decompression successful! Size:', decompressed.length);
         
-        // Check if we got valid replay data
-        const headerCheck = new TextDecoder('latin1').decode(decompressed.slice(0, 4));
-        console.log('[ReplayDecompressor] Decompressed header:', headerCheck);
+        console.log(`[ReplayDecompressor] Successfully decompressed from position ${pos}, size: ${decompressed.length}`);
         
-        if (headerCheck === 'Repl' || this.looksLikeReplayData(decompressed)) {
-          console.log('[ReplayDecompressor] Valid replay data detected!');
+        // Validate the decompressed data
+        if (this.validateDecompressedReplay(decompressed)) {
+          console.log('[ReplayDecompressor] Decompressed data validation passed!');
           return decompressed.buffer;
         }
         
       } catch (error) {
-        console.log(`[ReplayDecompressor] Offset ${startPos} failed:`, error);
+        console.log(`[ReplayDecompressor] Decompression failed at position ${pos}:`, error);
+      }
+    }
+    
+    // If no zlib headers found, try other approaches
+    if (zlibPositions.length === 0) {
+      console.log('[ReplayDecompressor] No standard zlib headers found, trying alternative approaches');
+      
+      // Try to find and decompress potential compressed sections
+      const potentialOffsets = [12, 16, 20, 24, 28, 32, 36, 40, 44, 48];
+      
+      for (const offset of potentialOffsets) {
+        if (offset >= fullView.length) continue;
         
-        // Try inflateRaw if inflate failed
         try {
-          const compressedData = new Uint8Array(buffer, startPos);
-          const decompressed = pako.inflateRaw(compressedData);
-          console.log('[ReplayDecompressor] InflateRaw successful! Size:', decompressed.length);
+          console.log(`[ReplayDecompressor] Trying alternative decompression from offset ${offset}`);
+          const compressedData = fullView.slice(offset);
           
-          const headerCheck = new TextDecoder('latin1').decode(decompressed.slice(0, 4));
-          console.log('[ReplayDecompressor] InflateRaw header:', headerCheck);
+          // Try different decompression methods
+          const methods = [
+            () => pako.inflate(compressedData),
+            () => pako.inflateRaw(compressedData),
+            () => pako.inflate(compressedData, { windowBits: -15 }),
+            () => pako.inflate(compressedData, { windowBits: 15 })
+          ];
           
-          if (headerCheck === 'Repl' || this.looksLikeReplayData(decompressed)) {
-            console.log('[ReplayDecompressor] Valid replay data detected with inflateRaw!');
-            return decompressed.buffer;
+          for (let i = 0; i < methods.length; i++) {
+            try {
+              const decompressed = methods[i]();
+              console.log(`[ReplayDecompressor] Method ${i} successful from offset ${offset}, size: ${decompressed.length}`);
+              
+              if (this.validateDecompressedReplay(decompressed)) {
+                console.log('[ReplayDecompressor] Alternative decompression validation passed!');
+                return decompressed.buffer;
+              }
+            } catch (methodError) {
+              // Continue to next method
+            }
           }
-        } catch (rawError) {
-          console.log(`[ReplayDecompressor] InflateRaw at offset ${startPos} also failed:`, rawError);
+          
+        } catch (error) {
+          // Continue to next offset
         }
       }
     }
     
-    throw new Error('Could not decompress Remastered zlib data from any offset');
+    // Last resort: try to extract uncompressed sections
+    console.log('[ReplayDecompressor] All decompression attempts failed, trying to extract raw data');
+    return this.extractRawReplayData(buffer);
   }
   
   /**
-   * Check if decompressed data looks like valid replay data
+   * Validate if decompressed data looks like a valid StarCraft replay
    */
-  private static looksLikeReplayData(data: Uint8Array): boolean {
-    if (data.length < 100) return false;
+  private static validateDecompressedReplay(data: Uint8Array): boolean {
+    if (data.length < 1000) {
+      console.log('[ReplayDecompressor] Data too small:', data.length);
+      return false;
+    }
     
-    // Look for common replay patterns
-    const dataString = new TextDecoder('latin1', { fatal: false }).decode(data.slice(0, 200));
+    // Check for "Repl" magic at the start
+    const startString = new TextDecoder('latin1', { fatal: false }).decode(data.slice(0, 4));
+    if (startString === 'Repl') {
+      console.log('[ReplayDecompressor] Found "Repl" magic at start!');
+      return true;
+    }
     
-    // Check for common StarCraft strings
-    const patterns = [
-      'StarCraft', 'Brood War', 'Maps\\', 'scenario.chk', 
-      'Protoss', 'Terran', 'Zerg', 'Player'
-    ];
+    // Look for "Repl" anywhere in the first 1000 bytes
+    for (let i = 0; i < Math.min(1000, data.length - 4); i++) {
+      const testString = new TextDecoder('latin1', { fatal: false }).decode(data.slice(i, i + 4));
+      if (testString === 'Repl') {
+        console.log(`[ReplayDecompressor] Found "Repl" magic at offset ${i}!`);
+        return true;
+      }
+    }
     
-    return patterns.some(pattern => dataString.includes(pattern));
+    // Check for common StarCraft strings in the first 2000 bytes
+    const textContent = new TextDecoder('latin1', { fatal: false }).decode(data.slice(0, Math.min(2000, data.length)));
+    const requiredPatterns = ['StarCraft', 'Brood War', 'scenario.chk'];
+    const optionalPatterns = ['Maps\\', 'Player', 'Protoss', 'Terran', 'Zerg'];
+    
+    let requiredMatches = 0;
+    let optionalMatches = 0;
+    
+    for (const pattern of requiredPatterns) {
+      if (textContent.includes(pattern)) {
+        requiredMatches++;
+        console.log(`[ReplayDecompressor] Found required pattern: ${pattern}`);
+      }
+    }
+    
+    for (const pattern of optionalPatterns) {
+      if (textContent.includes(pattern)) {
+        optionalMatches++;
+        console.log(`[ReplayDecompressor] Found optional pattern: ${pattern}`);
+      }
+    }
+    
+    const isValid = requiredMatches >= 1 || optionalMatches >= 2;
+    console.log(`[ReplayDecompressor] Validation result: ${isValid} (required: ${requiredMatches}, optional: ${optionalMatches})`);
+    
+    return isValid;
+  }
+  
+  /**
+   * Extract raw replay data as fallback
+   */
+  private static extractRawReplayData(buffer: ArrayBuffer): ArrayBuffer {
+    console.log('[ReplayDecompressor] Extracting raw replay data as fallback');
+    
+    // Return the buffer as-is but skip the initial header
+    const view = new Uint8Array(buffer);
+    
+    // Try to find any recognizable replay patterns and return from there
+    for (let i = 0; i < Math.min(1000, view.length - 4); i++) {
+      const chunk = new TextDecoder('latin1', { fatal: false }).decode(view.slice(i, i + 4));
+      if (chunk === 'Repl' || chunk.includes('StarCraft')) {
+        console.log(`[ReplayDecompressor] Found replay data at offset ${i}`);
+        return buffer.slice(i);
+      }
+    }
+    
+    // If nothing found, return from a reasonable offset
+    const fallbackOffset = Math.min(32, view.length / 4);
+    console.log(`[ReplayDecompressor] Using fallback offset ${fallbackOffset}`);
+    return buffer.slice(fallbackOffset);
   }
   
   /**

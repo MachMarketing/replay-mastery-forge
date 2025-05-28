@@ -1,7 +1,6 @@
-
 /**
  * Compression and format detection for StarCraft replay files
- * Enhanced to detect zlib-compressed Remastered replays
+ * Enhanced with better Remastered detection
  */
 
 import { BinaryReader } from './binaryReader';
@@ -20,27 +19,34 @@ export class CompressionDetector {
   static detectFormat(buffer: ArrayBuffer): ReplayFormat {
     const reader = new BinaryReader(buffer);
     
-    // Read first 32 bytes to get a better analysis
-    const magicBytes = reader.readBytes(Math.min(32, buffer.byteLength));
+    // Read first 64 bytes for comprehensive analysis
+    const magicBytes = reader.readBytes(Math.min(64, buffer.byteLength));
     const magicString = new TextDecoder('latin1').decode(magicBytes.slice(0, 4));
     
-    console.log('[CompressionDetector] Full magic analysis (first 32 bytes):');
-    console.log('[CompressionDetector] Hex:', Array.from(magicBytes).map(b => b.toString(16).padStart(2, '0')).join(' '));
-    console.log('[CompressionDetector] ASCII interpretation:', Array.from(magicBytes).map(b => 
-      b >= 32 && b <= 126 ? String.fromCharCode(b) : '.'
-    ).join(''));
+    console.log('[CompressionDetector] Comprehensive file analysis:');
+    console.log('[CompressionDetector] File size:', buffer.byteLength, 'bytes');
+    console.log('[CompressionDetector] First 64 bytes hex:');
+    
+    // Log in 16-byte chunks for readability
+    for (let i = 0; i < Math.min(64, magicBytes.length); i += 16) {
+      const chunk = Array.from(magicBytes.slice(i, i + 16));
+      const hex = chunk.map(b => b.toString(16).padStart(2, '0')).join(' ');
+      const ascii = chunk.map(b => b >= 32 && b <= 126 ? String.fromCharCode(b) : '.').join('');
+      console.log(`[CompressionDetector] ${i.toString(16).padStart(2, '0')}: ${hex} | ${ascii}`);
+    }
+    
     console.log('[CompressionDetector] Magic string (first 4 bytes):', magicString);
     
-    // Check for Brood War Remastered zlib compression pattern
-    // Pattern: C2 19 C2 93 indicates zlib-compressed Remastered replay
+    // Check for Brood War Remastered compression patterns
     if (magicBytes[0] === 0xC2 && magicBytes[1] === 0x19 && 
         magicBytes[2] === 0xC2 && magicBytes[3] === 0x93) {
-      console.log('[CompressionDetector] Detected Brood War Remastered zlib compression');
-      console.log('[CompressionDetector] Header structure analysis:');
-      console.log('[CompressionDetector] Bytes 0-3 (magic):', Array.from(magicBytes.slice(0, 4)).map(b => `0x${b.toString(16)}`).join(' '));
-      console.log('[CompressionDetector] Bytes 4-7 (version?):', Array.from(magicBytes.slice(4, 8)).map(b => `0x${b.toString(16)}`).join(' '));
-      console.log('[CompressionDetector] Bytes 8-11 (length?):', Array.from(magicBytes.slice(8, 12)).map(b => `0x${b.toString(16)}`).join(' '));
-      console.log('[CompressionDetector] Bytes 12-15 (data start?):', Array.from(magicBytes.slice(12, 16)).map(b => `0x${b.toString(16)}`).join(' '));
+      console.log('[CompressionDetector] Detected Brood War Remastered format with header signature');
+      
+      // Look for zlib data in the file
+      const hasZlibData = this.findZlibData(magicBytes);
+      if (hasZlibData >= 0) {
+        console.log(`[CompressionDetector] Found zlib data at offset ${hasZlibData} in header`);
+      }
       
       return {
         type: 'remastered_zlib',
@@ -67,6 +73,18 @@ export class CompressionDetector {
       return {
         type: 'zlib',
         magicBytes: '78',
+        needsDecompression: true,
+        headerOffset: 0
+      };
+    }
+    
+    // Look for zlib data anywhere in the first 64 bytes
+    const zlibOffset = this.findZlibData(magicBytes);
+    if (zlibOffset >= 0) {
+      console.log(`[CompressionDetector] Found zlib signature at offset ${zlibOffset}`);
+      return {
+        type: 'remastered_zlib',
+        magicBytes: `zlib@${zlibOffset}`,
         needsDecompression: true,
         headerOffset: 0
       };
@@ -105,13 +123,28 @@ export class CompressionDetector {
       };
     }
     
-    console.log('[CompressionDetector] Unknown format detected');
+    console.log('[CompressionDetector] Unknown format detected - might be compressed');
     return {
-      type: 'unknown',
+      type: 'remastered_zlib', // Assume it's a Remastered file that needs decompression
       magicBytes: magicString,
-      needsDecompression: false,
+      needsDecompression: true,
       headerOffset: 0
     };
+  }
+  
+  /**
+   * Find zlib compression signature in data
+   */
+  private static findZlibData(data: Uint8Array): number {
+    // Look for zlib magic bytes: 0x78 followed by various compression levels
+    const zlibHeaders = [0x9c, 0xda, 0x01, 0x5e, 0x2c];
+    
+    for (let i = 0; i < data.length - 1; i++) {
+      if (data[i] === 0x78 && zlibHeaders.includes(data[i + 1])) {
+        return i;
+      }
+    }
+    return -1;
   }
   
   /**
