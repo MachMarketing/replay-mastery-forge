@@ -1,0 +1,129 @@
+
+/**
+ * Data mapping layer for converting DirectParser results to UI format
+ */
+
+import { DirectParserResult, BuildOrderItem } from './types';
+import { EnhancedReplayData } from './enhancedScrepWrapper';
+
+/**
+ * Converts frame number to timestamp string "mm:ss"
+ */
+export function frameToTimestamp(frame: number): string {
+  const totalSeconds = Math.floor(frame / 24);
+  const minutes = String(Math.floor(totalSeconds / 60)).padStart(1, '0');
+  const seconds = String(totalSeconds % 60).padStart(2, '0');
+  return `${minutes}:${seconds}`;
+}
+
+/**
+ * Estimates supply based on game progression (fallback)
+ */
+export function estimateSupply(frame: number, playerActions: any[]): number {
+  // Rough estimate: 1 supply every 20 seconds starting from 4
+  const baseSupply = 4;
+  const timeBasedSupply = Math.floor((frame / 24) / 20) * 2;
+  
+  // Count actual units built for better estimation
+  const unitsBuilt = playerActions.filter(action => 
+    action.type === 'Train' || action.type === 'Build'
+  ).length;
+  
+  return Math.max(baseSupply + timeBasedSupply + unitsBuilt, baseSupply);
+}
+
+/**
+ * Maps DirectParser build orders to UI format
+ */
+export function mapBuildOrdersToUI(buildOrders: BuildOrderItem[][], playerActions: Record<number, any[]>): Array<Array<{ timestamp: string; action: string; supply: number }>> {
+  return buildOrders.map((playerBuildOrder, playerIndex) => {
+    const actions = playerActions[playerIndex] || [];
+    
+    return playerBuildOrder.map(item => ({
+      timestamp: item.timestamp || frameToTimestamp(item.frame),
+      action: item.action,
+      supply: item.supply || estimateSupply(item.frame, actions)
+    }));
+  });
+}
+
+/**
+ * Maps DirectParser player actions to enhanced format
+ */
+export function mapPlayerActionsToUI(playerActions: Record<number, any[]>, totalFrames: number): Array<{ id: number; apm: number; eapm: number; actions: any[] }> {
+  const gameMinutes = totalFrames / 24 / 60;
+  
+  return Object.entries(playerActions).map(([playerIdStr, actions]) => {
+    const playerId = parseInt(playerIdStr);
+    
+    // Filter effective actions (exclude sync frames and selections)
+    const effectiveActions = actions.filter(action => 
+      !['Sync', 'Select'].includes(action.type) && 
+      ![0x00, 0x01, 0x02, 0x09, 0x0A, 0x0B].includes(action.cmdId)
+    );
+    
+    const apm = gameMinutes > 0 ? Math.round(actions.length / gameMinutes) : 0;
+    const eapm = gameMinutes > 0 ? Math.round(effectiveActions.length / gameMinutes) : 0;
+    
+    return {
+      id: playerId,
+      apm,
+      eapm,
+      actions
+    };
+  });
+}
+
+/**
+ * Main mapping function: DirectParser data → UI format
+ */
+export function mapDirectReplayDataToUI(directData: DirectParserResult): {
+  buildOrders: Array<Array<{ timestamp: string; action: string; supply: number }>>;
+  playerStats: Array<{ id: number; apm: number; eapm: number; actions: any[] }>;
+  enhanced: {
+    actionsExtracted: number;
+    buildOrdersGenerated: number;
+    validationData: any;
+  };
+} {
+  console.log('[DataMapper] Mapping DirectParser data to UI format');
+  
+  const buildOrders = mapBuildOrdersToUI(directData.buildOrders, directData.playerActions);
+  const playerStats = mapPlayerActionsToUI(directData.playerActions, directData.totalFrames);
+  
+  // Generate validation data for debug UI
+  const validationData: any = { playersWithActions: {} };
+  
+  Object.entries(directData.playerActions).forEach(([playerIdStr, actions]) => {
+    const playerId = parseInt(playerIdStr);
+    const firstCommands = actions.slice(0, 5).map(cmd => `0x${cmd.cmdId.toString(16).padStart(2, '0')}`);
+    const firstUnits = actions.filter(cmd => cmd.unitName).slice(0, 3).map(cmd => cmd.unitName);
+    const realisticAPM = playerStats.find(p => p.id === playerId)?.apm || 0;
+    
+    validationData.playersWithActions[playerId] = {
+      detectedCommands: actions.length,
+      firstCommands,
+      firstUnits,
+      realisticAPM,
+      apmBreakdown: {
+        build: actions.filter(a => a.type === 'Build').length,
+        train: actions.filter(a => a.type === 'Train').length,
+        select: actions.filter(a => a.type === 'Select').length,
+        move: actions.filter(a => a.type === 'Move').length
+      }
+    };
+  });
+  
+  console.log('[DataMapper] Mapped build orders for', buildOrders.length, 'players');
+  console.log('[DataMapper] Mapped player stats:', playerStats.map(p => ({ id: p.id, apm: p.apm })));
+  
+  return {
+    buildOrders,
+    playerStats,
+    enhanced: {
+      actionsExtracted: directData.commands.length,
+      buildOrdersGenerated: directData.buildOrders.reduce((sum, bo) => sum + bo.length, 0),
+      validationData
+    }
+  };
+}

@@ -1,4 +1,3 @@
-
 /**
  * Enhanced screp-js wrapper with native action parsing for Remastered replays
  * Combines screp-js metadata with detailed action extraction
@@ -7,6 +6,7 @@
 import { ScrepJsWrapper, ScrepJsResult } from './screpJsWrapper';
 import { RemasteredActionParser, RemasteredActionData } from './remasteredActionParser';
 import { DirectReplayParser, DirectParserResult } from './directReplayParser';
+import { mapDirectReplayDataToUI } from './dataMapper';
 
 export interface EnhancedReplayData extends ScrepJsResult {
   enhanced: {
@@ -231,7 +231,8 @@ export class EnhancedScrepWrapper {
       this.enhanceWithDirectParserData(screpResult, directParserData);
       
       // Generate validation data for UI
-      validationData = this.generateValidationData(directParserData);
+      const mappedData = mapDirectReplayDataToUI(directParserData);
+      validationData = mappedData.enhanced.validationData;
       
     } else if (nativeParserRealistic && actionData) {
       // Native parser has realistic results (fallback)
@@ -406,20 +407,16 @@ export class EnhancedScrepWrapper {
   }
 
   /**
-   * Enhance screp-js data with direct parser results
+   * Enhance screp-js data with direct parser results using data mapper
    */
   private static enhanceWithDirectParserData(screpResult: ScrepJsResult, directData: DirectParserResult): void {
-    console.log('[EnhancedScrepWrapper] Enhancing screp-js data with direct parser results');
+    console.log('[EnhancedScrepWrapper] Enhancing screp-js data with direct parser results using data mapper');
     
-    // Update build orders with direct parser data
-    screpResult.computed.buildOrders = directData.buildOrders.map(buildOrder => 
-      buildOrder.map(action => ({
-        frame: action.frame,
-        timestamp: action.timestamp,
-        action: action.action,
-        supply: action.supply
-      }))
-    );
+    // Use data mapper to convert DirectParser data to UI format
+    const mappedData = mapDirectReplayDataToUI(directData);
+    
+    // Update build orders with properly formatted data
+    screpResult.computed.buildOrders = mappedData.buildOrders;
     
     // Update APM/EAPM with direct parser calculations
     if (directData.apm.length > 0) {
@@ -427,12 +424,9 @@ export class EnhancedScrepWrapper {
       console.log('[EnhancedScrepWrapper] Direct parser APM:', directData.apm);
       console.log('[EnhancedScrepWrapper] Direct parser EAPM:', directData.eapm);
       
-      // Use direct parser APM if it's more reasonable
-      if (directData.apm.some(apm => apm > 0)) {
-        screpResult.computed.apm = directData.apm;
-        screpResult.computed.eapm = directData.eapm;
-        console.log('[EnhancedScrepWrapper] Updated APM/EAPM with direct parser data');
-      }
+      screpResult.computed.apm = directData.apm;
+      screpResult.computed.eapm = directData.eapm;
+      console.log('[EnhancedScrepWrapper] Updated APM/EAPM with direct parser data');
     }
     
     // Update frame count if direct parser found more
@@ -445,6 +439,11 @@ export class EnhancedScrepWrapper {
       screpResult.header.durationMs = durationMs;
       console.log('[EnhancedScrepWrapper] Updated duration based on direct parser frames');
     }
+    
+    console.log('[EnhancedScrepWrapper] Enhanced data mapping complete');
+    console.log('  - Build orders mapped for', mappedData.buildOrders.length, 'players');
+    console.log('  - Actions extracted:', mappedData.enhanced.actionsExtracted);
+    console.log('  - Build orders generated:', mappedData.enhanced.buildOrdersGenerated);
   }
 
   /**
