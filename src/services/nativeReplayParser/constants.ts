@@ -1,3 +1,4 @@
+
 /**
  * StarCraft: Brood War constants and data structures
  */
@@ -75,7 +76,7 @@ export const UNIT_IDS = {
   // Terran
   7: 'SCV',
   0: 'Marine',
-  1: 'Firebat',
+  32: 'Firebat',
   34: 'Medic',
   1: 'Ghost',
   2: 'Vulture',
