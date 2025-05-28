@@ -3,7 +3,7 @@
  * SIMPLIFIED screp-js parser - ONLY screp-js, no fallbacks
  */
 
-import { ScrepJsWrapper, ReplayParseResult } from './screpJsWrapper';
+import { ScrepJsWrapper, ScrepJsResult } from './screpJsWrapper'; // Fixed: import ScrepJsResult
 
 export interface ScrepPlayer {
   name: string;
@@ -70,7 +70,7 @@ export class ScrepParser {
     return this.convertToScrepFormat(result);
   }
 
-  private static convertToScrepFormat(result: ReplayParseResult): ScrepReplayData {
+  private static convertToScrepFormat(result: ScrepJsResult): ScrepReplayData { // Fixed: use ScrepJsResult
     console.log('[ScrepParser] Converting screp-js result to format');
     console.log('[ScrepParser] Raw screp result players:', result.players.map(p => p.name));
     
@@ -106,9 +106,9 @@ export class ScrepParser {
       };
     });
 
-    // Use real APM data from screp-js
-    const apm = result.computed.playerAPM;
-    const eapm = result.computed.playerEAPM;
+    // Use real APM data from screp-js - fixed property names
+    const apm = result.computed.apm;
+    const eapm = result.computed.eapm;
     const buildOrders = result.computed.buildOrders;
     
     console.log('[ScrepParser] Final player data:', players.map(p => `${p.name} (${p.race})`));

@@ -152,15 +152,15 @@ export class ReplayAnalyzer {
       
       const result = await wrapper.parseReplay(file);
       
-      // Extract detailed data for display
+      // Extract detailed data for display - fix the property names
       const extractedData = {
         mapName: result.header.mapName || 'Unknown',
         playersFound: result.players.length,
         playerNames: result.players.map(p => p.name),
         totalFrames: result.header.frames || 0,
         duration: result.header.duration || '0:00',
-        apm: result.computed.playerAPM || [],
-        eapm: result.computed.playerEAPM || []
+        apm: result.computed.apm || [], // Fixed: use apm instead of playerAPM
+        eapm: result.computed.eapm || [] // Fixed: use eapm instead of playerEAPM
       };
       
       return {
