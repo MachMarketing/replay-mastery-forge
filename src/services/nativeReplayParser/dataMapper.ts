@@ -1,12 +1,13 @@
 
 /**
- * Enhanced data mapping with improved build order generation
+ * Enhanced data mapping with improved build order generation and Command ID mapping
  */
 
 import { DirectParserResult, BuildOrderItem } from './types';
 import { EnhancedReplayData } from './enhancedScrepWrapper';
 import { BWAPICommandEngine, REMASTERED_FPS } from './bwapi/commandEngine';
-import { UNIT_NAMES, BUILDING_NAMES } from './bwRemastered/constants';
+import { BuildOrderMapper, calculateAPM, calculateEAPM, EnhancedBuildOrder } from './buildOrderMapper';
+import { getUnitName, getUnitInfo, categorizeAction } from './commandMapper';
 
 /**
  * Converts frame number to timestamp string "mm:ss" with Remastered FPS
@@ -19,7 +20,7 @@ export function frameToTimestamp(frame: number): string {
 }
 
 /**
- * Enhanced supply estimation based on actual commands
+ * Enhanced supply estimation based on actual unit costs
  */
 export function estimateSupply(frame: number, playerActions: any[], commandIndex: number): number {
   const baseSupply = 4; // Starting supply
@@ -27,153 +28,63 @@ export function estimateSupply(frame: number, playerActions: any[], commandIndex
   // Count actual supply-affecting buildings and units up to this point
   const relevantActions = playerActions.slice(0, commandIndex + 1);
   let supplyFromBuildings = 0;
-  let unitsBuilt = 0;
+  let supplyUsed = 0;
   
   for (const action of relevantActions) {
     if (action.parameters && action.parameters.unitTypeId) {
-      const unitId = action.parameters.unitTypeId;
+      const unitInfo = getUnitInfo(action.parameters.unitTypeId);
       
-      // Supply buildings (rough estimates)
-      if ([84, 85, 86].includes(unitId)) { // Pylon, Overlord, Supply Depot
-        supplyFromBuildings += 8;
-      }
-      
-      // Count units for supply usage estimation
-      if ([0x0C, 0x14, 0x1D].includes(action.type)) {
-        unitsBuilt++;
+      if (unitInfo) {
+        // Supply buildings
+        if (['Pylon', 'Overlord', 'Supply Depot'].includes(unitInfo.name)) {
+          supplyFromBuildings += 8;
+        }
+        
+        // Supply usage
+        if (unitInfo.supplyCost && unitInfo.supplyCost > 0) {
+          supplyUsed += unitInfo.supplyCost;
+        }
       }
     }
   }
   
-  const timeBasedSupply = Math.floor((frame / REMASTERED_FPS) / 30) * 2; // Slower progression
-  const estimatedUsed = Math.min(baseSupply + Math.floor(unitsBuilt * 1.2), 200);
-  
-  return Math.max(estimatedUsed, baseSupply + timeBasedSupply);
+  return Math.max(baseSupply + supplyUsed, baseSupply);
 }
 
 /**
- * Get unit/building name with enhanced mapping
+ * Enhanced Build Order Mapping with new mapper
  */
-export function getUnitName(unitId: number): string {
-  const unitName = UNIT_NAMES[unitId as keyof typeof UNIT_NAMES];
-  const buildingName = BUILDING_NAMES[unitId as keyof typeof BUILDING_NAMES];
+export function mapBuildOrdersToUI(
+  buildOrders: BuildOrderItem[][], 
+  playerActions: Record<number, any[]>
+): Array<Array<{ frame: number; timestamp: string; action: string; supply: number; unitName?: string; category?: string }>> {
   
-  if (unitName) return unitName;
-  if (buildingName) return buildingName;
-  
-  // Fallback with some common IDs
-  const commonUnits: Record<number, string> = {
-    0: 'Marine',
-    1: 'Ghost',
-    2: 'Vulture',
-    3: 'Goliath',
-    7: 'SCV',
-    41: 'Zealot',
-    42: 'Dragoon',
-    43: 'High Templar',
-    64: 'Probe',
-    37: 'Zergling',
-    38: 'Hydralisk',
-    46: 'Drone'
-  };
-  
-  return commonUnits[unitId] || `Unit_${unitId}`;
-}
-
-/**
- * Enhanced Build Order Mapping with better command filtering
- */
-export function mapBuildOrdersToUI(buildOrders: BuildOrderItem[][], playerActions: Record<number, any[]>): Array<Array<{ frame: number; timestamp: string; action: string; supply: number; unitName?: string; category?: string }>> {
   return buildOrders.map((playerBuildOrder, playerIndex) => {
     const actions = playerActions[playerIndex] || [];
     
-    // If build order is empty, try to generate from actions directly
-    let workingBuildOrder = playerBuildOrder;
-    if (workingBuildOrder.length === 0) {
-      workingBuildOrder = generateBuildOrderFromActions(actions);
-    }
+    // Use enhanced build order mapper
+    const enhancedBuildOrder = BuildOrderMapper.convertActionsToBuildOrder(actions, `Player ${playerIndex + 1}`);
     
-    return workingBuildOrder.map((item, index) => {
-      let actionName = item.action;
-      let unitName: string | undefined;
-      let category: string | undefined;
-      
-      // Enhanced action name resolution
-      const matchingAction = actions.find(action => 
-        Math.abs(action.frame - item.frame) <= 5 // Increased tolerance
-      );
-      
-      if (matchingAction && matchingAction.parameters) {
-        const unitId = matchingAction.parameters.unitTypeId;
-        if (unitId !== undefined) {
-          unitName = getUnitName(unitId);
-          
-          // Determine action type based on command
-          if (matchingAction.type === 0x0C || matchingAction.type === 0x20) {
-            actionName = `Build ${unitName}`;
-          } else if (matchingAction.type === 0x14 || matchingAction.type === 0x1D) {
-            actionName = `Train ${unitName}`;
-          } else {
-            actionName = `${item.action} ${unitName}`;
-          }
-        }
-        
-        if (matchingAction.type !== undefined) {
-          category = BWAPICommandEngine.categorizeCommand(matchingAction.type);
-        }
-      }
-      
-      return {
-        frame: item.frame,
-        timestamp: item.timestamp || frameToTimestamp(item.frame),
-        action: actionName,
-        supply: item.supply || estimateSupply(item.frame, actions, index),
-        unitName,
-        category
-      };
+    console.log(`[DataMapper] Enhanced build order for Player ${playerIndex + 1}:`, {
+      race: enhancedBuildOrder.race,
+      entries: enhancedBuildOrder.entries.length,
+      efficiency: enhancedBuildOrder.efficiency.overallGrade
     });
+    
+    // Convert enhanced entries to UI format
+    return enhancedBuildOrder.entries.map(entry => ({
+      frame: entry.frame,
+      timestamp: entry.time,
+      action: entry.action,
+      supply: entry.supply,
+      unitName: entry.unitName,
+      category: entry.category
+    }));
   });
 }
 
 /**
- * Generate build order directly from actions if none exists
- */
-function generateBuildOrderFromActions(actions: any[]): BuildOrderItem[] {
-  const buildActions = actions.filter(action => {
-    if (typeof action.type === 'number') {
-      return [0x0C, 0x14, 0x1D, 0x20].includes(action.type);
-    }
-    if (typeof action.typeString === 'string') {
-      return ['Build', 'Train', 'Build Self'].includes(action.typeString);
-    }
-    return false;
-  });
-  
-  return buildActions.slice(0, 30).map((action, index) => {
-    let actionType = 'Build';
-    
-    if (action.type === 0x14 || action.type === 0x1D) {
-      actionType = 'Train';
-    } else if (action.type === 0x20) {
-      actionType = 'Morph';
-    }
-    
-    let unitName = '';
-    if (action.parameters && action.parameters.unitTypeId) {
-      unitName = getUnitName(action.parameters.unitTypeId);
-    }
-    
-    return {
-      frame: action.frame,
-      timestamp: frameToTimestamp(action.frame),
-      action: unitName ? `${actionType} ${unitName}` : actionType,
-      supply: estimateSupply(action.frame, buildActions, index)
-    };
-  });
-}
-
-/**
- * Enhanced Player Actions Mapping with realistic APM
+ * Enhanced Player Actions Mapping with realistic APM calculation
  */
 export function mapPlayerActionsToUI(playerActions: Record<number, any[]>, totalFrames: number): Array<{ id: number; apm: number; eapm: number; actions: any[]; quality: string }> {
   const gameMinutes = totalFrames / REMASTERED_FPS / 60;
@@ -181,38 +92,30 @@ export function mapPlayerActionsToUI(playerActions: Record<number, any[]>, total
   return Object.entries(playerActions).map(([playerIdStr, actions]) => {
     const playerId = parseInt(playerIdStr);
     
-    // Enhanced effective action filtering
-    const effectiveActions = actions.filter(action => {
-      if (typeof action.type === 'number') {
-        return BWAPICommandEngine.isEffectiveAction(action.type);
-      }
-      if (typeof action.typeString === 'string') {
-        return !['Frame Increment', 'Frame Skip', 'Select Units', 'Sync'].includes(action.typeString);
-      }
-      return true;
-    });
+    // Use enhanced APM calculation
+    const apm = calculateAPM(actions, totalFrames);
+    const eapm = calculateEAPM(actions, totalFrames);
     
-    const totalActionCount = actions.length;
-    const effectiveActionCount = effectiveActions.length;
-    
-    const apmValidation = BWAPICommandEngine.validateAPM(
-      totalActionCount, 
-      effectiveActionCount, 
-      gameMinutes
-    );
+    // Enhanced quality assessment
+    let quality = 'unknown';
+    if (apm > 180) quality = 'professional';
+    else if (apm > 120) quality = 'advanced';
+    else if (apm > 80) quality = 'intermediate';
+    else if (apm > 40) quality = 'beginner';
+    else quality = 'learning';
     
     return {
       id: playerId,
-      apm: apmValidation.apm,
-      eapm: apmValidation.eapm,
+      apm,
+      eapm,
       actions,
-      quality: apmValidation.quality
+      quality
     };
   });
 }
 
 /**
- * Main mapping function with enhanced validation
+ * Main mapping function with enhanced Command ID integration
  */
 export function mapDirectReplayDataToUI(directData: DirectParserResult): {
   buildOrders: Array<Array<{ frame: number; timestamp: string; action: string; supply: number; unitName?: string; category?: string }>>;
@@ -224,9 +127,10 @@ export function mapDirectReplayDataToUI(directData: DirectParserResult): {
     gameDuration: string;
     averageAPM: number;
     realisticDataQuality: string;
+    enhancedBuildOrders?: EnhancedBuildOrder[];
   };
 } {
-  console.log('[DataMapper] Enhanced mapping with improved build order generation');
+  console.log('[DataMapper] Enhanced mapping with Command ID integration');
   
   const buildOrders = mapBuildOrdersToUI(directData.buildOrders, directData.playerActions);
   const playerStats = mapPlayerActionsToUI(directData.playerActions, directData.totalFrames);
@@ -235,13 +139,21 @@ export function mapDirectReplayDataToUI(directData: DirectParserResult): {
   const totalCommands = directData.commands.length;
   const averageAPM = playerStats.reduce((sum, p) => sum + p.apm, 0) / Math.max(playerStats.length, 1);
   
+  // Generate enhanced build orders for additional analysis
+  const enhancedBuildOrders: EnhancedBuildOrder[] = [];
+  Object.entries(directData.playerActions).forEach(([playerIdStr, actions]) => {
+    const playerId = parseInt(playerIdStr);
+    const enhancedBO = BuildOrderMapper.convertActionsToBuildOrder(actions, `Player ${playerId + 1}`);
+    enhancedBuildOrders.push(enhancedBO);
+  });
+  
   const commandValidation = BWAPICommandEngine.validateCommandCount(
     totalCommands, 
     gameDurationMinutes, 
     playerStats.length
   );
   
-  // Enhanced validation data
+  // Enhanced validation data with Command ID mapping
   const validationData: any = { 
     playersWithActions: {},
     gameMetrics: {
@@ -251,6 +163,12 @@ export function mapDirectReplayDataToUI(directData: DirectParserResult): {
       commandQuality: commandValidation.quality,
       expectedCommandRange: commandValidation.expectedRange,
       buildOrdersFound: buildOrders.reduce((sum, bo) => sum + bo.length, 0)
+    },
+    enhancedFeatures: {
+      commandIdMapping: true,
+      raceDetection: enhancedBuildOrders.map(bo => bo.race),
+      buildOrderBenchmarks: enhancedBuildOrders.map(bo => bo.benchmarks.length),
+      efficiencyGrades: enhancedBuildOrders.map(bo => bo.efficiency.overallGrade)
     }
   };
   
@@ -258,11 +176,12 @@ export function mapDirectReplayDataToUI(directData: DirectParserResult): {
     const playerId = parseInt(playerIdStr);
     const playerStat = playerStats.find(p => p.id === playerId);
     const playerBuildOrder = buildOrders[playerId] || [];
+    const enhancedBO = enhancedBuildOrders[playerId];
     
-    const buildActions = actions.filter(a => 
-      (typeof a.type === 'number' && [0x0C, 0x14, 0x1D, 0x20].includes(a.type)) ||
-      (typeof a.typeString === 'string' && ['Build', 'Train', 'Build Self'].includes(a.typeString))
-    );
+    const buildActions = actions.filter(a => {
+      const category = categorizeAction(a.type || a.commandId, a.parameters?.unitTypeId);
+      return ['build', 'train', 'tech'].includes(category);
+    });
     
     const firstUnits = buildActions
       .slice(0, 5)
@@ -270,7 +189,7 @@ export function mapDirectReplayDataToUI(directData: DirectParserResult): {
         if (cmd.parameters && cmd.parameters.unitTypeId) {
           return getUnitName(cmd.parameters.unitTypeId);
         }
-        return cmd.unitName || (typeof cmd.typeString === 'string' ? cmd.typeString : 'Unknown');
+        return cmd.unitName || 'Unknown';
       });
     
     validationData.playersWithActions[playerId] = {
@@ -280,7 +199,10 @@ export function mapDirectReplayDataToUI(directData: DirectParserResult): {
       apm: playerStat?.apm || 0,
       eapm: playerStat?.eapm || 0,
       quality: playerStat?.quality || 'unknown',
-      buildActionsCount: buildActions.length
+      buildActionsCount: buildActions.length,
+      race: enhancedBO?.race || 'Unknown',
+      efficiencyGrade: enhancedBO?.efficiency.overallGrade || 'F',
+      benchmarksPassed: enhancedBO?.benchmarks.filter(b => b.status !== 'missing').length || 0
     };
   });
   
@@ -289,7 +211,13 @@ export function mapDirectReplayDataToUI(directData: DirectParserResult): {
     playerStatsCount: playerStats.length,
     gameDuration: `${gameDurationMinutes.toFixed(1)} minutes`,
     averageAPM: Math.round(averageAPM),
-    dataQuality: commandValidation.quality
+    dataQuality: commandValidation.quality,
+    enhancedFeatures: {
+      racesDetected: enhancedBuildOrders.map(bo => bo.race),
+      averageEfficiency: enhancedBuildOrders.reduce((sum, bo) => 
+        sum + (bo.efficiency.economyScore + bo.efficiency.techScore + bo.efficiency.timingScore) / 3, 0
+      ) / Math.max(enhancedBuildOrders.length, 1)
+    }
   });
   
   return {
@@ -301,7 +229,8 @@ export function mapDirectReplayDataToUI(directData: DirectParserResult): {
       validationData,
       gameDuration: `${gameDurationMinutes.toFixed(1)} minutes`,
       averageAPM: Math.round(averageAPM),
-      realisticDataQuality: commandValidation.quality
+      realisticDataQuality: commandValidation.quality,
+      enhancedBuildOrders
     }
   };
 }

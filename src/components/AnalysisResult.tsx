@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -6,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { ParserValidationDebug } from './ParserValidationDebug';
+import { EnhancedBuildOrderDisplay } from './EnhancedBuildOrderDisplay';
 import { EnhancedReplayData } from '@/services/nativeReplayParser/enhancedScrepWrapper';
 
 interface AnalysisResultProps {
@@ -26,6 +26,9 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
   const buildOrder1 = replayData.computed.buildOrders[0] || [];
   const buildOrder2 = replayData.computed.buildOrders[1] || [];
 
+  // Get enhanced build orders if available
+  const enhancedBuildOrders = replayData.computed.enhanced?.enhancedBuildOrders || [];
+
   const getRaceColor = (race: string) => {
     switch (race?.toLowerCase()) {
       case 'protoss': return 'text-yellow-600';
@@ -43,18 +46,29 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
     return 'text-gray-600';
   };
 
+  const getQualityBadge = (apm: number) => {
+    if (apm >= 180) return { text: 'Pro', variant: 'destructive' as const };
+    if (apm >= 120) return { text: 'Advanced', variant: 'default' as const };
+    if (apm >= 80) return { text: 'Intermediate', variant: 'secondary' as const };
+    if (apm >= 40) return { text: 'Beginner', variant: 'outline' as const };
+    return { text: 'Learning', variant: 'outline' as const };
+  };
+
   return (
     <div className="space-y-6">
       {/* Header with Parser Status */}
       <div className="flex justify-between items-start">
         <div>
-          <h2 className="text-2xl font-bold">Replay Analysis</h2>
+          <h2 className="text-2xl font-bold">Enhanced Replay Analysis</h2>
           <div className="flex items-center gap-2 mt-2">
             <Badge variant={replayData.enhanced.hasDetailedActions ? "default" : "secondary"}>
               {replayData.enhanced.extractionMethod.toUpperCase()}
             </Badge>
             <Badge variant="outline">
               {replayData.enhanced.debugInfo.actionsExtracted} actions
+            </Badge>
+            <Badge variant="outline">
+              Command ID Mapping ✅
             </Badge>
             <Button 
               variant="outline" 
@@ -78,8 +92,8 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="build-orders">Build Orders</TabsTrigger>
-          <TabsTrigger value="analysis">Analysis</TabsTrigger>
+          <TabsTrigger value="build-orders">Enhanced Build Orders</TabsTrigger>
+          <TabsTrigger value="analysis">Performance Analysis</TabsTrigger>
           <TabsTrigger value="raw-data">Raw Data</TabsTrigger>
         </TabsList>
 
@@ -102,11 +116,11 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
                 <div>
                   <p className="text-sm font-medium text-gray-500">Matchup</p>
                   <p className="text-lg font-semibold">
-                    {player1?.race?.charAt(0) || '?'}v{player2?.race?.charAt(0) || '?'}
+                    {enhancedBuildOrders[0]?.race?.charAt(0) || player1?.race?.charAt(0) || '?'}v{enhancedBuildOrders[1]?.race?.charAt(0) || player2?.race?.charAt(0) || '?'}
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-500">Parser Quality</p>
+                  <p className="text-sm font-medium text-gray-500">Data Quality</p>
                   <p className="text-lg font-semibold">
                     {replayData.enhanced.hasDetailedActions ? '✅ Enhanced' : '⚠️ Basic'}
                   </p>
@@ -115,16 +129,23 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
             </CardContent>
           </Card>
 
-          {/* Player Comparison */}
+          {/* Enhanced Player Comparison */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Player 1 */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   <span>{player1?.name || 'Player 1'}</span>
-                  <Badge className={getRaceColor(player1?.race || '')}>
-                    {player1?.race || 'Unknown'}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge className={getRaceColor(enhancedBuildOrders[0]?.race || player1?.race || '')}>
+                      {enhancedBuildOrders[0]?.race || player1?.race || 'Unknown'}
+                    </Badge>
+                    {enhancedBuildOrders[0] && (
+                      <Badge variant="outline">
+                        Grade {enhancedBuildOrders[0].efficiency.overallGrade}
+                      </Badge>
+                    )}
+                  </div>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -134,6 +155,9 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
                       <span className={getAPMColor(player1APM)}>{player1APM}</span>
                     </p>
                     <p className="text-sm text-gray-500">APM</p>
+                    <Badge variant={getQualityBadge(player1APM).variant} className="text-xs">
+                      {getQualityBadge(player1APM).text}
+                    </Badge>
                   </div>
                   <div className="text-center">
                     <p className="text-2xl font-bold mb-1">
@@ -144,6 +168,24 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
                     <p className="text-sm text-gray-500">EAPM</p>
                   </div>
                 </div>
+                
+                {enhancedBuildOrders[0] && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500 mb-2">Build Efficiency</p>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span>Economy</span>
+                        <span>{enhancedBuildOrders[0].efficiency.economyScore}%</span>
+                      </div>
+                      <Progress value={enhancedBuildOrders[0].efficiency.economyScore} className="h-2" />
+                      <div className="flex justify-between text-sm">
+                        <span>Tech</span>
+                        <span>{enhancedBuildOrders[0].efficiency.techScore}%</span>
+                      </div>
+                      <Progress value={enhancedBuildOrders[0].efficiency.techScore} className="h-2" />
+                    </div>
+                  </div>
+                )}
                 
                 {buildOrder1.length > 0 && (
                   <div>
@@ -168,9 +210,16 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   <span>{player2?.name || 'Player 2'}</span>
-                  <Badge className={getRaceColor(player2?.race || '')}>
-                    {player2?.race || 'Unknown'}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge className={getRaceColor(enhancedBuildOrders[1]?.race || player2?.race || '')}>
+                      {enhancedBuildOrders[1]?.race || player2?.race || 'Unknown'}
+                    </Badge>
+                    {enhancedBuildOrders[1] && (
+                      <Badge variant="outline">
+                        Grade {enhancedBuildOrders[1].efficiency.overallGrade}
+                      </Badge>
+                    )}
+                  </div>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -180,6 +229,9 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
                       <span className={getAPMColor(player2APM)}>{player2APM}</span>
                     </p>
                     <p className="text-sm text-gray-500">APM</p>
+                    <Badge variant={getQualityBadge(player2APM).variant} className="text-xs">
+                      {getQualityBadge(player2APM).text}
+                    </Badge>
                   </div>
                   <div className="text-center">
                     <p className="text-2xl font-bold mb-1">
@@ -190,6 +242,24 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
                     <p className="text-sm text-gray-500">EAPM</p>
                   </div>
                 </div>
+                
+                {enhancedBuildOrders[1] && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-500 mb-2">Build Efficiency</p>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span>Economy</span>
+                        <span>{enhancedBuildOrders[1].efficiency.economyScore}%</span>
+                      </div>
+                      <Progress value={enhancedBuildOrders[1].efficiency.economyScore} className="h-2" />
+                      <div className="flex justify-between text-sm">
+                        <span>Tech</span>
+                        <span>{enhancedBuildOrders[1].efficiency.techScore}%</span>
+                      </div>
+                      <Progress value={enhancedBuildOrders[1].efficiency.techScore} className="h-2" />
+                    </div>
+                  </div>
+                )}
                 
                 {buildOrder2.length > 0 && (
                   <div>
@@ -212,58 +282,23 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
         </TabsContent>
 
         <TabsContent value="build-orders" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Player 1 Build Order */}
-            <Card>
-              <CardHeader>
-                <CardTitle>{player1?.name || 'Player 1'} Build Order</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {buildOrder1.length > 0 ? (
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {buildOrder1.map((item, index) => (
-                      <div key={index} className="flex justify-between items-center p-2 rounded bg-gray-50">
-                        <span className="text-sm">{item.action}</span>
-                        <div className="text-right">
-                          <div className="text-xs text-gray-500">{item.timestamp}</div>
-                          {item.supply && (
-                            <div className="text-xs text-gray-400">{item.supply} supply</div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-500 text-center py-8">No build order data available</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Player 2 Build Order */}
-            <Card>
-              <CardHeader>
-                <CardTitle>{player2?.name || 'Player 2'} Build Order</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {buildOrder2.length > 0 ? (
-                  <div className="space-y-2 max-h-96 overflow-y-auto">
-                    {buildOrder2.map((item, index) => (
-                      <div key={index} className="flex justify-between items-center p-2 rounded bg-gray-50">
-                        <span className="text-sm">{item.action}</span>
-                        <div className="text-right">
-                          <div className="text-xs text-gray-500">{item.timestamp}</div>
-                          {item.supply && (
-                            <div className="text-xs text-gray-400">{item.supply} supply</div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-500 text-center py-8">No build order data available</p>
-                )}
-              </CardContent>
-            </Card>
+          <div className="grid grid-cols-1 gap-8">
+            {enhancedBuildOrders.length > 0 ? (
+              enhancedBuildOrders.map((buildOrder, index) => (
+                <EnhancedBuildOrderDisplay
+                  key={index}
+                  buildOrder={buildOrder}
+                  playerName={replayData.players[index]?.name || `Player ${index + 1}`}
+                />
+              ))
+            ) : (
+              <Card>
+                <CardContent className="text-center py-8">
+                  <p className="text-gray-500">Enhanced build order data not available</p>
+                  <p className="text-sm text-gray-400 mt-2">Using basic build order display...</p>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </TabsContent>
 
@@ -294,10 +329,36 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
                 </div>
               </div>
 
-              {/* Data Quality */}
+              {/* Enhanced Build Order Analysis */}
+              {enhancedBuildOrders.length > 0 && (
+                <div>
+                  <h4 className="font-semibold mb-3">Build Order Efficiency</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    {enhancedBuildOrders.map((buildOrder, index) => (
+                      <div key={index} className="space-y-2">
+                        <div className="text-sm font-medium">
+                          {replayData.players[index]?.name || `Player ${index + 1}`} ({buildOrder.race})
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span>Overall Grade</span>
+                            <Badge variant="outline">{buildOrder.efficiency.overallGrade}</Badge>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span>Benchmarks Hit</span>
+                            <span>{buildOrder.benchmarks.filter(b => b.status !== 'missing').length}/{buildOrder.benchmarks.length}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Data Quality & Features */}
               <div>
-                <h4 className="font-semibold mb-3">Data Quality</h4>
-                <div className="grid grid-cols-3 gap-4 text-center">
+                <h4 className="font-semibold mb-3">Data Quality & Features</h4>
+                <div className="grid grid-cols-4 gap-4 text-center">
                   <div>
                     <div className="text-2xl font-bold text-blue-600">
                       {replayData.enhanced.debugInfo.actionsExtracted}
@@ -315,6 +376,12 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
                       {replayData.enhanced.extractionTime}ms
                     </div>
                     <div className="text-sm text-gray-500">Parse Time</div>
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold text-orange-600">
+                      ✅
+                    </div>
+                    <div className="text-sm text-gray-500">Enhanced Mapping</div>
                   </div>
                 </div>
               </div>
