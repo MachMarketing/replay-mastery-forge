@@ -1,7 +1,7 @@
 
 /**
  * seRS (StarCraft Remastered) replay parser
- * Enhanced based on comprehensive analysis and user requirements
+ * Completely rewritten with enhanced compression detection and error handling
  */
 
 import * as pako from 'pako';
@@ -22,17 +22,25 @@ export class SeRSParser {
   }
 
   /**
-   * Parse seRS header and extract compressed data
+   * Parse seRS header with enhanced validation
    */
   parseSeRSHeader(): SeRSHeader | null {
     console.log('[SeRSParser] Analyzing file header...');
+    console.log('[SeRSParser] File size:', this.data.length, 'bytes');
     
-    // Check for seRS magic at offset 12 (0x0C)
+    // Check minimum file size
     if (this.data.length < 16) {
       console.log('[SeRSParser] File too small for seRS header');
       return null;
     }
 
+    // Log first 32 bytes for debugging
+    const headerHex = Array.from(this.data.slice(0, Math.min(32, this.data.length)))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join(' ');
+    console.log('[SeRSParser] Header hex:', headerHex);
+
+    // Check for seRS magic at offset 12 (0x0C)
     const magicBytes = this.data.slice(12, 16);
     const magic = String.fromCharCode(...magicBytes);
     
@@ -44,21 +52,14 @@ export class SeRSParser {
       return null;
     }
 
-    // Find zlib header (0x78 0x9C)
-    let zlibStart = -1;
-    for (let i = 0; i < Math.min(100, this.data.length - 1); i++) {
-      if (this.data[i] === 0x78 && this.data[i + 1] === 0x9C) {
-        zlibStart = i;
-        console.log('[SeRSParser] Found zlib header at offset:', i);
-        break;
-      }
-    }
-
+    // Enhanced zlib header detection
+    const zlibStart = this.findValidZlibHeader();
     if (zlibStart === -1) {
-      console.log('[SeRSParser] zlib header not found');
+      console.log('[SeRSParser] No valid zlib header found');
       return null;
     }
 
+    console.log('[SeRSParser] Valid seRS header found with zlib at offset:', zlibStart);
     return {
       magic,
       version: 1,
@@ -69,7 +70,70 @@ export class SeRSParser {
   }
 
   /**
-   * Decompress the replay data
+   * Enhanced zlib header detection with validation
+   */
+  private findValidZlibHeader(): number {
+    console.log('[SeRSParser] Searching for valid zlib header...');
+    
+    // Common zlib headers with their compression levels
+    const zlibHeaders = [
+      { bytes: [0x78, 0x9C], name: 'Default compression' },
+      { bytes: [0x78, 0x01], name: 'No compression' },
+      { bytes: [0x78, 0xDA], name: 'Best compression' },
+      { bytes: [0x78, 0x5E], name: 'Fast compression' },
+      { bytes: [0x78, 0x20], name: 'Alternative header 1' },
+      { bytes: [0x78, 0x3C], name: 'Alternative header 2' }
+    ];
+    
+    // Search in multiple ranges (seRS files can have variable header sizes)
+    const searchRanges = [
+      { start: 16, end: 64, priority: 1 },   // Most common
+      { start: 32, end: 128, priority: 2 },  // Alternative
+      { start: 64, end: 256, priority: 3 }   // Fallback
+    ];
+    
+    for (const range of searchRanges) {
+      console.log(`[SeRSParser] Searching range ${range.start}-${range.end} (priority ${range.priority})`);
+      
+      for (let i = range.start; i < Math.min(range.end, this.data.length - 10); i++) {
+        for (const header of zlibHeaders) {
+          if (this.data[i] === header.bytes[0] && this.data[i + 1] === header.bytes[1]) {
+            console.log(`[SeRSParser] Found ${header.name} at offset ${i}`);
+            
+            // Validate this is actually a valid zlib stream
+            if (this.validateZlibAtOffset(i)) {
+              console.log(`[SeRSParser] Validated zlib stream at offset ${i}`);
+              return i;
+            } else {
+              console.log(`[SeRSParser] Invalid zlib stream at offset ${i}`);
+            }
+          }
+        }
+      }
+    }
+    
+    return -1;
+  }
+
+  /**
+   * Validate if there's a valid zlib stream at the given offset
+   */
+  private validateZlibAtOffset(offset: number): boolean {
+    if (offset + 10 > this.data.length) return false;
+    
+    try {
+      // Try to decompress first few bytes to validate
+      const testData = this.data.slice(offset, Math.min(offset + 100, this.data.length));
+      pako.inflate(testData);
+      return true;
+    } catch (error) {
+      console.log(`[SeRSParser] Validation failed at offset ${offset}:`, error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Decompress the replay data with multiple fallback methods
    */
   decompressReplayData(header: SeRSHeader): Uint8Array {
     console.log('[SeRSParser] Decompressing replay data...');
@@ -84,39 +148,123 @@ export class SeRSParser {
         .map(b => `0x${b.toString(16).padStart(2, '0')}`)
         .join(' '));
 
-    try {
-      const decompressed = pako.inflate(compressedData);
-      console.log('[SeRSParser] Decompression successful');
-      console.log('[SeRSParser] Decompressed size:', decompressed.length);
-      
-      // Log first few bytes of decompressed data
-      console.log('[SeRSParser] First 20 bytes of decompressed data:', 
-        Array.from(decompressed.slice(0, 20))
-          .map(b => `0x${b.toString(16).padStart(2, '0')}`)
-          .join(' '));
+    // Try multiple decompression methods in order of likelihood
+    const decompressionMethods = [
+      {
+        name: 'Standard inflate',
+        method: () => pako.inflate(compressedData)
+      },
+      {
+        name: 'Raw inflate',
+        method: () => pako.inflateRaw(compressedData)
+      },
+      {
+        name: 'Inflate with window 15',
+        method: () => pako.inflate(compressedData, { windowBits: 15 })
+      },
+      {
+        name: 'Inflate with window -15',
+        method: () => pako.inflate(compressedData, { windowBits: -15 })
+      },
+      {
+        name: 'Inflate with window 13',
+        method: () => pako.inflate(compressedData, { windowBits: 13 })
+      },
+      {
+        name: 'Raw inflate with window 15',
+        method: () => pako.inflateRaw(compressedData, { windowBits: 15 })
+      }
+    ];
 
-      return decompressed;
-    } catch (error) {
-      console.error('[SeRSParser] Decompression failed:', error);
-      throw new Error(`seRS decompression failed: ${(error as Error).message}`);
+    for (const decomp of decompressionMethods) {
+      try {
+        console.log(`[SeRSParser] Trying: ${decomp.name}`);
+        const decompressed = decomp.method();
+        
+        console.log('[SeRSParser] Decompression successful with:', decomp.name);
+        console.log('[SeRSParser] Decompressed size:', decompressed.length);
+        
+        // Validate decompressed data
+        if (this.validateDecompressedData(decompressed)) {
+          console.log('[SeRSParser] Decompressed data validation passed');
+          
+          // Log first few bytes of decompressed data
+          console.log('[SeRSParser] First 20 bytes of decompressed data:', 
+            Array.from(decompressed.slice(0, 20))
+              .map(b => `0x${b.toString(16).padStart(2, '0')}`)
+              .join(' '));
+
+          return decompressed;
+        } else {
+          console.warn('[SeRSParser] Decompressed data failed validation with:', decomp.name);
+        }
+      } catch (error) {
+        console.log(`[SeRSParser] ${decomp.name} failed:`, error.message);
+      }
     }
+
+    throw new Error('All seRS decompression methods failed');
+  }
+
+  /**
+   * Validate decompressed data looks like a replay
+   */
+  private validateDecompressedData(data: Uint8Array): boolean {
+    if (data.length < 500) {
+      console.warn('[SeRSParser] Decompressed data too small:', data.length);
+      return false;
+    }
+    
+    // Check for typical replay patterns
+    let readableChars = 0;
+    let nullBytes = 0;
+    let actionBytes = 0;
+    
+    const sampleSize = Math.min(1000, data.length);
+    const actionOpcodes = [0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x13, 0x14, 0x15, 0x18, 0x1D, 0x1E];
+    
+    for (let i = 0; i < sampleSize; i++) {
+      const byte = data[i];
+      
+      if (byte >= 32 && byte <= 126) readableChars++;
+      if (byte === 0) nullBytes++;
+      if (actionOpcodes.includes(byte)) actionBytes++;
+    }
+    
+    const readableRatio = readableChars / sampleSize;
+    const nullRatio = nullBytes / sampleSize;
+    const actionRatio = actionBytes / sampleSize;
+    
+    console.log('[SeRSParser] Data validation ratios:', {
+      readable: readableRatio.toFixed(3),
+      nulls: nullRatio.toFixed(3),
+      actions: actionRatio.toFixed(3)
+    });
+    
+    // Should have reasonable amounts of each type of data
+    return readableRatio > 0.05 && nullRatio > 0.05 && nullRatio < 0.8;
   }
 
   /**
    * Parse the complete seRS file with enhanced error handling
    */
   parse(): { header: SeRSHeader; decompressedData: Uint8Array } {
+    console.log('[SeRSParser] === STARTING ENHANCED seRS PARSING ===');
+    
     const header = this.parseSeRSHeader();
     if (!header) {
       throw new Error('Not a valid seRS format file');
     }
 
+    console.log('[SeRSParser] seRS header validated successfully');
     const decompressedData = this.decompressReplayData(header);
     
-    // Validate decompressed data
-    if (decompressedData.length < 1000) {
-      console.warn('[SeRSParser] Decompressed data seems too small:', decompressedData.length);
-    }
+    console.log('[SeRSParser] === seRS PARSING COMPLETE ===');
+    console.log('[SeRSParser] Final result:', {
+      originalSize: this.data.length,
+      decompressedSize: decompressedData.length,
+      compressionRatio: (this.data.length / decompressedData.length).toFixed(2)
+    });
     
     return { header, decompressedData };
   }
@@ -130,29 +278,5 @@ export class SeRSParser {
     const data = new Uint8Array(buffer);
     const magic = String.fromCharCode(...data.slice(12, 16));
     return magic === 'seRS';
-  }
-
-  /**
-   * Enhanced method to find and validate zlib data
-   */
-  private findZlibData(): { offset: number; isValid: boolean } {
-    // Common zlib headers
-    const zlibHeaders = [
-      [0x78, 0x01], // No compression
-      [0x78, 0x9C], // Default compression (most common in Remastered)
-      [0x78, 0xDA], // Best compression
-      [0x78, 0x5E]  // Fast compression
-    ];
-    
-    for (let i = 16; i < Math.min(100, this.data.length - 1); i++) {
-      for (const [byte1, byte2] of zlibHeaders) {
-        if (this.data[i] === byte1 && this.data[i + 1] === byte2) {
-          console.log(`[SeRSParser] Found zlib header ${byte1.toString(16)}${byte2.toString(16)} at offset ${i}`);
-          return { offset: i, isValid: true };
-        }
-      }
-    }
-    
-    return { offset: -1, isValid: false };
   }
 }
