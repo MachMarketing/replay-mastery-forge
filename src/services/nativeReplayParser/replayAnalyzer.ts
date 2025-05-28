@@ -112,7 +112,7 @@ export class ReplayAnalyzer {
     return {
       magic: `0x${magic}`,
       isCompressed: compressionInfo.needsDecompression,
-      detectedFormat: compressionInfo.format,
+      detectedFormat: compressionInfo.type, // Fixed: changed from .format to .type
       estimatedVersion
     };
   }
