@@ -1,3 +1,4 @@
+
 /**
  * Enhanced seRS replay wrapper with robust decompression and screp integration
  */
@@ -25,6 +26,15 @@ export class ImprovedSeRSWrapper {
       console.log('[ImprovedSeRSWrapper] APM values:', parseResult.metrics.apm);
       console.log('[ImprovedSeRSWrapper] EAPM values:', parseResult.metrics.eapm);
 
+      // Convert build orders to correct format
+      const convertBuildOrder = (buildOrder: Array<{frame: number; timestamp: string; unitName: string; supply?: number}>) => {
+        return buildOrder.map(item => ({
+          time: item.timestamp,
+          supply: item.supply || 0,
+          action: item.unitName
+        }));
+      };
+
       // Convert to ParsedReplayData format
       const result: ParsedReplayData = {
         map: parseResult.header.mapName,
@@ -38,7 +48,7 @@ export class ImprovedSeRSWrapper {
           race: parseResult.header.playerRaces[0] || 'Terran',
           apm: parseResult.metrics.apm[0] || 0,
           eapm: parseResult.metrics.eapm[0] || 0,
-          buildOrder: parseResult.buildOrders[0] || [],
+          buildOrder: convertBuildOrder(parseResult.buildOrders[0] || []),
           strengths: [],
           weaknesses: [],
           recommendations: []
@@ -48,7 +58,7 @@ export class ImprovedSeRSWrapper {
           race: parseResult.header.playerRaces[1] || 'Protoss',
           apm: parseResult.metrics.apm[1] || 0,
           eapm: parseResult.metrics.eapm[1] || 0,
-          buildOrder: parseResult.buildOrders[1] || [],
+          buildOrder: convertBuildOrder(parseResult.buildOrders[1] || []),
           strengths: [],
           weaknesses: [],
           recommendations: []
@@ -62,7 +72,7 @@ export class ImprovedSeRSWrapper {
         eapm: parseResult.metrics.eapm[0] || 0,
         opponentApm: parseResult.metrics.apm[1] || 0,
         opponentEapm: parseResult.metrics.eapm[1] || 0,
-        buildOrder: parseResult.buildOrders[0] || [],
+        buildOrder: convertBuildOrder(parseResult.buildOrders[0] || []),
         strengths: [],
         weaknesses: [],
         recommendations: [],
