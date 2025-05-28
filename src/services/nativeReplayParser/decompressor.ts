@@ -1,6 +1,5 @@
 /**
- * Enhanced Decompression utilities für StarCraft replay files
- * Mit integrierter Remastered-Support über BWAPI-Engine
+ * Enhanced Decompression utilities with SmartZlibExtractor integration
  */
 
 import { ReplayFormat } from './compressionDetector';
@@ -9,7 +8,7 @@ import * as pako from 'pako';
 
 export class ReplayDecompressor {
   /**
-   * Decompress a replay file mit verbessertem Remastered-Support
+   * Decompress a replay file with enhanced Remastered support
    */
   static async decompress(buffer: ArrayBuffer, format: ReplayFormat): Promise<ArrayBuffer> {
     if (!format.needsDecompression) {
@@ -21,7 +20,7 @@ export class ReplayDecompressor {
     try {
       switch (format.type) {
         case 'remastered_zlib':
-          return await this.decompressRemasteredZlibEnhanced(buffer);
+          return await this.decompressRemasteredWithSmartExtractor(buffer);
         case 'zlib':
           return this.decompressZlib(buffer);
         case 'pkware':
@@ -38,246 +37,28 @@ export class ReplayDecompressor {
   }
   
   /**
-   * Enhanced Remastered Zlib Decompression mit BWAPI-Engine
+   * Enhanced Remastered decompression using SmartZlibExtractor
    */
-  private static async decompressRemasteredZlibEnhanced(buffer: ArrayBuffer): Promise<ArrayBuffer> {
-    console.log('[ReplayDecompressor] Using enhanced Remastered decompression with BWAPI validation');
+  private static async decompressRemasteredWithSmartExtractor(buffer: ArrayBuffer): Promise<ArrayBuffer> {
+    console.log('[ReplayDecompressor] Using enhanced SmartZlibExtractor for Remastered decompression');
     
     const result: DecompressionResult = await RemasteredDecompressor.decompress(buffer);
     
     if (result.success && result.data) {
-      console.log(`[ReplayDecompressor] Enhanced decompression successful:`, {
+      console.log(`[ReplayDecompressor] SmartZlibExtractor decompression successful:`, {
         method: result.method,
         blocks: result.blocks,
         originalSize: result.originalSize,
         decompressedSize: result.decompressedSize,
-        quality: result.validation.quality
+        quality: result.validation.quality,
+        totalCommands: result.extractionResult?.totalCommands || 0
       });
       
       return result.data;
     }
     
-    // Fallback zu alter Methode wenn Enhanced-Decompression fehlschlägt
-    console.warn('[ReplayDecompressor] Enhanced decompression failed, trying legacy method');
-    return this.decompressRemasteredZlibLegacy(buffer);
-  }
-  
-  /**
-   * Legacy Remastered Zlib Decompression als Fallback
-   */
-  private static decompressRemasteredZlibLegacy(buffer: ArrayBuffer): ArrayBuffer {
-    console.log('[ReplayDecompressor] Using legacy Remastered zlib decompression');
-    const fullView = new Uint8Array(buffer);
-    
-    // Remastered replays often have a specific structure:
-    // Header (32+ bytes) + multiple compressed blocks
-    
-    // Try to extract the main replay data from the first large zlib block
-    const zlibOffset = this.findMainZlibBlock(fullView);
-    
-    if (zlibOffset >= 0) {
-      console.log(`[ReplayDecompressor] Found main zlib block at offset ${zlibOffset}`);
-      
-      try {
-        const compressedData = fullView.slice(zlibOffset);
-        
-        // Try different decompression methods for Remastered format
-        const methods = [
-          () => pako.inflate(compressedData),
-          () => pako.inflateRaw(compressedData),
-          () => {
-            // Skip potential header in compressed data
-            const dataStart = this.findZlibStart(compressedData);
-            return pako.inflate(compressedData.slice(dataStart));
-          }
-        ];
-        
-        for (let i = 0; i < methods.length; i++) {
-          try {
-            const decompressed = methods[i]();
-            console.log(`[ReplayDecompressor] Method ${i} successful, size: ${decompressed.length}`);
-            
-            if (this.validateDecompressedReplay(decompressed)) {
-              console.log('[ReplayDecompressor] Decompressed data validation passed!');
-              return decompressed.buffer;
-            }
-          } catch (methodError) {
-            console.log(`[ReplayDecompressor] Method ${i} failed:`, methodError);
-          }
-        }
-      } catch (error) {
-        console.log(`[ReplayDecompressor] Main block decompression failed:`, error);
-      }
-    }
-    
-    // Fallback: try to concatenate all decompressed blocks
-    return this.decompressMultipleBlocks(fullView);
-  }
-  
-  /**
-   * Find the main zlib block (usually the largest one)
-   */
-  private static findMainZlibBlock(data: Uint8Array): number {
-    const zlibPositions = [];
-    
-    // Find all zlib positions
-    for (let i = 0; i < data.length - 1; i++) {
-      if (data[i] === 0x78 && [0x9c, 0xda, 0x01, 0x5e, 0x2c].includes(data[i + 1])) {
-        zlibPositions.push(i);
-      }
-    }
-    
-    console.log(`[ReplayDecompressor] Found ${zlibPositions.length} zlib blocks`);
-    
-    // Return the first significant block (usually after header)
-    for (const pos of zlibPositions) {
-      if (pos >= 32) { // Skip header blocks
-        const remainingSize = data.length - pos;
-        if (remainingSize > 1000) { // Ensure it's a substantial block
-          return pos;
-        }
-      }
-    }
-    
-    return zlibPositions.length > 0 ? zlibPositions[0] : -1;
-  }
-  
-  /**
-   * Find actual zlib start within data
-   */
-  private static findZlibStart(data: Uint8Array): number {
-    for (let i = 0; i < Math.min(100, data.length - 1); i++) {
-      if (data[i] === 0x78 && [0x9c, 0xda, 0x01].includes(data[i + 1])) {
-        return i;
-      }
-    }
-    return 0;
-  }
-  
-  /**
-   * Decompress multiple zlib blocks and concatenate
-   */
-  private static decompressMultipleBlocks(data: Uint8Array): ArrayBuffer {
-    console.log('[ReplayDecompressor] Attempting multi-block decompression');
-    
-    const blocks: Uint8Array[] = [];
-    let totalSize = 0;
-    
-    // Find and decompress all zlib blocks
-    for (let i = 0; i < data.length - 1; i++) {
-      if (data[i] === 0x78 && [0x9c, 0xda, 0x01].includes(data[i + 1])) {
-        try {
-          // Try to find the end of this block
-          let blockEnd = i + 100;
-          for (let j = i + 10; j < Math.min(i + 10000, data.length); j++) {
-            if (data[j] === 0x78 && [0x9c, 0xda, 0x01].includes(data[j + 1])) {
-              blockEnd = j;
-              break;
-            }
-          }
-          
-          const blockData = data.slice(i, blockEnd);
-          const decompressed = pako.inflate(blockData);
-          
-          if (decompressed.length > 10) {
-            blocks.push(decompressed);
-            totalSize += decompressed.length;
-            console.log(`[ReplayDecompressor] Block at ${i}: ${decompressed.length} bytes`);
-          }
-        } catch (error) {
-          // Continue to next block
-        }
-      }
-    }
-    
-    if (blocks.length > 0) {
-      // Concatenate all blocks
-      const result = new Uint8Array(totalSize);
-      let offset = 0;
-      
-      for (const block of blocks) {
-        result.set(block, offset);
-        offset += block.length;
-      }
-      
-      console.log(`[ReplayDecompressor] Concatenated ${blocks.length} blocks: ${result.length} bytes`);
-      return result.buffer;
-    }
-    
-    // Final fallback
-    throw new Error('Could not decompress any zlib blocks');
-  }
-  
-  /**
-   * Validate if decompressed data looks like a valid StarCraft replay
-   */
-  private static validateDecompressedReplay(data: Uint8Array): boolean {
-    if (data.length < 1000) {
-      console.log('[ReplayDecompressor] Data too small:', data.length);
-      return false;
-    }
-    
-    // Check for "Repl" magic at the start
-    const startString = new TextDecoder('latin1', { fatal: false }).decode(data.slice(0, 4));
-    if (startString === 'Repl') {
-      console.log('[ReplayDecompressor] Found "Repl" magic at start!');
-      return true;
-    }
-    
-    // Look for "Repl" anywhere in the first 100 bytes
-    for (let i = 0; i < Math.min(100, data.length - 4); i++) {
-      const testString = new TextDecoder('latin1', { fatal: false }).decode(data.slice(i, i + 4));
-      if (testString === 'Repl') {
-        console.log(`[ReplayDecompressor] Found "Repl" magic at offset ${i}!`);
-        return true;
-      }
-    }
-    
-    // Check for valid replay patterns in first 500 bytes
-    const textContent = new TextDecoder('latin1', { fatal: false }).decode(data.slice(0, Math.min(500, data.length)));
-    
-    // Look for StarCraft-specific strings
-    const patterns = [
-      'StarCraft', 'Brood War', 'scenario.chk', '.scm', '.scx',
-      'Protoss', 'Terran', 'Zerg', 'Maps\\'
-    ];
-    
-    let patternCount = 0;
-    for (const pattern of patterns) {
-      if (textContent.includes(pattern)) {
-        patternCount++;
-        console.log(`[ReplayDecompressor] Found pattern: ${pattern}`);
-      }
-    }
-    
-    const isValid = patternCount >= 2;
-    console.log(`[ReplayDecompressor] Validation result: ${isValid} (${patternCount} patterns found)`);
-    
-    return isValid;
-  }
-  
-  /**
-   * Extract raw replay data as fallback
-   */
-  private static extractRawReplayData(buffer: ArrayBuffer): ArrayBuffer {
-    console.log('[ReplayDecompressor] Extracting raw replay data as fallback');
-    
-    // Return the buffer as-is but skip the initial header
-    const view = new Uint8Array(buffer);
-    
-    // Try to find any recognizable replay patterns and return from there
-    for (let i = 0; i < Math.min(1000, view.length - 4); i++) {
-      const chunk = new TextDecoder('latin1', { fatal: false }).decode(view.slice(i, i + 4));
-      if (chunk === 'Repl' || chunk.includes('StarCraft')) {
-        console.log(`[ReplayDecompressor] Found replay data at offset ${i}`);
-        return buffer.slice(i);
-      }
-    }
-    
-    // If nothing found, return from a reasonable offset
-    const fallbackOffset = Math.min(32, view.length / 4);
-    console.log(`[ReplayDecompressor] Using fallback offset ${fallbackOffset}`);
-    return buffer.slice(fallbackOffset);
+    // If SmartZlibExtractor fails, throw error (no more fallbacks needed)
+    throw new Error(`SmartZlibExtractor failed: No valid command stream found`);
   }
   
   /**
