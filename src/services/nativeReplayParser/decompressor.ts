@@ -1,14 +1,15 @@
 /**
- * Decompression utilities for StarCraft replay files
- * Enhanced with better Remastered format handling
+ * Enhanced Decompression utilities für StarCraft replay files
+ * Mit integrierter Remastered-Support über BWAPI-Engine
  */
 
 import { ReplayFormat } from './compressionDetector';
+import { RemasteredDecompressor, DecompressionResult } from './bwapi/remasteredDecompressor';
 import * as pako from 'pako';
 
 export class ReplayDecompressor {
   /**
-   * Decompress a replay file based on its detected format
+   * Decompress a replay file mit verbessertem Remastered-Support
    */
   static async decompress(buffer: ArrayBuffer, format: ReplayFormat): Promise<ArrayBuffer> {
     if (!format.needsDecompression) {
@@ -20,7 +21,7 @@ export class ReplayDecompressor {
     try {
       switch (format.type) {
         case 'remastered_zlib':
-          return this.decompressRemasteredZlib(buffer);
+          return await this.decompressRemasteredZlibEnhanced(buffer);
         case 'zlib':
           return this.decompressZlib(buffer);
         case 'pkware':
@@ -37,10 +38,35 @@ export class ReplayDecompressor {
   }
   
   /**
-   * Decompress Brood War Remastered zlib format with proper block handling
+   * Enhanced Remastered Zlib Decompression mit BWAPI-Engine
    */
-  private static decompressRemasteredZlib(buffer: ArrayBuffer): ArrayBuffer {
-    console.log('[ReplayDecompressor] Processing Remastered zlib format with block handling');
+  private static async decompressRemasteredZlibEnhanced(buffer: ArrayBuffer): Promise<ArrayBuffer> {
+    console.log('[ReplayDecompressor] Using enhanced Remastered decompression with BWAPI validation');
+    
+    const result: DecompressionResult = await RemasteredDecompressor.decompress(buffer);
+    
+    if (result.success && result.data) {
+      console.log(`[ReplayDecompressor] Enhanced decompression successful:`, {
+        method: result.method,
+        blocks: result.blocks,
+        originalSize: result.originalSize,
+        decompressedSize: result.decompressedSize,
+        quality: result.validation.quality
+      });
+      
+      return result.data;
+    }
+    
+    // Fallback zu alter Methode wenn Enhanced-Decompression fehlschlägt
+    console.warn('[ReplayDecompressor] Enhanced decompression failed, trying legacy method');
+    return this.decompressRemasteredZlibLegacy(buffer);
+  }
+  
+  /**
+   * Legacy Remastered Zlib Decompression als Fallback
+   */
+  private static decompressRemasteredZlibLegacy(buffer: ArrayBuffer): ArrayBuffer {
+    console.log('[ReplayDecompressor] Using legacy Remastered zlib decompression');
     const fullView = new Uint8Array(buffer);
     
     // Remastered replays often have a specific structure:
@@ -301,7 +327,6 @@ export class ReplayDecompressor {
     
     if (signature === 0x04034b50) { // ZIP local file header
       // Skip ZIP header and extract the file content
-      // This is a simplified ZIP parser - real implementation would be more robust
       let offset = 30; // Basic ZIP header size
       
       // Read filename length and extra field length
@@ -310,11 +335,8 @@ export class ReplayDecompressor {
       
       offset += filenameLength + extraFieldLength;
       
-      // Try different decompression methods
-      const compressedData = buffer.slice(offset);
-      
-      // For now, return the data as-is and let the header parser handle it
-      return compressedData;
+      // Return the data from offset
+      return buffer.slice(offset);
     }
     
     throw new Error('Invalid ZIP structure');
@@ -325,7 +347,6 @@ export class ReplayDecompressor {
    */
   private static async decompressBzip2(buffer: ArrayBuffer): Promise<ArrayBuffer> {
     // bzip2 decompression would require a specialized library
-    // For now, we'll return an error
     throw new Error('bzip2 decompression not yet implemented');
   }
   

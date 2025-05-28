@@ -1,12 +1,19 @@
 
 /**
  * StarCraft: Brood War Remastered Command Parser
- * Based on icza/screp specification
+ * Updated with correct BWAPI command lengths and Remastered FPS
  */
 
 import { BWBinaryReader } from './binaryReader';
 import { BWCommand } from './types';
 import { COMMAND_MAPPING } from './constants';
+import { 
+  BWAPICommand, 
+  BWAPI_COMMAND_LENGTHS, 
+  COMMAND_NAMES, 
+  BWAPICommandEngine,
+  REMASTERED_FPS
+} from '../bwapi/commandEngine';
 
 export class BWCommandParser {
   private reader: BWBinaryReader;
@@ -14,29 +21,33 @@ export class BWCommandParser {
 
   constructor(reader: BWBinaryReader) {
     this.reader = reader;
-    // Commands start after header at offset 633 (0x279)
+    // Für dekomprimierte Daten beginnen Commands normalerweise nach Header
     this.commandsStartOffset = 633;
   }
 
-  parseCommands(maxCommands: number = 5000): BWCommand[] {
-    console.log('[BWCommandParser] Starting command parse...');
+  /**
+   * Parse Commands mit verbesserter BWAPI-Conformität
+   */
+  parseCommands(maxCommands: number = 10000): BWAPICommand[] {
+    console.log('[BWCommandParser] Starting BWAPI-conform command parse...');
     console.log('[BWCommandParser] Commands start at offset:', `0x${this.commandsStartOffset.toString(16)}`);
     
-    const commands: BWCommand[] = [];
+    const commands: BWAPICommand[] = [];
     let currentFrame = 0;
     let commandCount = 0;
-    let skipCount = 0;
+    let consecutiveErrors = 0;
     
     this.reader.setPosition(this.commandsStartOffset);
     
-    while (this.reader.canRead(1) && commandCount < maxCommands) {
+    while (this.reader.canRead(1) && commandCount < maxCommands && consecutiveErrors < 50) {
       try {
         const commandByte = this.reader.readUInt8();
         
-        // Handle frame synchronization commands
+        // Handle frame synchronization mit korrekter BWAPI-Spezifikation
         if (commandByte === 0x00) {
           // Single frame advance
           currentFrame++;
+          consecutiveErrors = 0;
           continue;
         } else if (commandByte === 0x01) {
           // Frame skip with count in next byte
@@ -47,6 +58,7 @@ export class BWCommandParser {
               console.log(`[BWCommandParser] Large frame skip: +${skipFrames} (frame ${currentFrame})`);
             }
           }
+          consecutiveErrors = 0;
           continue;
         } else if (commandByte === 0x02) {
           // Large frame skip with count in next 2 bytes
@@ -55,93 +67,116 @@ export class BWCommandParser {
             currentFrame += skipFrames;
             console.log(`[BWCommandParser] Very large frame skip: +${skipFrames} (frame ${currentFrame})`);
           }
+          consecutiveErrors = 0;
           continue;
         }
         
-        // Skip obviously invalid commands (too high values that are likely data corruption)
-        if (commandByte > 0x50) {
-          skipCount++;
-          if (skipCount > 100) {
-            console.log('[BWCommandParser] Too many invalid commands, stopping');
-            break;
+        // Validate command ID mit BWAPI-bekannten Commands
+        if (!BWAPI_COMMAND_LENGTHS.hasOwnProperty(commandByte)) {
+          consecutiveErrors++;
+          if (consecutiveErrors <= 10) {
+            console.log(`[BWCommandParser] Unknown command ID: 0x${commandByte.toString(16)} at frame ${currentFrame}`);
           }
           continue;
         }
         
-        // Reset skip count on valid command
-        skipCount = 0;
-        
-        // Parse actual game command
-        const command = this.parseGameCommand(commandByte, currentFrame);
+        // Parse game command mit korrekten BWAPI-Längen
+        const command = this.parseGameCommandBWAPI(commandByte, currentFrame);
         if (command) {
           commands.push(command);
           commandCount++;
+          consecutiveErrors = 0;
           
-          // Log first few and some interesting commands for debugging
-          if (commandCount <= 20 || [0x0C, 0x1D, 0x21, 0x34].includes(commandByte)) {
+          // Log wichtige Commands für Debugging
+          if (commandCount <= 20 || [0x0C, 0x1D, 0x14, 0x20, 0x21, 0x34].includes(commandByte)) {
             console.log(`[BWCommandParser] Command ${commandCount}:`, {
               frame: command.frame,
-              type: `0x${command.type.toString(16)}`,
-              typeString: command.typeString,
-              userId: command.userId,
-              dataLength: command.data.length
+              cmdId: `0x${command.cmdId.toString(16)}`,
+              type: command.typeString,
+              playerId: command.playerId,
+              category: command.category,
+              isEffective: command.isEffectiveAction
             });
           }
+        } else {
+          consecutiveErrors++;
         }
         
       } catch (error) {
+        consecutiveErrors++;
         console.warn('[BWCommandParser] Command parsing error at position', this.reader.getPosition(), ':', error);
-        // Try to skip a few bytes and continue
-        if (this.reader.canRead(4)) {
-          this.reader.readBytes(4);
+        
+        // Versuche Recovery durch skip von einigen Bytes
+        if (this.reader.canRead(2)) {
+          this.reader.readBytes(2);
         } else {
           break;
         }
       }
     }
     
-    console.log(`[BWCommandParser] Parsed ${commands.length} commands, final frame: ${currentFrame}, skipped ${skipCount} invalid bytes`);
+    // Validiere Command-Plausibilität
+    const gameDurationMinutes = currentFrame / REMASTERED_FPS / 60;
+    const validation = BWAPICommandEngine.validateCommandCount(commands.length, gameDurationMinutes, 8);
+    
+    console.log(`[BWCommandParser] Parse complete:`, {
+      totalCommands: commands.length,
+      finalFrame: currentFrame,
+      gameDuration: `${gameDurationMinutes.toFixed(1)} minutes`,
+      validationQuality: validation.quality,
+      isRealistic: validation.isRealistic,
+      expectedRange: validation.expectedRange
+    });
+    
     return commands;
   }
 
-  private parseGameCommand(commandType: number, frame: number): BWCommand | null {
+  /**
+   * Parse einzelner Game Command mit BWAPI-Spezifikation
+   */
+  private parseGameCommandBWAPI(commandType: number, frame: number): BWAPICommand | null {
     try {
-      const commandLength = this.getCommandLength(commandType);
-      const commandName = COMMAND_MAPPING[commandType as keyof typeof COMMAND_MAPPING] || `Unknown_0x${commandType.toString(16)}`;
+      const commandLength = BWAPI_COMMAND_LENGTHS[commandType] || 1;
+      const commandName = COMMAND_NAMES[commandType] || `Unknown_0x${commandType.toString(16)}`;
       
-      // Save current position
-      const startPos = this.reader.getPosition() - 1; // -1 because we already read the command byte
+      // Für Commands mit Länge 0 (variable) verwende minimale Länge
+      const actualLength = commandLength === 0 ? 1 : commandLength;
       
-      // For commands with known length, read the data
-      let userId = 0;
-      let commandData = new Uint8Array([commandType]);
-      
-      if (commandLength > 1 && this.reader.canRead(commandLength - 1)) {
-        // Read remaining command data
-        const remainingData = this.reader.readBytes(commandLength - 1);
-        
-        // First byte after command type is usually user/player ID
-        if (remainingData.length > 0) {
-          userId = remainingData[0];
-        }
-        
-        // Combine command type with remaining data
-        commandData = new Uint8Array([commandType, ...remainingData]);
-      } else if (commandLength === 0) {
-        // Variable length command - try to determine length
-        const variableData = this.readVariableLengthCommand(commandType);
-        if (variableData.length > 1) {
-          userId = variableData[1];
-        }
-        commandData = variableData;
+      if (!this.reader.canRead(actualLength)) {
+        console.warn(`[BWCommandParser] Cannot read ${actualLength} bytes for command 0x${commandType.toString(16)}`);
+        return null;
       }
+      
+      // Lese Command-Daten
+      let commandData = new Uint8Array([commandType]);
+      let playerId = 0;
+      
+      if (actualLength > 1) {
+        const remainingData = this.reader.readBytes(actualLength - 1);
+        commandData = new Uint8Array([commandType, ...remainingData]);
+        
+        // Player ID ist meist das erste Byte nach Command Type
+        if (remainingData.length > 0) {
+          playerId = remainingData[0];
+        }
+      }
+      
+      // Parse Command-spezifische Parameter
+      const parameters = this.parseCommandParameters(commandType, commandData);
+      
+      // Kategorisiere Command
+      const category = BWAPICommandEngine.categorizeCommand(commandType);
+      const isEffectiveAction = BWAPICommandEngine.isEffectiveAction(commandType);
       
       return {
         frame,
-        userId,
-        type: commandType,
+        playerId,
+        cmdId: commandType,
         typeString: commandName,
-        data: commandData
+        data: commandData,
+        parameters,
+        category,
+        isEffectiveAction
       };
       
     } catch (error) {
@@ -150,74 +185,101 @@ export class BWCommandParser {
     }
   }
 
-  private readVariableLengthCommand(commandType: number): Uint8Array {
-    // For unknown/variable length commands, read a reasonable amount
-    const maxVariableLength = 16;
-    const availableBytes = Math.min(maxVariableLength, this.reader.getRemainingBytes());
-    
-    if (availableBytes > 0) {
-      return new Uint8Array([commandType, ...this.reader.readBytes(Math.min(8, availableBytes))]);
+  /**
+   * Parse Command-spezifische Parameter basierend auf BWAPI-Strukturen
+   */
+  private parseCommandParameters(commandType: number, data: Uint8Array): any {
+    try {
+      switch (commandType) {
+        case 0x0C: // Build (10 bytes)
+          return BWAPICommandEngine.parseBuildCommand(data);
+          
+        case 0x14: // Train (6 bytes)
+        case 0x1D: // Train Unit (6 bytes)
+          return BWAPICommandEngine.parseTrainCommand(data);
+          
+        case 0x20: // Build Self/Morph (10 bytes)
+          return BWAPICommandEngine.parseBuildSelfCommand(data);
+          
+        case 0x15: // Attack Move (6 bytes)
+          if (data.length >= 6) {
+            return {
+              playerId: data[1],
+              x: data[2] | (data[3] << 8),
+              y: data[4] | (data[5] << 8)
+            };
+          }
+          break;
+          
+        case 0x13: // Hotkey Assignment (2 bytes)
+          if (data.length >= 2) {
+            return {
+              playerId: data[1],
+              hotkey: data[1] & 0x0F // Lower 4 bits
+            };
+          }
+          break;
+          
+        case 0x2F: // Research (2 bytes)
+        case 0x31: // Upgrade (2 bytes)
+          if (data.length >= 2) {
+            return {
+              playerId: data[1],
+              techType: data[1]
+            };
+          }
+          break;
+          
+        default:
+          return {};
+      }
+    } catch (error) {
+      console.warn(`[BWCommandParser] Parameter parsing failed for 0x${commandType.toString(16)}:`, error);
+      return {};
     }
     
-    return new Uint8Array([commandType]);
+    return {};
   }
 
-  private getCommandLength(commandType: number): number {
-    // Based on BWAPI and screp specifications - Updated with more commands
-    const commandLengths: Record<number, number> = {
-      0x05: 1,   // Keep Alive
-      0x06: 1,   // Save Game
-      0x07: 1,   // Load Game
-      0x08: 1,   // Restart Game
-      0x09: 2,   // Select
-      0x0A: 2,   // Shift Select  
-      0x0B: 2,   // Shift Deselect
-      0x0C: 7,   // Build
-      0x0D: 2,   // Vision
-      0x0E: 4,   // Alliance
-      0x0F: 1,   // Game Speed
-      0x10: 1,   // Pause
-      0x11: 1,   // Resume
-      0x12: 2,   // Cheat
-      0x13: 2,   // Hotkey
-      0x14: 4,   // Move
-      0x15: 6,   // Attack
-      0x16: 0,   // Cancel (variable)
-      0x17: 0,   // Cancel Hatch (variable)
-      0x18: 1,   // Stop
-      0x19: 1,   // Carrier Stop
-      0x1A: 1,   // Reaver Stop
-      0x1B: 1,   // Order Nothing
-      0x1C: 1,   // Return Cargo
-      0x1D: 2,   // Train
-      0x1E: 2,   // Cancel Train
-      0x1F: 1,   // Cloak
-      0x20: 1,   // Decloak
-      0x21: 2,   // Unit Morph
-      0x22: 1,   // Unload
-      0x23: 1,   // Unsiege
-      0x24: 1,   // Siege
-      0x25: 2,   // Train Fighter
-      0x26: 1,   // Unload All
-      0x27: 1,   // Unload All
-      0x28: 2,   // Unload
-      0x29: 1,   // Merge Archon
-      0x2A: 1,   // Hold Position
-      0x2B: 1,   // Burrow
-      0x2C: 1,   // Unburrow
-      0x2D: 1,   // Cancel Nuke
-      0x2E: 1,   // Lift
-      0x2F: 2,   // Research
-      0x30: 2,   // Cancel Research
-      0x31: 2,   // Upgrade
-      0x32: 2,   // Cancel Upgrade
-      0x33: 2,   // Cancel Addon
-      0x34: 2,   // Building Morph
-      0x35: 1,   // Stim
-      0x36: 1,   // Sync
-      0x48: 10   // Load Game
-    };
-
-    return commandLengths[commandType] || 1;
+  /**
+   * Dynamische Command-Start-Offset-Detection für dekomprimierte Daten
+   */
+  detectCommandsOffset(): number {
+    const originalPos = this.reader.getPosition();
+    
+    // Teste verschiedene bekannte Offsets für dekomprimierte Remastered-Daten
+    const testOffsets = [633, 500, 400, 300, 200, 100, 0];
+    
+    for (const offset of testOffsets) {
+      try {
+        this.reader.setPosition(offset);
+        
+        // Suche nach Command-Pattern
+        let validCommands = 0;
+        let testPos = 0;
+        
+        while (testPos < 100 && this.reader.canRead(1)) {
+          const byte = this.reader.readUInt8();
+          testPos++;
+          
+          // Frame-Sync oder bekannte Commands
+          if ([0x00, 0x01, 0x02].includes(byte) || BWAPI_COMMAND_LENGTHS.hasOwnProperty(byte)) {
+            validCommands++;
+          }
+        }
+        
+        if (validCommands >= 5) {
+          console.log(`[BWCommandParser] Detected commands start at offset ${offset} (${validCommands} valid commands found)`);
+          this.reader.setPosition(originalPos);
+          return offset;
+        }
+      } catch (error) {
+        // Continue to next offset
+      }
+    }
+    
+    this.reader.setPosition(originalPos);
+    console.warn('[BWCommandParser] Could not detect commands offset, using default 633');
+    return 633;
   }
 }
