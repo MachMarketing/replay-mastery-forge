@@ -32,7 +32,7 @@ export class BWRemasteredParser {
       console.log('[BWRemasteredParser] Header parsed:', {
         mapName: header.mapName,
         playerCount: header.playerCount,
-        frames: header.frames
+        frames: header.totalFrames
       });
 
       // Parse players
@@ -50,17 +50,16 @@ export class BWRemasteredParser {
       console.log('[BWRemasteredParser] Commands parsed:', commands.length);
 
       // Calculate game metrics
-      const gameLength = this.calculateGameLength(header.frames);
+      const gameLength = this.calculateGameLength(header.totalFrames);
       const apmData = this.calculateAPM(commands, players);
 
       const result: BWReplayData = {
-        header,
+        mapName: header.mapName,
+        totalFrames: header.totalFrames,
+        duration: gameLength.string,
         players,
         commands,
-        gameLength,
-        apm: apmData,
-        map: header.mapName,
-        totalFrames: header.frames
+        gameType: this.getGameTypeString(header.gameType)
       };
 
       console.log('[BWRemasteredParser] Parsing completed successfully');
@@ -86,7 +85,7 @@ export class BWRemasteredParser {
    */
   private parsePlayers(header: any) {
     const playerParser = new BWPlayerParser(this.reader);
-    return playerParser.parsePlayers(header);
+    return playerParser.parsePlayers();
   }
 
   /**
@@ -187,5 +186,20 @@ export class BWRemasteredParser {
     }
     
     return apmData;
+  }
+
+  /**
+   * Get game type string
+   */
+  private getGameTypeString(gameType: number): string {
+    const gameTypes: Record<number, string> = {
+      1: 'Melee',
+      2: 'Free For All',
+      3: 'Top vs Bottom',
+      4: 'Team Melee',
+      8: 'Use Map Settings'
+    };
+    
+    return gameTypes[gameType] || 'Unknown';
   }
 }
