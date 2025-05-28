@@ -1,53 +1,36 @@
-/**
- * Robust screp-js wrapper with browser compatibility
- */
+import * as Screp from 'screp-js';
 
-import { ensureBufferPolyfills, fileToBuffer } from './bufferUtils';
-
-// Dynamic import for screp-js with fallback
-let screpJs: any = null;
-
-async function loadScrepJs() {
-  if (screpJs) return screpJs;
-  
-  try {
-    // Try to load screp-js
-    const module = await import('screp-js');
-    // screp-js might export differently - check for default export or named exports
-    screpJs = module.default || module;
-    console.log('[ScrepJsWrapper] screp-js loaded:', Object.keys(screpJs));
-    return screpJs;
-  } catch (error) {
-    console.warn('[ScrepJsWrapper] Could not load screp-js:', error);
-    return null;
-  }
-}
-
-export interface ReplayParseResult {
+export interface ScrepJsResult {
   header: {
     engine: string;
     version: string;
     frames: number;
     startTime: Date;
+    title: string;
     mapName: string;
+    mapWidth: number;
+    mapHeight: number;
     gameType: string;
+    gameSubType: number;
+    host: string;
     duration: string;
+    durationMs: number;
   };
   players: Array<{
     name: string;
     race: string;
+    raceId: number;
     team: number;
     color: number;
+    slotId: number;
   }>;
-  commands: Array<{
-    frame: number;
-    type: string;
-    data: any;
-  }>;
-  // NEW: Computed metrics from real data
   computed: {
-    playerAPM: number[];
-    playerEAPM: number[];
+    playerDescs: string[];
+    matchup: string;
+    league: string;
+    winnerTeam: number;
+    apm: number[];
+    eapm: number[];
     buildOrders: Array<Array<{
       frame: number;
       timestamp: string;
@@ -59,8 +42,10 @@ export interface ReplayParseResult {
 
 export class ScrepJsWrapper {
   private static instance: ScrepJsWrapper;
-  private screpLib: any = null;
-  private isInitialized = false;
+  private screpModule: any = null;
+  private initialized = false;
+
+  private constructor() {}
 
   static getInstance(): ScrepJsWrapper {
     if (!ScrepJsWrapper.instance) {
@@ -70,365 +55,319 @@ export class ScrepJsWrapper {
   }
 
   async initialize(): Promise<boolean> {
-    if (this.isInitialized) return true;
-
-    console.log('[ScrepJsWrapper] Initializing...');
-    
-    // Ensure browser polyfills
-    ensureBufferPolyfills();
-    
-    // Try to load screp-js
-    this.screpLib = await loadScrepJs();
-    this.isInitialized = true;
-    
-    if (this.screpLib) {
-      console.log('[ScrepJsWrapper] Available methods:', Object.keys(this.screpLib));
+    if (this.initialized && this.screpModule) {
+      return true;
     }
-    
-    return this.screpLib !== null;
+
+    try {
+      console.log('[ScrepJsWrapper] Initializing screp-js...');
+      
+      // Import screp-js with enhanced options for command extraction
+      this.screpModule = Screp;
+      
+      if (!this.screpModule) {
+        console.error('[ScrepJsWrapper] screp-js module not available');
+        return false;
+      }
+
+      this.initialized = true;
+      console.log('[ScrepJsWrapper] screp-js initialized successfully');
+      return true;
+    } catch (error) {
+      console.error('[ScrepJsWrapper] Failed to initialize screp-js:', error);
+      return false;
+    }
   }
 
-  async parseReplay(file: File): Promise<ReplayParseResult> {
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
-    if (!this.screpLib) {
-      throw new Error('screp-js not available, falling back to custom parser');
+  async parseReplay(file: File): Promise<ScrepJsResult> {
+    if (!this.initialized) {
+      const success = await this.initialize();
+      if (!success) {
+        throw new Error('Failed to initialize screp-js');
+      }
     }
 
     try {
       console.log('[ScrepJsWrapper] Converting file to buffer...');
-      const buffer = await fileToBuffer(file);
-      
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = new Uint8Array(arrayBuffer);
+
       console.log('[ScrepJsWrapper] Parsing with screp-js...');
-      console.log('[ScrepJsWrapper] Available screp-js methods:', Object.keys(this.screpLib));
-      
+      console.log('[ScrepJsWrapper] Available screp-js methods:', Object.keys(this.screpModule));
+
+      // Enhanced options to ensure commands are included
+      const parseOptions = {
+        includeCommands: true,
+        withCmds: true,
+        verboseCommands: true,
+        calculateAPM: true,
+        parseActions: true,
+        parseChat: true,
+        extractMapData: true,
+        cmdDetails: true,
+        fullParse: true
+      };
+
       let result;
       
-      // Try different possible API methods
-      if (typeof this.screpLib.parseBuffer === 'function') {
+      if (typeof this.screpModule.parseBuffer === 'function') {
         console.log('[ScrepJsWrapper] Using parseBuffer method');
-        result = this.screpLib.parseBuffer(buffer);
-      } else if (typeof this.screpLib.parseReplay === 'function') {
-        result = this.screpLib.parseReplay(buffer);
-      } else if (typeof this.screpLib.parse === 'function') {
-        result = this.screpLib.parse(buffer);
-      } else if (typeof this.screpLib.default === 'function') {
-        result = this.screpLib.default(buffer);
-      } else if (typeof this.screpLib === 'function') {
-        result = this.screpLib(buffer);
-      } else {
-        // Look for any function that might be the parser
-        const methods = Object.keys(this.screpLib).filter(key => typeof this.screpLib[key] === 'function');
-        console.log('[ScrepJsWrapper] Available function methods:', methods);
+        result = this.screpModule.parseBuffer(buffer, parseOptions);
         
-        if (methods.length > 0) {
-          const parseMethod = methods.find(m => m.toLowerCase().includes('parse')) || methods[0];
-          console.log('[ScrepJsWrapper] Trying method:', parseMethod);
-          result = this.screpLib[parseMethod](buffer);
-        } else {
-          throw new Error('No suitable parsing method found in screp-js');
+        if (result && typeof result.then === 'function') {
+          console.log('[ScrepJsWrapper] Result is a Promise, awaiting...');
+          result = await result;
         }
+      } else {
+        throw new Error('parseBuffer method not available in screp-js');
       }
-      
-      // CRITICAL FIX: Handle Promise results properly
-      if (result && typeof result.then === 'function') {
-        console.log('[ScrepJsWrapper] Result is a Promise, awaiting...');
-        result = await result;
-      }
-      
+
       if (!result) {
         throw new Error('screp-js returned null result');
       }
 
       console.log('[ScrepJsWrapper] screp-js parsing successful, result keys:', Object.keys(result));
       console.log('[ScrepJsWrapper] Full result for debugging:', result);
+
+      // Enhanced logging for commands
+      console.log('[ScrepJsWrapper] === COMMAND ANALYSIS ===');
+      console.log('[ScrepJsWrapper] Commands available:', !!result.Commands, result.Commands ? result.Commands.length : 0);
       
-      return this.normalizeResult(result);
-      
+      if (result.Commands && Array.isArray(result.Commands) && result.Commands.length > 0) {
+        console.log('[ScrepJsWrapper] First 5 commands:', result.Commands.slice(0, 5).map((cmd: any) => ({
+          frame: cmd.Frame,
+          type: cmd.Type,
+          player: cmd.PlayerID || cmd.Player
+        })));
+      } else {
+        console.warn('[ScrepJsWrapper] No commands found - trying alternative extraction');
+        
+        // Try to access commands through different paths
+        if (result.Cmds) {
+          console.log('[ScrepJsWrapper] Found commands in result.Cmds:', result.Cmds.length);
+          result.Commands = result.Cmds;
+        } else if (result.commands) {
+          console.log('[ScrepJsWrapper] Found commands in result.commands:', result.commands.length);
+          result.Commands = result.commands;
+        }
+      }
+
+      return this.normalizeScrepResult(result);
     } catch (error) {
-      console.error('[ScrepJsWrapper] screp-js parsing failed:', error);
+      console.error('[ScrepJsWrapper] Error parsing replay:', error);
       throw error;
     }
   }
 
-  private normalizeResult(screpResult: any): ReplayParseResult {
+  private normalizeScrepResult(result: any): ScrepJsResult {
     console.log('[ScrepJsWrapper] === DETAILED SCREP-JS RESULT ANALYSIS ===');
-    console.log('[ScrepJsWrapper] Top-level keys:', Object.keys(screpResult));
-    
-    // screp-js returns structure with Header, Commands, MapData, Computed
-    const header = screpResult.Header || screpResult.header || {};
-    const computed = screpResult.Computed || screpResult.computed || {};
-    const commands = screpResult.Commands || screpResult.commands || [];
-    
-    console.log('[ScrepJsWrapper] Header keys:', Object.keys(header));
-    console.log('[ScrepJsWrapper] Computed keys:', Object.keys(computed));
-    console.log('[ScrepJsWrapper] Commands available:', Array.isArray(commands), commands?.length || 0);
-    
-    // Extract frame count from Header
-    const frames = header.Frames || header.frames || 10000;
-    console.log('[ScrepJsWrapper] Frame count:', frames);
-    
-    // Calculate duration
-    const durationMs = Math.floor(frames * 1000 / 24); // 24 FPS for StarCraft
-    const minutes = Math.floor(durationMs / 60000);
-    const seconds = Math.floor((durationMs % 60000) / 1000);
-    
-    // Extract map name from Header.Map (has color codes)
-    let mapName = 'Unknown Map';
-    if (header.Map) {
-      // Remove StarCraft color codes (e.g., \u0007D\u0006)
-      mapName = header.Map.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
-      console.log('[ScrepJsWrapper] Cleaned map name:', mapName);
-    }
-    
-    // Extract players from Header.Players array
+    console.log('[ScrepJsWrapper] Top-level keys:', Object.keys(result));
+    console.log('[ScrepJsWrapper] Header keys:', Object.keys(result.Header || {}));
+    console.log('[ScrepJsWrapper] Computed keys:', Object.keys(result.Computed || {}));
+    console.log('[ScrepJsWrapper] Commands available:', !!result.Commands, result.Commands ? result.Commands.length : 0);
+
+    const header = result.Header || {};
+    const computed = result.Computed || {};
+    const commands = result.Commands || [];
+
+    // Enhanced frame count detection
+    const frameCount = header.Frames || computed.LastFrame || 0;
+    console.log('[ScrepJsWrapper] Frame count:', frameCount);
+
+    // Enhanced map name cleaning
+    const rawMapName = header.Map || header.MapName || 'Unknown Map';
+    const cleanMapName = this.cleanMapName(rawMapName);
+    console.log('[ScrepJsWrapper] Cleaned map name:', cleanMapName);
+
+    // Enhanced player extraction
     const rawPlayers = header.Players || [];
     console.log('[ScrepJsWrapper] Raw players from Header.Players:', rawPlayers.length, rawPlayers);
-    
-    const players = rawPlayers.map((player: any, index: number) => {
-      const playerName = player.Name || `Player ${index + 1}`;
-      const playerRace = this.extractRace(player.Race);
-      const playerTeam = player.Team || (index % 2);
-      const playerColor = this.extractColor(player.Color);
-      
-      console.log(`[ScrepJsWrapper] Player ${index}:`, {
-        name: playerName,
-        race: playerRace,
-        team: playerTeam,
-        color: playerColor
-      });
-      
-      return {
-        name: playerName,
-        race: playerRace,
-        team: playerTeam,
-        color: playerColor
+
+    const players = rawPlayers.filter((p: any) => !p.Observer).map((player: any, index: number) => {
+      const normalizedPlayer = {
+        name: player.Name || `Player ${index + 1}`,
+        race: player.Race?.Name || 'Unknown',
+        raceId: this.mapRaceToId(player.Race?.Name),
+        team: player.Team || (index + 1),
+        color: player.Color?.ID || index,
+        slotId: index
       };
+      console.log(`[ScrepJsWrapper] Player ${index}:`, normalizedPlayer);
+      return normalizedPlayer;
     });
-    
-    // NEW: Calculate APM from real data
-    const apmData = this.calculateAPMFromData(computed, frames, players.length);
+
+    // Enhanced APM calculation with PlayerDescs
+    const playerDescs = computed.PlayerDescs || [];
+    console.log('[ScrepJsWrapper] Found PlayerDescs with APM data:', playerDescs);
+
+    const apmData = this.calculateAPMFromPlayerDescs(playerDescs, players.length);
     console.log('[ScrepJsWrapper] Calculated APM:', apmData);
-    
-    // NEW: Extract build orders from commands (if available)
+
+    // Enhanced build order extraction from commands
     const buildOrders = this.extractBuildOrdersFromCommands(commands, players.length);
-    console.log('[ScrepJsWrapper] Extracted build orders:', buildOrders.map(bo => bo.length));
-    
-    // Extract game type
-    const gameType = this.extractGameType(header.Type);
-    
-    // Extract engine info
-    const engine = this.extractEngine(header.Engine);
-    
-    const normalizedResult = {
+    console.log('[ScrepJsWrapper] Extracted build orders:', buildOrders.map(bo => `${bo.length} actions`));
+
+    // Calculate duration
+    const durationMs = Math.floor((frameCount / 24) * 1000); // 24 FPS for StarCraft
+    const minutes = Math.floor(durationMs / 60000);
+    const seconds = Math.floor((durationMs % 60000) / 1000);
+    const duration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+    const normalizedResult: ScrepJsResult = {
       header: {
-        engine: engine,
+        engine: header.Engine?.Name || 'Brood War',
         version: 'Remastered',
-        frames: frames,
-        startTime: new Date(header.StartTime || Date.now()),
-        mapName: mapName,
-        gameType: gameType,
-        duration: `${minutes}:${seconds.toString().padStart(2, '0')}`
+        frames: frameCount,
+        startTime: header.StartTime?.value ? new Date(header.StartTime.value.iso) : new Date(),
+        title: header.Title || '',
+        mapName: cleanMapName,
+        mapWidth: header.MapWidth || 0,
+        mapHeight: header.MapHeight || 0,
+        gameType: header.Type?.Name || 'Unknown',
+        gameSubType: header.SubType || 0,
+        host: header.Host || '',
+        duration,
+        durationMs
       },
       players,
-      commands: [], // Commands sind in screp-js meist null oder sehr groß
       computed: {
-        playerAPM: apmData.apm,
-        playerEAPM: apmData.eapm,
-        buildOrders: buildOrders
+        playerDescs: players.map(p => `${p.name} (${p.race})`),
+        matchup: this.calculateMatchup(players),
+        league: '',
+        winnerTeam: computed.WinnerTeam || -1,
+        apm: apmData.apm,
+        eapm: apmData.eapm,
+        buildOrders
       }
     };
-    
+
     console.log('[ScrepJsWrapper] === FINAL NORMALIZED RESULT ===');
     console.log('[ScrepJsWrapper] Map:', normalizedResult.header.mapName);
-    console.log('[ScrepJsWrapper] Players:', normalizedResult.players.map(p => `${p.name} (${p.race})`));
+    console.log('[ScrepJsWrapper] Players:', normalizedResult.computed.playerDescs);
     console.log('[ScrepJsWrapper] Duration:', normalizedResult.header.duration);
     console.log('[ScrepJsWrapper] Game Type:', normalizedResult.header.gameType);
-    console.log('[ScrepJsWrapper] APM:', normalizedResult.computed.playerAPM);
-    console.log('[ScrepJsWrapper] EAPM:', normalizedResult.computed.playerEAPM);
+    console.log('[ScrepJsWrapper] APM:', normalizedResult.computed.apm);
+    console.log('[ScrepJsWrapper] EAPM:', normalizedResult.computed.eapm);
     console.log('[ScrepJsWrapper] Build Orders:', normalizedResult.computed.buildOrders.map(bo => `${bo.length} actions`));
-    
+
     return normalizedResult;
   }
 
-  /**
-   * NEW: Calculate APM from screp-js Computed data
-   */
-  private calculateAPMFromData(computed: any, totalFrames: number, playerCount: number): { apm: number[], eapm: number[] } {
-    const apm: number[] = [];
-    const eapm: number[] = [];
-    
-    // Check if screp-js has PlayerDescs with APM data
-    if (computed.PlayerDescs && Array.isArray(computed.PlayerDescs)) {
-      console.log('[ScrepJsWrapper] Found PlayerDescs with APM data:', computed.PlayerDescs);
-      
-      computed.PlayerDescs.forEach((playerDesc: any, index: number) => {
-        const playerAPM = playerDesc.APM || 0;
-        const playerEAPM = playerDesc.EAPM || Math.floor(playerAPM * 0.75);
-        
-        apm.push(playerAPM);
-        eapm.push(playerEAPM);
-        
-        console.log(`[ScrepJsWrapper] Player ${index} APM: ${playerAPM}, EAPM: ${playerEAPM}`);
-      });
-    } else {
-      // Fallback: Fill with 0s
-      console.log('[ScrepJsWrapper] No PlayerDescs found, using 0 APM');
-      for (let i = 0; i < playerCount; i++) {
-        apm.push(0);
-        eapm.push(0);
-      }
-    }
-    
-    return { apm, eapm };
-  }
-
-  /**
-   * NEW: Extract build orders from commands (if available)
-   */
-  private extractBuildOrdersFromCommands(commands: any, playerCount: number): Array<Array<{
+  private extractBuildOrdersFromCommands(commands: any[], playerCount: number): Array<Array<{
     frame: number;
     timestamp: string;
     action: string;
     supply?: number;
   }>> {
-    const buildOrders: Array<Array<{
-      frame: number;
-      timestamp: string;
-      action: string;
-      supply?: number;
-    }>> = [];
-    
-    // Initialize empty build orders for each player
-    for (let i = 0; i < playerCount; i++) {
-      buildOrders.push([]);
-    }
-    
-    // If commands are available, extract build/train actions
-    if (Array.isArray(commands) && commands.length > 0) {
-      console.log('[ScrepJsWrapper] Processing', commands.length, 'commands for build orders');
-      
-      commands.forEach((cmd: any) => {
-        if (this.isBuildCommand(cmd)) {
-          const playerId = cmd.PlayerID || cmd.playerId || 0;
-          if (playerId < playerCount) {
-            const frame = cmd.Frame || cmd.frame || 0;
-            const timestamp = this.frameToTimestamp(frame);
-            const action = this.commandToActionString(cmd);
-            
-            buildOrders[playerId].push({
-              frame,
-              timestamp,
-              action,
-              supply: Math.floor(10 + (frame / 1000)) // Estimate supply
-            });
-          }
-        }
-      });
-      
-      // Limit to first 20 actions per player
-      buildOrders.forEach(bo => bo.splice(20));
-    } else {
+    console.log('[ScrepJsWrapper] Extracting build orders from commands...');
+    console.log('[ScrepJsWrapper] Commands available:', commands ? commands.length : 0);
+
+    if (!commands || !Array.isArray(commands) || commands.length === 0) {
       console.log('[ScrepJsWrapper] No commands available for build order extraction');
+      return Array(playerCount).fill(0).map(() => []);
     }
-    
+
+    const buildOrders = Array(playerCount).fill(0).map(() => [] as any[]);
+
+    // Filter commands for build-related actions
+    const buildCommands = commands.filter((cmd: any) => {
+      const cmdType = cmd.Type?.Name || cmd.Type || '';
+      const cmdTypeStr = cmdType.toString().toLowerCase();
+      
+      // Look for build, train, or construction related commands
+      return cmdTypeStr.includes('build') || 
+             cmdTypeStr.includes('train') || 
+             cmdTypeStr.includes('make') ||
+             cmdTypeStr.includes('construct') ||
+             cmdType === 'Build' ||
+             cmdType === 'Train' ||
+             cmd.Type === 12 || // BUILD command ID
+             cmd.Type === 29;   // TRAIN command ID
+    });
+
+    console.log('[ScrepJsWrapper] Build-related commands found:', buildCommands.length);
+
+    buildCommands.forEach((cmd: any) => {
+      const playerId = cmd.PlayerID ?? cmd.Player ?? 0;
+      if (playerId >= 0 && playerId < playerCount) {
+        const frame = cmd.Frame || 0;
+        const seconds = Math.floor(frame / 24);
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        const timestamp = `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+
+        const action = this.getActionDescription(cmd);
+        
+        buildOrders[playerId].push({
+          frame,
+          timestamp,
+          action,
+          supply: this.estimateSupply(frame, buildOrders[playerId].length)
+        });
+      }
+    });
+
+    console.log('[ScrepJsWrapper] Build orders per player:', buildOrders.map((bo, i) => `Player ${i}: ${bo.length} actions`));
+
     return buildOrders;
   }
 
-  /**
-   * Check if command is a build/train action
-   */
-  private isBuildCommand(cmd: any): boolean {
-    const cmdType = cmd.Type?.ID || cmd.type || cmd.ID;
-    // Common build/train command IDs in StarCraft
-    const buildCommands = [12, 29, 47, 48, 49]; // Build, Train, etc.
-    return buildCommands.includes(cmdType);
-  }
-
-  /**
-   * Convert command to human-readable action string
-   */
-  private commandToActionString(cmd: any): string {
-    const cmdType = cmd.Type?.Name || cmd.type || 'Unknown';
-    const unitType = cmd.UnitType?.Name || cmd.unitType || '';
+  private getActionDescription(cmd: any): string {
+    const cmdType = cmd.Type?.Name || cmd.Type || 'Unknown';
+    const unitType = cmd.UnitType || cmd.Unit || '';
     
     if (unitType) {
-      return `${cmdType}: ${unitType}`;
-    }
-    return cmdType;
-  }
-
-  /**
-   * Convert frame to timestamp string
-   */
-  private frameToTimestamp(frame: number): string {
-    const seconds = Math.floor(frame / 24); // 24 FPS
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  }
-
-  // ... keep existing code (extractRace, extractColor, extractGameType, extractEngine methods)
-  private extractRace(raceObj: any): string {
-    if (!raceObj) return 'Random';
-    
-    // screp-js race object has Name, ID, ShortName properties
-    if (raceObj.Name) return raceObj.Name;
-    if (raceObj.ShortName) {
-      const shortNameMap: Record<string, string> = {
-        'toss': 'Protoss',
-        'terr': 'Terran',
-        'zerg': 'Zerg'
-      };
-      return shortNameMap[raceObj.ShortName.toLowerCase()] || raceObj.ShortName;
+      return `${cmdType} ${unitType}`;
     }
     
-    // Fallback to ID
-    const raceMap: Record<number, string> = {
-      0: 'Zerg',
-      1: 'Terran',
-      2: 'Protoss',
-      6: 'Random'
-    };
-    
-    return raceMap[raceObj.ID] || 'Random';
+    return cmdType.toString();
   }
 
-  private extractColor(colorObj: any): number {
-    if (!colorObj) return 0;
-    return colorObj.ID || colorObj.id || 0;
+  private estimateSupply(frame: number, buildIndex: number): number {
+    // Very basic supply estimation based on time and build order position
+    const timeMinutes = frame / (24 * 60);
+    return Math.min(9 + buildIndex * 2 + Math.floor(timeMinutes * 10), 200);
   }
 
-  private extractGameType(typeObj: any): string {
-    if (!typeObj) return 'Melee';
+  private cleanMapName(mapName: string): string {
+    if (!mapName) return 'Unknown Map';
     
-    if (typeObj.Name) return typeObj.Name;
-    if (typeObj.ShortName) return typeObj.ShortName;
-    
-    // Fallback game type mapping
-    const gameTypeMap: Record<number, string> = {
-      2: 'Melee',
-      3: 'Free For All',
-      4: 'One on One',
-      15: 'Top vs Bottom',
-      16: 'Team Melee'
-    };
-    
-    return gameTypeMap[typeObj.ID] || 'Melee';
+    // Remove control characters and clean up
+    return mapName
+      .replace(/[\x00-\x1F\x7F]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim() || 'Unknown Map';
   }
 
-  private extractEngine(engineObj: any): string {
-    if (!engineObj) return 'StarCraft';
-    
-    if (engineObj.Name) return engineObj.Name;
-    if (engineObj.ShortName) return engineObj.ShortName;
-    
-    return 'StarCraft';
+  private mapRaceToId(raceName: string): number {
+    switch (raceName?.toLowerCase()) {
+      case 'zerg': return 0;
+      case 'terran': return 1;
+      case 'protoss': return 2;
+      default: return 6; // Random/Unknown
+    }
   }
 
-  isAvailable(): boolean {
-    return this.screpLib !== null;
+  private calculateAPMFromPlayerDescs(playerDescs: any[], playerCount: number): { apm: number[]; eapm: number[] } {
+    const apm = new Array(playerCount).fill(0);
+    const eapm = new Array(playerCount).fill(0);
+
+    playerDescs.forEach((desc: any) => {
+      const playerId = desc.PlayerID;
+      if (playerId >= 0 && playerId < playerCount) {
+        apm[playerId] = desc.APM || 0;
+        eapm[playerId] = desc.EAPM || 0;
+        console.log(`[ScrepJsWrapper] Player ${playerId} APM: ${apm[playerId]}, EAPM: ${eapm[playerId]}`);
+      }
+    });
+
+    return { apm, eapm };
+  }
+
+  private calculateMatchup(players: any[]): string {
+    if (players.length < 2) return 'Unknown';
+    
+    const races = players.map(p => p.race.charAt(0).toUpperCase());
+    return `${races[0]}v${races[1]}`;
   }
 }
