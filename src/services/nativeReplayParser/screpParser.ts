@@ -4,6 +4,7 @@
  */
 
 import { ScrepJsWrapper, ReplayParseResult } from './screpJsWrapper';
+import { DebugAnalyzer } from './debugAnalyzer';
 
 export interface ScrepReplayData {
   header: {
@@ -34,60 +35,94 @@ export interface ScrepReplayData {
 
 export class ScrepParser {
   static async parseReplay(file: File): Promise<ScrepReplayData> {
-    console.log('[ScrepParser] ===== STARTING BULLETPROOF REMASTERED PARSING =====');
+    console.log('[ScrepParser] ===== STARTING COMPREHENSIVE REPLAY ANALYSIS =====');
     console.log('[ScrepParser] File:', file.name, 'Size:', (file.size / 1024).toFixed(2), 'KB');
+    
+    // Datei in Buffer laden für umfassende Analyse
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = new Uint8Array(arrayBuffer);
+    
+    // UMFASSENDE DEBUG-ANALYSE
+    console.log('[ScrepParser] ===== STARTING COMPREHENSIVE DEBUG ANALYSIS =====');
+    const debugAnalyzer = new DebugAnalyzer(buffer);
+    debugAnalyzer.analyzeReplay();
     
     const wrapper = ScrepJsWrapper.getInstance();
     await wrapper.initialize();
     
-    console.log('[ScrepParser] Using bulletproof Remastered extraction system');
-    const result = await wrapper.parseReplay(file);
+    console.log('[ScrepParser] ===== ATTEMPTING SCREP-JS PARSING =====');
     
-    // CRITICAL: Ensure we use REAL APM data, not fallback
-    if (!result.computed.playerAPM || result.computed.playerAPM.every(apm => apm === 0)) {
-      throw new Error('REAL APM data not available - parser failed to extract actions');
-    }
-    
-    // CRITICAL: Ensure we have REAL build orders, not empty arrays
-    if (!result.computed.buildOrders || result.computed.buildOrders.every(bo => bo.length === 0)) {
-      console.warn('[ScrepParser] WARNING: No build orders extracted');
-    }
-    
-    console.log('[ScrepParser] ===== VALIDATION: ENSURING REAL DATA =====');
-    console.log('[ScrepParser] APM Data (MUST BE REAL):', result.computed.playerAPM);
-    console.log('[ScrepParser] Build Orders (SHOULD HAVE DATA):', result.computed.buildOrders.map(bo => `${bo.length} actions`));
-    console.log('[ScrepParser] Data Source:', result.computed.dataSource);
-    
-    // Convert to our format with STRICT validation
-    const screpData: ScrepReplayData = {
-      header: {
-        mapName: result.header.mapName || 'Unknown Map',
-        duration: result.header.duration || '0:00',
-        durationMs: this.durationToMs(result.header.duration || '0:00'),
-        startTime: result.header.startTime || new Date(),
-        frameCount: result.header.frames || 0
-      },
-      players: result.players.map((player, index) => ({
-        name: player.name || `Player ${index + 1}`,
-        race: player.race || 'Random',
-        team: player.team || 0,
-        color: player.color || 0
-      })),
-      computed: {
-        apm: result.computed.playerAPM, // REAL APM - no fallback allowed
-        eapm: result.computed.playerEAPM, // REAL EAPM - no fallback allowed
-        buildOrders: result.computed.buildOrders, // REAL build orders
-        dataSource: result.computed.dataSource
+    try {
+      const result = await wrapper.parseReplay(file);
+      
+      console.log('[ScrepParser] ===== SCREP-JS RESULT ANALYSIS =====');
+      console.log('[ScrepParser] Header:', result.header);
+      console.log('[ScrepParser] Players:', result.players);
+      console.log('[ScrepParser] Commands count:', result.commands.length);
+      console.log('[ScrepParser] APM Data:', result.computed.playerAPM);
+      console.log('[ScrepParser] EAPM Data:', result.computed.playerEAPM);
+      console.log('[ScrepParser] Build Orders lengths:', result.computed.buildOrders.map(bo => bo.length));
+      console.log('[ScrepParser] Data Source:', result.computed.dataSource);
+      
+      // KRITISCHE VALIDIERUNG
+      const hasRealAPM = result.computed.playerAPM && 
+                        result.computed.playerAPM.length >= 2 && 
+                        result.computed.playerAPM.some(apm => apm > 0);
+      
+      const hasRealBuildOrders = result.computed.buildOrders && 
+                                result.computed.buildOrders.length >= 2 &&
+                                result.computed.buildOrders.some(bo => bo.length > 0);
+      
+      console.log('[ScrepParser] ===== VALIDATION RESULTS =====');
+      console.log('[ScrepParser] Has real APM:', hasRealAPM);
+      console.log('[ScrepParser] Has real build orders:', hasRealBuildOrders);
+      
+      if (!hasRealAPM) {
+        console.error('[ScrepParser] CRITICAL: No real APM data found!');
+        console.log('[ScrepParser] Raw APM values:', result.computed.playerAPM);
+        throw new Error('REAL APM data not available - parser failed to extract actions');
       }
-    };
-    
-    console.log('[ScrepParser] ===== FINAL VALIDATION BEFORE RETURN =====');
-    console.log('[ScrepParser] Returning APM:', screpData.computed.apm);
-    console.log('[ScrepParser] Returning EAPM:', screpData.computed.eapm);
-    console.log('[ScrepParser] Returning Build Orders:', screpData.computed.buildOrders.map(bo => `${bo.length} actions`));
-    console.log('[ScrepParser] Data quality check PASSED - returning REAL data');
-    
-    return screpData;
+      
+      if (!hasRealBuildOrders) {
+        console.warn('[ScrepParser] WARNING: No real build orders found!');
+        console.log('[ScrepParser] Build order lengths:', result.computed.buildOrders.map(bo => bo.length));
+      }
+      
+      // Convert to our format with STRICT validation
+      const screpData: ScrepReplayData = {
+        header: {
+          mapName: result.header.mapName || 'Unknown Map',
+          duration: result.header.duration || '0:00',
+          durationMs: this.durationToMs(result.header.duration || '0:00'),
+          startTime: result.header.startTime || new Date(),
+          frameCount: result.header.frames || 0
+        },
+        players: result.players.map((player, index) => ({
+          name: player.name || `Player ${index + 1}`,
+          race: player.race || 'Random',
+          team: player.team || 0,
+          color: player.color || 0
+        })),
+        computed: {
+          apm: result.computed.playerAPM,
+          eapm: result.computed.playerEAPM,
+          buildOrders: result.computed.buildOrders,
+          dataSource: result.computed.dataSource
+        }
+      };
+      
+      console.log('[ScrepParser] ===== FINAL RESULT VALIDATION =====');
+      console.log('[ScrepParser] Final APM:', screpData.computed.apm);
+      console.log('[ScrepParser] Final EAPM:', screpData.computed.eapm);
+      console.log('[ScrepParser] Final Build Orders:', screpData.computed.buildOrders.map(bo => `${bo.length} actions`));
+      console.log('[ScrepParser] Data source:', screpData.computed.dataSource);
+      
+      return screpData;
+      
+    } catch (error) {
+      console.error('[ScrepParser] COMPLETE PARSING FAILED:', error);
+      throw new Error(`Replay parsing completely failed: ${error.message}`);
+    }
   }
   
   private static durationToMs(duration: string): number {
