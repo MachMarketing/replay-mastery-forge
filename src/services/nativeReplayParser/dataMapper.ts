@@ -111,10 +111,13 @@ export function mapDirectReplayDataToUI(directData: DirectParserResult): {
   Object.entries(directData.playerActions).forEach(([playerIdStr, actions]) => {
     const playerId = parseInt(playerIdStr);
     const firstCommands = actions.slice(0, 5).map(cmd => {
+      if (typeof cmd.type === 'number') {
+        return `0x${cmd.type.toString(16).padStart(2, '0')}`;
+      }
       if (typeof cmd.cmdId === 'number') {
         return `0x${cmd.cmdId.toString(16).padStart(2, '0')}`;
       }
-      return cmd.type || 'Unknown';
+      return cmd.type || cmd.typeString || 'Unknown';
     });
     
     const firstUnits = actions
