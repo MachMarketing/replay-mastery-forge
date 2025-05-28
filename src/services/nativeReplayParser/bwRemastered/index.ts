@@ -52,17 +52,17 @@ function convertScrepToLegacyFormat(screpData: ScrepReplayData): ParsedReplayDat
   
   console.log('[convertScrepToLegacyFormat] Real APM data - Player 1:', player1Apm, 'Player 2:', player2Apm);
   
-  // NEW: Convert build orders from screp-js to legacy format
+  // NEW: Convert build orders from screp-js to legacy format - FIX SUPPLY TYPE
   const player1BuildOrder = screpData.computed.buildOrders[0]?.map(action => ({
     time: action.timestamp,
     action: action.action,
-    supply: action.supply?.toString() || '?'
+    supply: action.supply || 0 // Convert to number, default to 0
   })) || [];
   
   const player2BuildOrder = screpData.computed.buildOrders[1]?.map(action => ({
     time: action.timestamp,
     action: action.action,
-    supply: action.supply?.toString() || '?'
+    supply: action.supply || 0 // Convert to number, default to 0
   })) || [];
   
   console.log('[convertScrepToLegacyFormat] Real Build Orders - Player 1:', player1BuildOrder.length, 'Player 2:', player2BuildOrder.length);
@@ -118,7 +118,7 @@ function convertScrepToLegacyFormat(screpData: ScrepReplayData): ParsedReplayDat
     eapm: player1Eapm, // Real EAPM
     opponentApm: player2Apm, // Real APM
     opponentEapm: player2Eapm, // Real EAPM
-    buildOrder: player1BuildOrder, // Real build order
+    buildOrder: player1BuildOrder, // Real build order - FIX SUPPLY TYPE
     
     trainingPlan: [] // Keine Mock-Trainingspläne
   };
