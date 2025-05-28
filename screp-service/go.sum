@@ -1,8 +1,8 @@
 
 github.com/gorilla/mux v1.8.1 h1:TuBL49tXwgrFYWhqrNgrUNEY92u81SPhu7sTdzQEiWY=
 github.com/gorilla/mux v1.8.1/go.mod h1:AKf9I4AEqPTmMytcMc0KkNouC66V3BtZ4qD5fmWSiMQ=
-github.com/icza/gox v0.2.0 h1:DH4skfRX4EBpamg7iV4ZlCpblAHI6s6TDM39bFZumv8=
-github.com/icza/gox v0.2.0/go.mod h1:8+E4jGsTakT8xG4+zFJ/wODHAHhOx8z8Cp8aXhb8WfQ=
+github.com/icza/gox v0.2.0 h1:rVecw5Q6POJAWBcXgCZdAtwK/hmoNehxCkAP3sMnOIc=
+github.com/icza/gox v0.2.0/go.mod h1:rVecw5Q6POJAWBcXgCZdAtwK/hmoNehxCkAP3sMnOIc=
 github.com/icza/screp v1.12.11 h1:kL2s3EIWe/utu6zFeNvW+SKzdZbceguk5mhpKtBh63E=
 github.com/icza/screp v1.12.11/go.mod h1:yic7/u8MX0w0lw1Q1UTvLwHqRMkt0zhXWa/Ov5rrShY=
 github.com/joho/godotenv v1.5.1 h1:7eLL/+HRGLY0ldzfGMeQkb7vMd0as4CfYvUVzLqw0N0=
