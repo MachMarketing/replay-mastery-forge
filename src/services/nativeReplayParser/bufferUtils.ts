@@ -26,7 +26,7 @@ export function arrayBufferToBuffer(arrayBuffer: ArrayBuffer): Buffer {
       return new TextDecoder().decode(this);
     },
     slice(start?: number, end?: number) {
-      return uint8Array.subarray(start, end);
+      return this.subarray(start, end);
     }
   });
   
