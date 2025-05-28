@@ -9,6 +9,7 @@ import { CommandParser } from './commandParser';
 import { DataExtractor } from './dataExtractor';
 import { NativeReplayData } from './types';
 import { ParsedReplayData } from '../replayParser/types';
+import { parseBWRemasteredReplay } from './bwRemastered';
 
 export class NativeReplayParser {
   /**
@@ -18,75 +19,85 @@ export class NativeReplayParser {
     console.log('[NativeReplayParser] Starting enhanced parse of', file.name);
     
     try {
-      // Read file as ArrayBuffer
-      const buffer = await file.arrayBuffer();
-      console.log('[NativeReplayParser] File buffer size:', buffer.byteLength);
-
-      // Detect compression and format
-      const format = CompressionDetector.detectFormat(buffer);
-      console.log('[NativeReplayParser] Detected format:', format);
+      // Try the specialized BW Remastered parser first
+      console.log('[NativeReplayParser] Attempting BW Remastered specific parser...');
+      const result = await parseBWRemasteredReplay(file);
+      console.log('[NativeReplayParser] BW Remastered parsing successful');
+      return result;
       
-      // Decompress if necessary
-      let processedBuffer = buffer;
-      if (format.needsDecompression) {
-        console.log('[NativeReplayParser] Decompressing file...');
-        processedBuffer = await ReplayDecompressor.decompress(buffer, format);
-        console.log('[NativeReplayParser] Decompressed size:', processedBuffer.byteLength);
-      }
+    } catch (bwError) {
+      console.log('[NativeReplayParser] BW Remastered parser failed, trying enhanced fallback:', bwError);
       
-      // Apply header offset if needed
-      if (format.headerOffset > 0) {
-        processedBuffer = ReplayDecompressor.applyHeaderOffset(processedBuffer, format.headerOffset);
-      }
-
-      // Parse header with enhanced parser
-      const headerParser = new EnhancedHeaderParser(processedBuffer);
-      const header = headerParser.parseHeader();
-      
-      console.log('[NativeReplayParser] Header parsed:', {
-        frames: header.frames,
-        map: header.mapName,
-        players: header.players.length
-      });
-
-      // Parse commands
-      const commandParser = new CommandParser(processedBuffer, headerParser.getCommandsStartPosition());
-      const commands = commandParser.parseCommands();
-      
-      console.log('[NativeReplayParser] Commands parsed:', commands.length);
-
-      // Extract advanced data
-      const dataExtractor = new DataExtractor(commands, header);
-      
-      // Analyze players
-      const players = header.players.map(playerInfo => 
-        dataExtractor.extractPlayerAnalysis(playerInfo.id)
-      );
-
-      console.log('[NativeReplayParser] Player analysis complete');
-
-      // Build native data structure
-      const nativeData: NativeReplayData = {
-        header,
-        commands,
-        players,
-        gameLength: header.frames / 24,
-        gameLengthString: this.formatDuration(header.frames / 24),
-        map: header.mapName,
-        matchup: players.length >= 2 ? `${players[0].race} vs ${players[1].race}` : 'Unknown',
-        date: new Date().toISOString()
-      };
-
-      // Convert to existing ParsedReplayData format
-      return this.convertToLegacyFormat(nativeData);
-      
-    } catch (error) {
-      console.error('[NativeReplayParser] Enhanced parsing failed:', error);
-      
-      // If enhanced parsing fails, provide more helpful error message
-      const errorMessage = this.getHelpfulErrorMessage(error);
-      throw new Error(errorMessage);
+      // Fallback to enhanced parser
+      return this.parseWithEnhancedParser(file);
     }
+  }
+
+  /**
+   * Enhanced parser fallback
+   */
+  private static async parseWithEnhancedParser(file: File): Promise<ParsedReplayData> {
+    // Read file as ArrayBuffer
+    const buffer = await file.arrayBuffer();
+    console.log('[NativeReplayParser] File buffer size:', buffer.byteLength);
+
+    // Detect compression and format
+    const format = CompressionDetector.detectFormat(buffer);
+    console.log('[NativeReplayParser] Detected format:', format);
+    
+    // Decompress if necessary
+    let processedBuffer = buffer;
+    if (format.needsDecompression) {
+      console.log('[NativeReplayParser] Decompressing file...');
+      processedBuffer = await ReplayDecompressor.decompress(buffer, format);
+      console.log('[NativeReplayParser] Decompressed size:', processedBuffer.byteLength);
+    }
+    
+    // Apply header offset if needed
+    if (format.headerOffset > 0) {
+      processedBuffer = ReplayDecompressor.applyHeaderOffset(processedBuffer, format.headerOffset);
+    }
+
+    // Parse header with enhanced parser
+    const headerParser = new EnhancedHeaderParser(processedBuffer);
+    const header = headerParser.parseHeader();
+    
+    console.log('[NativeReplayParser] Header parsed:', {
+      frames: header.frames,
+      map: header.mapName,
+      players: header.players.length
+    });
+
+    // Parse commands
+    const commandParser = new CommandParser(processedBuffer, headerParser.getCommandsStartPosition());
+    const commands = commandParser.parseCommands();
+    
+    console.log('[NativeReplayParser] Commands parsed:', commands.length);
+
+    // Extract advanced data
+    const dataExtractor = new DataExtractor(commands, header);
+    
+    // Analyze players
+    const players = header.players.map(playerInfo => 
+      dataExtractor.extractPlayerAnalysis(playerInfo.id)
+    );
+
+    console.log('[NativeReplayParser] Player analysis complete');
+
+    // Build native data structure
+    const nativeData: NativeReplayData = {
+      header,
+      commands,
+      players,
+      gameLength: header.frames / 24,
+      gameLengthString: this.formatDuration(header.frames / 24),
+      map: header.mapName,
+      matchup: players.length >= 2 ? `${players[0].race} vs ${players[1].race}` : 'Unknown',
+      date: new Date().toISOString()
+    };
+
+    // Convert to existing ParsedReplayData format
+    return this.convertToLegacyFormat(nativeData);
   }
 
   /**
