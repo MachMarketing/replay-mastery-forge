@@ -68,11 +68,11 @@ const ReplayAnalysisDisplay: React.FC<ReplayAnalysisDisplayProps> = ({ analysis 
 
           <Separator />
 
-          {/* screp-js Compatibility */}
+          {/* screp-js Results (Enhanced) */}
           <div>
             <h4 className="font-medium mb-2 flex items-center gap-2">
               {getStatusIcon(analysis.screpJsCompatibility.parseSuccess)}
-              screp-js Kompatibilität
+              screp-js Analyse-Ergebnisse
             </h4>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -83,57 +83,54 @@ const ReplayAnalysisDisplay: React.FC<ReplayAnalysisDisplayProps> = ({ analysis 
                   {analysis.screpJsCompatibility.parseSuccess ? "Parse erfolgreich" : "Parse fehlgeschlagen"}
                 </Badge>
               </div>
+              
               {analysis.screpJsCompatibility.error && (
                 <p className="text-sm text-red-600 bg-red-50 p-2 rounded">
                   <strong>Fehler:</strong> {analysis.screpJsCompatibility.error}
                 </p>
               )}
+              
+              {analysis.screpJsCompatibility.extractedData && (
+                <div className="grid grid-cols-2 gap-4 text-sm bg-green-50 p-3 rounded">
+                  <div>
+                    <span className="text-muted-foreground">Map:</span>
+                    <p className="font-mono font-semibold">{analysis.screpJsCompatibility.extractedData.mapName}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Spieler:</span>
+                    <p className="font-mono">{analysis.screpJsCompatibility.extractedData.playersFound}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Dauer:</span>
+                    <p className="font-mono">{analysis.screpJsCompatibility.extractedData.duration}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Frames:</span>
+                    <p className="font-mono">{analysis.screpJsCompatibility.extractedData.totalFrames}</p>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-muted-foreground">Spieler-Namen:</span>
+                    <p className="font-mono text-sm font-semibold text-green-700">
+                      {analysis.screpJsCompatibility.extractedData.playerNames.join(' vs ')}
+                    </p>
+                  </div>
+                  {analysis.screpJsCompatibility.extractedData.apm.length > 0 && (
+                    <div className="col-span-2">
+                      <span className="text-muted-foreground">APM:</span>
+                      <p className="font-mono text-sm">
+                        {analysis.screpJsCompatibility.extractedData.apm.join(' vs ')}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+              
               {analysis.screpJsCompatibility.resultKeys && (
                 <p className="text-sm text-muted-foreground">
-                  <strong>Ergebnis-Keys:</strong> {analysis.screpJsCompatibility.resultKeys.join(', ')}
+                  <strong>Verfügbare Daten:</strong> {analysis.screpJsCompatibility.resultKeys.join(', ')}
                 </p>
               )}
             </div>
-          </div>
-
-          <Separator />
-
-          {/* Custom Parser Results */}
-          <div>
-            <h4 className="font-medium mb-2 flex items-center gap-2">
-              {getStatusIcon(analysis.customParserResults.parseSuccess)}
-              Custom Parser Ergebnisse
-            </h4>
-            {analysis.customParserResults.parseSuccess && analysis.customParserResults.extractedData ? (
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Map:</span>
-                  <p className="font-mono">{analysis.customParserResults.extractedData.mapName}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Spieler:</span>
-                  <p className="font-mono">{analysis.customParserResults.extractedData.playersFound}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Dauer:</span>
-                  <p className="font-mono">{analysis.customParserResults.extractedData.duration}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Commands:</span>
-                  <p className="font-mono">{analysis.customParserResults.extractedData.commandsFound}</p>
-                </div>
-                <div className="col-span-2">
-                  <span className="text-muted-foreground">Spieler-Namen:</span>
-                  <p className="font-mono text-xs">
-                    {analysis.customParserResults.extractedData.playerNames.join(', ')}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-red-600 bg-red-50 p-2 rounded">
-                <strong>Fehler:</strong> {analysis.customParserResults.error}
-              </p>
-            )}
           </div>
 
           <Separator />
@@ -142,13 +139,15 @@ const ReplayAnalysisDisplay: React.FC<ReplayAnalysisDisplayProps> = ({ analysis 
           <div>
             <h4 className="font-medium mb-2 flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-yellow-500" />
-              Empfehlungen
+              Analyse-Ergebnis
             </h4>
             <ul className="space-y-1 text-sm">
               {analysis.recommendations.map((rec, index) => (
                 <li key={index} className="flex items-start gap-2">
-                  <span className="text-yellow-500">•</span>
-                  <span>{rec}</span>
+                  <span className={rec.startsWith('✅') ? 'text-green-500' : rec.startsWith('❌') ? 'text-red-500' : 'text-yellow-500'}>
+                    {rec.startsWith('✅') ? '✅' : rec.startsWith('❌') ? '❌' : '•'}
+                  </span>
+                  <span className={rec.startsWith('✅') ? 'text-green-700' : rec.startsWith('❌') ? 'text-red-700' : ''}>{rec}</span>
                 </li>
               ))}
             </ul>
@@ -158,7 +157,7 @@ const ReplayAnalysisDisplay: React.FC<ReplayAnalysisDisplayProps> = ({ analysis 
 
           {/* Hex Dumps */}
           <div>
-            <h4 className="font-medium mb-2">Hex-Dumps (Debug)</h4>
+            <h4 className="font-medium mb-2">Raw Hex-Dumps (Debug)</h4>
             <div className="space-y-3">
               <div>
                 <h5 className="text-sm font-medium text-muted-foreground mb-1">Datei-Header:</h5>

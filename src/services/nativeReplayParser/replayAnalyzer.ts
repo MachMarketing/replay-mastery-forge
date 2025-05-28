@@ -1,9 +1,10 @@
+
 /**
  * Detailed replay file analyzer for debugging and format detection
+ * NOW USING ONLY screp-js - no custom parser
  */
 
 import { ScrepJsWrapper } from './screpJsWrapper';
-import { BWRemasteredParser } from './bwRemastered/parser';
 import { CompressionDetector } from './compressionDetector';
 
 export interface ReplayAnalysisResult {
@@ -23,11 +24,15 @@ export interface ReplayAnalysisResult {
     parseSuccess: boolean;
     error?: string;
     resultKeys?: string[];
-  };
-  customParserResults: {
-    parseSuccess: boolean;
-    error?: string;
-    extractedData?: any;
+    extractedData?: {
+      mapName: string;
+      playersFound: number;
+      playerNames: string[];
+      totalFrames: number;
+      duration: string;
+      apm: number[];
+      eapm: number[];
+    };
   };
   hexDump: {
     first256Bytes: string;
@@ -39,7 +44,7 @@ export interface ReplayAnalysisResult {
 
 export class ReplayAnalyzer {
   async analyzeReplay(file: File): Promise<ReplayAnalysisResult> {
-    console.log('[ReplayAnalyzer] Starting comprehensive analysis of:', file.name);
+    console.log('[ReplayAnalyzer] Starting SCREP-JS ONLY analysis of:', file.name);
     
     const arrayBuffer = await file.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
@@ -61,22 +66,17 @@ export class ReplayAnalyzer {
     const formatDetection = this.analyzeFormat(uint8Array);
     console.log('[ReplayAnalyzer] Format detection result:', formatDetection);
     
-    // Test screp-js compatibility
-    const screpJsCompatibility = await this.testScrepJs(file);
-    console.log('[ReplayAnalyzer] screp-js test result:', screpJsCompatibility);
-    
-    // Test custom parser
-    const customParserResults = await this.testCustomParser(arrayBuffer);
-    console.log('[ReplayAnalyzer] Custom parser result:', customParserResults);
+    // Test screp-js compatibility (enhanced with data extraction)
+    const screpJsCompatibility = await this.testScrepJsEnhanced(file);
+    console.log('[ReplayAnalyzer] screp-js enhanced test result:', screpJsCompatibility);
     
     // Create hex dumps
     const hexDump = this.createHexDumps(uint8Array);
     
-    // Generate recommendations
+    // Generate recommendations based on screp-js only
     const recommendations = this.generateRecommendations({
       formatDetection,
-      screpJsCompatibility,
-      customParserResults
+      screpJsCompatibility
     });
     console.log('[ReplayAnalyzer] Generated recommendations:', recommendations);
     
@@ -84,7 +84,6 @@ export class ReplayAnalyzer {
       fileInfo,
       formatDetection,
       screpJsCompatibility,
-      customParserResults,
       hexDump,
       recommendations
     };
@@ -138,7 +137,7 @@ export class ReplayAnalyzer {
     };
   }
   
-  private async testScrepJs(file: File): Promise<ReplayAnalysisResult['screpJsCompatibility']> {
+  private async testScrepJsEnhanced(file: File): Promise<ReplayAnalysisResult['screpJsCompatibility']> {
     try {
       const wrapper = ScrepJsWrapper.getInstance();
       const available = await wrapper.initialize();
@@ -153,10 +152,22 @@ export class ReplayAnalyzer {
       
       const result = await wrapper.parseReplay(file);
       
+      // Extract detailed data for display
+      const extractedData = {
+        mapName: result.header.mapName || 'Unknown',
+        playersFound: result.players.length,
+        playerNames: result.players.map(p => p.name),
+        totalFrames: result.header.frames || 0,
+        duration: result.header.duration || '0:00',
+        apm: result.computed.playerAPM || [],
+        eapm: result.computed.playerEAPM || []
+      };
+      
       return {
         available: true,
         parseSuccess: true,
-        resultKeys: Object.keys(result)
+        resultKeys: Object.keys(result),
+        extractedData
       };
       
     } catch (error) {
@@ -164,31 +175,6 @@ export class ReplayAnalyzer {
         available: true,
         parseSuccess: false,
         error: error instanceof Error ? error.message : 'Unknown error',
-      };
-    }
-  }
-  
-  private async testCustomParser(arrayBuffer: ArrayBuffer): Promise<ReplayAnalysisResult['customParserResults']> {
-    try {
-      const parser = new BWRemasteredParser(arrayBuffer);
-      const result = await parser.parseReplay();
-      
-      return {
-        parseSuccess: true,
-        extractedData: {
-          mapName: result.mapName,
-          playersFound: result.players.length,
-          playerNames: result.players.map(p => p.name),
-          totalFrames: result.totalFrames,
-          duration: result.duration,
-          commandsFound: result.commands.length
-        }
-      };
-      
-    } catch (error) {
-      return {
-        parseSuccess: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
   }
@@ -211,48 +197,48 @@ export class ReplayAnalyzer {
   private generateRecommendations(analysis: {
     formatDetection: ReplayAnalysisResult['formatDetection'];
     screpJsCompatibility: ReplayAnalysisResult['screpJsCompatibility'];
-    customParserResults: ReplayAnalysisResult['customParserResults'];
   }): string[] {
     const recommendations: string[] = [];
     
     if (!analysis.screpJsCompatibility.available) {
-      recommendations.push('screp-js ist im Browser nicht verfügbar - Browser-Polyfills prüfen');
+      recommendations.push('❌ screp-js ist im Browser nicht verfügbar - Browser-Polyfills prüfen');
     } else if (!analysis.screpJsCompatibility.parseSuccess) {
-      recommendations.push('screp-js kann diese Datei nicht parsen - möglicherweise zu neues Format');
+      recommendations.push('❌ screp-js kann diese Datei nicht parsen - möglicherweise zu neues Format oder beschädigte Datei');
+      recommendations.push('🔧 Prüfe ob die .rep-Datei beschädigt ist oder ein unsupported Format hat');
     } else {
-      recommendations.push('✅ screp-js kann diese Datei erfolgreich parsen - verwende screp-js für normale Analyse');
-    }
-    
-    if (!analysis.customParserResults.parseSuccess) {
-      if (analysis.formatDetection.isCompressed) {
-        recommendations.push('Custom Parser schlägt fehl da Datei komprimiert ist - Decompression-Module verbessern');
-      } else {
-        recommendations.push('Custom Parser schlägt fehl - Datei könnte beschädigt oder unsupported sein');
+      recommendations.push('✅ screp-js kann diese Datei erfolgreich parsen - alle Daten verfügbar');
+      
+      if (analysis.screpJsCompatibility.extractedData) {
+        const data = analysis.screpJsCompatibility.extractedData;
+        
+        if (data.playersFound >= 2) {
+          recommendations.push(`✅ ${data.playersFound} Spieler erfolgreich erkannt: ${data.playerNames.join(', ')}`);
+        }
+        
+        if (data.apm.length > 0) {
+          recommendations.push(`✅ APM-Daten verfügbar: ${data.apm.join(', ')}`);
+        }
+        
+        if (data.mapName && data.mapName !== 'Unknown') {
+          recommendations.push(`✅ Map erfolgreich erkannt: ${data.mapName}`);
+        }
+        
+        if (data.duration && data.duration !== '0:00') {
+          recommendations.push(`✅ Spieldauer verfügbar: ${data.duration}`);
+        }
       }
     }
     
     if (analysis.formatDetection.detectedFormat === 'remastered_zlib') {
-      recommendations.push('✅ Remastered-Format mit Kompression erkannt - screp-js sollte funktionieren');
+      recommendations.push('✅ Remastered-Format mit Kompression erkannt - screp-js unterstützt dies vollständig');
     }
     
     if (analysis.formatDetection.estimatedVersion.includes('Remastered')) {
-      recommendations.push('✅ Remastered-Version bestätigt - moderne Parsing-Tools verwenden');
+      recommendations.push('✅ Remastered-Version bestätigt - screp-js ist der beste Parser dafür');
     }
     
-    // Add recommendation based on screp-js success vs custom parser failure
-    if (analysis.screpJsCompatibility.parseSuccess && !analysis.customParserResults.parseSuccess) {
-      recommendations.push('💡 Empfehlung: Nutze "Normal analysieren" statt Custom Parser für beste Ergebnisse');
-    }
-    
-    if (analysis.customParserResults.parseSuccess && analysis.customParserResults.extractedData) {
-      const data = analysis.customParserResults.extractedData;
-      if (data.playersFound < 2) {
-        recommendations.push('Weniger als 2 Spieler gefunden - Player-Parser verbessern');
-      }
-      if (data.commandsFound === 0) {
-        recommendations.push('Keine Commands gefunden - Command-Parser-Offset anpassen');
-      }
-    }
+    // Always recommend using screp-js since custom parser is removed
+    recommendations.push('💡 Empfehlung: Verwende die normale Analyse - Custom Parser wurde entfernt');
     
     return recommendations;
   }
