@@ -37,95 +37,149 @@ export class ReplayDecompressor {
   }
   
   /**
-   * Decompress Brood War Remastered zlib format with improved detection
+   * Decompress Brood War Remastered zlib format with proper block handling
    */
   private static decompressRemasteredZlib(buffer: ArrayBuffer): ArrayBuffer {
-    console.log('[ReplayDecompressor] Processing Remastered zlib format with improved detection');
+    console.log('[ReplayDecompressor] Processing Remastered zlib format with block handling');
     const fullView = new Uint8Array(buffer);
     
-    // Log the complete header structure for analysis
-    console.log('[ReplayDecompressor] Complete header analysis:');
-    for (let i = 0; i < Math.min(64, fullView.length); i += 16) {
-      const chunk = Array.from(fullView.slice(i, i + 16));
-      const hex = chunk.map(b => b.toString(16).padStart(2, '0')).join(' ');
-      const ascii = chunk.map(b => b >= 32 && b <= 126 ? String.fromCharCode(b) : '.').join('');
-      console.log(`[ReplayDecompressor] ${i.toString(16).padStart(4, '0')}: ${hex} | ${ascii}`);
-    }
+    // Remastered replays often have a specific structure:
+    // Header (32+ bytes) + multiple compressed blocks
     
-    // Look for zlib magic bytes (0x78) throughout the file
-    const zlibPositions = [];
-    for (let i = 0; i < fullView.length - 1; i++) {
-      if (fullView[i] === 0x78 && (fullView[i + 1] === 0x9c || fullView[i + 1] === 0xda || fullView[i + 1] === 0x01)) {
-        zlibPositions.push(i);
-        console.log(`[ReplayDecompressor] Found zlib header at offset ${i}: 0x${fullView[i].toString(16)} 0x${fullView[i + 1].toString(16)}`);
-      }
-    }
+    // Try to extract the main replay data from the first large zlib block
+    const zlibOffset = this.findMainZlibBlock(fullView);
     
-    // Try decompression from each found zlib position
-    for (const pos of zlibPositions) {
+    if (zlibOffset >= 0) {
+      console.log(`[ReplayDecompressor] Found main zlib block at offset ${zlibOffset}`);
+      
       try {
-        console.log(`[ReplayDecompressor] Attempting decompression from zlib position ${pos}`);
-        const compressedData = fullView.slice(pos);
-        const decompressed = pako.inflate(compressedData);
+        const compressedData = fullView.slice(zlibOffset);
         
-        console.log(`[ReplayDecompressor] Successfully decompressed from position ${pos}, size: ${decompressed.length}`);
+        // Try different decompression methods for Remastered format
+        const methods = [
+          () => pako.inflate(compressedData),
+          () => pako.inflateRaw(compressedData),
+          () => {
+            // Skip potential header in compressed data
+            const dataStart = this.findZlibStart(compressedData);
+            return pako.inflate(compressedData.slice(dataStart));
+          }
+        ];
         
-        // Validate the decompressed data
-        if (this.validateDecompressedReplay(decompressed)) {
-          console.log('[ReplayDecompressor] Decompressed data validation passed!');
-          return decompressed.buffer;
+        for (let i = 0; i < methods.length; i++) {
+          try {
+            const decompressed = methods[i]();
+            console.log(`[ReplayDecompressor] Method ${i} successful, size: ${decompressed.length}`);
+            
+            if (this.validateDecompressedReplay(decompressed)) {
+              console.log('[ReplayDecompressor] Decompressed data validation passed!');
+              return decompressed.buffer;
+            }
+          } catch (methodError) {
+            console.log(`[ReplayDecompressor] Method ${i} failed:`, methodError);
+          }
         }
-        
       } catch (error) {
-        console.log(`[ReplayDecompressor] Decompression failed at position ${pos}:`, error);
+        console.log(`[ReplayDecompressor] Main block decompression failed:`, error);
       }
     }
     
-    // If no zlib headers found, try other approaches
-    if (zlibPositions.length === 0) {
-      console.log('[ReplayDecompressor] No standard zlib headers found, trying alternative approaches');
-      
-      // Try to find and decompress potential compressed sections
-      const potentialOffsets = [12, 16, 20, 24, 28, 32, 36, 40, 44, 48];
-      
-      for (const offset of potentialOffsets) {
-        if (offset >= fullView.length) continue;
-        
+    // Fallback: try to concatenate all decompressed blocks
+    return this.decompressMultipleBlocks(fullView);
+  }
+  
+  /**
+   * Find the main zlib block (usually the largest one)
+   */
+  private static findMainZlibBlock(data: Uint8Array): number {
+    const zlibPositions = [];
+    
+    // Find all zlib positions
+    for (let i = 0; i < data.length - 1; i++) {
+      if (data[i] === 0x78 && [0x9c, 0xda, 0x01, 0x5e, 0x2c].includes(data[i + 1])) {
+        zlibPositions.push(i);
+      }
+    }
+    
+    console.log(`[ReplayDecompressor] Found ${zlibPositions.length} zlib blocks`);
+    
+    // Return the first significant block (usually after header)
+    for (const pos of zlibPositions) {
+      if (pos >= 32) { // Skip header blocks
+        const remainingSize = data.length - pos;
+        if (remainingSize > 1000) { // Ensure it's a substantial block
+          return pos;
+        }
+      }
+    }
+    
+    return zlibPositions.length > 0 ? zlibPositions[0] : -1;
+  }
+  
+  /**
+   * Find actual zlib start within data
+   */
+  private static findZlibStart(data: Uint8Array): number {
+    for (let i = 0; i < Math.min(100, data.length - 1); i++) {
+      if (data[i] === 0x78 && [0x9c, 0xda, 0x01].includes(data[i + 1])) {
+        return i;
+      }
+    }
+    return 0;
+  }
+  
+  /**
+   * Decompress multiple zlib blocks and concatenate
+   */
+  private static decompressMultipleBlocks(data: Uint8Array): ArrayBuffer {
+    console.log('[ReplayDecompressor] Attempting multi-block decompression');
+    
+    const blocks: Uint8Array[] = [];
+    let totalSize = 0;
+    
+    // Find and decompress all zlib blocks
+    for (let i = 0; i < data.length - 1; i++) {
+      if (data[i] === 0x78 && [0x9c, 0xda, 0x01].includes(data[i + 1])) {
         try {
-          console.log(`[ReplayDecompressor] Trying alternative decompression from offset ${offset}`);
-          const compressedData = fullView.slice(offset);
-          
-          // Try different decompression methods
-          const methods = [
-            () => pako.inflate(compressedData),
-            () => pako.inflateRaw(compressedData),
-            () => pako.inflate(compressedData, { windowBits: -15 }),
-            () => pako.inflate(compressedData, { windowBits: 15 })
-          ];
-          
-          for (let i = 0; i < methods.length; i++) {
-            try {
-              const decompressed = methods[i]();
-              console.log(`[ReplayDecompressor] Method ${i} successful from offset ${offset}, size: ${decompressed.length}`);
-              
-              if (this.validateDecompressedReplay(decompressed)) {
-                console.log('[ReplayDecompressor] Alternative decompression validation passed!');
-                return decompressed.buffer;
-              }
-            } catch (methodError) {
-              // Continue to next method
+          // Try to find the end of this block
+          let blockEnd = i + 100;
+          for (let j = i + 10; j < Math.min(i + 10000, data.length); j++) {
+            if (data[j] === 0x78 && [0x9c, 0xda, 0x01].includes(data[j + 1])) {
+              blockEnd = j;
+              break;
             }
           }
           
+          const blockData = data.slice(i, blockEnd);
+          const decompressed = pako.inflate(blockData);
+          
+          if (decompressed.length > 10) {
+            blocks.push(decompressed);
+            totalSize += decompressed.length;
+            console.log(`[ReplayDecompressor] Block at ${i}: ${decompressed.length} bytes`);
+          }
         } catch (error) {
-          // Continue to next offset
+          // Continue to next block
         }
       }
     }
     
-    // Last resort: try to extract uncompressed sections
-    console.log('[ReplayDecompressor] All decompression attempts failed, trying to extract raw data');
-    return this.extractRawReplayData(buffer);
+    if (blocks.length > 0) {
+      // Concatenate all blocks
+      const result = new Uint8Array(totalSize);
+      let offset = 0;
+      
+      for (const block of blocks) {
+        result.set(block, offset);
+        offset += block.length;
+      }
+      
+      console.log(`[ReplayDecompressor] Concatenated ${blocks.length} blocks: ${result.length} bytes`);
+      return result.buffer;
+    }
+    
+    // Final fallback
+    throw new Error('Could not decompress any zlib blocks');
   }
   
   /**
@@ -144,8 +198,8 @@ export class ReplayDecompressor {
       return true;
     }
     
-    // Look for "Repl" anywhere in the first 1000 bytes
-    for (let i = 0; i < Math.min(1000, data.length - 4); i++) {
+    // Look for "Repl" anywhere in the first 100 bytes
+    for (let i = 0; i < Math.min(100, data.length - 4); i++) {
       const testString = new TextDecoder('latin1', { fatal: false }).decode(data.slice(i, i + 4));
       if (testString === 'Repl') {
         console.log(`[ReplayDecompressor] Found "Repl" magic at offset ${i}!`);
@@ -153,30 +207,25 @@ export class ReplayDecompressor {
       }
     }
     
-    // Check for common StarCraft strings in the first 2000 bytes
-    const textContent = new TextDecoder('latin1', { fatal: false }).decode(data.slice(0, Math.min(2000, data.length)));
-    const requiredPatterns = ['StarCraft', 'Brood War', 'scenario.chk'];
-    const optionalPatterns = ['Maps\\', 'Player', 'Protoss', 'Terran', 'Zerg'];
+    // Check for valid replay patterns in first 500 bytes
+    const textContent = new TextDecoder('latin1', { fatal: false }).decode(data.slice(0, Math.min(500, data.length)));
     
-    let requiredMatches = 0;
-    let optionalMatches = 0;
+    // Look for StarCraft-specific strings
+    const patterns = [
+      'StarCraft', 'Brood War', 'scenario.chk', '.scm', '.scx',
+      'Protoss', 'Terran', 'Zerg', 'Maps\\'
+    ];
     
-    for (const pattern of requiredPatterns) {
+    let patternCount = 0;
+    for (const pattern of patterns) {
       if (textContent.includes(pattern)) {
-        requiredMatches++;
-        console.log(`[ReplayDecompressor] Found required pattern: ${pattern}`);
+        patternCount++;
+        console.log(`[ReplayDecompressor] Found pattern: ${pattern}`);
       }
     }
     
-    for (const pattern of optionalPatterns) {
-      if (textContent.includes(pattern)) {
-        optionalMatches++;
-        console.log(`[ReplayDecompressor] Found optional pattern: ${pattern}`);
-      }
-    }
-    
-    const isValid = requiredMatches >= 1 || optionalMatches >= 2;
-    console.log(`[ReplayDecompressor] Validation result: ${isValid} (required: ${requiredMatches}, optional: ${optionalMatches})`);
+    const isValid = patternCount >= 2;
+    console.log(`[ReplayDecompressor] Validation result: ${isValid} (${patternCount} patterns found)`);
     
     return isValid;
   }
