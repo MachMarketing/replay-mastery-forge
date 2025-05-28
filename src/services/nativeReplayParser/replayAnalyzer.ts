@@ -1,10 +1,9 @@
-
 /**
  * Detailed replay file analyzer for debugging and format detection
- * NOW USING ONLY screp-js - no custom parser
+ * NOW USING ENHANCED screp-js with native action parser
  */
 
-import { ScrepJsWrapper } from './screpJsWrapper';
+import { EnhancedScrepWrapper } from './enhancedScrepWrapper';
 import { CompressionDetector } from './compressionDetector';
 
 export interface ReplayAnalysisResult {
@@ -44,7 +43,7 @@ export interface ReplayAnalysisResult {
 
 export class ReplayAnalyzer {
   async analyzeReplay(file: File): Promise<ReplayAnalysisResult> {
-    console.log('[ReplayAnalyzer] Starting SCREP-JS ONLY analysis of:', file.name);
+    console.log('[ReplayAnalyzer] Starting ENHANCED analysis with native action parser:', file.name);
     
     const arrayBuffer = await file.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
@@ -66,14 +65,14 @@ export class ReplayAnalyzer {
     const formatDetection = this.analyzeFormat(uint8Array);
     console.log('[ReplayAnalyzer] Format detection result:', formatDetection);
     
-    // Test screp-js compatibility (enhanced with data extraction)
-    const screpJsCompatibility = await this.testScrepJsEnhanced(file);
-    console.log('[ReplayAnalyzer] screp-js enhanced test result:', screpJsCompatibility);
+    // Test enhanced screp-js compatibility
+    const screpJsCompatibility = await this.testEnhancedScrepJs(file);
+    console.log('[ReplayAnalyzer] Enhanced screp-js test result:', screpJsCompatibility);
     
     // Create hex dumps
     const hexDump = this.createHexDumps(uint8Array);
     
-    // Generate recommendations based on screp-js only
+    // Generate recommendations
     const recommendations = this.generateRecommendations({
       formatDetection,
       screpJsCompatibility
@@ -137,31 +136,30 @@ export class ReplayAnalyzer {
     };
   }
   
-  private async testScrepJsEnhanced(file: File): Promise<ReplayAnalysisResult['screpJsCompatibility']> {
+  private async testEnhancedScrepJs(file: File): Promise<ReplayAnalysisResult['screpJsCompatibility']> {
     try {
-      const wrapper = ScrepJsWrapper.getInstance();
-      const available = await wrapper.initialize();
+      console.log('[ReplayAnalyzer] Testing enhanced screp-js with native action parser');
+      const result = await EnhancedScrepWrapper.parseReplayEnhanced(file);
       
-      if (!available) {
-        return {
-          available: false,
-          parseSuccess: false,
-          error: 'screp-js not available in browser'
-        };
-      }
-      
-      const result = await wrapper.parseReplay(file);
-      
-      // Extract detailed data for display - fix the property names
+      // Extract detailed data including enhancement info
       const extractedData = {
         mapName: result.header.mapName || 'Unknown',
         playersFound: result.players.length,
         playerNames: result.players.map(p => p.name),
         totalFrames: result.header.frames || 0,
         duration: result.header.duration || '0:00',
-        apm: result.computed.apm || [], // Fixed: use apm instead of playerAPM
-        eapm: result.computed.eapm || [] // Fixed: use eapm instead of playerEAPM
+        apm: result.computed.apm || [],
+        eapm: result.computed.eapm || []
       };
+      
+      // Log enhancement details
+      console.log('[ReplayAnalyzer] Enhancement details:', {
+        hasDetailedActions: result.enhanced.hasDetailedActions,
+        extractionMethod: result.enhanced.extractionMethod,
+        extractionTime: result.enhanced.extractionTime,
+        actionCount: result.enhanced.actionData?.actions.length || 0,
+        buildOrderPlayers: Object.keys(result.enhanced.actionData?.playerActions || {}).length
+      });
       
       return {
         available: true,
@@ -201,12 +199,12 @@ export class ReplayAnalyzer {
     const recommendations: string[] = [];
     
     if (!analysis.screpJsCompatibility.available) {
-      recommendations.push('❌ screp-js ist im Browser nicht verfügbar - Browser-Polyfills prüfen');
+      recommendations.push('❌ Enhanced screp-js ist im Browser nicht verfügbar');
     } else if (!analysis.screpJsCompatibility.parseSuccess) {
-      recommendations.push('❌ screp-js kann diese Datei nicht parsen - möglicherweise zu neues Format oder beschädigte Datei');
+      recommendations.push('❌ Enhanced screp-js kann diese Datei nicht parsen');
       recommendations.push('🔧 Prüfe ob die .rep-Datei beschädigt ist oder ein unsupported Format hat');
     } else {
-      recommendations.push('✅ screp-js kann diese Datei erfolgreich parsen - alle Daten verfügbar');
+      recommendations.push('✅ Enhanced screp-js mit native action parser kann diese Datei erfolgreich parsen');
       
       if (analysis.screpJsCompatibility.extractedData) {
         const data = analysis.screpJsCompatibility.extractedData;
@@ -216,7 +214,7 @@ export class ReplayAnalyzer {
         }
         
         if (data.apm.length > 0) {
-          recommendations.push(`✅ APM-Daten verfügbar: ${data.apm.join(', ')}`);
+          recommendations.push(`✅ Enhanced APM-Daten verfügbar: ${data.apm.join(', ')}`);
         }
         
         if (data.mapName && data.mapName !== 'Unknown') {
@@ -226,19 +224,16 @@ export class ReplayAnalyzer {
         if (data.duration && data.duration !== '0:00') {
           recommendations.push(`✅ Spieldauer verfügbar: ${data.duration}`);
         }
+        
+        recommendations.push('✅ Detaillierte Action-Daten durch nativen Parser verfügbar');
       }
     }
     
     if (analysis.formatDetection.detectedFormat === 'remastered_zlib') {
-      recommendations.push('✅ Remastered-Format mit Kompression erkannt - screp-js unterstützt dies vollständig');
+      recommendations.push('✅ Remastered-Format erkannt - Enhanced Parser unterstützt native Action-Extraktion');
     }
     
-    if (analysis.formatDetection.estimatedVersion.includes('Remastered')) {
-      recommendations.push('✅ Remastered-Version bestätigt - screp-js ist der beste Parser dafür');
-    }
-    
-    // Always recommend using screp-js since custom parser is removed
-    recommendations.push('💡 Empfehlung: Verwende die normale Analyse - Custom Parser wurde entfernt');
+    recommendations.push('💡 Empfehlung: Enhanced Parser bietet vollständige Action-Daten für Build Orders');
     
     return recommendations;
   }

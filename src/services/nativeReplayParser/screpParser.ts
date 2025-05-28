@@ -1,9 +1,8 @@
-
 /**
- * SIMPLIFIED screp-js parser - ONLY screp-js, no fallbacks
+ * ENHANCED screp-js parser with native action parsing
  */
 
-import { ScrepJsWrapper, ScrepJsResult } from './screpJsWrapper'; // Fixed: import ScrepJsResult
+import { EnhancedScrepWrapper, EnhancedReplayData } from './enhancedScrepWrapper';
 
 export interface ScrepPlayer {
   name: string;
@@ -48,31 +47,26 @@ export interface ScrepReplayData {
 }
 
 export class ScrepParser {
-  private static wrapper = ScrepJsWrapper.getInstance();
-
   /**
-   * Parse replay using ONLY screp-js - no custom parser fallback
+   * Parse replay using enhanced screp-js with native action parser
    */
   static async parseReplay(file: File): Promise<ScrepReplayData> {
-    console.log('[ScrepParser] Using ONLY screp-js - no custom parser');
+    console.log('[ScrepParser] Using ENHANCED screp-js with native action parser');
     
-    // Initialize wrapper
-    const available = await this.wrapper.initialize();
+    console.log('[ScrepParser] Starting enhanced parsing...');
+    const result = await EnhancedScrepWrapper.parseReplayEnhanced(file);
     
-    if (!available) {
-      throw new Error('screp-js ist nicht verfügbar im Browser - Custom Parser wurde entfernt');
-    }
-    
-    console.log('[ScrepParser] screp-js verfügbar - parsing...');
-    const result = await this.wrapper.parseReplay(file);
-    
-    console.log('[ScrepParser] screp-js erfolgreich - konvertiere Daten');
+    console.log('[ScrepParser] Enhanced parsing successful - converting data');
     return this.convertToScrepFormat(result);
   }
 
-  private static convertToScrepFormat(result: ScrepJsResult): ScrepReplayData { // Fixed: use ScrepJsResult
-    console.log('[ScrepParser] Converting screp-js result to format');
-    console.log('[ScrepParser] Raw screp result players:', result.players.map(p => p.name));
+  private static convertToScrepFormat(result: EnhancedReplayData): ScrepReplayData {
+    console.log('[ScrepParser] Converting enhanced result to format');
+    console.log('[ScrepParser] Enhancement info:', {
+      hasDetailedActions: result.enhanced.hasDetailedActions,
+      extractionMethod: result.enhanced.extractionMethod,
+      extractionTime: result.enhanced.extractionTime
+    });
     
     // Strict validation - only accept real data
     if (!result.players || result.players.length < 2) {
@@ -106,14 +100,18 @@ export class ScrepParser {
       };
     });
 
-    // Use real APM data from screp-js - fixed property names
-    const apm = result.computed.apm;
-    const eapm = result.computed.eapm;
-    const buildOrders = result.computed.buildOrders;
+    // Use enhanced APM/EAPM data if available
+    const apm = result.computed.apm || [];
+    const eapm = result.computed.eapm || [];
+    const buildOrders = result.computed.buildOrders || [];
     
-    console.log('[ScrepParser] Final player data:', players.map(p => `${p.name} (${p.race})`));
-    console.log('[ScrepParser] Final APM data:', apm);
-    console.log('[ScrepParser] Final EAPM data:', eapm);
+    console.log('[ScrepParser] Final enhanced data:', {
+      players: players.map(p => `${p.name} (${p.race})`),
+      apm: apm,
+      eapm: eapm,
+      buildOrdersAvailable: buildOrders.length > 0,
+      detailedActions: result.enhanced.hasDetailedActions
+    });
 
     return {
       header: {
