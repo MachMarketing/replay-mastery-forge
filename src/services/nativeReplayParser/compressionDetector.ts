@@ -20,18 +20,28 @@ export class CompressionDetector {
   static detectFormat(buffer: ArrayBuffer): ReplayFormat {
     const reader = new BinaryReader(buffer);
     
-    // Read first 16 bytes to check magic signatures
-    const magicBytes = reader.readBytes(Math.min(16, buffer.byteLength));
+    // Read first 32 bytes to get a better analysis
+    const magicBytes = reader.readBytes(Math.min(32, buffer.byteLength));
     const magicString = new TextDecoder('latin1').decode(magicBytes.slice(0, 4));
     
-    console.log('[CompressionDetector] Magic bytes:', Array.from(magicBytes.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join(' '));
-    console.log('[CompressionDetector] Magic string:', magicString);
+    console.log('[CompressionDetector] Full magic analysis (first 32 bytes):');
+    console.log('[CompressionDetector] Hex:', Array.from(magicBytes).map(b => b.toString(16).padStart(2, '0')).join(' '));
+    console.log('[CompressionDetector] ASCII interpretation:', Array.from(magicBytes).map(b => 
+      b >= 32 && b <= 126 ? String.fromCharCode(b) : '.'
+    ).join(''));
+    console.log('[CompressionDetector] Magic string (first 4 bytes):', magicString);
     
     // Check for Brood War Remastered zlib compression pattern
     // Pattern: C2 19 C2 93 indicates zlib-compressed Remastered replay
     if (magicBytes[0] === 0xC2 && magicBytes[1] === 0x19 && 
         magicBytes[2] === 0xC2 && magicBytes[3] === 0x93) {
       console.log('[CompressionDetector] Detected Brood War Remastered zlib compression');
+      console.log('[CompressionDetector] Header structure analysis:');
+      console.log('[CompressionDetector] Bytes 0-3 (magic):', Array.from(magicBytes.slice(0, 4)).map(b => `0x${b.toString(16)}`).join(' '));
+      console.log('[CompressionDetector] Bytes 4-7 (version?):', Array.from(magicBytes.slice(4, 8)).map(b => `0x${b.toString(16)}`).join(' '));
+      console.log('[CompressionDetector] Bytes 8-11 (length?):', Array.from(magicBytes.slice(8, 12)).map(b => `0x${b.toString(16)}`).join(' '));
+      console.log('[CompressionDetector] Bytes 12-15 (data start?):', Array.from(magicBytes.slice(12, 16)).map(b => `0x${b.toString(16)}`).join(' '));
+      
       return {
         type: 'remastered_zlib',
         magicBytes: 'C2 19 C2 93',
@@ -42,6 +52,7 @@ export class CompressionDetector {
     
     // Check for uncompressed StarCraft replay
     if (magicString === 'Repl') {
+      console.log('[CompressionDetector] Detected uncompressed StarCraft replay');
       return {
         type: 'uncompressed',
         magicBytes: magicString,
@@ -52,6 +63,7 @@ export class CompressionDetector {
     
     // Check for standard zlib compression (starts with 0x78)
     if (magicBytes[0] === 0x78) {
+      console.log('[CompressionDetector] Detected standard zlib compression');
       return {
         type: 'zlib',
         magicBytes: '78',
@@ -62,6 +74,7 @@ export class CompressionDetector {
     
     // Check for PKWare/ZIP compression
     if (magicBytes[0] === 0x50 && magicBytes[1] === 0x4B) {
+      console.log('[CompressionDetector] Detected PKWare/ZIP compression');
       return {
         type: 'pkware',
         magicBytes: 'PK',
@@ -72,6 +85,7 @@ export class CompressionDetector {
     
     // Check for bzip2 compression
     if (magicBytes[0] === 0x42 && magicBytes[1] === 0x5A && magicBytes[2] === 0x68) {
+      console.log('[CompressionDetector] Detected bzip2 compression');
       return {
         type: 'bzip2',
         magicBytes: 'BZh',
@@ -82,6 +96,7 @@ export class CompressionDetector {
     
     // Check for alternative SC:BW formats by scanning for "Repl"
     if (this.scanForReplayHeader(buffer)) {
+      console.log('[CompressionDetector] Found "Repl" signature in file');
       return {
         type: 'uncompressed',
         magicBytes: 'Repl',
@@ -90,6 +105,7 @@ export class CompressionDetector {
       };
     }
     
+    console.log('[CompressionDetector] Unknown format detected');
     return {
       type: 'unknown',
       magicBytes: magicString,

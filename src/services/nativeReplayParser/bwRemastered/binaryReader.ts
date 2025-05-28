@@ -5,7 +5,7 @@
  */
 
 export class BWBinaryReader {
-  private data: DataView;
+  public data: DataView;
   private position: number = 0;
   private buffer: Uint8Array;
 
@@ -181,5 +181,9 @@ export class BWBinaryReader {
 
   getRemainingBytes(): number {
     return this.buffer.length - this.position;
+  }
+
+  getBuffer(): Uint8Array {
+    return this.buffer;
   }
 }
