@@ -1,3 +1,4 @@
+
 /**
  * Enhanced BW Remastered parser with 100% real data guarantee
  */
@@ -45,17 +46,22 @@ function convertScrepToLegacyFormat(screpData: ScrepReplayData): ParsedReplayDat
   const player1 = screpData.players[0];
   const player2 = screpData.players[1];
   
-  // Use REAL APM values from enhanced parsing
-  const player1Apm = screpData.computed.apm[0] || 0;
-  const player2Apm = screpData.computed.apm[1] || 0;
-  const player1Eapm = screpData.computed.eapm[0] || 0;
-  const player2Eapm = screpData.computed.eapm[1] || 0;
+  // Use REAL APM values from enhanced parsing - STRICT validation
+  const player1Apm = screpData.computed.apm[0];
+  const player2Apm = screpData.computed.apm[1];
+  const player1Eapm = screpData.computed.eapm[0];
+  const player2Eapm = screpData.computed.eapm[1];
   
   console.log('[convertScrepToLegacyFormat] ===== 100% REAL APM DATA =====');
   console.log('[convertScrepToLegacyFormat] Player 1 APM (REAL):', player1Apm);
   console.log('[convertScrepToLegacyFormat] Player 2 APM (REAL):', player2Apm);
   console.log('[convertScrepToLegacyFormat] Player 1 EAPM (REAL):', player1Eapm);
   console.log('[convertScrepToLegacyFormat] Player 2 EAPM (REAL):', player2Eapm);
+  
+  // CRITICAL: Ensure APM data is valid
+  if (typeof player1Apm !== 'number' || typeof player2Apm !== 'number') {
+    throw new Error('APM data ist nicht verfügbar oder ungültig');
+  }
   
   // Use REAL build orders from enhanced parsing
   const player1BuildOrder = screpData.computed.buildOrders[0]?.map(action => ({
@@ -89,23 +95,14 @@ function convertScrepToLegacyFormat(screpData: ScrepReplayData): ParsedReplayDat
     throw new Error('Spiel-Dauer nicht verfügbar');
   }
   
-  // Warn if APM is 0 (indicating potential parsing issues)
-  if (player1Apm === 0 && player2Apm === 0) {
-    console.warn('[convertScrepToLegacyFormat] WARNING: Both players have 0 APM - data source:', screpData.computed.dataSource);
-  }
-  
-  // Warn if no build orders (indicating command parsing issues)
-  if (player1BuildOrder.length === 0 && player2BuildOrder.length === 0) {
-    console.warn('[convertScrepToLegacyFormat] WARNING: No build orders found - data source:', screpData.computed.dataSource);
-  }
-  
+  // CRITICAL: Create result with ONLY real data
   const result = {
     primaryPlayer: {
       name: player1.name,
       race: player1.race,
-      apm: player1Apm, // 100% REAL APM
-      eapm: player1Eapm, // 100% REAL EAPM
-      buildOrder: player1BuildOrder, // 100% REAL BUILD ORDER
+      apm: player1Apm, // 100% REAL APM - NO FALLBACK
+      eapm: player1Eapm, // 100% REAL EAPM - NO FALLBACK
+      buildOrder: player1BuildOrder, // 100% REAL BUILD ORDER - NO MOCK
       strengths: [], // No mock data
       weaknesses: [], // No mock data
       recommendations: [] // No mock data
@@ -113,9 +110,9 @@ function convertScrepToLegacyFormat(screpData: ScrepReplayData): ParsedReplayDat
     secondaryPlayer: {
       name: player2.name,
       race: player2.race,
-      apm: player2Apm, // 100% REAL APM
-      eapm: player2Eapm, // 100% REAL EAPM
-      buildOrder: player2BuildOrder, // 100% REAL BUILD ORDER
+      apm: player2Apm, // 100% REAL APM - NO FALLBACK
+      eapm: player2Eapm, // 100% REAL EAPM - NO FALLBACK
+      buildOrder: player2BuildOrder, // 100% REAL BUILD ORDER - NO MOCK
       strengths: [], // No mock data
       weaknesses: [], // No mock data
       recommendations: [] // No mock data
@@ -137,11 +134,11 @@ function convertScrepToLegacyFormat(screpData: ScrepReplayData): ParsedReplayDat
     opponentName: player2.name,
     playerRace: player1.race,
     opponentRace: player2.race,
-    apm: player1Apm, // 100% REAL APM
-    eapm: player1Eapm, // 100% REAL EAPM
-    opponentApm: player2Apm, // 100% REAL APM
-    opponentEapm: player2Eapm, // 100% REAL EAPM
-    buildOrder: player1BuildOrder, // 100% REAL BUILD ORDER
+    apm: player1Apm, // 100% REAL APM - NO FALLBACK
+    eapm: player1Eapm, // 100% REAL EAPM - NO FALLBACK
+    opponentApm: player2Apm, // 100% REAL APM - NO FALLBACK
+    opponentEapm: player2Eapm, // 100% REAL EAPM - NO FALLBACK
+    buildOrder: player1BuildOrder, // 100% REAL BUILD ORDER - NO MOCK
     
     trainingPlan: [] // No mock training plans
   };
