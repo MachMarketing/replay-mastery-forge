@@ -1,4 +1,3 @@
-
 /**
  * StarCraft: Brood War constants and data structures
  */
@@ -53,7 +52,7 @@ export const COMMAND_TYPES = {
   0x34: 'BUILDING_MORPH',
   0x35: 'STIM',
   0x36: 'SYNCHRONIZE',
-  0x37: 'VOICE_ENABLE1,
+  0x37: 'VOICE_ENABLE1',
   0x38: 'VOICE_ENABLE2',
   0x39: 'VOICE_SQUELCH1',
   0x3A: 'VOICE_SQUELCH2',
