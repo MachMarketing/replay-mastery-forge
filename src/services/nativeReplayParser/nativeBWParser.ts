@@ -319,7 +319,8 @@ class DecompressedStreamParser {
         }
         playerActions[playerId].push({
           frame: currentFrame,
-          action: actionName
+          action: actionName,
+          timestamp: this.frameToTimestamp(currentFrame)
         });
         
         this.offset += actionLength;
@@ -382,6 +383,13 @@ class DecompressedStreamParser {
   }
 
   private formatDuration(seconds: number): string {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  }
+
+  private frameToTimestamp(frame: number): string {
+    const seconds = frame / 24; // 24 FPS
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = Math.floor(seconds % 60);
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;

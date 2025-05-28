@@ -18,12 +18,12 @@ export async function parseBWRemasteredReplay(file: File): Promise<ParsedReplayD
     const result = await NativeParserWrapper.parseReplay(file);
     
     console.log('[BWRemastered] Native parsing successful!');
-    console.log('[BWRemastered] Map:', result.header.mapName);
+    console.log('[BWRemastered] Map:', result.mapName);
     console.log('[BWRemastered] Players:', result.players.map(p => p.name));
     console.log('[BWRemastered] APM values:', result.players.map(p => p.apm));
     console.log('[BWRemastered] EAPM values:', result.players.map(p => p.eapm));
-    console.log('[BWRemastered] Total actions:', result.metadata.totalActions);
-    console.log('[BWRemastered] Duration:', result.metadata.duration);
+    console.log('[BWRemastered] Total actions:', result.gameEvents.length);
+    console.log('[BWRemastered] Duration:', result.gameDuration);
     
     return result;
     

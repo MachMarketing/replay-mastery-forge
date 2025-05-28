@@ -40,30 +40,30 @@ export class NativeParserWrapper {
     result.metadata.apm = apm;
     result.metadata.eapm = eapm;
     
-    // Convert build orders format
+    // Convert build orders format - fix type mismatch
     const buildOrders = result.buildOrders.map(playerActions => 
       playerActions.map(action => ({
-        frame: action.frame,
-        timestamp: this.frameToTimestamp(action.frame),
-        action: action.action || 'Unknown Action',
-        supply: undefined
+        time: this.frameToTimestamp(action.frame),
+        supply: action.supply || 0,
+        action: action.action || 'Unknown Action'
       }))
     );
 
+    // Flatten build orders for the single array format expected
+    const flattenedBuildOrders = buildOrders.length > 0 ? buildOrders[0] : [];
+
     console.log('[NativeParserWrapper] Calculated APM:', apm);
     console.log('[NativeParserWrapper] Calculated EAPM:', eapm);
-    console.log('[NativeParserWrapper] Build orders lengths:', buildOrders.map(bo => bo.length));
+    console.log('[NativeParserWrapper] Build orders length:', flattenedBuildOrders.length);
 
     return {
       fileName,
       fileSize: 0,
       isValid: true,
-      header: {
-        gameVersion: result.metadata.version,
-        mapName: result.metadata.mapName,
-        gameLength: result.metadata.gameLength,
-        playerCount: result.metadata.players.length
-      },
+      mapName: result.metadata.mapName,
+      gameDuration: result.metadata.duration,
+      gameVersion: result.metadata.version,
+      playerCount: result.metadata.players.length,
       players: result.metadata.players.map((name, index) => ({
         id: index,
         name,
@@ -80,15 +80,12 @@ export class NativeParserWrapper {
         playerId: action.playerId,
         description: `${action.actionName} by player ${action.playerId}`
       })),
-      buildOrder: buildOrders,
-      metadata: {
-        duration: result.metadata.duration,
-        totalFrames: result.metadata.totalFrames,
-        averageAPM: apm.length > 0 ? Math.round(apm.reduce((a, b) => a + b, 0) / apm.length) : 0,
-        totalActions: result.actions.length,
-        mapHash: '',
-        replayHash: ''
-      }
+      buildOrder: flattenedBuildOrders,
+      totalFrames: result.metadata.totalFrames,
+      averageAPM: apm.length > 0 ? Math.round(apm.reduce((a, b) => a + b, 0) / apm.length) : 0,
+      totalActions: result.actions.length,
+      mapHash: '',
+      replayHash: ''
     };
   }
 
