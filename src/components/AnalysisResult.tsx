@@ -107,7 +107,7 @@ const AnalysisResult: React.FC<AnalysisResultProps> = ({
           ];
 
       const transformed: ReplayData = {
-        id: enhancedData.header.gameId || 'unknown',
+        id: enhancedData.header.title || 'unknown',
         playerName: mainPlayer.name,
         opponentName: opponent.name,
         playerRace: mainPlayer.race as 'Terran' | 'Protoss' | 'Zerg',

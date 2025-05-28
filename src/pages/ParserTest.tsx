@@ -9,13 +9,13 @@ import { useReplayParser } from '@/hooks/useReplayParser';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import AnalysisResult from '@/components/AnalysisResult';
-import { ParsedReplayData } from '@/services/replayParser/types';
+import { EnhancedReplayData } from '@/services/nativeReplayParser/enhancedScrepWrapper';
 
 const ParserTest: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [parsingStatus, setParsingStatus] = useState<'idle' | 'uploading' | 'parsing' | 'complete' | 'error'>('idle');
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [parsedReplayData, setParsedReplayData] = useState<ParsedReplayData | null>(null);
+  const [parsedReplayData, setParsedReplayData] = useState<EnhancedReplayData | null>(null);
   const { parseFile, error } = useReplayParser();
   const { toast } = useToast();
 
@@ -52,9 +52,13 @@ const ParserTest: React.FC = () => {
       setParsedReplayData(result);
       setParsingStatus('complete');
       
+      // Get player names from enhanced data
+      const mainPlayer = result.players[0]?.name || 'Unknown';
+      const opponent = result.players[1]?.name || 'Unknown';
+      
       toast({
         title: "Replay erfolgreich analysiert",
-        description: `${result.primaryPlayer.name} vs ${result.secondaryPlayer.name}`,
+        description: `${mainPlayer} vs ${opponent}`,
       });
       
     } catch (e) {
@@ -132,7 +136,7 @@ const ParserTest: React.FC = () => {
                 Neue Replay hochladen
               </Button>
             </div>
-            <AnalysisResult data={parsedReplayData as any} isPremium={true} />
+            <AnalysisResult data={parsedReplayData} isPremium={true} />
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
