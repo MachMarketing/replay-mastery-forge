@@ -274,22 +274,6 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       )}
     </div>
   );
-
-  function handleCancel() {
-    setFile(null);
-    setUploadStatus('idle');
-    setStatusMessage('');
-    setErrorDetails(null);
-    setProgress(0);
-  }
-
-  function handleRetry() {
-    if (file) {
-      processFile(file);
-    } else {
-      handleCancel();
-    }
-  }
 };
 
 export default UploadBox;
