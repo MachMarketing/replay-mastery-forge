@@ -1,13 +1,13 @@
-
 /**
  * Enhanced command parser for StarCraft: Brood War Remastered replays
- * Completely rewritten based on BWAPI documentation for maximum command extraction
+ * Now includes aggressive raw command extraction when decompression fails
  */
 
 import { BWBinaryReader } from './binaryReader';
 import { BWCommand } from './types';
 import { BWAPICommandEngine, BWAPI_COMMAND_LENGTHS, COMMAND_NAMES } from '../bwapi/commandEngine';
 import { RemasteredDecompressor } from '../bwapi/remasteredDecompressor';
+import { RawCommandExtractor } from '../bwapi/rawCommandExtractor';
 
 export class BWCommandParser {
   private reader: BWBinaryReader;
@@ -19,31 +19,108 @@ export class BWCommandParser {
   }
 
   /**
-   * Parse commands with aggressive detection and maximum extraction
+   * Parse commands with ultra-aggressive detection using multiple strategies
    */
   parseCommands(maxCommands: number = 10000): BWCommand[] {
-    console.log('[BWCommandParser] Starting aggressive command parsing for maximum extraction');
+    console.log('[BWCommandParser] Starting ultra-aggressive command parsing');
     const commands: BWCommand[] = [];
-    let commandCount = 0;
-    let totalBytesProcessed = 0;
-
+    
     try {
-      // Multiple parsing strategies to catch all commands
-      this.findAndProcessCommandSections(commands, maxCommands);
+      // Strategy 1: Try traditional decompression + parsing
+      const traditionalCommands = this.tryTraditionalParsing(maxCommands);
+      if (traditionalCommands.length > 100) {
+        console.log(`[BWCommandParser] Traditional parsing successful: ${traditionalCommands.length} commands`);
+        return traditionalCommands;
+      }
+      
+      // Strategy 2: Use raw command extractor on the entire buffer
+      console.log('[BWCommandParser] Traditional parsing failed, using raw extraction...');
+      const rawResult = await RawCommandExtractor.extractCommands(this.reader.data.buffer);
+      
+      if (rawResult.commands.length > 50) {
+        console.log(`[BWCommandParser] Raw extraction successful: ${rawResult.commands.length} commands`);
+        return this.convertRawCommands(rawResult.commands);
+      }
+      
+      // Strategy 3: Fallback to pattern scanning
+      console.log('[BWCommandParser] Raw extraction insufficient, trying pattern scanning...');
+      const patternCommands = this.tryPatternScanning(maxCommands);
+      if (patternCommands.length > 0) {
+        return patternCommands;
+      }
       
     } catch (error) {
-      console.log(`[BWCommandParser] Command parsing completed with ${commands.length} commands:`, error);
+      console.log('[BWCommandParser] All parsing strategies failed:', error);
     }
 
-    console.log(`[BWCommandParser] Final result: ${commands.length} total commands from ${totalBytesProcessed} bytes`);
-    this.logCommandStatistics(commands);
+    console.log('[BWCommandParser] No commands extracted, returning empty array');
+    return [];
+  }
+
+  /**
+   * Try traditional decompression and parsing
+   */
+  private tryTraditionalParsing(maxCommands: number): BWCommand[] {
+    console.log('[BWCommandParser] Trying traditional decompression + parsing');
+    
+    try {
+      // Multiple parsing strategies to catch all commands
+      return this.findAndProcessCommandSections(maxCommands);
+    } catch (error) {
+      console.log('[BWCommandParser] Traditional parsing failed:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Convert raw commands to BWCommand format
+   */
+  private convertRawCommands(rawCommands: any[]): BWCommand[] {
+    console.log('[BWCommandParser] Converting raw commands to BWCommand format');
+    
+    return rawCommands.map(rawCmd => ({
+      frame: rawCmd.frame,
+      userId: rawCmd.playerId,
+      type: rawCmd.commandId,
+      typeString: rawCmd.commandName,
+      data: rawCmd.data,
+      parameters: rawCmd.parameters
+    }));
+  }
+
+  /**
+   * Try pattern scanning as last resort
+   */
+  private tryPatternScanning(maxCommands: number): BWCommand[] {
+    console.log('[BWCommandParser] Trying pattern scanning as last resort');
+    
+    const commands: BWCommand[] = [];
+    const dataSize = this.reader.getRemainingBytes();
+    const startPos = this.reader.getPosition();
+    
+    // Scan through data looking for command-like patterns
+    for (let offset = 0; offset < Math.min(dataSize, 20000); offset += 8) {
+      this.reader.setPosition(startPos + offset);
+      
+      if (this.reader.canRead(20)) {
+        const localCommands = this.parseAggressiveCommands(50);
+        if (localCommands.length > 3) {
+          commands.push(...localCommands);
+          if (commands.length >= maxCommands) break;
+        }
+      }
+    }
+    
+    this.reader.setPosition(startPos);
+    console.log(`[BWCommandParser] Pattern scanning found ${commands.length} commands`);
     return commands;
   }
 
   /**
    * Multiple command section detection strategies
    */
-  private findAndProcessCommandSections(commands: BWCommand[], maxCommands: number): void {
+  private findAndProcessCommandSections(maxCommands: number): BWCommand[] {
+    const commands: BWCommand[] = [];
     const dataSize = this.reader.getRemainingBytes();
     console.log('[BWCommandParser] Available data size:', dataSize);
     
@@ -61,6 +138,8 @@ export class BWCommandParser {
       console.log('[BWCommandParser] Still low command count, trying brute force scan...');
       this.bruteForceCommandScan(commands, maxCommands);
     }
+    
+    return commands;
   }
 
   /**
