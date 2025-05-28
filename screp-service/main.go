@@ -159,7 +159,7 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Parsed replay: %d players, %d commands", len(players), len(commands))
+	log.Printf("Parsed replay: %d players, %d commands")
 }
 
 func getRaceString(race int) string {
