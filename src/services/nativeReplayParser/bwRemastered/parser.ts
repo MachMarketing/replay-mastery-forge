@@ -1,7 +1,7 @@
 
 /**
  * StarCraft: Brood War Remastered .rep file parser
- * Based on official format specification from icza/screp and BWAPI
+ * Based on icza/screp and BWAPI specification
  */
 
 import { BWReplayHeader, BWPlayer, BWCommand, BWReplayData } from './types';
@@ -13,6 +13,7 @@ export class BWRemasteredParser {
 
   constructor(arrayBuffer: ArrayBuffer) {
     this.data = new DataView(arrayBuffer);
+    console.log('[BWRemasteredParser] Buffer size:', arrayBuffer.byteLength);
   }
 
   /**
@@ -20,23 +21,22 @@ export class BWRemasteredParser {
    */
   parseReplay(): BWReplayData {
     console.log('[BWRemasteredParser] Starting BW Remastered replay parse');
-    console.log('[BWRemasteredParser] File size:', this.data.byteLength);
 
-    // Validate minimum file size
+    // Validate minimum file size (header is 633 bytes)
     if (this.data.byteLength < 633) {
       throw new Error('File too small to be a valid replay');
     }
 
-    // Parse header (first 633 bytes)
+    // Parse header
     const header = this.parseHeader();
     console.log('[BWRemasteredParser] Header parsed:', header);
 
-    // Parse players from header section
+    // Parse players
     const players = this.parsePlayers();
-    console.log('[BWRemasteredParser] Players parsed:', players.length);
+    console.log('[BWRemasteredParser] Players parsed:', players);
 
-    // Parse commands starting after header
-    const commands = this.parseCommands(200); // Parse more commands for better analysis
+    // Parse commands
+    const commands = this.parseCommands(500);
     console.log('[BWRemasteredParser] Commands parsed:', commands.length);
 
     // Calculate game duration
@@ -56,141 +56,192 @@ export class BWRemasteredParser {
   }
 
   /**
-   * Parse the replay header according to .rep specification
+   * Parse replay header according to icza/screp specification
    */
   private parseHeader(): BWReplayHeader {
+    console.log('[BWRemasteredParser] Parsing header...');
+    
+    // Reset position
     this.position = 0;
 
-    // Read and verify replay ID (4 bytes) - should be "Repl"
-    const replayId = this.readString(4);
-    if (replayId !== 'Repl') {
-      throw new Error(`Invalid replay file - expected "Repl", got "${replayId}"`);
+    // Check replay magic "Repl" at offset 0
+    const magic = this.readFixedString(4);
+    console.log('[BWRemasteredParser] Magic:', magic);
+    if (magic !== 'Repl') {
+      throw new Error(`Invalid replay file - expected "Repl", got "${magic}"`);
     }
 
-    // Engine version (4 bytes) - skip for now
-    this.position = 8;
+    // Engine version at offset 4 (4 bytes)
+    this.position = 4;
+    const engineVersion = this.readUInt32LE();
+    console.log('[BWRemasteredParser] Engine version:', engineVersion);
 
-    // Frame count (4 bytes at offset 0x0C)
+    // Frame count at offset 0x0C (12)
     this.position = 0x0C;
     const totalFrames = this.readUInt32LE();
+    console.log('[BWRemasteredParser] Total frames:', totalFrames);
 
-    // Skip to keyframe interval (4 bytes at offset 0x10)
-    this.position = 0x10;
-    const keyframeInterval = this.readUInt32LE();
-
-    // Skip to map name (32 bytes at offset 0x61)
-    this.position = 0x61;
+    // Map name at offset 0x68 (104), 32 bytes
+    this.position = 0x68;
     const mapName = this.readFixedString(32);
+    console.log('[BWRemasteredParser] Map name raw:', this.debugHexDump(0x68, 32));
+    console.log('[BWRemasteredParser] Map name:', mapName);
 
-    // Game type and sub type (at offset 0x1A1)
-    this.position = 0x1A1;
+    // Game type at offset 0x1C0 (448)
+    this.position = 0x1C0;
     const gameType = this.readUInt16LE();
-    const gameSubType = this.readUInt16LE();
+    console.log('[BWRemasteredParser] Game type:', gameType);
 
-    // Random seed (4 bytes at offset 0x1A5)
-    this.position = 0x1A5;
+    // Random seed at offset 0x1C4 (452)
+    this.position = 0x1C4;
     const seed = this.readUInt32LE();
-
-    // Player count is determined by scanning player slots
-    let playerCount = 0;
-    const tempPos = this.position;
-    this.position = 0x161; // Player data starts here
-    
-    for (let i = 0; i < 8; i++) {
-      const playerStart = 0x161 + (i * 36);
-      this.position = playerStart;
-      const name = this.readFixedString(24);
-      if (name.trim().length > 0) {
-        playerCount++;
-      }
-    }
-    
-    this.position = tempPos;
+    console.log('[BWRemasteredParser] Seed:', seed);
 
     return {
       version: '1.16.1',
       seed,
       totalFrames,
-      mapName: mapName.trim() || 'Unknown Map',
-      playerCount,
+      mapName: this.cleanString(mapName),
+      playerCount: 0, // Will be determined during player parsing
       gameType
     };
   }
 
   /**
-   * Parse player data from the header section
+   * Parse player data according to icza/screp specification
    */
   private parsePlayers(): BWPlayer[] {
+    console.log('[BWRemasteredParser] Parsing players...');
     const players: BWPlayer[] = [];
     
-    // Player data starts at offset 0x161, each player slot is 36 bytes
+    // Player data starts at offset 0x1A1 (417)
+    // Each player slot is 37 bytes (not 36!)
+    const playerDataStart = 0x1A1;
+    
     for (let i = 0; i < 8; i++) {
-      const playerOffset = 0x161 + (i * 36);
+      const playerOffset = playerDataStart + (i * 37);
+      console.log(`[BWRemasteredParser] Parsing player slot ${i} at offset 0x${playerOffset.toString(16)}`);
+      
       this.position = playerOffset;
       
-      // Player name (24 bytes)
-      const name = this.readFixedString(24);
+      // Player name (25 bytes, null-terminated)
+      const name = this.readPlayerName(25);
+      console.log(`[BWRemasteredParser] Player ${i} name: "${name}"`);
       
-      if (name.trim().length === 0) {
-        continue; // Skip empty player slot
+      if (name.length === 0) {
+        console.log(`[BWRemasteredParser] Player slot ${i} is empty, skipping`);
+        continue;
       }
 
-      // Skip 8 bytes to reach race info
+      // Skip to race info (at offset +32 from player start)
       this.position = playerOffset + 32;
       const race = this.readUInt8();
+      console.log(`[BWRemasteredParser] Player ${i} race: ${race}`);
       
-      // Team info
-      this.position = playerOffset + 33;
+      // Team (at offset +33)
       const team = this.readUInt8();
+      console.log(`[BWRemasteredParser] Player ${i} team: ${team}`);
       
-      // Color
+      // Color (at offset +34)
       const color = this.readUInt8();
+      console.log(`[BWRemasteredParser] Player ${i} color: ${color}`);
 
-      // Only add players with valid races
-      if (race <= 6) {
-        players.push({
-          name: name.trim(),
-          race,
-          raceString: RACE_MAPPING[race as keyof typeof RACE_MAPPING] || 'Unknown',
-          slotId: i,
-          team,
-          color
-        });
-      }
+      // Debug: Show hex dump of this player slot
+      console.log(`[BWRemasteredParser] Player ${i} hex dump:`, this.debugHexDump(playerOffset, 37));
+
+      const raceString = RACE_MAPPING[race as keyof typeof RACE_MAPPING] || 'Unknown';
+      
+      players.push({
+        name: this.cleanString(name),
+        race,
+        raceString,
+        slotId: i,
+        team,
+        color
+      });
     }
 
+    console.log('[BWRemasteredParser] Found players:', players.map(p => `${p.name} (${p.raceString})`));
     return players;
   }
 
   /**
-   * Parse commands from the replay data section
+   * Read player name with multiple encoding attempts
    */
-  private parseCommands(maxCommands: number = 200): BWCommand[] {
+  private readPlayerName(length: number): string {
+    const bytes = this.readBytes(length);
+    
+    // Find null terminator
+    let actualLength = length;
+    for (let i = 0; i < length; i++) {
+      if (bytes[i] === 0) {
+        actualLength = i;
+        break;
+      }
+    }
+    
+    const nameBytes = bytes.slice(0, actualLength);
+    
+    // Try different encodings
+    const encodings = ['utf-8', 'windows-1252', 'iso-8859-1'];
+    
+    for (const encoding of encodings) {
+      try {
+        const decoder = new TextDecoder(encoding, { fatal: true });
+        const decoded = decoder.decode(nameBytes);
+        if (decoded && /^[\x20-\x7E\u00A0-\u00FF]*$/.test(decoded)) {
+          return decoded.trim();
+        }
+      } catch (e) {
+        // Try next encoding
+      }
+    }
+    
+    // Fallback: manual ASCII conversion
+    let result = '';
+    for (let i = 0; i < nameBytes.length; i++) {
+      const byte = nameBytes[i];
+      if (byte >= 32 && byte <= 126) {
+        result += String.fromCharCode(byte);
+      } else if (byte >= 160 && byte <= 255) {
+        result += String.fromCharCode(byte);
+      }
+    }
+    
+    return result.trim();
+  }
+
+  /**
+   * Parse commands from replay data
+   */
+  private parseCommands(maxCommands: number = 500): BWCommand[] {
+    console.log('[BWRemasteredParser] Parsing commands...');
     const commands: BWCommand[] = [];
     let currentFrame = 0;
     let commandCount = 0;
 
-    // Commands start at offset 633 (0x279)
+    // Commands start after header at offset 633 (0x279)
     this.position = 633;
+    console.log('[BWRemasteredParser] Starting command parsing at position:', this.position);
 
     while (this.position < this.data.byteLength && commandCount < maxCommands) {
       try {
         const commandByte = this.readUInt8();
 
-        // Handle frame synchronization commands
+        // Handle frame synchronization
         if (commandByte === 0x00) {
-          // Frame advance
+          // Single frame advance
           currentFrame++;
           continue;
         } else if (commandByte === 0x01) {
-          // Frame skip (next byte contains skip count)
+          // Frame skip with count in next byte
           if (this.position < this.data.byteLength) {
             const skipFrames = this.readUInt8();
             currentFrame += skipFrames;
           }
           continue;
         } else if (commandByte === 0x02) {
-          // Large frame skip (next 2 bytes contain skip count)
+          // Large frame skip with count in next 2 bytes
           if (this.position + 1 < this.data.byteLength) {
             const skipFrames = this.readUInt16LE();
             currentFrame += skipFrames;
@@ -205,28 +256,43 @@ export class BWRemasteredParser {
             commands.push(command);
             commandCount++;
           }
+        } else {
+          // Unknown command, skip it
+          console.log(`[BWRemasteredParser] Unknown command: 0x${commandByte.toString(16)}`);
         }
       } catch (error) {
-        // End of parseable data or corrupted command
-        console.log('[BWRemasteredParser] Command parsing stopped:', error);
+        console.log('[BWRemasteredParser] Command parsing stopped due to error:', error);
         break;
       }
     }
 
+    console.log(`[BWRemasteredParser] Parsed ${commands.length} commands, last frame: ${currentFrame}`);
     return commands;
   }
 
   /**
-   * Parse a specific command based on type
+   * Parse individual command
    */
   private parseCommand(commandType: number, frame: number): BWCommand | null {
     try {
       const commandLength = this.getCommandLength(commandType);
-      if (commandLength === 0 || this.position + commandLength > this.data.byteLength) {
+      
+      if (commandLength === 0) {
+        // Variable length or unknown command
+        return {
+          frame,
+          userId: 0,
+          type: commandType,
+          typeString: COMMAND_MAPPING[commandType as keyof typeof COMMAND_MAPPING] || `Unknown_0x${commandType.toString(16)}`,
+          data: new Uint8Array([])
+        };
+      }
+
+      if (this.position + commandLength > this.data.byteLength) {
         return null;
       }
 
-      // Save start position
+      // Save start position for data reading
       const commandStart = this.position;
       
       // Most commands start with player ID
@@ -243,7 +309,7 @@ export class BWRemasteredParser {
         frame,
         userId,
         type: commandType,
-        typeString: COMMAND_MAPPING[commandType as keyof typeof COMMAND_MAPPING] || `Unknown_0x${commandType.toString(16).toUpperCase()}`,
+        typeString: COMMAND_MAPPING[commandType as keyof typeof COMMAND_MAPPING] || `Unknown_0x${commandType.toString(16)}`,
         data: commandData
       };
     } catch (error) {
@@ -252,13 +318,12 @@ export class BWRemasteredParser {
   }
 
   /**
-   * Get the expected length for each command type
+   * Get expected command length based on BWAPI specification
    */
   private getCommandLength(commandType: number): number {
-    // Command lengths based on BWAPI specification
     const commandLengths: Record<number, number> = {
       0x09: 2,   // Select
-      0x0A: 2,   // Shift Select
+      0x0A: 2,   // Shift Select  
       0x0B: 2,   // Shift Deselect
       0x0C: 7,   // Build
       0x0D: 2,   // Vision
@@ -302,6 +367,25 @@ export class BWRemasteredParser {
     return commandLengths[commandType] || 1;
   }
 
+  /**
+   * Clean string by removing null bytes and trimming
+   */
+  private cleanString(str: string): string {
+    return str.replace(/\0/g, '').trim();
+  }
+
+  /**
+   * Debug helper: Create hex dump of buffer region
+   */
+  private debugHexDump(offset: number, length: number): string {
+    const bytes: string[] = [];
+    for (let i = 0; i < length && offset + i < this.data.byteLength; i++) {
+      const byte = this.data.getUint8(offset + i);
+      bytes.push(byte.toString(16).padStart(2, '0'));
+    }
+    return bytes.join(' ');
+  }
+
   // Binary reading utility methods
   private readUInt8(): number {
     if (this.position >= this.data.byteLength) {
@@ -316,7 +400,7 @@ export class BWRemasteredParser {
     if (this.position + 1 >= this.data.byteLength) {
       throw new Error('End of buffer reached');
     }
-    const value = this.data.getUint16(this.position, true); // true = little endian
+    const value = this.data.getUint16(this.position, true);
     this.position += 2;
     return value;
   }
@@ -325,18 +409,9 @@ export class BWRemasteredParser {
     if (this.position + 3 >= this.data.byteLength) {
       throw new Error('End of buffer reached');
     }
-    const value = this.data.getUint32(this.position, true); // true = little endian
+    const value = this.data.getUint32(this.position, true);
     this.position += 4;
     return value;
-  }
-
-  private readString(length: number): string {
-    if (this.position + length > this.data.byteLength) {
-      throw new Error('End of buffer reached');
-    }
-    const bytes = new Uint8Array(this.data.buffer, this.data.byteOffset + this.position, length);
-    this.position += length;
-    return new TextDecoder('utf-8').decode(bytes);
   }
 
   private readFixedString(length: number): string {

@@ -1,7 +1,7 @@
 
 /**
  * StarCraft: Brood War Remastered constants
- * Based on official BWAPI specification
+ * Based on icza/screp and BWAPI specification
  */
 
 export const RACE_MAPPING = {
@@ -80,7 +80,7 @@ export const GAME_TYPE_MAPPING = {
   0x20: 'Team Free For All'
 } as const;
 
-// Frame rate for APM calculation (Fastest speed = ~42.86 FPS, but we use 24 for compatibility)
+// Frame rate for APM calculation (Brood War runs at ~42.86 FPS on Fastest, but we use 24 for compatibility)
 export const FRAMES_PER_SECOND = 24;
 
 // Unit and building IDs for build order analysis
