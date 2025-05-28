@@ -21,7 +21,7 @@ export class BWCommandParser {
   /**
    * Parse commands with ultra-aggressive detection using multiple strategies
    */
-  parseCommands(maxCommands: number = 10000): BWCommand[] {
+  async parseCommands(maxCommands: number = 10000): Promise<BWCommand[]> {
     console.log('[BWCommandParser] Starting ultra-aggressive command parsing');
     const commands: BWCommand[] = [];
     
@@ -335,7 +335,7 @@ export class BWCommandParser {
    */
   private parseCommand(reader: BWBinaryReader, commandType: number): BWCommand | null {
     try {
-      const length = BWAPI_COMMAND_LENGTHS[commandType];
+      const length = this.getCorrectCommandLength(commandType);
       
       if (length === undefined) {
         // Unknown command, try to skip safely
@@ -368,27 +368,120 @@ export class BWCommandParser {
   }
 
   /**
-   * Handle variable length commands
+   * CORRECT BWAPI Command Lengths based on official documentation
    */
-  private parseVariableLengthCommand(reader: BWBinaryReader, commandType: number): BWCommand | null {
-    if (!reader.canRead(1)) {
-      return null;
-    }
-
-    const userId = reader.readUInt8();
-    
-    return {
-      frame: this.currentFrame,
-      userId,
-      type: commandType,
-      typeString: COMMAND_NAMES[commandType] || `UNKNOWN_${commandType.toString(16)}`,
-      data: new Uint8Array([userId]),
-      parameters: {}
+  private getCorrectCommandLength(commandType: number): number | undefined {
+    const CORRECT_BWAPI_LENGTHS: Record<number, number> = {
+      // Frame synchronization
+      0x00: 0,   // Frame Increment (no additional data)
+      0x01: 1,   // Frame Skip (1 byte count)
+      0x02: 2,   // Large Frame Skip (2 byte count)
+      
+      // Core game commands with CORRECT lengths
+      0x09: 2,   // Select Units (2 bytes)
+      0x0A: 2,   // Shift Select (2 bytes)
+      0x0B: 2,   // Shift Deselect (2 bytes)
+      0x0C: 10,  // Build (10 bytes) - CORRECTED from 7
+      0x0D: 2,   // Vision (2 bytes)
+      0x0E: 4,   // Cancel Construction (4 bytes)
+      0x0F: 2,   // Cancel Morph (2 bytes)
+      0x10: 1,   // Stop (1 byte)
+      0x11: 10,  // Attack Move (10 bytes) - CORRECTED
+      0x12: 2,   // Cheat (2 bytes)
+      0x13: 10,  // Right Click Move (10 bytes) - CORRECTED
+      0x14: 6,   // Train (6 bytes) - CORRECTED from 4
+      0x15: 6,   // Attack (6 bytes)
+      0x16: 1,   // Cancel (1 byte)
+      0x17: 1,   // Cancel Hatch (1 byte)
+      0x18: 1,   // Stop (1 byte)
+      0x19: 1,   // Carrier Stop (1 byte)
+      0x1A: 6,   // Use Tech (6 bytes)
+      0x1B: 10,  // Use Tech Position (10 bytes)
+      0x1C: 1,   // Return Cargo (1 byte)
+      0x1D: 6,   // Train Unit (6 bytes) - CORRECTED from 2
+      0x1E: 2,   // Cancel Train (2 bytes)
+      0x1F: 1,   // Cloak (1 byte)
+      0x20: 6,   // Build Self/Morph (6 bytes) - CORRECTED from 10
+      0x21: 2,   // Unit Morph (2 bytes)
+      0x22: 2,   // Unload (2 bytes)
+      0x23: 1,   // Unsiege (1 byte)
+      0x24: 1,   // Siege (1 byte)
+      0x25: 2,   // Train Fighter (2 bytes)
+      0x26: 1,   // Unload All (1 byte)
+      0x27: 1,   // Unload All (1 byte)
+      0x28: 2,   // Unload (2 bytes)
+      0x29: 1,   // Merge Archon (1 byte)
+      0x2A: 1,   // Hold Position (1 byte)
+      0x2B: 1,   // Burrow (1 byte)
+      0x2C: 1,   // Unburrow (1 byte)
+      0x2D: 1,   // Cancel Nuke (1 byte)
+      0x2E: 1,   // Lift (1 byte)
+      0x2F: 2,   // Research (2 bytes)
+      0x30: 2,   // Cancel Research (2 bytes)
+      0x31: 2,   // Upgrade (2 bytes)
+      0x32: 2,   // Cancel Upgrade (2 bytes)
+      0x33: 2,   // Cancel Addon (2 bytes)
+      0x34: 2,   // Building Morph (2 bytes)
+      0x35: 1,   // Stim (1 byte)
+      0x36: 1,   // Sync (1 byte)
+      
+      // Network commands
+      0x37: 1,   // Voice Enable1
+      0x38: 1,   // Voice Enable2
+      0x39: 1,   // Voice Squelch1
+      0x3A: 1,   // Voice Squelch2
+      0x3B: 1,   // Start Game
+      0x3C: 1,   // Download Percentage
+      0x3D: 4,   // Change Game Slot
+      0x3E: 4,   // New Net Player
+      0x3F: 1,   // Joined Game
+      0x40: 2,   // Change Race
+      0x41: 2,   // Team Game Team
+      0x42: 2,   // UMS Team
+      0x43: 2,   // Melee Team
+      0x44: 4,   // Swap Players
+      0x45: 4,   // Saved Data
+      0x48: 10   // Load Game
     };
+    
+    return CORRECT_BWAPI_LENGTHS[commandType];
   }
 
   /**
-   * Enhanced command parameter parsing
+   * Enhanced command-stream detection using "Sync Frame Flooding"
+   */
+  private findCommandStreamStart(data: Uint8Array): number {
+    console.log('[BWCommandParser] Using Sync Frame Flooding detection...');
+    
+    // Look for patterns of frame sync bytes followed by actual commands
+    for (let offset = 500; offset < Math.min(data.length - 100, 3000); offset++) {
+      let syncCount = 0;
+      let commandCount = 0;
+      
+      // Check for sync flooding pattern
+      for (let i = 0; i < 50 && offset + i < data.length; i++) {
+        const byte = data[offset + i];
+        
+        if (byte === 0x00 || byte === 0x01) {
+          syncCount++;
+        } else if ([0x0C, 0x14, 0x1D, 0x20].includes(byte)) {
+          commandCount++;
+        }
+      }
+      
+      // Good pattern: multiple syncs followed by build commands
+      if (syncCount >= 5 && commandCount >= 2) {
+        console.log(`[BWCommandParser] Found command stream at offset ${offset} (${syncCount} syncs, ${commandCount} commands)`);
+        return offset;
+      }
+    }
+    
+    console.log('[BWCommandParser] No clear command stream found, using default offset');
+    return 633; // Fallback to standard offset
+  }
+
+  /**
+   * Enhanced command parameter parsing with correct unit mappings
    */
   private parseCommandParameters(commandType: number, data: Uint8Array): any {
     if (data.length === 0) return {};
@@ -396,33 +489,30 @@ export class BWCommandParser {
     try {
       switch (commandType) {
         case 0x0C: // Build - 10 bytes
-          return BWAPICommandEngine.parseBuildCommand(data);
+          return this.parseBuildCommand(data);
           
         case 0x14: // Train - 6 bytes  
         case 0x1D: // Train Unit - 6 bytes
-          return BWAPICommandEngine.parseTrainCommand(data);
+          return this.parseTrainCommand(data);
           
-        case 0x20: // Build Self/Morph - 10 bytes
-          return BWAPICommandEngine.parseBuildSelfCommand(data);
+        case 0x20: // Build Self/Morph - 6 bytes (corrected)
+          return this.parseMorphCommand(data);
           
-        case 0x15: // Attack Move - 6 bytes
-          return {
-            x: data.length > 2 ? data[1] | (data[2] << 8) : 0,
-            y: data.length > 4 ? data[3] | (data[4] << 8) : 0,
-            target: data.length > 6 ? data[5] | (data[6] << 8) : 0
-          };
+        case 0x11: // Attack Move - 10 bytes
+        case 0x13: // Right Click - 10 bytes
+          return this.parseMoveCommand(data);
           
-        case 0x13: // Hotkey - 2 bytes
-          return {
-            hotkey: data.length > 1 ? data[1] : 0
-          };
+        case 0x15: // Attack - 6 bytes
+          return this.parseAttackCommand(data);
+          
+        case 0x1A: // Use Tech - 6 bytes
+        case 0x1B: // Use Tech Position - 10 bytes
+          return this.parseTechCommand(data);
           
         case 0x09: // Select - 2 bytes
         case 0x0A: // Shift Select - 2 bytes  
         case 0x0B: // Shift Deselect - 2 bytes
-          return {
-            unitCount: data.length > 1 ? data[1] : 0
-          };
+          return this.parseSelectCommand(data);
           
         default:
           return {};
@@ -430,6 +520,71 @@ export class BWCommandParser {
     } catch (error) {
       return {};
     }
+  }
+
+  private parseBuildCommand(data: Uint8Array): any {
+    if (data.length < 10) return {};
+    return {
+      playerId: data[1],
+      unitTypeId: data[2] | (data[3] << 8),
+      x: data[4] | (data[5] << 8),
+      y: data[6] | (data[7] << 8),
+      flags: data[8] | (data[9] << 8)
+    };
+  }
+
+  private parseTrainCommand(data: Uint8Array): any {
+    if (data.length < 6) return {};
+    return {
+      playerId: data[1],
+      unitTypeId: data[2] | (data[3] << 8),
+      flags: data[4] | (data[5] << 8)
+    };
+  }
+
+  private parseMorphCommand(data: Uint8Array): any {
+    if (data.length < 6) return {};
+    return {
+      playerId: data[1],
+      unitTypeId: data[2] | (data[3] << 8),
+      targetId: data[4] | (data[5] << 8)
+    };
+  }
+
+  private parseMoveCommand(data: Uint8Array): any {
+    if (data.length < 10) return {};
+    return {
+      playerId: data[1],
+      x: data[2] | (data[3] << 8),
+      y: data[4] | (data[5] << 8),
+      targetId: data[6] | (data[7] << 8),
+      flags: data[8] | (data[9] << 8)
+    };
+  }
+
+  private parseAttackCommand(data: Uint8Array): any {
+    if (data.length < 6) return {};
+    return {
+      playerId: data[1],
+      x: data[2] | (data[3] << 8),
+      y: data[4] | (data[5] << 8)
+    };
+  }
+
+  private parseTechCommand(data: Uint8Array): any {
+    if (data.length < 6) return {};
+    return {
+      playerId: data[1],
+      techId: data[2] | (data[3] << 8),
+      targetId: data.length >= 6 ? data[4] | (data[5] << 8) : 0
+    };
+  }
+
+  private parseSelectCommand(data: Uint8Array): any {
+    if (data.length < 2) return {};
+    return {
+      playerId: data[1]
+    };
   }
 
   /**
