@@ -1,6 +1,6 @@
 
 /**
- * Enhanced Remastered Decompressor with better compression detection
+ * Enhanced Remastered Decompressor with improved zlib handling
  */
 
 import * as pako from 'pako';
@@ -68,7 +68,7 @@ export class RemasteredDecompressor {
   }
 
   /**
-   * Decompress a single block
+   * Decompress a single block with improved error handling
    */
   static decompressBlock(data: Uint8Array): ArrayBuffer {
     try {
@@ -80,36 +80,37 @@ export class RemasteredDecompressor {
   }
 
   /**
-   * Hauptfunktion für Remastered Zlib Decompression
+   * Enhanced Remastered decompression with better zlib handling
    */
   static async decompress(buffer: ArrayBuffer): Promise<DecompressionResult> {
-    console.log('[RemasteredDecompressor] Starting Remastered-specific decompression');
+    console.log('[RemasteredDecompressor] Starting enhanced Remastered decompression');
     
     const originalSize = buffer.byteLength;
     const uint8Array = new Uint8Array(buffer);
     
-    // Versuche verschiedene screp-js-basierte Methoden
+    // Try multiple decompression strategies
     const methods = [
-      () => this.decompressMultipleZlibBlocks(uint8Array),
-      () => this.decompressWithProgressive(uint8Array),
-      () => this.decompressWithSkipHeaders(uint8Array),
-      () => this.decompressRawZlib(uint8Array)
+      () => this.decompressWithImprovedZlibDetection(uint8Array),
+      () => this.decompressWithHeaderSkipping(uint8Array),
+      () => this.decompressWithAlternativeInflate(uint8Array),
+      () => this.decompressRawZlibWithFallbacks(uint8Array),
+      () => this.decompressWithBruteForce(uint8Array)
     ];
     
     for (let i = 0; i < methods.length; i++) {
       try {
-        console.log(`[RemasteredDecompressor] Trying method ${i + 1}...`);
+        console.log(`[RemasteredDecompressor] Trying enhanced method ${i + 1}...`);
         const result = methods[i]();
         
         if (result && result.byteLength > 1000) {
           const validation = this.validateDecompressedData(new Uint8Array(result));
           
           if (validation.quality !== 'invalid') {
-            console.log(`[RemasteredDecompressor] Success with method ${i + 1}!`);
+            console.log(`[RemasteredDecompressor] Success with enhanced method ${i + 1}!`);
             return {
               success: true,
               data: result,
-              method: `Method ${i + 1}`,
+              method: `Enhanced Method ${i + 1}`,
               blocks: i + 1,
               originalSize,
               decompressedSize: result.byteLength,
@@ -118,11 +119,11 @@ export class RemasteredDecompressor {
           }
         }
       } catch (error) {
-        console.log(`[RemasteredDecompressor] Method ${i + 1} failed:`, error);
+        console.log(`[RemasteredDecompressor] Enhanced method ${i + 1} failed:`, error);
       }
     }
     
-    console.warn('[RemasteredDecompressor] All decompression methods failed');
+    console.warn('[RemasteredDecompressor] All enhanced decompression methods failed');
     return {
       success: false,
       data: null,
@@ -140,42 +141,48 @@ export class RemasteredDecompressor {
   }
 
   /**
-   * Methode 1: Multiple Zlib Blocks basierend auf screp-js
+   * Method 1: Improved zlib detection with better header handling
    */
-  private static decompressMultipleZlibBlocks(data: Uint8Array): ArrayBuffer | null {
+  private static decompressWithImprovedZlibDetection(data: Uint8Array): ArrayBuffer | null {
+    console.log('[RemasteredDecompressor] Method 1: Improved zlib detection');
+    
     const zlibBlocks: Uint8Array[] = [];
     let totalDecompressedSize = 0;
     
-    // Finde alle Zlib-Block-Starts (erweiterte Signatur-Erkennung)
+    // Enhanced zlib signature detection
     const zlibSignatures = [
-      [0x78, 0x9C], // Standard deflate
-      [0x78, 0xDA], // Best compression
-      [0x78, 0x01], // No compression
-      [0x78, 0x5E], // Fast compression
-      [0x78, 0x2C]  // Alternative
+      [0x78, 0x9C], [0x78, 0xDA], [0x78, 0x01], 
+      [0x78, 0x5E], [0x78, 0x2C], [0x1F, 0x8B] // Add gzip signature
     ];
     
     for (let i = 0; i < data.length - 1; i++) {
       for (const signature of zlibSignatures) {
         if (data[i] === signature[0] && data[i + 1] === signature[1]) {
           try {
-            // Bestimme Block-Ende dynamisch
-            let blockEnd = this.findZlibBlockEnd(data, i);
-            if (blockEnd === -1) {
-              blockEnd = Math.min(i + 50000, data.length); // Fallback
-            }
+            // Try different block sizes
+            const blockSizes = [
+              Math.min(65536, data.length - i), // 64KB max
+              Math.min(32768, data.length - i), // 32KB
+              Math.min(16384, data.length - i), // 16KB
+              Math.min(8192, data.length - i),  // 8KB
+              data.length - i // Remaining data
+            ];
             
-            const blockData = data.slice(i, blockEnd);
-            const decompressed = pako.inflate(blockData);
-            
-            if (decompressed.length > 100) {
-              zlibBlocks.push(decompressed);
-              totalDecompressedSize += decompressed.length;
-              console.log(`[RemasteredDecompressor] Found valid zlib block at ${i}: ${decompressed.length} bytes`);
-              
-              // Springe zum Ende des aktuellen Blocks
-              i = blockEnd - 1;
-              break;
+            for (const blockSize of blockSizes) {
+              try {
+                const blockData = data.slice(i, i + blockSize);
+                const decompressed = pako.inflate(blockData);
+                
+                if (decompressed.length > 100) {
+                  zlibBlocks.push(decompressed);
+                  totalDecompressedSize += decompressed.length;
+                  console.log(`[RemasteredDecompressor] Decompressed block at ${i}, size: ${decompressed.length}`);
+                  i += blockSize - 1; // Skip processed data
+                  break;
+                }
+              } catch (e) {
+                // Try next block size
+              }
             }
           } catch (error) {
             // Continue searching
@@ -184,50 +191,57 @@ export class RemasteredDecompressor {
       }
     }
     
-    if (zlibBlocks.length === 0) {
-      return null;
+    if (zlibBlocks.length > 0) {
+      const combined = new Uint8Array(totalDecompressedSize);
+      let offset = 0;
+      
+      for (const block of zlibBlocks) {
+        combined.set(block, offset);
+        offset += block.length;
+      }
+      
+      console.log(`[RemasteredDecompressor] Combined ${zlibBlocks.length} blocks: ${combined.length} bytes`);
+      return combined.buffer;
     }
     
-    // Kombiniere alle Blöcke
-    const combined = new Uint8Array(totalDecompressedSize);
-    let offset = 0;
-    
-    for (const block of zlibBlocks) {
-      combined.set(block, offset);
-      offset += block.length;
-    }
-    
-    console.log(`[RemasteredDecompressor] Combined ${zlibBlocks.length} blocks: ${combined.length} bytes`);
-    return combined.buffer;
+    return null;
   }
 
   /**
-   * Methode 2: Progressive Decompression mit verschiedenen Offsets
+   * Method 2: Skip various header types before decompression
    */
-  private static decompressWithProgressive(data: Uint8Array): ArrayBuffer | null {
-    // Teste verschiedene Start-Offsets für Remastered Header-Variationen
-    const testOffsets = [0, 32, 64, 128, 256, 512];
+  private static decompressWithHeaderSkipping(data: Uint8Array): ArrayBuffer | null {
+    console.log('[RemasteredDecompressor] Method 2: Header skipping');
     
-    for (const offset of testOffsets) {
-      if (offset >= data.length) continue;
+    // Try skipping different amounts of header data
+    const skipSizes = [0, 32, 64, 128, 256, 512, 1024];
+    
+    for (const skipSize of skipSizes) {
+      if (skipSize >= data.length) continue;
       
       try {
-        const slicedData = data.slice(offset);
+        const skippedData = data.slice(skipSize);
         
-        // Suche nach dem ersten Zlib-Header im Slice
-        for (let i = 0; i < Math.min(1000, slicedData.length - 1); i++) {
-          if (slicedData[i] === 0x78 && [0x9C, 0xDA, 0x01].includes(slicedData[i + 1])) {
-            const zlibData = slicedData.slice(i);
-            const decompressed = pako.inflate(zlibData);
-            
+        // Try multiple inflation methods on skipped data
+        const inflationMethods = [
+          () => pako.inflate(skippedData),
+          () => pako.inflateRaw(skippedData),
+          () => pako.ungzip(skippedData) // Try gzip
+        ];
+        
+        for (const method of inflationMethods) {
+          try {
+            const decompressed = method();
             if (decompressed.length > 1000) {
-              console.log(`[RemasteredDecompressor] Progressive success at offset ${offset + i}`);
+              console.log(`[RemasteredDecompressor] Header skip success at ${skipSize} bytes`);
               return decompressed.buffer;
             }
+          } catch (e) {
+            // Try next method
           }
         }
       } catch (error) {
-        // Try next offset
+        // Try next skip size
       }
     }
     
@@ -235,47 +249,29 @@ export class RemasteredDecompressor {
   }
 
   /**
-   * Methode 3: Überspringe bekannte Remastered Header-Strukturen
+   * Method 3: Alternative inflate with different options
    */
-  private static decompressWithSkipHeaders(data: Uint8Array): ArrayBuffer | null {
-    // Remastered-spezifische Header-Patterns erkennen und überspringen
-    const headerPatterns = [
-      'LIST', 'RIFF', 'WAVE', 'FMT ', 'DATA'
+  private static decompressWithAlternativeInflate(data: Uint8Array): ArrayBuffer | null {
+    console.log('[RemasteredDecompressor] Method 3: Alternative inflate');
+    
+    // Try different pako options
+    const inflateOptions = [
+      { windowBits: 15 },     // Default zlib
+      { windowBits: -15 },    // Raw deflate
+      { windowBits: 15 + 16 }, // gzip
+      { windowBits: 15 + 32 }, // Auto-detect
+      {}                       // Default options
     ];
     
-    for (let skipBytes = 0; skipBytes < Math.min(2000, data.length); skipBytes += 16) {
+    for (const options of inflateOptions) {
       try {
-        const testData = data.slice(skipBytes);
-        
-        // Prüfe auf Header-Pattern am aktuellen Offset
-        let foundPattern = false;
-        for (const pattern of headerPatterns) {
-          const patternBytes = new TextEncoder().encode(pattern);
-          if (testData.length >= patternBytes.length) {
-            let matches = true;
-            for (let i = 0; i < patternBytes.length; i++) {
-              if (testData[i] !== patternBytes[i]) {
-                matches = false;
-                break;
-              }
-            }
-            if (matches) {
-              foundPattern = true;
-              break;
-            }
-          }
-        }
-        
-        if (!foundPattern && testData[0] === 0x78 && [0x9C, 0xDA, 0x01].includes(testData[1])) {
-          const decompressed = pako.inflate(testData);
-          
-          if (decompressed.length > 1000) {
-            console.log(`[RemasteredDecompressor] Header skip success at ${skipBytes}`);
-            return decompressed.buffer;
-          }
+        const decompressed = pako.inflate(data, options);
+        if (decompressed.length > 1000) {
+          console.log(`[RemasteredDecompressor] Alternative inflate success with options:`, options);
+          return decompressed.buffer;
         }
       } catch (error) {
-        // Continue to next skip position
+        // Try next option
       }
     }
     
@@ -283,33 +279,79 @@ export class RemasteredDecompressor {
   }
 
   /**
-   * Methode 4: Standard Zlib als Fallback
+   * Method 4: Raw zlib with multiple fallbacks
    */
-  private static decompressRawZlib(data: Uint8Array): ArrayBuffer | null {
-    try {
-      const decompressed = pako.inflate(data);
-      console.log(`[RemasteredDecompressor] Raw zlib success: ${decompressed.length} bytes`);
-      return decompressed.buffer;
-    } catch (error) {
-      return null;
-    }
-  }
-
-  /**
-   * Finde das Ende eines Zlib-Blocks
-   */
-  private static findZlibBlockEnd(data: Uint8Array, start: number): number {
-    // Suche nach dem nächsten Zlib-Header oder Ende der Daten
-    for (let i = start + 10; i < Math.min(start + 100000, data.length - 1); i++) {
-      if (data[i] === 0x78 && [0x9C, 0xDA, 0x01].includes(data[i + 1])) {
-        return i;
+  private static decompressRawZlibWithFallbacks(data: Uint8Array): ArrayBuffer | null {
+    console.log('[RemasteredDecompressor] Method 4: Raw zlib with fallbacks');
+    
+    const methods = [
+      () => pako.inflate(data),
+      () => pako.inflateRaw(data),
+      () => pako.inflate(data.slice(2)), // Skip potential zlib header
+      () => pako.inflateRaw(data.slice(2))
+    ];
+    
+    for (let i = 0; i < methods.length; i++) {
+      try {
+        const decompressed = methods[i]();
+        if (decompressed.length > 1000) {
+          console.log(`[RemasteredDecompressor] Raw zlib fallback ${i + 1} success`);
+          return decompressed.buffer;
+        }
+      } catch (error) {
+        // Try next method
       }
     }
-    return -1;
+    
+    return null;
   }
 
   /**
-   * Validiere dekomprimierte Daten auf StarCraft-spezifische Strukturen
+   * Method 5: Brute force - try decompression at many offsets
+   */
+  private static decompressWithBruteForce(data: Uint8Array): ArrayBuffer | null {
+    console.log('[RemasteredDecompressor] Method 5: Brute force');
+    
+    const bestBlocks: Uint8Array[] = [];
+    let totalSize = 0;
+    
+    // Try decompression starting at many different offsets
+    for (let offset = 0; offset < Math.min(data.length - 100, 5000); offset += 16) {
+      try {
+        const remaining = data.slice(offset);
+        const decompressed = pako.inflate(remaining);
+        
+        if (decompressed.length > 500) {
+          bestBlocks.push(decompressed);
+          totalSize += decompressed.length;
+          console.log(`[RemasteredDecompressor] Brute force block at offset ${offset}: ${decompressed.length} bytes`);
+          
+          // Stop if we have enough data
+          if (totalSize > 50000) break;
+        }
+      } catch (error) {
+        // Continue to next offset
+      }
+    }
+    
+    if (bestBlocks.length > 0) {
+      const combined = new Uint8Array(totalSize);
+      let offset = 0;
+      
+      for (const block of bestBlocks) {
+        combined.set(block, offset);
+        offset += block.length;
+      }
+      
+      console.log(`[RemasteredDecompressor] Brute force combined ${bestBlocks.length} blocks: ${combined.length} bytes`);
+      return combined.buffer;
+    }
+    
+    return null;
+  }
+
+  /**
+   * Validate decompressed data quality
    */
   private static validateDecompressedData(data: Uint8Array): {
     hasReplayMagic: boolean;
@@ -319,13 +361,14 @@ export class RemasteredDecompressor {
   } {
     const textContent = new TextDecoder('latin1', { fatal: false }).decode(data.slice(0, Math.min(2000, data.length)));
     
-    // Prüfe auf "Repl" Magic
-    const hasReplayMagic = textContent.includes('Repl') || data[0] === 0x52 && data[1] === 0x65 && data[2] === 0x70 && data[3] === 0x6C;
+    // Check for "Repl" magic
+    const hasReplayMagic = textContent.includes('Repl') || 
+                          (data.length >= 4 && data[0] === 0x52 && data[1] === 0x65 && data[2] === 0x70 && data[3] === 0x6C);
     
-    // Prüfe auf StarCraft-spezifische Strings
+    // Check for StarCraft-specific strings
     const starcraftPatterns = [
       'StarCraft', 'Brood War', 'scenario.chk', '.scm', '.scx',
-      'Protoss', 'Terran', 'Zerg', 'Maps\\', 'replay'
+      'Protoss', 'Terran', 'Zerg', 'Maps\\', 'replay', 'staredit'
     ];
     
     let patternCount = 0;
@@ -336,18 +379,19 @@ export class RemasteredDecompressor {
     }
     const hasStarcraftStrings = patternCount >= 2;
     
-    // Prüfe auf Command-ähnliche Strukturen (Byte-Patterns die wie Commands aussehen)
+    // Check for command-like structures
     let commandLikePatterns = 0;
-    for (let i = 0; i < Math.min(1000, data.length - 2); i++) {
+    const commandIds = [0x0C, 0x1D, 0x14, 0x15, 0x09, 0x0A, 0x0B, 0x11, 0x13, 0x20];
+    
+    for (let i = 0; i < Math.min(2000, data.length - 2); i++) {
       const byte = data[i];
-      // Prüfe auf bekannte Command-IDs
-      if ([0x0C, 0x1D, 0x14, 0x15, 0x09, 0x0A, 0x0B].includes(byte)) {
+      if (commandIds.includes(byte)) {
         commandLikePatterns++;
       }
     }
-    const hasCommandStructure = commandLikePatterns >= 5;
+    const hasCommandStructure = commandLikePatterns >= 10;
     
-    // Bestimme Qualität
+    // Determine quality
     let quality: 'excellent' | 'good' | 'poor' | 'invalid';
     if (hasReplayMagic && hasStarcraftStrings && hasCommandStructure) {
       quality = 'excellent';
