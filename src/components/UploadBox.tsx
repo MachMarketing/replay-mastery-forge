@@ -1,9 +1,10 @@
+
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
-import { Upload, X, FileText, CheckCircle, AlertCircle, RefreshCw, Search } from 'lucide-react';
+import { Upload, X, FileText, CheckCircle, AlertCircle, RefreshCw, Search, Play } from 'lucide-react';
 import { ParsedReplayData } from '@/services/replayParser/types';
 import { parseReplay } from '@/services/replayParser';
 import { ReplayAnalyzer, ReplayAnalysisResult } from '@/services/nativeReplayParser/replayAnalyzer';
@@ -17,7 +18,7 @@ interface UploadBoxProps {
 const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 10 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'parsing' | 'analyzing' | 'success' | 'error' | 'analysis-complete'>('idle');
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploaded' | 'parsing' | 'analyzing' | 'success' | 'error' | 'analysis-complete'>('idle');
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
@@ -32,7 +33,8 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     const file = acceptedFiles[0];
     if (!validateFile(file)) return;
     
-    await processFile(file);
+    // Just upload the file, don't parse it automatically
+    await uploadFile(file);
   }, []);
 
   const { getRootProps, getInputProps, open } = useDropzone({
@@ -68,6 +70,22 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     }
 
     return true;
+  };
+
+  const uploadFile = async (file: File) => {
+    console.log("[UploadBox] Uploading file:", file.name);
+    setFile(file);
+    setErrorDetails(null);
+    setAnalysisResult(null);
+    setShowAnalysis(false);
+    setUploadStatus('uploaded');
+    setStatusMessage('Datei hochgeladen - wähle Analyse-Typ');
+    setProgress(100);
+    
+    toast({
+      title: "Datei hochgeladen",
+      description: `${file.name} ist bereit zur Analyse.`,
+    });
   };
 
   const analyzeReplay = async (file: File) => {
@@ -116,46 +134,18 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
 
   const processFile = async (file: File) => {
     console.log("[UploadBox] Processing file:", file.name);
-    setFile(file);
-    setErrorDetails(null);
-    setAnalysisResult(null);
-    setShowAnalysis(false);
-    setUploadStatus('uploading');
-    setStatusMessage('Datei wird hochgeladen...');
+    setUploadStatus('parsing');
+    setStatusMessage('Replay wird analysiert...');
     setProgress(0);
     
-    // Simulate upload progress - faster progression
     const progressInterval = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 95) {
-          return 95; // Stop at 95% until upload is "complete"
-        }
-        return prev + 20;
-      });
-    }, 150);
+      setProgress(prev => prev >= 90 ? 90 : prev + 10);
+    }, 300);
     
     try {
-      // Simulate upload time - shorter
-      await new Promise(resolve => setTimeout(resolve, 800));
-      clearInterval(progressInterval);
-      setProgress(100);
-      
-      // Brief pause to show 100% upload completion
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // Now transition to parsing
-      setUploadStatus('parsing');
-      setStatusMessage('Replay wird analysiert...');
-      setProgress(0); // Reset progress for parsing phase
-      
-      // Start parsing progress animation
-      const parsingInterval = setInterval(() => {
-        setProgress(prev => prev >= 90 ? 90 : prev + 10);
-      }, 300);
-      
       const parsedData = await parseReplay(file);
       
-      clearInterval(parsingInterval);
+      clearInterval(progressInterval);
       setProgress(100);
       
       setUploadStatus('success');
@@ -227,17 +217,9 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         <p className="text-sm mb-4 text-center text-muted-foreground">
           Ziehe deine .rep Datei hierher oder klicke zum Auswählen
         </p>
-        <div className="flex gap-2">
-          <Button onClick={open} variant="default">
-            Datei auswählen
-          </Button>
-          {file && (
-            <Button onClick={() => analyzeReplay(file)} variant="outline">
-              <Search className="h-4 w-4 mr-2" />
-              Detailanalyse
-            </Button>
-          )}
-        </div>
+        <Button onClick={open} variant="default">
+          Datei auswählen
+        </Button>
         <input {...getInputProps()} accept=".rep" />
         <p className="text-xs text-muted-foreground mt-4">
           Max. Dateigröße: {maxFileSize}MB | Format: .rep
@@ -277,7 +259,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
             </p>
           </div>
         </div>
-        {(uploadStatus === 'uploading' || uploadStatus === 'parsing' || uploadStatus === 'analyzing') && (
+        {(uploadStatus === 'parsing' || uploadStatus === 'analyzing') && (
           <Button
             variant="ghost"
             size="sm"
@@ -295,7 +277,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         )}
       </div>
       
-      {(uploadStatus === 'uploading' || uploadStatus === 'parsing' || uploadStatus === 'analyzing') && (
+      {(uploadStatus === 'parsing' || uploadStatus === 'analyzing') && (
         <>
           <Progress value={progress} className="h-2" />
           <div className="flex justify-between mt-1">
@@ -307,6 +289,26 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
             </p>
           </div>
         </>
+      )}
+      
+      {uploadStatus === 'uploaded' && (
+        <div className="mt-2">
+          <p className="text-sm text-blue-500 flex items-center mb-3">
+            <CheckCircle className="h-4 w-4 mr-1" />
+            Datei hochgeladen - Analyse-Typ wählen
+          </p>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => file && processFile(file)} className="flex items-center gap-1">
+              <Play className="h-4 w-4" /> Normal analysieren
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => file && analyzeReplay(file)} className="flex items-center gap-1">
+              <Search className="h-4 w-4" /> Detailanalyse
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Normal: Spiel-Analyse | Detailanalyse: Technische Diagnose
+          </p>
+        </div>
       )}
       
       {uploadStatus === 'success' && (
