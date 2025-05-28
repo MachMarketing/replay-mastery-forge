@@ -328,7 +328,7 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
               <CardTitle>Raw Replay Data</CardTitle>
             </CardHeader>
             <CardContent>
-              <pre className="text-xs bg-gray-50 p-4 rounded overflow-auto max-h-96">
+              <pre className="text-xs bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 p-4 rounded overflow-auto max-h-96 border">
                 {JSON.stringify(replayData, null, 2)}
               </pre>
             </CardContent>
