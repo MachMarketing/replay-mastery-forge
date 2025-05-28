@@ -1,4 +1,3 @@
-
 /**
  * Direct StarCraft Replay Parser based on BWAPI specifications
  * Parses raw command stream from .rep files to extract actions and build orders
@@ -66,6 +65,9 @@ export class DirectReplayParser {
       const commands = this.parseCommands();
       console.log('[DirectReplayParser] Parsed commands:', commands.length);
 
+      // === DETAILED COMMAND ANALYSIS ===
+      this.analyzeCommands(commands);
+
       const playerActions = this.groupCommandsByPlayer(commands);
       const buildOrders = this.generateBuildOrders(playerActions);
       const { apm, eapm } = this.calculateAPM(playerActions);
@@ -103,18 +105,130 @@ export class DirectReplayParser {
   }
 
   /**
+   * Detailed command analysis for debugging
+   */
+  private analyzeCommands(commands: ParsedCommand[]): void {
+    console.log('[DirectReplayParser] === DETAILED COMMAND ANALYSIS ===');
+    
+    // Overall stats
+    console.log(`Found ${commands.length} commands total.`);
+    
+    // Group by command type
+    const commandsByType: Record<number, number> = {};
+    const commandsByPlayer: Record<number, ParsedCommand[]> = {};
+    
+    commands.forEach(cmd => {
+      // Count by type
+      commandsByType[cmd.cmdId] = (commandsByType[cmd.cmdId] || 0) + 1;
+      
+      // Group by player
+      if (!commandsByPlayer[cmd.playerId]) {
+        commandsByPlayer[cmd.playerId] = [];
+      }
+      commandsByPlayer[cmd.playerId].push(cmd);
+    });
+    
+    // Log command type breakdown
+    console.log('[DirectReplayParser] Command types found:');
+    Object.entries(commandsByType)
+      .sort(([,a], [,b]) => b - a)
+      .forEach(([cmdId, count]) => {
+        const cmdName = this.getCommandType(parseInt(cmdId));
+        console.log(`  - 0x${parseInt(cmdId).toString(16).padStart(2, '0')} (${cmdName}): ${count}`);
+      });
+    
+    // Log per-player breakdown
+    console.log('[DirectReplayParser] Per-player action breakdown:');
+    Object.entries(commandsByPlayer).forEach(([playerId, playerCommands]) => {
+      const pid = parseInt(playerId);
+      
+      // Categorize player actions
+      const frameSync = playerCommands.filter(c => [0x00, 0x01, 0x02].includes(c.cmdId)).length;
+      const build = playerCommands.filter(c => c.cmdId === 0x0C).length;
+      const train = playerCommands.filter(c => c.cmdId === 0x1D).length;
+      const moveAttack = playerCommands.filter(c => [0x14, 0x15].includes(c.cmdId)).length;
+      const select = playerCommands.filter(c => c.cmdId === 0x1B).length;
+      const other = playerCommands.length - frameSync - build - train - moveAttack - select;
+      
+      console.log(`Player ${pid}: ${playerCommands.length} total actions`);
+      console.log(`  - ${frameSync} FrameSync (0x00-0x02)`);
+      console.log(`  - ${build} Build (0x0C)`);
+      console.log(`  - ${train} Train (0x1D)`);
+      console.log(`  - ${moveAttack} Move/Attack (0x14, 0x15)`);
+      console.log(`  - ${select} Select (0x1B)`);
+      console.log(`  - ${other} Other`);
+      
+      // Calculate realistic APM for this player
+      const validActions = playerCommands.filter(c => ![0x00, 0x01, 0x02].includes(c.cmdId));
+      const lastFrame = Math.max(...playerCommands.map(c => c.frame), 0);
+      const minutes = lastFrame / (24 * 60);
+      const playerAPM = minutes > 0 ? Math.round(validActions.length / minutes) : 0;
+      
+      console.log(`  - Valid actions for APM: ${validActions.length}`);
+      console.log(`  - Game duration: ${minutes.toFixed(2)} minutes`);
+      console.log(`  - Calculated APM: ${playerAPM}`);
+    });
+  }
+
+  /**
    * Find the actual start of the command stream
    */
   private findCommandStreamStart(): number {
-    // Look for common frame sync patterns
-    for (let i = 0x200; i < Math.min(0x400, this.buffer.length - 10); i++) {
-      // Look for frame sync command (0x00) followed by reasonable data
-      if (this.buffer[i] === 0x00 && 
-          this.buffer[i + 4] === 0x00 && 
-          this.buffer[i + 5] < 8) { // Player ID should be < 8
-        return i;
+    console.log('[DirectReplayParser] Searching for command stream start...');
+    
+    // Try multiple potential offsets
+    const potentialOffsets = [
+      0x279, // Standard offset (633)
+      0x280, // Alternative offset
+      0x300, // Header might be larger
+      0x400, // Much larger header
+      0x200  // Smaller header
+    ];
+    
+    for (const testOffset of potentialOffsets) {
+      if (testOffset >= this.buffer.length - 10) continue;
+      
+      console.log(`[DirectReplayParser] Testing offset 0x${testOffset.toString(16)}`);
+      
+      // Look for frame sync patterns and valid command sequences
+      let validCommandCount = 0;
+      let testPos = testOffset;
+      
+      for (let i = 0; i < 50 && testPos < this.buffer.length - 6; i++) {
+        const byte = this.buffer[testPos];
+        
+        // Frame sync commands
+        if (byte === 0x00) {
+          validCommandCount++;
+          testPos++;
+        } else if (byte === 0x01 && testPos + 1 < this.buffer.length) {
+          validCommandCount++;
+          testPos += 2; // Skip frame count
+        } else if (byte === 0x02 && testPos + 2 < this.buffer.length) {
+          validCommandCount++;
+          testPos += 3; // Skip frame count (16-bit)
+        } else {
+          // Check if it's a valid game command
+          const cmdLength = this.getCommandLength(byte);
+          if (cmdLength > 0 && testPos + cmdLength < this.buffer.length) {
+            // Check if next byte looks like a valid player ID
+            const nextByte = this.buffer[testPos + 1];
+            if (nextByte < 12) { // Valid player ID range
+              validCommandCount++;
+            }
+          }
+          testPos += Math.max(cmdLength, 1);
+        }
+      }
+      
+      console.log(`[DirectReplayParser] Offset 0x${testOffset.toString(16)} has ${validCommandCount} valid commands in first 50 bytes`);
+      
+      if (validCommandCount >= 10) {
+        console.log(`[DirectReplayParser] Found promising offset: 0x${testOffset.toString(16)}`);
+        return testOffset;
       }
     }
+    
     return -1;
   }
 
@@ -125,6 +239,7 @@ export class DirectReplayParser {
     const commands: ParsedCommand[] = [];
     let consecutiveErrors = 0;
     const maxErrors = 10;
+    let currentFrame = 0;
 
     console.log('[DirectReplayParser] Starting command parsing from offset:', this.offset.toString(16));
 
@@ -132,14 +247,40 @@ export class DirectReplayParser {
       try {
         const startOffset = this.offset;
         
-        // Read frame (4 bytes, little endian)
-        const frame = this.readUint32();
+        // Check for frame sync commands first
+        const cmdByte = this.buffer[this.offset];
         
-        // Read command ID
+        if (cmdByte === 0x00) {
+          // Single frame advance
+          currentFrame++;
+          this.offset++;
+          consecutiveErrors = 0;
+          continue;
+        } else if (cmdByte === 0x01) {
+          // Frame skip with count
+          if (this.offset + 1 < this.buffer.length) {
+            const skipFrames = this.buffer[this.offset + 1];
+            currentFrame += skipFrames;
+            this.offset += 2;
+            consecutiveErrors = 0;
+          }
+          continue;
+        } else if (cmdByte === 0x02) {
+          // Large frame skip
+          if (this.offset + 2 < this.buffer.length) {
+            const skipFrames = this.buffer[this.offset + 1] | (this.buffer[this.offset + 2] << 8);
+            currentFrame += skipFrames;
+            this.offset += 3;
+            consecutiveErrors = 0;
+          }
+          continue;
+        }
+        
+        // Parse game command
         const cmdId = this.readUint8();
         
         // Skip if this looks like padding or invalid data
-        if (cmdId === 0xFF || frame > 0x7FFFFFFF) {
+        if (cmdId === 0xFF || cmdId > 0x50) {
           this.offset = startOffset + 1;
           consecutiveErrors++;
           continue;
@@ -158,7 +299,7 @@ export class DirectReplayParser {
         }
 
         const command: ParsedCommand = {
-          frame,
+          frame: currentFrame,
           cmdId,
           playerId,
           type: this.getCommandType(cmdId)
@@ -183,6 +324,7 @@ export class DirectReplayParser {
     if (commands.length > 0) {
       console.log('[DirectReplayParser] First command:', commands[0]);
       console.log('[DirectReplayParser] Last command:', commands[commands.length - 1]);
+      console.log('[DirectReplayParser] Final frame:', Math.max(...commands.map(c => c.frame)));
     }
 
     return commands;
@@ -300,6 +442,8 @@ export class DirectReplayParser {
     const apm: number[] = [];
     const eapm: number[] = [];
 
+    console.log('[DirectReplayParser] === APM CALCULATION ===');
+
     Object.keys(playerActions).forEach(playerIdStr => {
       const playerId = parseInt(playerIdStr);
       const actions = playerActions[playerId] || [];
@@ -313,14 +457,27 @@ export class DirectReplayParser {
       const lastFrame = Math.max(...actions.map(a => a.frame));
       const gameTimeMinutes = lastFrame / (24 * 60); // 24 FPS
       
+      // Exclude frame sync commands for APM calculation
+      const validActions = actions.filter(a => ![0x00, 0x01, 0x02].includes(a.cmdId));
+      
       // Total APM
-      apm[playerId] = gameTimeMinutes > 0 ? Math.round(actions.length / gameTimeMinutes) : 0;
+      const playerAPM = gameTimeMinutes > 0 ? Math.round(validActions.length / gameTimeMinutes) : 0;
+      apm[playerId] = playerAPM;
       
       // EAPM (exclude selection and movement)
-      const effectiveActions = actions.filter(a => 
+      const effectiveActions = validActions.filter(a => 
         ![0x1B, 0x14, 0x15].includes(a.cmdId) // Exclude select, attack move, move
       );
-      eapm[playerId] = gameTimeMinutes > 0 ? Math.round(effectiveActions.length / gameTimeMinutes) : 0;
+      const playerEAPM = gameTimeMinutes > 0 ? Math.round(effectiveActions.length / gameTimeMinutes) : 0;
+      eapm[playerId] = playerEAPM;
+      
+      console.log(`[DirectReplayParser] Player ${playerId} APM calculation:`);
+      console.log(`  - Total actions: ${actions.length}`);
+      console.log(`  - Valid actions (no frame sync): ${validActions.length}`);
+      console.log(`  - Effective actions (no select/move): ${effectiveActions.length}`);
+      console.log(`  - Game time: ${gameTimeMinutes.toFixed(2)} minutes`);
+      console.log(`  - Final APM: ${playerAPM}`);
+      console.log(`  - Final EAPM: ${playerEAPM}`);
     });
 
     return { apm, eapm };
@@ -461,6 +618,54 @@ export class DirectReplayParser {
     // Basic supply estimation based on time and build order position
     const timeMinutes = frame / (24 * 60);
     return Math.min(9 + buildIndex * 8 + Math.floor(timeMinutes * 5), 200);
+  }
+
+  private getCommandLength(commandType: number): number {
+    // Based on BWAPI and screp specifications
+    const commandLengths: Record<number, number> = {
+      0x09: 2,   // Select
+      0x0A: 2,   // Shift Select  
+      0x0B: 2,   // Shift Deselect
+      0x0C: 7,   // Build
+      0x0D: 2,   // Vision
+      0x0E: 4,   // Alliance
+      0x13: 2,   // Hotkey
+      0x14: 4,   // Move
+      0x15: 6,   // Attack
+      0x16: 0,   // Cancel (variable)
+      0x17: 0,   // Cancel Hatch (variable)
+      0x18: 1,   // Stop
+      0x19: 1,   // Carrier Stop
+      0x1A: 1,   // Reaver Stop
+      0x1B: 1,   // Order Nothing
+      0x1C: 1,   // Return Cargo
+      0x1D: 2,   // Train
+      0x1E: 2,   // Cancel Train
+      0x1F: 1,   // Cloak
+      0x20: 1,   // Decloak
+      0x21: 2,   // Unit Morph
+      0x23: 1,   // Unsiege
+      0x24: 1,   // Siege
+      0x25: 2,   // Train Fighter
+      0x27: 1,   // Unload All
+      0x28: 2,   // Unload
+      0x29: 1,   // Merge Archon
+      0x2A: 1,   // Hold Position
+      0x2B: 1,   // Burrow
+      0x2C: 1,   // Unburrow
+      0x2D: 1,   // Cancel Nuke
+      0x2E: 1,   // Lift
+      0x2F: 2,   // Research
+      0x30: 2,   // Cancel Research
+      0x31: 2,   // Upgrade
+      0x32: 2,   // Cancel Upgrade
+      0x33: 2,   // Cancel Addon
+      0x34: 2,   // Building Morph
+      0x35: 1,   // Stim
+      0x48: 10   // Load Game
+    };
+
+    return commandLengths[commandType] || 1;
   }
 
   /**
