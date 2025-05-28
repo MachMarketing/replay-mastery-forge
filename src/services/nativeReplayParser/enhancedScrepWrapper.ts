@@ -23,6 +23,17 @@ export interface EnhancedReplayData extends ScrepJsResult {
       directParserError?: string;
       actionsExtracted: number;
       buildOrdersGenerated: number;
+      qualityCheck: {
+        nativeParserRealistic: boolean;
+        directParserRealistic: boolean;
+        activeParser: 'native' | 'direct' | 'screp-fallback';
+        apmValidation: {
+          nativeAPM: number[];
+          directAPM: number[];
+          screpAPM: number[];
+          chosenAPM: number[];
+        };
+      };
     };
   };
 }
@@ -31,11 +42,11 @@ export class EnhancedScrepWrapper {
   private static screpWrapper = ScrepJsWrapper.getInstance();
 
   /**
-   * Parse replay with multiple fallback strategies
+   * Parse replay with multiple fallback strategies and quality validation
    */
   static async parseReplayEnhanced(file: File): Promise<EnhancedReplayData> {
-    console.log('[EnhancedScrepWrapper] === STARTING ENHANCED PARSING ===');
-    console.log('[EnhancedScrepWrapper] File:', file.name, 'Size:', file.size);
+    console.log('[REPLAY-PARSER] === STARTING ENHANCED PARSING ===');
+    console.log('[REPLAY-PARSER] File:', file.name, 'Size:', file.size);
     const startTime = Date.now();
 
     // Initialize debug info with all properties
@@ -47,7 +58,18 @@ export class EnhancedScrepWrapper {
       nativeParserError: undefined as string | undefined,
       directParserError: undefined as string | undefined,
       actionsExtracted: 0,
-      buildOrdersGenerated: 0
+      buildOrdersGenerated: 0,
+      qualityCheck: {
+        nativeParserRealistic: false,
+        directParserRealistic: false,
+        activeParser: 'screp-fallback' as 'native' | 'direct' | 'screp-fallback',
+        apmValidation: {
+          nativeAPM: [] as number[],
+          directAPM: [] as number[],
+          screpAPM: [] as number[],
+          chosenAPM: [] as number[]
+        }
+      }
     };
 
     let screpResult: ScrepJsResult;
@@ -60,74 +82,150 @@ export class EnhancedScrepWrapper {
         throw new Error('screp-js not available');
       }
 
-      console.log('[EnhancedScrepWrapper] Getting base data from screp-js');
+      console.log('[REPLAY-PARSER] Getting base data from screp-js');
       screpResult = await this.screpWrapper.parseReplay(file);
       debugInfo.screpJsSuccess = true;
+      debugInfo.qualityCheck.apmValidation.screpAPM = screpResult.computed.apm;
       
-      console.log('[EnhancedScrepWrapper] screp-js parsing successful');
+      console.log('[REPLAY-PARSER] screp-js parsing successful');
       console.log('  - Map:', screpResult.header.mapName);
       console.log('  - Players:', screpResult.players.length);
       console.log('  - Duration:', screpResult.header.duration);
-      console.log('  - APM available:', screpResult.computed.apm.length > 0);
+      console.log('  - screp-js APM:', screpResult.computed.apm);
       
     } catch (error) {
-      console.error('[EnhancedScrepWrapper] screp-js parsing failed:', error);
+      console.error('[REPLAY-PARSER] screp-js parsing failed:', error);
       debugInfo.screpJsError = error instanceof Error ? error.message : 'Unknown error';
       throw error;
     }
 
     // === STEP 2: Try native action parser ===
-    console.log('[EnhancedScrepWrapper] === ATTEMPTING NATIVE ACTION PARSING ===');
+    console.log('[REPLAY-PARSER] === ATTEMPTING NATIVE ACTION PARSING ===');
     let actionData: RemasteredActionData | undefined;
-    let hasDetailedActions = false;
+    let nativeParserRealistic = false;
 
     try {
       actionData = await RemasteredActionParser.parseActions(file);
       debugInfo.nativeParserSuccess = true;
-      hasDetailedActions = actionData.actions.length > 0;
       debugInfo.actionsExtracted = actionData.actions.length;
       debugInfo.buildOrdersGenerated = actionData.buildOrders.reduce((sum, bo) => sum + bo.length, 0);
       
-      if (hasDetailedActions) {
-        extractionMethod = 'combined';
-        console.log('[EnhancedScrepWrapper] Native parser successful, enhancing screp-js data');
-        this.enhanceWithNativeData(screpResult, actionData);
-      }
+      // Calculate APM from native parser
+      const gameTimeMinutes = screpResult.header.frames / (24 * 60);
+      const nativeAPM = actionData.playerActions ? 
+        Object.keys(actionData.playerActions).map(pid => {
+          const playerActions = actionData.playerActions[parseInt(pid)] || [];
+          return gameTimeMinutes > 0 ? Math.round(playerActions.length / gameTimeMinutes) : 0;
+        }) : [];
+      
+      debugInfo.qualityCheck.apmValidation.nativeAPM = nativeAPM;
+      
+      // Quality check for native parser
+      nativeParserRealistic = this.validateParserResults({
+        actions: actionData.actions.length,
+        buildOrders: debugInfo.buildOrdersGenerated,
+        apm: nativeAPM,
+        gameTimeMinutes,
+        parserName: 'Native'
+      });
+      
+      debugInfo.qualityCheck.nativeParserRealistic = nativeParserRealistic;
+      
+      console.log('[REPLAY-PARSER] Native parser results:');
+      console.log('  - Actions found:', actionData.actions.length);
+      console.log('  - Build orders:', debugInfo.buildOrdersGenerated);
+      console.log('  - Calculated APM:', nativeAPM);
+      console.log('  - Realistic quality:', nativeParserRealistic);
 
     } catch (actionError) {
-      console.warn('[EnhancedScrepWrapper] Native action parsing failed:', actionError);
+      console.warn('[REPLAY-PARSER] Native action parsing failed:', actionError);
       debugInfo.nativeParserError = actionError instanceof Error ? actionError.message : 'Unknown error';
     }
 
-    // === STEP 3: Try direct replay parser as fallback ===
-    console.log('[EnhancedScrepWrapper] === ATTEMPTING DIRECT PARSER FALLBACK ===');
+    // === STEP 3: Try direct replay parser (always run for comparison) ===
+    console.log('[REPLAY-PARSER] === ATTEMPTING DIRECT PARSER ===');
     let directParserData: DirectParserResult | undefined;
+    let directParserRealistic = false;
 
-    if (!hasDetailedActions) {
-      try {
-        const arrayBuffer = await file.arrayBuffer();
-        const directParser = new DirectReplayParser(arrayBuffer);
-        directParserData = directParser.parseReplay();
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const directParser = new DirectReplayParser(arrayBuffer);
+      directParserData = directParser.parseReplay();
+      
+      debugInfo.directParserSuccess = directParserData.success;
+      
+      if (directParserData.success) {
+        debugInfo.qualityCheck.apmValidation.directAPM = directParserData.apm;
         
-        debugInfo.directParserSuccess = directParserData.success;
+        // Quality check for direct parser
+        directParserRealistic = this.validateParserResults({
+          actions: directParserData.commands.length,
+          buildOrders: directParserData.buildOrders.reduce((sum, bo) => sum + bo.length, 0),
+          apm: directParserData.apm,
+          gameTimeMinutes: screpResult.header.frames / (24 * 60),
+          parserName: 'Direct'
+        });
         
-        if (directParserData.success && directParserData.commands.length > 0) {
-          console.log('[EnhancedScrepWrapper] Direct parser successful!');
-          console.log('  - Commands parsed:', directParserData.commands.length);
-          console.log('  - Build orders generated:', directParserData.buildOrders.reduce((sum, bo) => sum + bo.length, 0));
-          
-          hasDetailedActions = true;
-          extractionMethod = extractionMethod === 'combined' ? 'combined' : 'direct-parser';
-          debugInfo.actionsExtracted = directParserData.commands.length;
-          debugInfo.buildOrdersGenerated += directParserData.buildOrders.reduce((sum, bo) => sum + bo.length, 0);
-          
-          // Enhance screp-js data with direct parser results
-          this.enhanceWithDirectParserData(screpResult, directParserData);
-        }
+        debugInfo.qualityCheck.directParserRealistic = directParserRealistic;
+        
+        console.log('[REPLAY-PARSER] Direct parser results:');
+        console.log('  - Commands found:', directParserData.commands.length);
+        console.log('  - Build orders:', directParserData.buildOrders.reduce((sum, bo) => sum + bo.length, 0));
+        console.log('  - APM:', directParserData.apm);
+        console.log('  - Realistic quality:', directParserRealistic);
+      }
 
-      } catch (directError) {
-        console.warn('[EnhancedScrepWrapper] Direct parser failed:', directError);
-        debugInfo.directParserError = directError instanceof Error ? directError.message : 'Unknown error';
+    } catch (directError) {
+      console.warn('[REPLAY-PARSER] Direct parser failed:', directError);
+      debugInfo.directParserError = directError instanceof Error ? directError.message : 'Unknown error';
+    }
+
+    // === STEP 4: Choose best parser based on quality ===
+    let hasDetailedActions = false;
+    let chosenAPM = screpResult.computed.apm;
+
+    if (directParserRealistic && directParserData?.success) {
+      // Direct parser has realistic results - use it
+      extractionMethod = 'direct-parser';
+      hasDetailedActions = true;
+      debugInfo.qualityCheck.activeParser = 'direct';
+      chosenAPM = directParserData.apm;
+      
+      console.log('[REPLAY-PARSER] Using DIRECT PARSER (realistic results)');
+      this.enhanceWithDirectParserData(screpResult, directParserData);
+      
+    } else if (nativeParserRealistic && actionData) {
+      // Native parser has realistic results - use it
+      extractionMethod = 'combined';
+      hasDetailedActions = true;
+      debugInfo.qualityCheck.activeParser = 'native';
+      chosenAPM = debugInfo.qualityCheck.apmValidation.nativeAPM;
+      
+      console.log('[REPLAY-PARSER] Using NATIVE PARSER (realistic results)');
+      this.enhanceWithNativeData(screpResult, actionData);
+      
+    } else {
+      // Both parsers failed or unrealistic - stick with screp-js
+      extractionMethod = 'screp-js';
+      hasDetailedActions = false;
+      debugInfo.qualityCheck.activeParser = 'screp-fallback';
+      chosenAPM = screpResult.computed.apm;
+      
+      console.log('[REPLAY-PARSER] Using SCREP-JS FALLBACK (other parsers unrealistic)');
+      console.log('  - Native realistic:', nativeParserRealistic);
+      console.log('  - Direct realistic:', directParserRealistic);
+    }
+
+    debugInfo.qualityCheck.apmValidation.chosenAPM = chosenAPM;
+    
+    // Update final actions/build orders count
+    if (hasDetailedActions) {
+      if (debugInfo.qualityCheck.activeParser === 'direct' && directParserData) {
+        debugInfo.actionsExtracted = directParserData.commands.length;
+        debugInfo.buildOrdersGenerated = directParserData.buildOrders.reduce((sum, bo) => sum + bo.length, 0);
+      } else if (debugInfo.qualityCheck.activeParser === 'native' && actionData) {
+        debugInfo.actionsExtracted = actionData.actions.length;
+        debugInfo.buildOrdersGenerated = actionData.buildOrders.reduce((sum, bo) => sum + bo.length, 0);
       }
     }
 
@@ -145,20 +243,64 @@ export class EnhancedScrepWrapper {
       }
     };
 
-    console.log('[EnhancedScrepWrapper] === ENHANCED PARSING COMPLETE ===');
+    console.log('[REPLAY-PARSER] === ENHANCED PARSING COMPLETE ===');
     console.log('  - Method:', extractionMethod);
+    console.log('  - Active Parser:', debugInfo.qualityCheck.activeParser);
     console.log('  - Has actions:', hasDetailedActions);
     console.log('  - Time taken:', extractionTime, 'ms');
-    console.log('  - screp-js success:', debugInfo.screpJsSuccess);
-    console.log('  - Native parser success:', debugInfo.nativeParserSuccess);
-    console.log('  - Direct parser success:', debugInfo.directParserSuccess);
     console.log('  - Total actions extracted:', debugInfo.actionsExtracted);
     console.log('  - Total build orders generated:', debugInfo.buildOrdersGenerated);
+    console.log('  - Final APM:', chosenAPM);
 
     // Store enhanced result for debugging
     (window as any).lastEnhancedResult = enhancedResult;
 
     return enhancedResult;
+  }
+
+  /**
+   * Validate if parser results are realistic for a StarCraft game
+   */
+  private static validateParserResults(data: {
+    actions: number;
+    buildOrders: number;
+    apm: number[];
+    gameTimeMinutes: number;
+    parserName: string;
+  }): boolean {
+    console.log(`[REPLAY-PARSER] Validating ${data.parserName} parser results:`);
+    console.log('  - Actions:', data.actions);
+    console.log('  - Build orders:', data.buildOrders);
+    console.log('  - APM:', data.apm);
+    console.log('  - Game time:', data.gameTimeMinutes, 'minutes');
+
+    // Minimum realistic actions based on game length
+    const minExpectedActions = Math.floor(data.gameTimeMinutes * 20); // ~20 actions per minute minimum
+    console.log('  - Min expected actions:', minExpectedActions);
+
+    // Check if we have enough actions
+    if (data.actions < minExpectedActions) {
+      console.log(`  - ❌ Too few actions (${data.actions} < ${minExpectedActions})`);
+      return false;
+    }
+
+    // Check if APM is realistic (between 30-500)
+    const hasRealisticAPM = data.apm.some(apm => apm >= 30 && apm <= 500);
+    console.log('  - Realistic APM found:', hasRealisticAPM);
+    
+    if (!hasRealisticAPM) {
+      console.log('  - ❌ No realistic APM values found');
+      return false;
+    }
+
+    // Check if we have some build orders
+    if (data.buildOrders < 3) {
+      console.log(`  - ❌ Too few build orders (${data.buildOrders} < 3)`);
+      return false;
+    }
+
+    console.log(`  - ✅ ${data.parserName} parser results are realistic`);
+    return true;
   }
 
   /**
