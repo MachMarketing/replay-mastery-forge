@@ -5,13 +5,21 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import UploadBox from '@/components/UploadBox';
 import AnalysisResult from '@/components/AnalysisResult';
-import { ParsedReplayData } from '@/services/replayParser/types';
+import { EnhancedReplayData } from '@/services/nativeReplayParser/enhancedScrepWrapper';
 
 const UploadPage: React.FC = () => {
-  const [analysisData, setAnalysisData] = useState<ParsedReplayData | null>(null);
+  const [analysisData, setAnalysisData] = useState<EnhancedReplayData | null>(null);
   const { parseFile } = useReplayParser();
 
-  const handleUploadComplete = async (file: File, replayData: ParsedReplayData) => {
+  const handleUploadComplete = async (file: File, replayData: EnhancedReplayData) => {
+    console.log('[UploadPage] Received enhanced replay data:', {
+      playerCount: replayData.players.length,
+      mapName: replayData.header.mapName,
+      hasDetailedActions: replayData.enhanced.hasDetailedActions,
+      extractionMethod: replayData.enhanced.extractionMethod,
+      buildOrdersCount: replayData.computed.buildOrders.reduce((sum, bo) => sum + bo.length, 0)
+    });
+    
     setAnalysisData(replayData);
   };
 
