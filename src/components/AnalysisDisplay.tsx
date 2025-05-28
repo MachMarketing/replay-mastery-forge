@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { ParsedReplayResult } from '@/services/replayParser/types';
+import { AlertTriangle } from 'lucide-react';
 
 interface AnalysisDisplayProps {
   isAnalyzing: boolean;
@@ -40,14 +42,14 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
   isPremium,
   onPlayerSelect,
 }) => {
-  // Helper function to format APM
+  // Helper function to format APM - show real values or indicate no data
   const formatApm = (apm: number): string => {
-    return apm ? apm.toFixed(0) : 'N/A';
+    return apm > 0 ? apm.toFixed(0) : 'Keine Daten';
   };
   
   // Helper function to format race
   const formatRace = (race: string): string => {
-    return race || 'Unknown';
+    return race || 'Unbekannt';
   };
 
   const renderAnalysis = () => {
@@ -85,8 +87,8 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
       replayData: {
         primaryPlayer: replayData.primaryPlayer,
         secondaryPlayer: replayData.secondaryPlayer,
-        primaryBuildOrderItems: replayData.primaryPlayer.buildOrder.length,
-        secondaryBuildOrderItems: replayData.secondaryPlayer.buildOrder.length
+        map: replayData.map,
+        duration: replayData.duration
       }
     });
     
@@ -106,10 +108,22 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
     return (
       <Card className="shadow-md">
         <CardHeader className="bg-card border-b">
-          <CardTitle className="text-lg">Analyse</CardTitle>
-          <CardDescription>Detaillierte Analyse deines Replays.</CardDescription>
+          <CardTitle className="text-lg">Replay-Analyse</CardTitle>
+          <CardDescription>
+            Map: {replayData.map} | Dauer: {replayData.duration} | Matchup: {replayData.matchup}
+          </CardDescription>
         </CardHeader>
         <CardContent className="p-6">
+          {/* Data Quality Warning */}
+          {(selectedPlayerData.apm === 0 || otherPlayerData.apm === 0) && (
+            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-yellow-600" />
+              <span className="text-sm text-yellow-800">
+                Einige Daten (APM, Build Order) sind nicht verfügbar - Parser-Verbesserungen erforderlich
+              </span>
+            </div>
+          )}
+          
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="text-xl font-semibold">{selectedPlayerData.name}</h3>
@@ -158,73 +172,46 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
             <AccordionItem value="build-order">
               <AccordionTrigger>Build Order</AccordionTrigger>
               <AccordionContent>
-                <Table>
-                  <TableCaption>Detaillierte Build Order Analyse</TableCaption>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[100px]">Zeit</TableHead>
-                      <TableHead>Aktion</TableHead>
-                      <TableHead>Versorgung</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {selectedPlayerData.buildOrder.length > 0 ? (
-                      selectedPlayerData.buildOrder.map((item, index) => (
+                {selectedPlayerData.buildOrder && selectedPlayerData.buildOrder.length > 0 ? (
+                  <Table>
+                    <TableCaption>Build Order Analyse</TableCaption>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[100px]">Zeit</TableHead>
+                        <TableHead>Aktion</TableHead>
+                        <TableHead>Versorgung</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedPlayerData.buildOrder.map((item, index) => (
                         <TableRow key={index}>
                           <TableCell className="font-medium">{item.time}</TableCell>
                           <TableCell>{item.action}</TableCell>
                           <TableCell>{item.supply}</TableCell>
                         </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={3} className="text-center">Keine Build Order Daten verfügbar</TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </AccordionContent>
-            </AccordionItem>
-            <AccordionItem value="strengths">
-              <AccordionTrigger>Stärken</AccordionTrigger>
-              <AccordionContent>
-                {selectedPlayerData.strengths && selectedPlayerData.strengths.length > 0 ? (
-                  <ul className="list-disc pl-5">
-                    {selectedPlayerData.strengths.map((strength, index) => (
-                      <li key={index}>{strength}</li>
-                    ))}
-                  </ul>
+                      ))}
+                    </TableBody>
+                  </Table>
                 ) : (
-                  <p>Keine Stärken gefunden</p>
+                  <div className="text-center p-4 bg-gray-50 rounded">
+                    <p className="text-muted-foreground">Build Order Daten sind nicht verfügbar</p>
+                    <p className="text-sm text-gray-500 mt-1">Parser benötigt Verbesserungen für Command-Extraktion</p>
+                  </div>
                 )}
               </AccordionContent>
             </AccordionItem>
-            <AccordionItem value="weaknesses">
-              <AccordionTrigger>Schwächen</AccordionTrigger>
+            
+            <AccordionItem value="raw-data">
+              <AccordionTrigger>Rohdaten (Debug)</AccordionTrigger>
               <AccordionContent>
-                {selectedPlayerData.weaknesses && selectedPlayerData.weaknesses.length > 0 ? (
-                  <ul className="list-disc pl-5">
-                    {selectedPlayerData.weaknesses.map((weakness, index) => (
-                      <li key={index}>{weakness}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p>Keine Schwächen gefunden</p>
-                )}
-              </AccordionContent>
-            </AccordionItem>
-            <AccordionItem value="recommendations">
-              <AccordionTrigger>Empfehlungen</AccordionTrigger>
-              <AccordionContent>
-                {selectedPlayerData.recommendations && selectedPlayerData.recommendations.length > 0 ? (
-                  <ul className="list-disc pl-5">
-                    {selectedPlayerData.recommendations.map((recommendation, index) => (
-                      <li key={index}>{recommendation}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p>Keine Empfehlungen gefunden</p>
-                )}
+                <div className="space-y-2 text-sm">
+                  <div><strong>Map:</strong> {replayData.map}</div>
+                  <div><strong>Matchup:</strong> {replayData.matchup}</div>
+                  <div><strong>Dauer:</strong> {replayData.duration} ({replayData.durationMS}ms)</div>
+                  <div><strong>Datum:</strong> {replayData.date}</div>
+                  <div><strong>Spieler 1:</strong> {replayData.primaryPlayer.name} ({replayData.primaryPlayer.race})</div>
+                  <div><strong>Spieler 2:</strong> {replayData.secondaryPlayer.name} ({replayData.secondaryPlayer.race})</div>
+                </div>
               </AccordionContent>
             </AccordionItem>
           </Accordion>
@@ -233,9 +220,9 @@ const AnalysisDisplay: React.FC<AnalysisDisplayProps> = ({
             <>
               <Separator className="my-4" />
               <div className="text-center">
-                <Badge variant="outline">Premium-Funktionen freischalten</Badge>
+                <Badge variant="outline">Alle verfügbaren Daten angezeigt</Badge>
                 <p className="text-sm text-muted-foreground mt-2">
-                  Erhalte Zugriff auf erweiterte Analysen und personalisiertes Coaching.
+                  Keine Mock-Daten - nur echte Parser-Ergebnisse
                 </p>
               </div>
             </>

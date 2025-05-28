@@ -1,3 +1,4 @@
+
 /**
  * Enhanced BW Remastered parser that uses screp-js as primary method
  */
@@ -30,36 +31,35 @@ export async function parseBWRemasteredReplay(file: File): Promise<ParsedReplayD
 }
 
 /**
- * Convert screp data to legacy ParsedReplayData format
+ * Convert screp data to legacy ParsedReplayData format - NO MOCK DATA
  */
 function convertScrepToLegacyFormat(screpData: ScrepReplayData): ParsedReplayData {
   console.log('[convertScrepToLegacyFormat] Converting screp data to legacy format');
+  console.log('[convertScrepToLegacyFormat] Raw screp data:', screpData);
   
-  const player1 = screpData.players[0] || {
-    name: 'Player 1',
-    race: 'Terran',
-    raceId: 1,
-    team: 0,
-    color: 0,
-    slotId: 0
-  };
+  if (!screpData.players || screpData.players.length < 2) {
+    throw new Error('Nicht genügend Spieler gefunden - benötige mindestens 2 Spieler');
+  }
   
-  const player2 = screpData.players[1] || {
-    name: 'Player 2', 
-    race: 'Protoss',
-    raceId: 2,
-    team: 1,
-    color: 1,
-    slotId: 1
-  };
+  const player1 = screpData.players[0];
+  const player2 = screpData.players[1];
   
-  // Get APM values
-  const player1Apm = screpData.computed.apm[0] || Math.floor(Math.random() * 100) + 120;
-  const player2Apm = screpData.computed.apm[1] || Math.floor(Math.random() * 100) + 120;
+  // Nur echte APM-Werte verwenden, keine Mock-Daten
+  const player1Apm = screpData.computed.apm[0];
+  const player2Apm = screpData.computed.apm[1];
   
-  // Generate mock build orders based on race
-  const buildOrder1 = generateBuildOrder(player1.race);
-  const buildOrder2 = generateBuildOrder(player2.race);
+  if (!player1Apm || !player2Apm) {
+    throw new Error('Keine APM-Daten verfügbar');
+  }
+  
+  // Validierung der Basisdaten
+  if (!screpData.header.mapName || screpData.header.mapName === 'Unknown Map') {
+    throw new Error('Map-Name nicht verfügbar');
+  }
+  
+  if (!screpData.header.duration || screpData.header.duration === '0:00') {
+    throw new Error('Spiel-Dauer nicht verfügbar');
+  }
   
   return {
     primaryPlayer: {
@@ -67,20 +67,20 @@ function convertScrepToLegacyFormat(screpData: ScrepReplayData): ParsedReplayDat
       race: player1.race,
       apm: player1Apm,
       eapm: Math.floor(player1Apm * 0.8),
-      buildOrder: buildOrder1,
-      strengths: [`Strong ${player1.race} macro`],
-      weaknesses: ['Could improve micro'],
-      recommendations: [`Focus on ${player1.race} timing attacks`]
+      buildOrder: [], // Echte Build Order wird vom Command Parser extrahiert
+      strengths: [], // Keine Mock-Stärken
+      weaknesses: [], // Keine Mock-Schwächen  
+      recommendations: [] // Keine Mock-Empfehlungen
     },
     secondaryPlayer: {
       name: player2.name,
       race: player2.race,
       apm: player2Apm,
       eapm: Math.floor(player2Apm * 0.8),
-      buildOrder: buildOrder2,
-      strengths: [`Solid ${player2.race} fundamentals`],
-      weaknesses: ['Occasional supply blocks'],
-      recommendations: [`Master ${player2.race} transitions`]
+      buildOrder: [], // Echte Build Order wird vom Command Parser extrahiert
+      strengths: [], // Keine Mock-Stärken
+      weaknesses: [], // Keine Mock-Schwächen
+      recommendations: [] // Keine Mock-Empfehlungen
     },
     
     map: screpData.header.mapName,
@@ -90,10 +90,10 @@ function convertScrepToLegacyFormat(screpData: ScrepReplayData): ParsedReplayDat
     date: screpData.header.startTime.toISOString().split('T')[0],
     result: 'unknown' as const,
     
-    // Legacy fields
-    strengths: [`Strong ${player1.race} play`],
-    weaknesses: ['Could improve efficiency'],
-    recommendations: ['Focus on macro fundamentals'],
+    // Legacy fields - nur echte Daten
+    strengths: [], // Keine Mock-Daten
+    weaknesses: [], // Keine Mock-Daten
+    recommendations: [], // Keine Mock-Daten
     
     playerName: player1.name,
     opponentName: player2.name,
@@ -103,102 +103,76 @@ function convertScrepToLegacyFormat(screpData: ScrepReplayData): ParsedReplayDat
     eapm: Math.floor(player1Apm * 0.8),
     opponentApm: player2Apm,
     opponentEapm: Math.floor(player2Apm * 0.8),
-    buildOrder: buildOrder1,
+    buildOrder: [], // Echte Build Order wird extrahiert
     
-    trainingPlan: [
-      { day: 1, focus: "Macro Management", drill: "Konstante Worker-Produktion üben" },
-      { day: 2, focus: "Micro Control", drill: "Einheitenpositionierung verbessern" },
-      { day: 3, focus: "Build Order", drill: "Timing-Attacken perfektionieren" },
-      { day: 4, focus: "Resource Management", drill: "Effiziente Ressourcennutzung" },
-      { day: 5, focus: "Hotkey Usage", drill: "Hotkey-Kombinationen trainieren" }
-    ]
+    trainingPlan: [] // Keine Mock-Trainingspläne
   };
 }
 
 /**
- * Convert custom parser data to legacy format (fallback)
+ * Convert custom parser data to legacy format - NO MOCK DATA
  */
 function convertCustomToLegacyFormat(customData: any): ParsedReplayData {
-  const player1 = customData.players[0] || { name: 'Player 1', raceString: 'Terran' };
-  const player2 = customData.players[1] || { name: 'Player 2', raceString: 'Protoss' };
+  console.log('[convertCustomToLegacyFormat] Converting custom data:', customData);
+  
+  if (!customData.players || customData.players.length < 2) {
+    throw new Error('Custom Parser: Nicht genügend Spieler gefunden');
+  }
+  
+  const player1 = customData.players[0];
+  const player2 = customData.players[1];
+  
+  if (!player1.name || !player2.name) {
+    throw new Error('Custom Parser: Spielernamen nicht verfügbar');
+  }
+  
+  if (!customData.mapName) {
+    throw new Error('Custom Parser: Map-Name nicht verfügbar');
+  }
+  
+  if (!customData.duration) {
+    throw new Error('Custom Parser: Spiel-Dauer nicht verfügbar');
+  }
   
   return {
     primaryPlayer: {
       name: player1.name,
       race: player1.raceString,
-      apm: 150,
-      eapm: 120,
-      buildOrder: generateBuildOrder(player1.raceString),
-      strengths: ['Good macro'],
-      weaknesses: ['Needs micro work'],
-      recommendations: ['Practice timing']
+      apm: 0, // Custom Parser hat keine APM-Daten
+      eapm: 0,
+      buildOrder: [],
+      strengths: [],
+      weaknesses: [],
+      recommendations: []
     },
     secondaryPlayer: {
       name: player2.name,
       race: player2.raceString,
-      apm: 140,
-      eapm: 110,
-      buildOrder: generateBuildOrder(player2.raceString),
-      strengths: ['Solid fundamentals'],
-      weaknesses: ['Supply management'],
-      recommendations: ['Work on transitions']
+      apm: 0, // Custom Parser hat keine APM-Daten
+      eapm: 0,
+      buildOrder: [],
+      strengths: [],
+      weaknesses: [],
+      recommendations: []
     },
-    map: customData.mapName || 'Unknown Map',
+    map: customData.mapName,
     matchup: `${player1.raceString.charAt(0)}v${player2.raceString.charAt(0)}`,
-    duration: customData.duration || '12:34',
-    durationMS: customData.totalFrames ? Math.floor(customData.totalFrames * 1000 / 24) : 754000,
+    duration: customData.duration,
+    durationMS: customData.totalFrames ? Math.floor(customData.totalFrames * 1000 / 24) : 0,
     date: new Date().toISOString().split('T')[0],
     result: 'unknown' as const,
-    strengths: ['Good macro'],
-    weaknesses: ['Needs micro work'],
-    recommendations: ['Practice timing'],
+    strengths: [],
+    weaknesses: [],
+    recommendations: [],
     playerName: player1.name,
     opponentName: player2.name,
     playerRace: player1.raceString,
     opponentRace: player2.raceString,
-    apm: 150,
-    eapm: 120,
-    opponentApm: 140,
-    opponentEapm: 110,
-    buildOrder: generateBuildOrder(player1.raceString),
-    trainingPlan: [
-      { day: 1, focus: "Macro Management", drill: "Konstante Worker-Produktion üben" },
-      { day: 2, focus: "Micro Control", drill: "Einheitenpositionierung verbessern" },
-      { day: 3, focus: "Build Order", drill: "Timing-Attacken perfektionieren" }
-    ]
+    apm: 0,
+    eapm: 0,
+    opponentApm: 0,
+    opponentEapm: 0,
+    buildOrder: [],
+    trainingPlan: []
   };
-}
-
-/**
- * Generate realistic build order based on race
- */
-function generateBuildOrder(race: string): Array<{time: string, supply: number, action: string}> {
-  const buildOrders: Record<string, Array<{time: string, supply: number, action: string}>> = {
-    Terran: [
-      { time: "0:15", supply: 9, action: "SCV" },
-      { time: "0:30", supply: 10, action: "Supply Depot" },
-      { time: "1:00", supply: 12, action: "Barracks" },
-      { time: "1:30", supply: 14, action: "Marine" },
-      { time: "2:00", supply: 16, action: "Refinery" },
-      { time: "2:30", supply: 18, action: "Academy" }
-    ],
-    Protoss: [
-      { time: "0:15", supply: 9, action: "Probe" },
-      { time: "0:30", supply: 10, action: "Pylon" },
-      { time: "1:00", supply: 12, action: "Gateway" },
-      { time: "1:30", supply: 14, action: "Zealot" },
-      { time: "2:00", supply: 16, action: "Assimilator" },
-      { time: "2:30", supply: 18, action: "Cybernetics Core" }
-    ],
-    Zerg: [
-      { time: "0:15", supply: 9, action: "Drone" },
-      { time: "0:30", supply: 10, action: "Overlord" },
-      { time: "1:00", supply: 12, action: "Spawning Pool" },
-      { time: "1:30", supply: 14, action: "Zergling" },
-      { time: "2:00", supply: 16, action: "Extractor" },
-      { time: "2:30", supply: 18, action: "Lair" }
-    ]
-  };
-  
-  return buildOrders[race] || buildOrders.Terran;
 }
