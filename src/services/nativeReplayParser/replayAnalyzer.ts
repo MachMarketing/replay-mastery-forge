@@ -102,11 +102,11 @@ export class ReplayAnalyzer {
     // Improved version estimation based on compression info AND magic bytes
     let estimatedVersion = 'Unknown';
     
-    // Use the compression detector's results
-    if (compressionInfo.type === 'seRS') {
+    // Use the compression detector's results first (more reliable)
+    if (compressionInfo.isRemastered) {
+      estimatedVersion = compressionInfo.version; // Use the detector's version
+    } else if (compressionInfo.type === 'remastered_zlib') {
       estimatedVersion = 'StarCraft: Remastered (1.18+)';
-    } else if (compressionInfo.type === 'zlib') {
-      estimatedVersion = 'Compressed (Classic/Remastered)';
     } else if (magic === '5453494c') { // "LIST" in hex
       estimatedVersion = 'Compressed (Classic/Remastered)';
     } else if (data.length > 633 && data[0] !== 0) {
@@ -123,6 +123,11 @@ export class ReplayAnalyzer {
           estimatedVersion = 'StarCraft: Classic';
         }
       }
+    }
+    
+    // Additional check: if magic bytes don't match standard patterns but we detected remastered format
+    if (magic !== '5265706c' && compressionInfo.type === 'remastered_zlib') {
+      estimatedVersion = 'StarCraft: Remastered (Compressed)';
     }
     
     return {
@@ -226,8 +231,8 @@ export class ReplayAnalyzer {
       }
     }
     
-    if (analysis.formatDetection.detectedFormat === 'seRS') {
-      recommendations.push('✅ Remastered seRS-Format erkannt - verwende seRS-Decompression');
+    if (analysis.formatDetection.detectedFormat === 'remastered_zlib') {
+      recommendations.push('✅ Remastered-Format mit Kompression erkannt - screp-js sollte funktionieren');
     }
     
     if (analysis.formatDetection.estimatedVersion.includes('Remastered')) {

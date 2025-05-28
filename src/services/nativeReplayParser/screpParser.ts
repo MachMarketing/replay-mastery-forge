@@ -1,26 +1,41 @@
 
 /**
- * Enhanced screp parser with REAL data extraction guarantee
+ * Enhanced screp-js integration using the robust wrapper - NO MOCK DATA
  */
 
 import { ScrepJsWrapper, ReplayParseResult } from './screpJsWrapper';
-import { DebugAnalyzer } from './debugAnalyzer';
+
+export interface ScrepPlayer {
+  name: string;
+  race: string;
+  raceId: number;
+  team: number;
+  color: number;
+  slotId: number;
+}
 
 export interface ScrepReplayData {
   header: {
+    engine: string;
+    version: string;
+    frames: number;
+    startTime: Date;
+    title: string;
     mapName: string;
+    mapWidth: number;
+    mapHeight: number;
+    gameType: string;
+    gameSubType: number;
+    host: string;
     duration: string;
     durationMs: number;
-    startTime: Date;
-    frameCount: number;
   };
-  players: Array<{
-    name: string;
-    race: string;
-    team: number;
-    color: number;
-  }>;
+  players: ScrepPlayer[];
   computed: {
+    playerDescs: string[];
+    matchup: string;
+    league: string;
+    winnerTeam: number;
     apm: number[];
     eapm: number[];
     buildOrders: Array<Array<{
@@ -29,109 +44,111 @@ export interface ScrepReplayData {
       action: string;
       supply?: number;
     }>>;
-    dataSource: string;
   };
 }
 
 export class ScrepParser {
+  private static wrapper = ScrepJsWrapper.getInstance();
+
+  /**
+   * Parse replay using screp-js wrapper - NO FALLBACKS, ONLY REAL DATA
+   */
   static async parseReplay(file: File): Promise<ScrepReplayData> {
-    console.log('[ScrepParser] ===== STARTING COMPREHENSIVE REPLAY ANALYSIS =====');
-    console.log('[ScrepParser] File:', file.name, 'Size:', (file.size / 1024).toFixed(2), 'KB');
+    console.log('[ScrepParser] Starting screp-js parsing - NO MOCK DATA');
     
-    // Datei in Buffer laden für umfassende Analyse
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = new Uint8Array(arrayBuffer);
+    // Initialize wrapper
+    const available = await this.wrapper.initialize();
     
-    // UMFASSENDE DEBUG-ANALYSE
-    console.log('[ScrepParser] ===== STARTING COMPREHENSIVE DEBUG ANALYSIS =====');
-    const debugAnalyzer = new DebugAnalyzer(buffer);
-    debugAnalyzer.analyzeReplay();
-    
-    const wrapper = ScrepJsWrapper.getInstance();
-    await wrapper.initialize();
-    
-    console.log('[ScrepParser] ===== ATTEMPTING SCREP-JS PARSING =====');
-    
-    try {
-      const result = await wrapper.parseReplay(file);
-      
-      console.log('[ScrepParser] ===== SCREP-JS RESULT ANALYSIS =====');
-      console.log('[ScrepParser] Header:', result.header);
-      console.log('[ScrepParser] Players:', result.players);
-      console.log('[ScrepParser] Commands count:', result.commands.length);
-      console.log('[ScrepParser] APM Data:', result.computed.playerAPM);
-      console.log('[ScrepParser] EAPM Data:', result.computed.playerEAPM);
-      console.log('[ScrepParser] Build Orders lengths:', result.computed.buildOrders.map(bo => bo.length));
-      console.log('[ScrepParser] Data Source:', result.computed.dataSource);
-      
-      // KRITISCHE VALIDIERUNG
-      const hasRealAPM = result.computed.playerAPM && 
-                        result.computed.playerAPM.length >= 2 && 
-                        result.computed.playerAPM.some(apm => apm > 0);
-      
-      const hasRealBuildOrders = result.computed.buildOrders && 
-                                result.computed.buildOrders.length >= 2 &&
-                                result.computed.buildOrders.some(bo => bo.length > 0);
-      
-      console.log('[ScrepParser] ===== VALIDATION RESULTS =====');
-      console.log('[ScrepParser] Has real APM:', hasRealAPM);
-      console.log('[ScrepParser] Has real build orders:', hasRealBuildOrders);
-      
-      if (!hasRealAPM) {
-        console.error('[ScrepParser] CRITICAL: No real APM data found!');
-        console.log('[ScrepParser] Raw APM values:', result.computed.playerAPM);
-        throw new Error('REAL APM data not available - parser failed to extract actions');
-      }
-      
-      if (!hasRealBuildOrders) {
-        console.warn('[ScrepParser] WARNING: No real build orders found!');
-        console.log('[ScrepParser] Build order lengths:', result.computed.buildOrders.map(bo => bo.length));
-      }
-      
-      // Convert to our format with STRICT validation
-      const screpData: ScrepReplayData = {
-        header: {
-          mapName: result.header.mapName || 'Unknown Map',
-          duration: result.header.duration || '0:00',
-          durationMs: this.durationToMs(result.header.duration || '0:00'),
-          startTime: result.header.startTime || new Date(),
-          frameCount: result.header.frames || 0
-        },
-        players: result.players.map((player, index) => ({
-          name: player.name || `Player ${index + 1}`,
-          race: player.race || 'Random',
-          team: player.team || 0,
-          color: player.color || 0
-        })),
-        computed: {
-          apm: result.computed.playerAPM,
-          eapm: result.computed.playerEAPM,
-          buildOrders: result.computed.buildOrders,
-          dataSource: result.computed.dataSource
-        }
-      };
-      
-      console.log('[ScrepParser] ===== FINAL RESULT VALIDATION =====');
-      console.log('[ScrepParser] Final APM:', screpData.computed.apm);
-      console.log('[ScrepParser] Final EAPM:', screpData.computed.eapm);
-      console.log('[ScrepParser] Final Build Orders:', screpData.computed.buildOrders.map(bo => `${bo.length} actions`));
-      console.log('[ScrepParser] Data source:', screpData.computed.dataSource);
-      
-      return screpData;
-      
-    } catch (error) {
-      console.error('[ScrepParser] COMPLETE PARSING FAILED:', error);
-      throw new Error(`Replay parsing completely failed: ${error.message}`);
+    if (!available) {
+      throw new Error('screp-js ist nicht verfügbar im Browser');
     }
+    
+    console.log('[ScrepParser] Using real screp-js');
+    const result = await this.wrapper.parseReplay(file);
+    return this.convertToScrepFormat(result);
   }
-  
-  private static durationToMs(duration: string): number {
-    const parts = duration.split(':');
-    if (parts.length === 2) {
-      const minutes = parseInt(parts[0]) || 0;
-      const seconds = parseInt(parts[1]) || 0;
-      return (minutes * 60 + seconds) * 1000;
+
+  private static convertToScrepFormat(result: ReplayParseResult): ScrepReplayData {
+    console.log('[ScrepParser] Converting to screp format - validating real data');
+    console.log('[ScrepParser] Raw result:', result);
+    
+    // Validierung - keine Mock-Daten akzeptieren
+    if (!result.players || result.players.length < 2) {
+      throw new Error('screp-js: Nicht genügend Spieler gefunden');
     }
-    return 0;
+    
+    if (!result.header.mapName || result.header.mapName === 'Unknown Map') {
+      throw new Error('screp-js: Map-Name nicht verfügbar');
+    }
+    
+    if (!result.header.duration || result.header.duration === '0:00') {
+      throw new Error('screp-js: Spiel-Dauer nicht verfügbar');
+    }
+    
+    if (result.header.frames <= 0) {
+      throw new Error('screp-js: Ungültige Frame-Anzahl');
+    }
+    
+    const players: ScrepPlayer[] = result.players.map((player, index) => {
+      if (!player.name || player.name.trim() === '') {
+        throw new Error(`screp-js: Spieler ${index} hat keinen Namen`);
+      }
+      
+      return {
+        name: player.name,
+        race: player.race,
+        raceId: this.getRaceId(player.race),
+        team: player.team,
+        color: player.color,
+        slotId: index
+      };
+    });
+
+    // NEW: Use real APM data from screp-js
+    const apm = result.computed.playerAPM;
+    const eapm = result.computed.playerEAPM;
+    const buildOrders = result.computed.buildOrders;
+    
+    console.log('[ScrepParser] Real APM data:', apm);
+    console.log('[ScrepParser] Real EAPM data:', eapm);
+    console.log('[ScrepParser] Real Build Orders:', buildOrders.map(bo => `${bo.length} actions`));
+
+    return {
+      header: {
+        engine: result.header.engine,
+        version: result.header.version,
+        frames: result.header.frames,
+        startTime: result.header.startTime,
+        title: '',
+        mapName: result.header.mapName,
+        mapWidth: 0,
+        mapHeight: 0,
+        gameType: result.header.gameType,
+        gameSubType: 0,
+        host: '',
+        duration: result.header.duration,
+        durationMs: Math.floor(result.header.frames * 1000 / 24)
+      },
+      players,
+      computed: {
+        playerDescs: players.map(p => `${p.name} (${p.race})`),
+        matchup: players.length >= 2 ? `${players[0].race.charAt(0)}v${players[1].race.charAt(0)}` : '',
+        league: '', // Keine Mock-Liga
+        winnerTeam: -1,
+        apm, // Real APM data from screp-js
+        eapm, // Real EAPM data from screp-js
+        buildOrders // Real build orders from commands
+      }
+    };
+  }
+
+  private static getRaceId(race: string): number {
+    const raceMap: Record<string, number> = {
+      'Zerg': 0,
+      'Terran': 1,
+      'Protoss': 2,
+      'Random': 6
+    };
+    return raceMap[race] || 6;
   }
 }
