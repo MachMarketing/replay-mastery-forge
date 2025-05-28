@@ -1,4 +1,3 @@
-
 /**
  * Enhanced Direct Replay Parser with aggressive command stream detection
  * Optimized for StarCraft: Brood War Remastered replays
@@ -339,7 +338,7 @@ export class DirectReplayParser {
         // Create command object
         const command: ParsedCommand = {
           frame: currentFrame,
-          timestamp: this.frameToTimestamp(currentFrame),
+          timestamp: currentFrame / 24,
           timestampString: this.frameToTimestamp(currentFrame),
           cmdId,
           playerId,
@@ -347,8 +346,7 @@ export class DirectReplayParser {
           typeString: this.getCommandType(cmdId),
           data: new Uint8Array(this.extractCommandData(cmdId, this.position, length)),
           category: this.getCommandCategory(cmdId),
-          unitName: this.extractUnitName(cmdId, this.position),
-          length
+          unitName: this.extractUnitName(cmdId, this.position)
         };
 
         commands.push(command);
@@ -532,7 +530,7 @@ export class DirectReplayParser {
         if ([0x0C, 0x1D, 0x23].includes(action.cmdId) && action.unitName) {
           buildOrder.push({
             frame: action.frame,
-            timestamp: action.timestamp,
+            timestamp: action.timestampString,
             action: `Build ${action.unitName}`,
             supply: 0 // TODO: Extract supply if available
           });
@@ -572,4 +570,4 @@ export class DirectReplayParser {
   }
 }
 
-export { DirectParserResult };
+export type { DirectParserResult };

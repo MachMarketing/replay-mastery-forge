@@ -1,4 +1,3 @@
-
 /**
  * Command parser for StarCraft replay files
  */
@@ -225,7 +224,8 @@ export class CommandParser {
       ...command,
       timestamp,
       timestampString,
-      category: this.categorizeCommand(command.type)
+      category: this.categorizeCommand(command.type),
+      cmdId: command.type
     };
   }
 

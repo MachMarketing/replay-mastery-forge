@@ -1,3 +1,4 @@
+
 /**
  * Types for the native replay parser
  */
@@ -35,6 +36,8 @@ export interface ParsedCommand extends Command {
   timestamp: number;
   timestampString: string;
   category: 'macro' | 'micro' | 'other';
+  cmdId: number;
+  unitName?: string;
 }
 
 export interface APMData {
@@ -119,15 +122,7 @@ export interface NativeReplayData {
   date: string;
 }
 
-// Additional types for DirectReplayParser
-export interface ParsedCommand extends Command {
-  timestamp: string;
-  cmdId: number;
-  unitName?: string;
-  type: string;
-  data: number[];
-}
-
+// Types for DirectReplayParser
 export interface BuildOrderItem {
   frame: number;
   timestamp: string;
