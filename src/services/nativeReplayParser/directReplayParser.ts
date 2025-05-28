@@ -1,5 +1,5 @@
 /**
- * Enhanced Direct Replay Parser with aggressive command stream detection
+ * Enhanced Direct Replay Parser with BWAPI-compliant command parsing
  * Optimized for StarCraft: Brood War Remastered replays
  */
 
@@ -10,47 +10,75 @@ export class DirectReplayParser {
   private position: number = 0;
   private totalFrames: number = 0;
 
-  // Enhanced command length table
+  // BWAPI-compliant command length table
   private static readonly COMMAND_LENGTHS: Record<number, number> = {
-    0x00: 1,   // Keep Alive / Sync
-    0x01: 1,   // Save Game / Sync
-    0x02: 1,   // Load Game / Sync
-    0x05: 3,   // Restart Game
-    0x06: 4,   // Select
-    0x07: 6,   // Shift Select
-    0x08: 12,  // Shift Deselect
-    0x09: 2,   // Build
-    0x0A: 3,   // Vision
-    0x0B: 4,   // Alliance
-    0x0C: 9,   // Game Speed
-    0x0D: 1,   // Pause
-    0x0E: 1,   // Resume
-    0x0F: 5,   // Cheat
-    0x10: 8,   // Hotkey
-    0x11: 8,   // Move
-    0x12: 9,   // Select
-    0x13: 2,   // Cancel
-    0x14: 8,   // Cancel Hatch
-    0x15: 12,  // Stop
-    0x16: 9,   // Carrier Stop
-    0x17: 9,   // Reaver Stop
-    0x18: 11,  // Order Nothing
-    0x19: 10,  // Train Fighter
-    0x1A: 29,  // Merge Dark Archon
-    0x1B: 7,   // Merge High Templar
-    0x1C: 7,   // Hold Position
-    0x1D: 7,   // Unload All
-    0x1E: 9,   // Unload
-    0x1F: 10,  // Merge Dark Archon
-    0x20: 26,  // Merge High Templar
-    0x21: 30,  // Use Stim Pack
-    0x22: 4,   // Synchronize Selection
-    // More commands...
+    // Frame synchronization
+    0x00: 3,   // Frame advance (cmd + 2 byte frame number)
+    0x01: 3,   // Frame skip (cmd + 2 byte frame number) 
+    0x02: 3,   // Large frame skip (cmd + 2 byte frame number)
+    
+    // Selection commands (important for APM)
+    0x09: 2,   // Select
+    0x0A: 2,   // Shift Select
+    0x0B: 2,   // Shift Deselect
+    0x1B: 7,   // Select Units (wichtig für APM)
+    
+    // Macro commands
+    0x0C: 10,  // Build (BWAPI spec)
+    0x1D: 6,   // Train (BWAPI spec)
+    0x1E: 2,   // Cancel Train
+    0x2F: 6,   // Research (AbilityCast)
+    0x30: 2,   // Cancel Research
+    0x31: 2,   // Upgrade
+    0x32: 2,   // Cancel Upgrade
+    0x34: 2,   // Building Morph
+    
+    // Micro commands
+    0x14: 8,   // Move (BWAPI spec)
+    0x15: 9,   // Attack (BWAPI spec)
+    0x16: 1,   // Cancel
+    0x17: 1,   // Cancel Hatch
+    0x18: 1,   // Stop
+    0x19: 1,   // Carrier Stop
+    0x1A: 1,   // Reaver Stop
+    
+    // Other commands
+    0x0D: 2,   // Vision
+    0x0E: 4,   // Alliance
+    0x13: 2,   // Hotkey
+    0x1F: 1,   // Cloak
+    0x20: 1,   // Decloak
+    0x21: 2,   // Unit Morph
+    0x23: 1,   // Unsiege
+    0x24: 1,   // Siege
+    0x25: 2,   // Train Fighter
+    0x27: 1,   // Unload All
+    0x28: 2,   // Unload
+    0x2A: 1,   // Hold Position
+    0x2B: 1,   // Burrow
+    0x2C: 1,   // Unburrow
+    0x2E: 1,   // Lift
+    0x35: 1,   // Stim
     0x5A: 1,   // Leave Game
   };
 
-  // Unit ID to name mapping for readable build orders
+  // Enhanced unit ID to name mapping based on BWAPI
   private static readonly UNIT_NAMES: Record<number, string> = {
+    // Terran Units
+    0: 'Marine',
+    1: 'Ghost',
+    2: 'Vulture',
+    3: 'Goliath',
+    5: 'Siege Tank',
+    7: 'SCV',
+    8: 'Wraith',
+    9: 'Science Vessel',
+    11: 'Dropship',
+    12: 'Battlecruiser',
+    32: 'Firebat',
+    34: 'Medic',
+    58: 'Valkyrie',
+    
     // Protoss Units
     64: 'Probe',
     65: 'Zealot',
@@ -62,12 +90,47 @@ export class DirectReplayParser {
     71: 'Arbiter',
     72: 'Carrier',
     73: 'Interceptor',
-    74: 'Dark Templar',
-    75: 'Dark Archon',
-    76: 'Observer',
-    77: 'Warp Prism',
-    78: 'Corsair',
-    79: 'Disruption Web',
+    61: 'Dark Templar',
+    63: 'Dark Archon',
+    77: 'Corsair',
+    83: 'Reaver',
+    
+    // Zerg Units
+    37: 'Larva',
+    38: 'Egg',
+    39: 'Zergling',
+    40: 'Hydralisk',
+    41: 'Ultralisk',
+    42: 'Broodling',
+    43: 'Drone',
+    44: 'Overlord',
+    45: 'Mutalisk',
+    46: 'Guardian',
+    47: 'Queen',
+    48: 'Defiler',
+    49: 'Scourge',
+    50: 'Infested Terran',
+    
+    // Terran Buildings
+    106: 'Command Center',
+    107: 'Comsat Station',
+    108: 'Nuclear Silo',
+    109: 'Supply Depot',
+    110: 'Refinery',
+    111: 'Barracks',
+    112: 'Academy',
+    113: 'Factory',
+    114: 'Starport',
+    115: 'Control Tower',
+    116: 'Science Facility',
+    117: 'Covert Ops',
+    118: 'Physics Lab',
+    119: 'Machine Shop',
+    120: 'Repair Bay',
+    121: 'Engineering Bay',
+    122: 'Armory',
+    123: 'Missile Turret',
+    124: 'Bunker',
     
     // Protoss Buildings
     154: 'Nexus',
@@ -87,79 +150,23 @@ export class DirectReplayParser {
     168: 'Robotics Support Bay',
     169: 'Shield Battery',
     
-    // Terran Units
-    0: 'Marine',
-    1: 'Ghost',
-    2: 'Vulture',
-    3: 'Goliath',
-    5: 'Siege Tank',
-    7: 'SCV',
-    8: 'Wraith',
-    9: 'Science Vessel',
-    11: 'Dropship',
-    12: 'Battlecruiser',
-    13: 'Vulture Spider Mine',
-    14: 'Nuclear Missile',
-    15: 'Siege Tank (Siege Mode)',
-    32: 'Firebat',
-    33: 'Medic',
-    58: 'Valkyrie',
-    
-    // Terran Buildings
-    106: 'Command Center',
-    107: 'Comsat Station',
-    108: 'Nuclear Silo',
-    109: 'Supply Depot',
-    110: 'Refinery',
-    111: 'Barracks',
-    112: 'Academy',
-    113: 'Factory',
-    114: 'Starport',
-    115: 'Control Tower',
-    116: 'Science Facility',
-    117: 'Covert Ops',
-    118: 'Physics Lab',
-    120: 'Machine Shop',
-    122: 'Engineering Bay',
-    123: 'Armory',
-    124: 'Missile Turret',
-    125: 'Bunker',
-    
-    // Zerg Units
-    37: 'Larva',
-    38: 'Egg',
-    39: 'Zergling',
-    40: 'Hydralisk',
-    41: 'Ultralisk',
-    42: 'Broodling',
-    43: 'Drone',
-    44: 'Overlord',
-    45: 'Mutalisk',
-    46: 'Guardian',
-    47: 'Queen',
-    48: 'Defiler',
-    49: 'Scourge',
-    62: 'Lurker',
-    103: 'Devourer',
-    
     // Zerg Buildings
-    131: 'Infested Command Center',
-    132: 'Hatchery',
-    133: 'Lair',
-    134: 'Hive',
-    135: 'Nydus Canal',
-    136: 'Hydralisk Den',
-    137: 'Defiler Mound',
-    138: 'Greater Spire',
-    139: 'Queens Nest',
-    140: 'Evolution Chamber',
-    141: 'Ultralisk Cavern',
-    142: 'Spire',
-    143: 'Spawning Pool',
-    144: 'Creep Colony',
-    145: 'Spore Colony',
-    147: 'Sunken Colony',
-    149: 'Extractor',
+    131: 'Hatchery',
+    132: 'Lair',
+    133: 'Hive',
+    134: 'Nydus Canal',
+    135: 'Hydralisk Den',
+    136: 'Defiler Mound',
+    137: 'Greater Spire',
+    138: 'Queens Nest',
+    139: 'Evolution Chamber',
+    140: 'Ultralisk Cavern',
+    141: 'Spire',
+    142: 'Spawning Pool',
+    143: 'Creep Colony',
+    144: 'Spore Colony',
+    145: 'Sunken Colony',
+    146: 'Extractor',
   };
 
   constructor(arrayBuffer: ArrayBuffer) {
@@ -168,35 +175,34 @@ export class DirectReplayParser {
   }
 
   parseReplay(): DirectParserResult {
-    console.log('[DirectReplayParser] === STARTING ENHANCED DIRECT PARSING ===');
+    console.log('[DirectReplayParser] === STARTING BWAPI-COMPLIANT PARSING ===');
     
     try {
-      // Phase 1: Find command stream using sync frame flooding
-      const commandStreamStart = this.findCommandStreamStart();
+      // Phase 1: Find command stream using FrameSync flood detection
+      const commandStreamStart = this.findCommandStreamWithFrameSyncFlood();
       if (commandStreamStart === -1) {
-        console.error('[DirectReplayParser] Could not find command stream start');
-        return this.createFailureResult('Command stream not found');
+        console.error('[DirectReplayParser] Could not find command stream using FrameSync flood');
+        return this.createFailureResult('Command stream not found via FrameSync flood detection');
       }
 
-      console.log('[DirectReplayParser] Command stream found at offset:', commandStreamStart);
+      console.log('[DirectReplayParser] Command stream found at offset:', `0x${commandStreamStart.toString(16)}`);
       this.position = commandStreamStart;
 
-      // Phase 2: Parse commands with enhanced detection
-      const commands = this.parseCommands();
+      // Phase 2: Parse commands with improved BWAPI-compliant parsing
+      const commands = this.parseCommandsWithFrameSync();
       console.log('[DirectReplayParser] Commands parsed:', commands.length);
+      console.log('[DirectReplayParser] Total frames detected:', this.totalFrames);
 
-      // Phase 3: Organize by players and calculate metrics
+      // Phase 3: Organize and calculate metrics
       const playerActions = this.organizeCommandsByPlayer(commands);
-      const { apm, eapm } = this.calculatePlayerMetrics(playerActions);
+      const { apm, eapm } = this.calculateRealisticPlayerMetrics(playerActions);
       const buildOrders = this.extractBuildOrders(playerActions);
 
       console.log('[DirectReplayParser] Player actions organized:');
       Object.keys(playerActions).forEach(playerId => {
-        console.log(`  Player ${playerId}: ${playerActions[parseInt(playerId)].length} actions`);
+        const playerCommands = playerActions[parseInt(playerId)];
+        console.log(`  Player ${playerId}: ${playerCommands.length} actions, APM: ${apm[parseInt(playerId)]}`);
       });
-
-      console.log('[DirectReplayParser] APM calculated:', apm);
-      console.log('[DirectReplayParser] Build orders extracted:', buildOrders.map(bo => bo.length));
 
       return {
         success: true,
@@ -210,57 +216,56 @@ export class DirectReplayParser {
       };
 
     } catch (error) {
-      console.error('[DirectReplayParser] Parsing failed:', error);
+      console.error('[DirectReplayParser] BWAPI parsing failed:', error);
       return this.createFailureResult(error instanceof Error ? error.message : 'Unknown error');
     }
   }
 
   /**
-   * Enhanced command stream detection using sync frame flooding
+   * Enhanced FrameSync flood detection based on the technical guide
    */
-  private findCommandStreamStart(): number {
-    console.log('[DirectReplayParser] Searching for command stream using sync frame flooding...');
+  private findCommandStreamWithFrameSyncFlood(): number {
+    console.log('[DirectReplayParser] Searching for FrameSync flood pattern...');
     
-    // Search for patterns of sync commands (0x00, 0x01, 0x02)
-    const syncCommands = [0x00, 0x01, 0x02];
-    let consecutiveSyncs = 0;
-    let potentialStart = -1;
-
-    // Start searching after typical header size (skip first 1KB)
+    const frameSyncCommands = [0x00, 0x01, 0x02];
+    
+    // Start searching after typical header (skip first 1KB)
     for (let offset = 1024; offset < this.data.byteLength - 100; offset++) {
       try {
-        const byte = this.data.getUint8(offset);
+        // Look for 5+ FrameSync commands within 30 bytes
+        let frameSyncCount = 0;
+        let searchEnd = Math.min(offset + 30, this.data.byteLength);
         
-        if (syncCommands.includes(byte)) {
-          if (consecutiveSyncs === 0) {
-            potentialStart = offset;
-          }
-          consecutiveSyncs++;
+        for (let pos = offset; pos < searchEnd; pos += 3) {
+          if (pos >= this.data.byteLength) break;
           
-          // If we find 3+ consecutive sync commands, we likely found the stream
-          if (consecutiveSyncs >= 3) {
-            console.log('[DirectReplayParser] Found sync frame flooding at offset:', potentialStart);
-            
-            // Validate by checking if we can parse a few commands
-            if (this.validateCommandStream(potentialStart)) {
-              return potentialStart;
+          const byte = this.data.getUint8(pos);
+          if (frameSyncCommands.includes(byte)) {
+            frameSyncCount++;
+            if (frameSyncCount >= 5) {
+              console.log(`[DirectReplayParser] Found FrameSync flood at offset 0x${offset.toString(16)} (${frameSyncCount} syncs)`);
+              
+              // Validate by trying to parse a few commands
+              if (this.validateCommandStreamBWAPI(offset)) {
+                return offset;
+              }
+              break;
             }
+          } else {
+            // Reset count if we hit a non-FrameSync command
+            break;
           }
-        } else {
-          consecutiveSyncs = 0;
-          potentialStart = -1;
         }
       } catch (e) {
-        // Continue searching if we hit a boundary error
         continue;
       }
     }
 
-    // Fallback: Try common offsets for different replay formats
-    const fallbackOffsets = [0x279, 0x300, 0x400, 0x500, 0x600, 0x800];
+    // Fallback to common offsets if flood detection fails
+    const fallbackOffsets = [0x279, 0x300, 0x400, 0x500, 0x600, 0x800, 0x1000];
     for (const offset of fallbackOffsets) {
-      if (offset < this.data.byteLength && this.validateCommandStream(offset)) {
-        console.log('[DirectReplayParser] Using fallback offset:', offset);
+      if (offset < this.data.byteLength && this.validateCommandStreamBWAPI(offset)) {
+        console.log('[DirectReplayParser] Using fallback offset:', `0x${offset.toString(16)}`);
         return offset;
       }
     }
@@ -269,71 +274,94 @@ export class DirectReplayParser {
   }
 
   /**
-   * Validate command stream by trying to parse first few commands
+   * Validate command stream using BWAPI command structure
    */
-  private validateCommandStream(offset: number): boolean {
+  private validateCommandStreamBWAPI(offset: number): boolean {
     try {
       let pos = offset;
       let validCommands = 0;
+      let currentFrame = 0;
       
-      for (let i = 0; i < 10 && pos < this.data.byteLength - 10; i++) {
+      for (let i = 0; i < 20 && pos < this.data.byteLength - 10; i++) {
         const cmdId = this.data.getUint8(pos);
-        const length = this.getCommandLength(cmdId, pos);
+        const length = DirectReplayParser.COMMAND_LENGTHS[cmdId] || 1;
         
         if (length > 0 && length < 50 && pos + length <= this.data.byteLength) {
-          validCommands++;
+          // Special handling for FrameSync commands
+          if ([0x00, 0x01, 0x02].includes(cmdId)) {
+            if (length >= 3) {
+              const frameNumber = this.data.getUint16(pos + 1, true); // Little endian
+              if (frameNumber >= currentFrame && frameNumber < currentFrame + 1000) {
+                currentFrame = frameNumber;
+                validCommands++;
+              }
+            }
+          } else {
+            validCommands++;
+          }
           pos += length;
         } else {
           break;
         }
       }
       
-      return validCommands >= 5; // Need at least 5 valid commands
+      const isValid = validCommands >= 8;
+      console.log(`[DirectReplayParser] Validation at 0x${offset.toString(16)}: ${validCommands} valid commands, ${isValid ? 'PASSED' : 'FAILED'}`);
+      return isValid;
     } catch (e) {
       return false;
     }
   }
 
   /**
-   * Enhanced command parsing with better error handling
+   * Parse commands with proper FrameSync handling
    */
-  private parseCommands(): ParsedCommand[] {
+  private parseCommandsWithFrameSync(): ParsedCommand[] {
     const commands: ParsedCommand[] = [];
     let currentFrame = 0;
     let safetyCounter = 0;
-    const maxCommands = 10000; // Safety limit
+    const maxCommands = 5000;
 
-    console.log('[DirectReplayParser] Starting command parsing from position:', this.position);
+    console.log('[DirectReplayParser] Starting BWAPI-compliant command parsing...');
 
-    while (this.position < this.data.byteLength - 1 && safetyCounter < maxCommands) {
+    while (this.position < this.data.byteLength - 3 && safetyCounter < maxCommands) {
       try {
         const cmdId = this.data.getUint8(this.position);
-        const length = this.getCommandLength(cmdId, this.position);
+        const length = DirectReplayParser.COMMAND_LENGTHS[cmdId] || 1;
 
         if (length <= 0 || this.position + length > this.data.byteLength) {
-          console.warn('[DirectReplayParser] Invalid command length, stopping parsing');
+          console.warn('[DirectReplayParser] Invalid command length, stopping');
           break;
         }
 
-        // Parse frame sync commands to track game time
-        if (cmdId === 0x00 || cmdId === 0x01) {
-          if (length >= 2) {
-            currentFrame += this.data.getUint8(this.position + 1);
-          } else {
-            currentFrame++;
+        // Handle FrameSync commands properly
+        if ([0x00, 0x01, 0x02].includes(cmdId)) {
+          if (length >= 3) {
+            const frameNumber = this.data.getUint16(this.position + 1, true); // Little endian
+            currentFrame = frameNumber;
+            this.totalFrames = Math.max(this.totalFrames, currentFrame);
+            
+            if (safetyCounter % 100 === 0) {
+              console.log(`[DirectReplayParser] FrameSync: Frame ${currentFrame}`);
+            }
           }
-          this.totalFrames = Math.max(this.totalFrames, currentFrame);
+          this.position += length;
+          safetyCounter++;
+          continue;
         }
 
-        // Extract player ID (usually in second byte for player commands)
+        // Parse player commands
         let playerId = 0;
-        if (length > 1 && cmdId !== 0x00 && cmdId !== 0x01 && cmdId !== 0x02) {
+        if (length > 1) {
           playerId = this.data.getUint8(this.position + 1);
           // Validate player ID (should be 0-7)
           if (playerId > 7) {
             playerId = 0;
           }
         }
+
+        // Extract unit information for build commands
+        const unitName = this.extractUnitNameBWAPI(cmdId, this.position);
 
         // Create command object
         const command: ParsedCommand = {
@@ -343,78 +371,67 @@ export class DirectReplayParser {
           cmdId,
           playerId,
           type: cmdId,
-          typeString: this.getCommandType(cmdId),
+          typeString: this.getCommandTypeBWAPI(cmdId),
           data: new Uint8Array(this.extractCommandData(cmdId, this.position, length)),
-          category: this.getCommandCategory(cmdId),
-          unitName: this.extractUnitName(cmdId, this.position)
+          category: this.getCommandCategoryBWAPI(cmdId),
+          unitName
         };
 
         commands.push(command);
         this.position += length;
         safetyCounter++;
 
+        // Log first few commands for debugging
+        if (safetyCounter <= 10) {
+          console.log(`[DirectReplayParser] Command ${safetyCounter}:`, {
+            frame: command.frame,
+            type: `0x${command.cmdId.toString(16)}`,
+            typeString: command.typeString,
+            playerId: command.playerId,
+            unitName: command.unitName
+          });
+        }
+
       } catch (error) {
-        console.warn('[DirectReplayParser] Error parsing command at position', this.position, ':', error);
+        console.warn('[DirectReplayParser] Command parsing error:', error);
         this.position++;
         safetyCounter++;
       }
     }
 
-    console.log('[DirectReplayParser] Command parsing complete. Total commands:', commands.length);
-    console.log('[DirectReplayParser] Total frames detected:', this.totalFrames);
+    console.log('[DirectReplayParser] Command parsing complete:', {
+      totalCommands: commands.length,
+      totalFrames: this.totalFrames,
+      gameTimeMinutes: Math.round((this.totalFrames / 24 / 60) * 100) / 100
+    });
     
     return commands;
   }
 
   /**
-   * Get command length using enhanced table and dynamic detection
+   * Extract unit name using BWAPI-compliant unit IDs
    */
-  private getCommandLength(cmdId: number, position: number): number {
-    // Use table lookup first
-    if (DirectReplayParser.COMMAND_LENGTHS[cmdId]) {
-      return DirectReplayParser.COMMAND_LENGTHS[cmdId];
-    }
-
-    // Dynamic detection for unknown commands
+  private extractUnitNameBWAPI(cmdId: number, position: number): string | undefined {
     try {
-      // Most commands are between 1-30 bytes
-      for (let len = 1; len <= 30; len++) {
-        if (position + len >= this.data.byteLength) {
-          return len - 1;
-        }
-        
-        // Check if next byte could be a valid command ID
-        const nextByte = this.data.getUint8(position + len);
-        if (this.isLikelyCommandId(nextByte)) {
-          return len;
-        }
-      }
-    } catch (e) {
-      // Fallback
-    }
-
-    return 1; // Minimum safe length
-  }
-
-  /**
-   * Check if a byte is likely a command ID
-   */
-  private isLikelyCommandId(byte: number): boolean {
-    // Common command IDs
-    const commonCommands = [0x00, 0x01, 0x02, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20, 0x21, 0x22, 0x5A];
-    return commonCommands.includes(byte);
-  }
-
-  /**
-   * Extract unit name from build/train commands
-   */
-  private extractUnitName(cmdId: number, position: number): string | undefined {
-    try {
-      // Build/Train commands typically have unit ID
-      if (cmdId === 0x0C || cmdId === 0x1D || cmdId === 0x23) { // Build, Train, etc.
+      // Build and Train commands have unit IDs
+      if ([0x0C, 0x1D].includes(cmdId)) {
         if (position + 4 < this.data.byteLength) {
-          const unitId = this.data.getUint16(position + 2, true); // Little endian
-          return DirectReplayParser.UNIT_NAMES[unitId] || `Unit_${unitId}`;
+          // For build commands, unit ID is typically at offset +2 or +3
+          let unitId = this.data.getUint8(position + 2);
+          if (unitId === 0 && position + 3 < this.data.byteLength) {
+            unitId = this.data.getUint8(position + 3);
+          }
+          
+          const unitName = DirectReplayParser.UNIT_NAMES[unitId];
+          if (unitName) {
+            return unitName;
+          }
+          
+          // Fallback: try as 16-bit value
+          if (position + 4 < this.data.byteLength) {
+            const unitId16 = this.data.getUint16(position + 2, true);
+            return DirectReplayParser.UNIT_NAMES[unitId16] || `Unit_${unitId16}`;
+          }
         }
       }
     } catch (e) {
@@ -424,30 +441,48 @@ export class DirectReplayParser {
   }
 
   /**
-   * Get human-readable command type
+   * Get BWAPI command type name
    */
-  private getCommandType(cmdId: number): string {
+  private getCommandTypeBWAPI(cmdId: number): string {
     const types: Record<number, string> = {
-      0x00: 'Sync',
-      0x01: 'Sync',
-      0x02: 'Sync',
+      0x00: 'FrameSync',
+      0x01: 'FrameSync',
+      0x02: 'FrameSync',
+      0x09: 'Select',
+      0x0A: 'Shift Select',
+      0x0B: 'Shift Deselect',
       0x0C: 'Build',
+      0x0D: 'Vision',
+      0x0E: 'Alliance',
+      0x13: 'Hotkey',
+      0x14: 'Move',
+      0x15: 'Attack',
+      0x16: 'Cancel',
+      0x17: 'Cancel Hatch',
+      0x18: 'Stop',
+      0x1B: 'Select Units',
       0x1D: 'Train',
-      0x06: 'Select',
-      0x12: 'Select',
-      0x14: 'Attack',
-      0x15: 'Move',
+      0x1E: 'Cancel Train',
+      0x1F: 'Cloak',
+      0x20: 'Decloak',
+      0x21: 'Unit Morph',
+      0x2F: 'Research',
+      0x30: 'Cancel Research',
+      0x31: 'Upgrade',
+      0x32: 'Cancel Upgrade',
+      0x34: 'Building Morph',
+      0x35: 'Stim',
       0x5A: 'Leave Game'
     };
     return types[cmdId] || `Command_0x${cmdId.toString(16).padStart(2, '0')}`;
   }
 
   /**
-   * Get command category for analysis
+   * Categorize commands using BWAPI classification
    */
-  private getCommandCategory(cmdId: number): 'macro' | 'micro' | 'other' {
-    const macroCommands = [0x0C, 0x1D, 0x23]; // Build, Train, etc.
-    const microCommands = [0x14, 0x15, 0x16, 0x17]; // Attack, Move, etc.
+  private getCommandCategoryBWAPI(cmdId: number): 'macro' | 'micro' | 'other' {
+    const macroCommands = [0x0C, 0x1D, 0x1E, 0x2F, 0x30, 0x31, 0x32, 0x34]; // Build, Train, Research, Upgrade
+    const microCommands = [0x14, 0x15, 0x18, 0x2A, 0x2B, 0x2C, 0x35]; // Move, Attack, Stop, etc.
     
     if (macroCommands.includes(cmdId)) return 'macro';
     if (microCommands.includes(cmdId)) return 'micro';
@@ -459,7 +494,7 @@ export class DirectReplayParser {
    */
   private extractCommandData(cmdId: number, position: number, length: number): number[] {
     const data: number[] = [];
-    for (let i = 0; i < Math.min(length, 10); i++) {
+    for (let i = 0; i < Math.min(length, 16); i++) {
       if (position + i < this.data.byteLength) {
         data.push(this.data.getUint8(position + i));
       }
@@ -479,8 +514,8 @@ export class DirectReplayParser {
     }
 
     for (const cmd of commands) {
-      // Only count meaningful actions (exclude sync commands)
-      if (cmd.cmdId !== 0x00 && cmd.cmdId !== 0x01 && cmd.cmdId !== 0x02) {
+      // Only count meaningful player actions (exclude FrameSync)
+      if (![0x00, 0x01, 0x02].includes(cmd.cmdId)) {
         playerActions[cmd.playerId].push(cmd);
       }
     }
@@ -489,22 +524,25 @@ export class DirectReplayParser {
   }
 
   /**
-   * Calculate realistic APM and EAPM based on actual actions
+   * Calculate realistic APM based on actual game actions
    */
-  private calculatePlayerMetrics(playerActions: Record<number, ParsedCommand[]>): { apm: number[], eapm: number[] } {
+  private calculateRealisticPlayerMetrics(playerActions: Record<number, ParsedCommand[]>): { apm: number[], eapm: number[] } {
     const apm: number[] = [];
     const eapm: number[] = [];
-    const gameTimeMinutes = this.totalFrames / (24 * 60); // 24 FPS
+    const gameTimeMinutes = this.totalFrames / (24 * 60);
 
     for (let playerId = 0; playerId < 8; playerId++) {
       const actions = playerActions[playerId] || [];
       
-      // APM: All actions per minute
-      const playerAPM = gameTimeMinutes > 0 ? Math.round(actions.length / gameTimeMinutes) : 0;
+      // APM: Count all meaningful actions (exclude FrameSync)
+      const meaningfulActions = actions.filter(cmd => 
+        ![0x00, 0x01, 0x02].includes(cmd.cmdId)
+      );
+      const playerAPM = gameTimeMinutes > 0 ? Math.round(meaningfulActions.length / gameTimeMinutes) : 0;
       
-      // EAPM: Exclude selection and sync actions
+      // EAPM: Only macro/micro actions (exclude selections and other noise)
       const effectiveActions = actions.filter(cmd => 
-        ![0x06, 0x07, 0x12, 0x00, 0x01, 0x02].includes(cmd.cmdId)
+        cmd.category === 'macro' || cmd.category === 'micro'
       );
       const playerEAPM = gameTimeMinutes > 0 ? Math.round(effectiveActions.length / gameTimeMinutes) : 0;
       
@@ -516,7 +554,7 @@ export class DirectReplayParser {
   }
 
   /**
-   * Extract build orders with readable unit names
+   * Extract build orders with enhanced unit detection
    */
   private extractBuildOrders(playerActions: Record<number, ParsedCommand[]>): BuildOrderItem[][] {
     const buildOrders: BuildOrderItem[][] = [];
@@ -526,13 +564,14 @@ export class DirectReplayParser {
       const buildOrder: BuildOrderItem[] = [];
 
       for (const action of actions) {
-        // Include build, train, and other production commands
-        if ([0x0C, 0x1D, 0x23].includes(action.cmdId) && action.unitName) {
+        // Include build and train commands with detected unit names
+        if ([0x0C, 0x1D].includes(action.cmdId) && action.unitName) {
+          const actionType = action.cmdId === 0x0C ? 'Build' : 'Train';
           buildOrder.push({
             frame: action.frame,
             timestamp: action.timestampString,
-            action: `Build ${action.unitName}`,
-            supply: 0 // TODO: Extract supply if available
+            action: `${actionType} ${action.unitName}`,
+            supply: 0 // TODO: Extract supply if available in command data
           });
         }
       }
