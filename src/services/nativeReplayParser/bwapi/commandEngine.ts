@@ -1,10 +1,11 @@
-
 /**
  * BWAPI-konforme Command Parser Engine für StarCraft: Brood War Remastered
  * Basiert auf der offiziellen BWAPI Binary Format Dokumentation
  */
 
-export interface BWAPICommand {
+import { Command } from '../types';
+
+export interface BWAPICommand extends Command {
   frame: number;
   playerId: number;
   cmdId: number;
@@ -13,6 +14,9 @@ export interface BWAPICommand {
   parameters: any;
   category: 'build' | 'train' | 'micro' | 'macro' | 'selection' | 'sync' | 'other';
   isEffectiveAction: boolean;
+  // Kompatibilität mit BWCommand
+  userId: number;
+  type: number;
 }
 
 // Remastered-spezifische Konstanten
@@ -220,6 +224,25 @@ export class BWAPICommandEngine {
     const category = this.categorizeCommand(cmdId);
     // Sync und Selection Commands zählen nicht für EAPM
     return !['sync', 'selection'].includes(category);
+  }
+
+  /**
+   * Konvertiert Command zu BWAPICommand mit Kompatibilität
+   */
+  static toBWAPICommand(command: Command, frame: number): BWAPICommand {
+    const category = this.categorizeCommand(command.type);
+    const isEffectiveAction = this.isEffectiveAction(command.type);
+    
+    return {
+      ...command,
+      frame,
+      cmdId: command.type,
+      category,
+      isEffectiveAction,
+      // Kompatibilität mit BWCommand
+      userId: command.playerId,
+      typeString: command.typeString || COMMAND_NAMES[command.type] || `UNKNOWN_${command.type.toString(16)}`
+    };
   }
 
   /**
