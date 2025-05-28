@@ -1,10 +1,9 @@
 
 /**
- * Complete screp-compliant parser for StarCraft: Remastered
- * Implements the full screp specification with seRS decompression
+ * Enhanced screp-compliant parser with robust seRS integration
  */
 
-import { SeRSParser } from './seRSParser';
+import { SeRSDecompressor } from './seRSDecompressor';
 import { ScrepHeaderParser } from './screpHeaderParser';
 import { ScrepActionsParser } from './screpActionsParser';
 
@@ -46,46 +45,71 @@ export class ScrepCompliantParser {
   }
 
   async parseReplay(): Promise<ScrepParseResult> {
-    console.log('[ScrepCompliantParser] === STARTING SCREP-COMPLIANT PARSING ===');
+    console.log('[ScrepCompliantParser] === STARTING ENHANCED SCREP PARSING ===');
     console.log('[ScrepCompliantParser] Original file size:', this.originalBuffer.byteLength, 'bytes');
 
-    // Step 1: Check for seRS format and decompress
-    const seRSParser = new SeRSParser(this.originalBuffer);
+    // Step 1: Enhanced seRS detection and decompression
     let replayData: Uint8Array;
-
+    
     try {
-      const { header: seRSHeader, decompressedData } = seRSParser.parse();
-      console.log('[ScrepCompliantParser] seRS decompression successful');
-      console.log('[ScrepCompliantParser] Decompressed size:', decompressedData.length);
-      replayData = decompressedData;
+      const decompressor = new SeRSDecompressor(this.originalBuffer);
+      const decompressionResult = decompressor.decompress();
+      
+      if (decompressionResult.success && decompressionResult.data) {
+        console.log('[ScrepCompliantParser] ===== seRS DECOMPRESSION SUCCESS =====');
+        console.log('[ScrepCompliantParser] Method:', decompressionResult.method);
+        console.log('[ScrepCompliantParser] Decompressed size:', decompressionResult.data.length);
+        replayData = decompressionResult.data;
+      } else {
+        console.log('[ScrepCompliantParser] seRS decompression failed, using original data');
+        replayData = new Uint8Array(this.originalBuffer);
+      }
     } catch (error) {
-      console.log('[ScrepCompliantParser] Not seRS format, using original data');
+      console.log('[ScrepCompliantParser] seRS processing error, using original data:', error);
       replayData = new Uint8Array(this.originalBuffer);
     }
 
-    // Step 2: Parse header from decompressed data
+    // Step 2: Enhanced header parsing
     const headerParser = new ScrepHeaderParser(replayData);
     const parsedHeader = headerParser.parseHeader();
     
-    console.log('[ScrepCompliantParser] Header parsed successfully');
-    console.log('[ScrepCompliantParser] Players:', parsedHeader.playerSlots.map(p => `${p.name} (${p.raceString})`));
+    console.log('[ScrepCompliantParser] ===== HEADER PARSING RESULTS =====');
     console.log('[ScrepCompliantParser] Map:', parsedHeader.mapName);
+    console.log('[ScrepCompliantParser] Player count:', parsedHeader.playerSlots.length);
+    console.log('[ScrepCompliantParser] Players:', parsedHeader.playerSlots.map((p, i) => `${i}: ${p.name} (${p.raceString})`));
     console.log('[ScrepCompliantParser] Frames:', parsedHeader.frameCount);
 
-    // Step 3: Parse actions
+    // Step 3: Enhanced actions parsing
     const actionsParser = new ScrepActionsParser(replayData);
     const commandsStart = actionsParser.findCommandsStart();
     const actions = actionsParser.parseActions(commandsStart, parsedHeader.frameCount);
 
-    console.log('[ScrepCompliantParser] Actions parsed:', actions.length);
+    console.log('[ScrepCompliantParser] ===== ACTIONS PARSING RESULTS =====');
+    console.log('[ScrepCompliantParser] Commands start offset:', commandsStart);
+    console.log('[ScrepCompliantParser] Total actions parsed:', actions.length);
+    
+    // Log action distribution by player
+    const actionsByPlayer: Record<number, number> = {};
+    actions.forEach(action => {
+      actionsByPlayer[action.playerId] = (actionsByPlayer[action.playerId] || 0) + 1;
+    });
+    console.log('[ScrepCompliantParser] Actions by player:', actionsByPlayer);
 
-    // Step 4: Calculate metrics
-    const metrics = this.calculateMetrics(actions, parsedHeader.playerSlots.length, parsedHeader.frameCount);
-    console.log('[ScrepCompliantParser] APM calculated:', metrics.apm);
-    console.log('[ScrepCompliantParser] EAPM calculated:', metrics.eapm);
+    // Step 4: Enhanced metrics calculation
+    const metrics = this.calculateEnhancedMetrics(actions, parsedHeader.playerSlots.length, parsedHeader.frameCount);
+    console.log('[ScrepCompliantParser] ===== METRICS CALCULATION =====');
+    console.log('[ScrepCompliantParser] APM:', metrics.apm);
+    console.log('[ScrepCompliantParser] EAPM:', metrics.eapm);
 
-    // Step 5: Extract build orders
-    const buildOrders = this.extractBuildOrders(actions, parsedHeader.playerSlots.length);
+    // Step 5: Enhanced build orders extraction
+    const buildOrders = this.extractEnhancedBuildOrders(actions, parsedHeader.playerSlots.length);
+    console.log('[ScrepCompliantParser] ===== BUILD ORDERS =====');
+    buildOrders.forEach((bo, i) => {
+      console.log(`[ScrepCompliantParser] Player ${i} build order length:`, bo.length);
+      if (bo.length > 0) {
+        console.log(`[ScrepCompliantParser] Player ${i} first 3 builds:`, bo.slice(0, 3).map(b => b.unitName));
+      }
+    });
 
     // Calculate duration
     const durationSeconds = parsedHeader.frameCount / 24; // 24 FPS
@@ -106,54 +130,78 @@ export class ScrepCompliantParser {
       buildOrders
     };
 
+    console.log('[ScrepCompliantParser] ===== FINAL ENHANCED RESULTS =====');
+    console.log('[ScrepCompliantParser] Map:', result.header.mapName);
+    console.log('[ScrepCompliantParser] Players:', result.header.playerNames);
+    console.log('[ScrepCompliantParser] APM values:', result.metrics.apm);
+    console.log('[ScrepCompliantParser] Duration:', duration);
     console.log('[ScrepCompliantParser] === PARSING COMPLETE ===');
-    console.log('[ScrepCompliantParser] Final result:', {
-      map: result.header.mapName,
-      players: result.header.playerNames,
-      apm: result.metrics.apm,
-      buildOrderLengths: result.buildOrders.map(bo => bo.length)
-    });
 
     return result;
   }
 
-  private calculateMetrics(actions: ScrepCompliantAction[], playerCount: number, totalFrames: number): { apm: number[], eapm: number[] } {
+  private calculateEnhancedMetrics(actions: ScrepCompliantAction[], playerCount: number, totalFrames: number): { apm: number[], eapm: number[] } {
     const gameMinutes = totalFrames / (24 * 60);
     const apm: number[] = [];
     const eapm: number[] = [];
 
+    console.log('[ScrepCompliantParser] Calculating metrics for', playerCount, 'players over', gameMinutes.toFixed(2), 'minutes');
+
     for (let i = 0; i < playerCount; i++) {
-      const playerActions = actions.filter(a => a.playerId === i);
-      const gameActions = playerActions.filter(a => a.isGameAction);
-      const economicActions = gameActions.filter(a => 
-        [0x0C, 0x1D, 0x2F, 0x31].includes(a.actionId) // Build, Train, Research, Upgrade
+      const playerActions = actions.filter(a => a.playerId === i && a.isGameAction);
+      const economicActions = playerActions.filter(a => 
+        [0x0C, 0x1D, 0x2F, 0x31, 0x27, 0x35].includes(a.actionId) // Build, Train, Research, Upgrade, etc.
       );
 
-      apm.push(gameMinutes > 0 ? Math.round(gameActions.length / gameMinutes) : 0);
-      eapm.push(gameMinutes > 0 ? Math.round(economicActions.length / gameMinutes) : 0);
+      const playerAPM = gameMinutes > 0 ? Math.round(playerActions.length / gameMinutes) : 0;
+      const playerEAPM = gameMinutes > 0 ? Math.round(economicActions.length / gameMinutes) : 0;
+
+      console.log(`[ScrepCompliantParser] Player ${i}: ${playerActions.length} actions, ${economicActions.length} economic -> APM: ${playerAPM}, EAPM: ${playerEAPM}`);
+
+      apm.push(playerAPM);
+      eapm.push(playerEAPM);
     }
 
     return { apm, eapm };
   }
 
-  private extractBuildOrders(actions: ScrepCompliantAction[], playerCount: number): Array<Array<{
+  private extractEnhancedBuildOrders(actions: ScrepCompliantAction[], playerCount: number): Array<Array<{
     frame: number;
     timestamp: string;
     unitName: string;
     supply?: number;
   }>> {
-    // Unit names mapping
+    // Enhanced unit names mapping with more units
     const unitNames: Record<number, string> = {
+      // Terran
       0: 'Marine', 1: 'Ghost', 2: 'Vulture', 3: 'Goliath', 4: 'Siege Tank',
       5: 'SCV', 7: 'Wraith', 8: 'Science Vessel', 11: 'Battlecruiser',
-      106: 'Command Center', 111: 'Barracks', 112: 'Academy', 113: 'Factory',
-      114: 'Starport', 115: 'Control Tower', 116: 'Science Facility',
+      106: 'Command Center', 107: 'Comsat Station', 108: 'Nuclear Silo',
+      109: 'Supply Depot', 110: 'Refinery', 111: 'Barracks', 112: 'Academy',
+      113: 'Factory', 114: 'Starport', 115: 'Control Tower', 116: 'Science Facility',
+      117: 'Covert Ops', 118: 'Physics Lab', 119: 'Machine Shop', 120: 'Engineering Bay',
+      121: 'Armory', 122: 'Missile Turret', 123: 'Bunker',
+      
+      // Protoss
       60: 'Zealot', 61: 'Dragoon', 62: 'High Templar', 63: 'Archon',
       64: 'Shuttle', 65: 'Scout', 66: 'Arbiter', 67: 'Carrier', 69: 'Probe',
-      154: 'Nexus', 155: 'Robotics Facility', 157: 'Pylon', 159: 'Gateway',
-      37: 'Zergling', 38: 'Hydralisk', 39: 'Ultralisk', 41: 'Drone',
-      42: 'Overlord', 43: 'Mutalisk', 44: 'Guardian',
-      131: 'Hatchery', 132: 'Lair', 133: 'Hive', 142: 'Spawning Pool'
+      70: 'Interceptor', 71: 'Reaver', 72: 'Observer', 73: 'Scarab',
+      154: 'Nexus', 155: 'Robotics Facility', 156: 'Pylon', 157: 'Assimilator',
+      158: 'Observatory', 159: 'Gateway', 160: 'Photon Cannon', 161: 'Citadel of Adun',
+      162: 'Cybernetics Core', 163: 'Templar Archives', 164: 'Forge', 165: 'Stargate',
+      166: 'Fleet Beacon', 167: 'Arbiter Tribunal', 168: 'Robotics Support Bay',
+      169: 'Shield Battery',
+      
+      // Zerg
+      37: 'Zergling', 38: 'Hydralisk', 39: 'Ultralisk', 40: 'Broodling',
+      41: 'Drone', 42: 'Overlord', 43: 'Mutalisk', 44: 'Guardian',
+      45: 'Queen', 46: 'Defiler', 47: 'Scourge', 50: 'Infested Terran',
+      103: 'Larva', 104: 'Egg', 105: 'Lurker',
+      131: 'Hatchery', 132: 'Lair', 133: 'Hive', 134: 'Nydus Canal',
+      135: 'Hydralisk Den', 136: 'Defiler Mound', 137: 'Greater Spire',
+      138: 'Queens Nest', 139: 'Evolution Chamber', 140: 'Ultralisk Cavern',
+      141: 'Spire', 142: 'Spawning Pool', 143: 'Creep Colony',
+      144: 'Spore Colony', 145: 'Sunken Colony', 146: 'Extractor'
     };
 
     const buildOrders: Array<Array<any>> = [];
@@ -164,15 +212,21 @@ export class ScrepCompliantParser {
         .filter(a => a.data.length >= 4) // Ensure we have unit type data
         .sort((a, b) => a.frame - b.frame);
 
-      const buildOrder = buildActions.map(action => {
+      console.log(`[ScrepCompliantParser] Player ${i} build actions:`, buildActions.length);
+
+      const buildOrder = buildActions.slice(0, 25).map(action => {
         // Extract unit type from action data
-        const unitType = action.data.length >= 4 ? 
-          (action.data[2] | (action.data[3] << 8)) : 0;
+        let unitType = 0;
+        if (action.data.length >= 4) {
+          unitType = action.data[2] | (action.data[3] << 8);
+        }
         
-        const unitName = unitNames[unitType] || `Unit_${unitType}`;
+        const unitName = unitNames[unitType] || `Unknown_Unit_${unitType}`;
         const minutes = Math.floor(action.frame / (24 * 60));
         const seconds = Math.floor((action.frame / 24) % 60);
         const timestamp = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+        console.log(`[ScrepCompliantParser] Player ${i} build: ${timestamp} - ${unitName} (type: ${unitType})`);
 
         return {
           frame: action.frame,
