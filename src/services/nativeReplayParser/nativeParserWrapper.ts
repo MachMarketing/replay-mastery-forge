@@ -56,36 +56,63 @@ export class NativeParserWrapper {
     console.log('[NativeParserWrapper] Calculated EAPM:', eapm);
     console.log('[NativeParserWrapper] Build orders length:', flattenedBuildOrders.length);
 
+    // Get primary and secondary players
+    const primaryPlayerName = result.metadata.players[0] || 'Player 1';
+    const secondaryPlayerName = result.metadata.players[1] || 'Player 2';
+
     return {
-      fileName,
-      fileSize: 0,
-      isValid: true,
-      mapName: result.metadata.mapName,
-      gameDuration: result.metadata.duration,
-      gameVersion: result.metadata.version,
-      playerCount: result.metadata.players.length,
-      players: result.metadata.players.map((name, index) => ({
-        id: index,
-        name,
+      // Primary data structure
+      primaryPlayer: {
+        name: primaryPlayerName,
         race: 'Unknown',
-        team: index % 2,
-        color: index,
-        isWinner: false,
-        apm: apm[index] || 0,
-        eapm: eapm[index] || 0
-      })),
-      gameEvents: result.actions.map(action => ({
-        timestamp: this.frameToTimestamp(action.frame),
-        type: action.actionName,
-        playerId: action.playerId,
-        description: `${action.actionName} by player ${action.playerId}`
-      })),
+        apm: apm[0] || 0,
+        eapm: eapm[0] || 0,
+        buildOrder: flattenedBuildOrders,
+        strengths: [],
+        weaknesses: [],
+        recommendations: []
+      },
+      secondaryPlayer: {
+        name: secondaryPlayerName,
+        race: 'Unknown',
+        apm: apm[1] || 0,
+        eapm: eapm[1] || 0,
+        buildOrder: [],
+        strengths: [],
+        weaknesses: [],
+        recommendations: []
+      },
+      
+      // Game info
+      map: result.metadata.mapName,
+      matchup: 'Unknown vs Unknown',
+      duration: result.metadata.duration,
+      durationMS: result.metadata.totalFrames * (1000 / 24), // 24 FPS
+      date: new Date().toISOString(),
+      result: 'unknown' as const,
+      
+      // Analysis results
+      strengths: [],
+      weaknesses: [],
+      recommendations: [],
+      
+      // Legacy properties for backward compatibility
+      playerName: primaryPlayerName,
+      opponentName: secondaryPlayerName,
+      playerRace: 'Unknown',
+      opponentRace: 'Unknown',
+      apm: apm[0] || 0,
+      eapm: eapm[0] || 0,
+      opponentApm: apm[1] || 0,
+      opponentEapm: eapm[1] || 0,
       buildOrder: flattenedBuildOrders,
-      totalFrames: result.metadata.totalFrames,
-      averageAPM: apm.length > 0 ? Math.round(apm.reduce((a, b) => a + b, 0) / apm.length) : 0,
-      totalActions: result.actions.length,
-      mapHash: '',
-      replayHash: ''
+      
+      // Training plan is required
+      trainingPlan: [
+        { day: 1, focus: 'Macro Fundamentals', drill: 'Practice worker production and supply management' },
+        { day: 2, focus: 'Build Order Execution', drill: 'Perfect your opening build order timing' },
+        { day: 3, focus: 'APM Improvement', drill: 'Focus on meaningful actions and hotkey usage' }
+      ]
     };
   }
 
