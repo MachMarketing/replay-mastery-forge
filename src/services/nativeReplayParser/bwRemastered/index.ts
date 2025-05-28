@@ -1,17 +1,16 @@
-
 /**
  * StarCraft: Brood War Remastered parser entry point
+ * Updated to use the new robust parser
  */
 
 import { BWRemasteredParser } from './parser';
-import { BWReplayData } from './types';
 import { ParsedReplayData } from '../../replayParser/types';
 
 /**
  * Parse a StarCraft: Brood War Remastered .rep file
  */
 export async function parseBWRemasteredReplay(file: File): Promise<ParsedReplayData> {
-  console.log('[parseBWRemasteredReplay] Starting BW Remastered specific parsing');
+  console.log('[parseBWRemasteredReplay] Starting BW Remastered parsing');
   console.log('[parseBWRemasteredReplay] File:', file.name, 'Size:', file.size, 'bytes');
   
   const buffer = await file.arrayBuffer();
@@ -37,7 +36,7 @@ export async function parseBWRemasteredReplay(file: File): Promise<ParsedReplayD
 /**
  * Convert BW specific data to our standard ParsedReplayData format
  */
-function convertBWDataToStandard(bwData: BWReplayData): ParsedReplayData {
+function convertBWDataToStandard(bwData: any): ParsedReplayData {
   const primaryPlayer = bwData.players[0] || {
     name: 'Player 1',
     race: 0,

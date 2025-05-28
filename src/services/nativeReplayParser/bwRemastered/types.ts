@@ -1,6 +1,7 @@
 
 /**
  * StarCraft: Brood War Remastered specific types
+ * Updated with correct field definitions
  */
 
 export interface BWReplayHeader {
@@ -10,6 +11,8 @@ export interface BWReplayHeader {
   mapName: string;
   playerCount: number;
   gameType: number;
+  gameSubType: number;
+  saveTime: number;
 }
 
 export interface BWPlayer {
@@ -26,7 +29,7 @@ export interface BWCommand {
   userId: number;
   type: number;
   typeString: string;
-  data?: any;
+  data: Uint8Array;
 }
 
 export interface BWReplayData {
