@@ -8,7 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useReplayParser } from '@/hooks/useReplayParser';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import AnalysisResult from '@/components/AnalysisResult';
+import { AnalysisResult } from '@/components/AnalysisResult';
 import { EnhancedReplayData } from '@/services/nativeReplayParser/enhancedScrepWrapper';
 
 const ParserTest: React.FC = () => {
@@ -136,7 +136,7 @@ const ParserTest: React.FC = () => {
                 Neue Replay hochladen
               </Button>
             </div>
-            <AnalysisResult data={parsedReplayData} isPremium={true} />
+            <AnalysisResult replayData={parsedReplayData} onReset={() => setParsedReplayData(null)} />
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

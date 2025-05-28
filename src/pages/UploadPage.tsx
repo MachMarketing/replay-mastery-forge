@@ -4,7 +4,7 @@ import { useReplayParser } from '@/hooks/useReplayParser';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import UploadBox from '@/components/UploadBox';
-import AnalysisResult from '@/components/AnalysisResult';
+import { AnalysisResult } from '@/components/AnalysisResult';
 import { EnhancedReplayData } from '@/services/nativeReplayParser/enhancedScrepWrapper';
 
 const UploadPage: React.FC = () => {
@@ -37,7 +37,7 @@ const UploadPage: React.FC = () => {
           
           {analysisData ? (
             <div className="space-y-6">
-              <AnalysisResult data={analysisData as any} isPremium={true} />
+              <AnalysisResult replayData={analysisData} onReset={() => setAnalysisData(null)} />
               <div className="text-center">
                 <button 
                   onClick={() => setAnalysisData(null)}

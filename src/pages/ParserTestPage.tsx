@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { useDropzone } from 'react-dropzone';
@@ -8,7 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import AnalysisResult from '@/components/AnalysisResult';
+import { AnalysisResult } from '@/components/AnalysisResult';
 import { parseReplay } from '@/services/replayParser';
 import { ParsedReplayData } from '@/services/replayParser/types';
 
@@ -136,7 +135,7 @@ const ParserTestPage: React.FC = () => {
                 Neue Replay hochladen
               </Button>
             </div>
-            <AnalysisResult data={parsedReplayData as any} isPremium={true} />
+            <AnalysisResult replayData={parsedReplayData as any} onReset={() => setParsedReplayData(null)} />
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
