@@ -369,44 +369,6 @@ export class EnhancedScrepWrapper {
   }
 
   /**
-   * Generate validation data for debug UI
-   */
-  private static generateValidationData(directData: DirectParserResult): any {
-    const validationData: any = {};
-    
-    Object.keys(directData.playerActions).forEach(playerIdStr => {
-      const playerId = parseInt(playerIdStr);
-      const playerCommands = directData.playerActions[playerId] || [];
-      
-      // Get first 5 command IDs
-      const firstCommands = playerCommands
-        .slice(0, 5)
-        .map(cmd => `0x${cmd.cmdId.toString(16).padStart(2, '0')}`);
-      
-      // Get first units (from build/train commands)
-      const firstUnits = playerCommands
-        .filter(cmd => cmd.unitName)
-        .slice(0, 3)
-        .map(cmd => cmd.unitName || 'Unknown');
-      
-      // Calculate realistic APM
-      const validActions = playerCommands.filter(c => ![0x00, 0x01, 0x02].includes(c.cmdId));
-      const lastFrame = Math.max(...playerCommands.map(c => c.frame), 0);
-      const minutes = lastFrame / (24 * 60);
-      const realisticAPM = minutes > 0 ? Math.round(validActions.length / minutes) : 0;
-      
-      validationData[playerId] = {
-        detectedCommands: playerCommands.length,
-        firstCommands,
-        firstUnits,
-        realisticAPM
-      };
-    });
-    
-    return { playersWithActions: validationData };
-  }
-
-  /**
    * Enhance screp-js data with direct parser results using data mapper
    */
   private static enhanceWithDirectParserData(screpResult: ScrepJsResult, directData: DirectParserResult): void {

@@ -35,11 +35,12 @@ export function estimateSupply(frame: number, playerActions: any[]): number {
 /**
  * Maps DirectParser build orders to UI format
  */
-export function mapBuildOrdersToUI(buildOrders: BuildOrderItem[][], playerActions: Record<number, any[]>): Array<Array<{ timestamp: string; action: string; supply: number }>> {
+export function mapBuildOrdersToUI(buildOrders: BuildOrderItem[][], playerActions: Record<number, any[]>): Array<Array<{ frame: number; timestamp: string; action: string; supply: number }>> {
   return buildOrders.map((playerBuildOrder, playerIndex) => {
     const actions = playerActions[playerIndex] || [];
     
     return playerBuildOrder.map(item => ({
+      frame: item.frame,
       timestamp: item.timestamp || frameToTimestamp(item.frame),
       action: item.action,
       supply: item.supply || estimateSupply(item.frame, actions)
@@ -59,7 +60,8 @@ export function mapPlayerActionsToUI(playerActions: Record<number, any[]>, total
     // Filter effective actions (exclude sync frames and selections)
     const effectiveActions = actions.filter(action => 
       !['Sync', 'Select'].includes(action.type) && 
-      ![0x00, 0x01, 0x02, 0x09, 0x0A, 0x0B].includes(action.cmdId)
+      action.cmdId !== 0x00 && action.cmdId !== 0x01 && action.cmdId !== 0x02 && 
+      action.cmdId !== 0x09 && action.cmdId !== 0x0A && action.cmdId !== 0x0B
     );
     
     const apm = gameMinutes > 0 ? Math.round(actions.length / gameMinutes) : 0;
@@ -78,7 +80,7 @@ export function mapPlayerActionsToUI(playerActions: Record<number, any[]>, total
  * Main mapping function: DirectParser data → UI format
  */
 export function mapDirectReplayDataToUI(directData: DirectParserResult): {
-  buildOrders: Array<Array<{ timestamp: string; action: string; supply: number }>>;
+  buildOrders: Array<Array<{ frame: number; timestamp: string; action: string; supply: number }>>;
   playerStats: Array<{ id: number; apm: number; eapm: number; actions: any[] }>;
   enhanced: {
     actionsExtracted: number;
