@@ -121,9 +121,9 @@ export function mapDirectReplayDataToUI(directData: DirectParserResult): {
     });
     
     const firstUnits = actions
-      .filter(cmd => cmd.unitName || (cmd.type && ['Build', 'Train'].includes(cmd.type)))
+      .filter(cmd => cmd.unitName || (typeof cmd.type === 'string' && ['Build', 'Train'].includes(cmd.type)))
       .slice(0, 3)
-      .map(cmd => cmd.unitName || cmd.type || 'Unknown');
+      .map(cmd => cmd.unitName || (typeof cmd.type === 'string' ? cmd.type : 'Unknown'));
     
     const realisticAPM = playerStats.find(p => p.id === playerId)?.apm || 0;
     
@@ -133,11 +133,11 @@ export function mapDirectReplayDataToUI(directData: DirectParserResult): {
       firstUnits,
       realisticAPM,
       apmBreakdown: {
-        build: actions.filter(a => a.type === 'Build').length,
-        train: actions.filter(a => a.type === 'Train').length,
-        select: actions.filter(a => a.type === 'Select').length,
-        move: actions.filter(a => a.type === 'Move').length,
-        other: actions.filter(a => !['Build', 'Train', 'Select', 'Move'].includes(a.type)).length
+        build: actions.filter(a => typeof a.type === 'string' && a.type === 'Build').length,
+        train: actions.filter(a => typeof a.type === 'string' && a.type === 'Train').length,
+        select: actions.filter(a => typeof a.type === 'string' && a.type === 'Select').length,
+        move: actions.filter(a => typeof a.type === 'string' && a.type === 'Move').length,
+        other: actions.filter(a => typeof a.type === 'string' && !['Build', 'Train', 'Select', 'Move'].includes(a.type)).length
       }
     };
   });
