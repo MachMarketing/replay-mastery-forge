@@ -1,4 +1,3 @@
-
 /**
  * Smart Zlib Extractor - Robust decompression for SC:BW Remastered .rep files
  * Browser-compatible version using pako instead of Node.js zlib
@@ -38,7 +37,13 @@ export class SmartZlibExtractor {
     if ((cmf & 0x0F) !== 0x08) return false;
     
     // FLG Check: Header checksum validation
-    return ((cmf << 8) + flg) % 31 === 0;
+    const isValid = ((cmf << 8) + flg) % 31 === 0;
+    
+    if (isValid) {
+      console.log(`[SmartZlibExtractor] Valid zlib header found at offset ${offset}: CMF=0x${cmf.toString(16)}, FLG=0x${flg.toString(16)}`);
+    }
+    
+    return isValid;
   }
 
   /**
@@ -46,19 +51,25 @@ export class SmartZlibExtractor {
    */
   private static decompressBlock(
     block: Uint8Array,
-    useRaw: boolean
+    useRaw: boolean,
+    offset: number
   ): { success: boolean; result: Uint8Array | null; error?: string } {
     try {
+      console.log(`[SmartZlibExtractor] Attempting ${useRaw ? 'inflateRaw' : 'inflate'} on block at offset ${offset}, size ${block.length}`);
+      
       const result = useRaw 
         ? pako.inflateRaw(block)
         : pako.inflate(block);
       
+      console.log(`[SmartZlibExtractor] Decompression successful: ${result.length} bytes decompressed`);
       return { success: true, result };
     } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.log(`[SmartZlibExtractor] Decompression failed: ${errorMsg}`);
       return { 
         success: false, 
         result: null,
-        error: err instanceof Error ? err.message : String(err)
+        error: errorMsg
       };
     }
   }
@@ -111,25 +122,37 @@ export class SmartZlibExtractor {
    * Validate if data looks like a StarCraft command stream (Schritt 3)
    */
   private static isLikelyCommandStream(data: Uint8Array | null): boolean {
-    if (!data || data.length < 50) return false;
+    if (!data || data.length < 50) {
+      console.log(`[SmartZlibExtractor] Command stream validation failed: ${!data ? 'null data' : `too short (${data.length} bytes)`}`);
+      return false;
+    }
     
     const frameSyncs = this.countFrameSyncs(data);
     const validCommands = this.countValidCommandIDs(data);
     const frameSyncRatio = frameSyncs / data.length;
     
+    console.log(`[SmartZlibExtractor] Command stream validation: ${validCommands} valid commands, ${frameSyncs} frame syncs (${(frameSyncRatio * 100).toFixed(1)}% ratio)`);
+    
     // Frame syncs should be 5-70% of data, with at least 10 valid commands
-    return frameSyncRatio > 0.05 && frameSyncRatio < 0.7 && validCommands > 10;
+    const isValid = frameSyncRatio > 0.05 && frameSyncRatio < 0.7 && validCommands > 10;
+    
+    console.log(`[SmartZlibExtractor] Command stream ${isValid ? 'VALID' : 'INVALID'}`);
+    return isValid;
   }
 
   /**
    * Extract all valid zlib blocks from buffer (Schritt 4)
    */
   public static extractZlibBlocks(buf: Uint8Array): ZlibBlock[] {
-    console.log('[SmartZlibExtractor] Starting zlib block extraction');
+    console.log(`[SmartZlibExtractor] Starting zlib block extraction on ${buf.length} bytes`);
     const results: ZlibBlock[] = [];
+    let headersFound = 0;
     
     for (let i = 32; i < buf.length - 100; i++) {
       if (!this.isValidZlibHeader(buf, i)) continue;
+      
+      headersFound++;
+      console.log(`[SmartZlibExtractor] Found zlib header #${headersFound} at offset ${i}`);
       
       // Try different block sizes: 256, 384, 512, 768, 1024, 2048, 4096, 8192
       const blockSizes = [256, 384, 512, 768, 1024, 2048, 4096, 8192];
@@ -141,9 +164,9 @@ export class SmartZlibExtractor {
         const slice = buf.slice(i, i + blockSize);
         
         // Try standard inflate first
-        const inflated = this.decompressBlock(slice, false);
+        const inflated = this.decompressBlock(slice, false, i);
         if (inflated.success && inflated.result && this.isLikelyCommandStream(inflated.result)) {
-          console.log(`[SmartZlibExtractor] Found valid block at ${i}, size ${blockSize}, method: inflate`);
+          console.log(`[SmartZlibExtractor] SUCCESS! Valid block at ${i}, size ${blockSize}, method: inflate`);
           results.push({
             offset: i,
             raw: slice,
@@ -157,9 +180,9 @@ export class SmartZlibExtractor {
         }
         
         // Try raw inflate if standard failed
-        const inflatedRaw = this.decompressBlock(slice, true);
+        const inflatedRaw = this.decompressBlock(slice, true, i);
         if (inflatedRaw.success && inflatedRaw.result && this.isLikelyCommandStream(inflatedRaw.result)) {
-          console.log(`[SmartZlibExtractor] Found valid block at ${i}, size ${blockSize}, method: inflateRaw`);
+          console.log(`[SmartZlibExtractor] SUCCESS! Valid block at ${i}, size ${blockSize}, method: inflateRaw`);
           results.push({
             offset: i,
             raw: slice,
@@ -173,16 +196,12 @@ export class SmartZlibExtractor {
         }
       }
       
-      // If no valid block found, continue to next position
       if (!blockFound) {
-        // Only log every 32nd failure to avoid spam
-        if (i % 32 === 0) {
-          console.log(`[SmartZlibExtractor] No valid block found at ${i}`);
-        }
+        console.log(`[SmartZlibExtractor] No valid block found at offset ${i} despite valid header`);
       }
     }
     
-    console.log(`[SmartZlibExtractor] Extracted ${results.length} valid zlib blocks`);
+    console.log(`[SmartZlibExtractor] SUMMARY: Found ${headersFound} zlib headers, extracted ${results.length} valid blocks`);
     return results;
   }
 

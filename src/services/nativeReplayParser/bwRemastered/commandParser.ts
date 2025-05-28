@@ -1,4 +1,3 @@
-
 /**
  * Enhanced command parser for StarCraft: Brood War Remastered replays
  * Now includes aggressive raw command extraction when decompression fails
@@ -25,6 +24,12 @@ export class BWCommandParser {
    */
   async parseCommands(maxCommands: number = 10000): Promise<BWCommand[]> {
     console.log('[BWCommandParser] Starting ultra-aggressive command parsing');
+    console.log('[BWCommandParser] Data info:', {
+      bufferSize: this.reader.data.buffer.byteLength,
+      viewSize: this.reader.data.byteLength,
+      position: this.reader.getPosition()
+    });
+    
     const commands: BWCommand[] = [];
     
     try {
@@ -75,6 +80,11 @@ export class BWCommandParser {
     try {
       // Convert DataView to Uint8Array for SmartZlibExtractor
       const uint8Array = new Uint8Array(this.reader.data.buffer, this.reader.data.byteOffset, this.reader.data.byteLength);
+      console.log('[BWCommandParser] Created Uint8Array:', {
+        length: uint8Array.length,
+        first16Bytes: Array.from(uint8Array.slice(0, 16)).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' ')
+      });
+      
       const extractionResult = SmartZlibExtractor.extractAndAssembleStream(uint8Array);
       
       if (extractionResult.success && extractionResult.combinedStream.length > 1000) {
@@ -85,6 +95,13 @@ export class BWCommandParser {
         
         console.log(`[BWCommandParser] Parsed ${commands.length} commands from SmartZlibExtractor stream`);
         return commands;
+      } else {
+        console.log('[BWCommandParser] SmartZlibExtractor failed:', {
+          success: extractionResult.success,
+          streamLength: extractionResult.combinedStream.length,
+          totalCommands: extractionResult.totalCommands,
+          blocksFound: extractionResult.blocks.length
+        });
       }
     } catch (error) {
       console.log('[BWCommandParser] SmartZlibExtractor failed:', error);
