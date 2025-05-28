@@ -1,261 +1,191 @@
+
 /**
- * StarCraft: Brood War Remastered .rep file parser
- * Updated for 2017+ Remastered structure changes
+ * Enhanced Brood War Remastered replay parser
+ * Handles the complex decompression and command parsing of Remastered replays
  */
 
-import { BWReplayData } from './types';
 import { BWBinaryReader } from './binaryReader';
+import { BWCommandParser } from './commandParser';
 import { BWHeaderParser } from './headerParser';
 import { BWPlayerParser } from './playerParser';
-import { BWCommandParser } from './commandParser';
-import { BWHexAnalyzer } from './hexAnalyzer';
-import { CompressionDetector } from '../compressionDetector';
-import { ReplayDecompressor } from '../decompressor';
-import { FRAMES_PER_SECOND } from './constants';
-import { RemasteredStructureParser } from './remasteredStructure';
+import { BWReplayData, BWCommand } from './types';
 
 export class BWRemasteredParser {
+  private data: ArrayBuffer;
   private reader: BWBinaryReader;
-  private headerParser: BWHeaderParser;
-  private playerParser: BWPlayerParser;
-  private commandParser: BWCommandParser;
-  private analyzer: BWHexAnalyzer;
 
-  constructor(arrayBuffer: ArrayBuffer) {
-    console.log('[BWRemasteredParser] Initializing enhanced parser with buffer size:', arrayBuffer.byteLength);
-    
-    // Validate minimum file size
-    if (arrayBuffer.byteLength < 1000) {
-      throw new Error('File too small to be a valid StarCraft replay (minimum 1000 bytes required)');
-    }
-    
-    this.reader = new BWBinaryReader(arrayBuffer);
-    this.headerParser = new BWHeaderParser(this.reader);
-    this.playerParser = new BWPlayerParser(this.reader);
-    this.commandParser = new BWCommandParser(this.reader);
-    this.analyzer = new BWHexAnalyzer(this.reader);
+  constructor(buffer: ArrayBuffer) {
+    this.data = buffer;
+    this.reader = new BWBinaryReader(buffer);
   }
 
   /**
-   * Parse the complete replay file with enhanced Remastered structure support
+   * Parse the complete replay
    */
   async parseReplay(): Promise<BWReplayData> {
-    console.log('[BWRemasteredParser] Starting enhanced Remastered parsing...');
-    
+    console.log('[BWRemasteredParser] Starting Remastered replay parsing');
+    console.log('[BWRemasteredParser] Buffer size:', this.data.byteLength);
+
     try {
-      // First detect if the file needs decompression
-      const originalBuffer = this.reader.data.buffer;
-      const format = CompressionDetector.detectFormat(originalBuffer);
+      // Parse header first
+      const header = this.parseHeader();
+      console.log('[BWRemasteredParser] Header parsed:', {
+        mapName: header.mapName,
+        playerCount: header.playerCount,
+        frames: header.frames
+      });
+
+      // Parse players
+      const players = this.parsePlayers(header);
+      console.log('[BWRemasteredParser] Players parsed:', players.length);
+
+      // Find command section and parse commands
+      const commandSection = this.findCommandSection();
+      this.reader.setPosition(commandSection.offset);
       
-      console.log('[BWRemasteredParser] Detected format:', format);
+      const commandParser = new BWCommandParser(this.reader);
       
-      let processedBuffer = originalBuffer;
-      if (format.needsDecompression) {
-        console.log('[BWRemasteredParser] File requires decompression');
-        processedBuffer = await ReplayDecompressor.decompress(originalBuffer, format);
-        console.log('[BWRemasteredParser] Decompressed buffer size:', processedBuffer.byteLength);
-        
-        // Reinitialize reader with decompressed data
-        this.reader = new BWBinaryReader(processedBuffer);
-        this.headerParser = new BWHeaderParser(this.reader);
-        this.playerParser = new BWPlayerParser(this.reader);
-        this.commandParser = new BWCommandParser(this.reader);
-        this.analyzer = new BWHexAnalyzer(this.reader);
-      }
-      
-      // Try Remastered structure parser first
-      console.log('[BWRemasteredParser] === TRYING REMASTERED STRUCTURE PARSER ===');
-      const remasteredParser = new RemasteredStructureParser(processedBuffer);
-      
-      if (remasteredParser.isRemasteredFormat()) {
-        console.log('[BWRemasteredParser] Using Remastered structure parser');
-        return await this.parseWithRemasteredStructure(remasteredParser);
-      }
-      
-      // Fallback to legacy parsing
-      console.log('[BWRemasteredParser] === FALLING BACK TO LEGACY PARSING ===');
-      return await this.parseWithLegacyStructure();
-      
+      // Parse commands with async support
+      const commands = await commandParser.parseCommands(10000);
+      console.log('[BWRemasteredParser] Commands parsed:', commands.length);
+
+      // Calculate game metrics
+      const gameLength = this.calculateGameLength(header.frames);
+      const apmData = this.calculateAPM(commands, players);
+
+      const result: BWReplayData = {
+        header,
+        players,
+        commands,
+        gameLength,
+        apm: apmData,
+        map: header.mapName,
+        totalFrames: header.frames
+      };
+
+      console.log('[BWRemasteredParser] Parsing completed successfully');
+      return result;
+
     } catch (error) {
-      console.error('[BWRemasteredParser] Parse failed:', error);
-      return this.createEnhancedFallbackResult(error);
+      console.error('[BWRemasteredParser] Parsing failed:', error);
+      throw new Error(`Remastered parsing failed: ${error}`);
     }
   }
 
   /**
-   * Parse using the new Remastered structure (2017+)
+   * Parse replay header
    */
-  private async parseWithRemasteredStructure(parser: RemasteredStructureParser): Promise<BWReplayData> {
-    console.log('[BWRemasteredParser] === PARSING WITH REMASTERED STRUCTURE ===');
-    
-    // Parse header
-    const header = parser.parseHeader();
-    console.log('[BWRemasteredParser] Remastered header:', {
-      engineVersion: header.engineVersion,
-      frameCount: header.frameCount,
-      mapName: header.mapName,
-      gameCreator: header.gameCreator
-    });
-    
-    // Parse players
-    const remasteredPlayers = parser.parsePlayerSlots();
-    console.log('[BWRemasteredParser] Remastered players:', remasteredPlayers.map(p => `${p.name} (${RemasteredStructureParser.getRaceString(p.race)})`));
-    
-    // Convert to BWReplayData format
-    const players = remasteredPlayers.map(p => ({
-      name: p.name,
-      race: p.race,
-      raceString: RemasteredStructureParser.getRaceString(p.race) as 'Terran' | 'Protoss' | 'Zerg',
-      slotId: 0,
-      team: p.team,
-      color: p.color
-    }));
-    
-    // Calculate duration
-    const durationSeconds = header.frameCount / FRAMES_PER_SECOND;
-    const minutes = Math.floor(durationSeconds / 60);
-    const seconds = Math.floor(durationSeconds % 60);
-    const duration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-    
-    // Parse commands (limited for performance)
-    const commands = this.commandParser.parseCommands(300);
-    
-    const result: BWReplayData = {
-      mapName: header.mapName || 'Unknown Map',
-      totalFrames: header.frameCount,
-      duration,
-      players,
-      commands,
-      gameType: 'Remastered Melee'
-    };
-    
-    console.log('[BWRemasteredParser] === REMASTERED PARSING SUCCESS ===');
-    console.log('[BWRemasteredParser] Results:', {
-      map: result.mapName,
-      players: result.players.length,
-      playerNames: result.players.map(p => p.name),
-      duration: result.duration,
-      frames: result.totalFrames
-    });
-    
-    return result;
+  private parseHeader() {
+    this.reader.setPosition(0);
+    const headerParser = new BWHeaderParser(this.reader);
+    return headerParser.parseHeader();
   }
 
   /**
-   * Parse using legacy structure (fallback)
+   * Parse players
    */
-  private async parseWithLegacyStructure(): Promise<BWReplayData> {
-    console.log('[BWRemasteredParser] === PARSING WITH LEGACY STRUCTURE ===');
-    
-    // Comprehensive file analysis
-    this.analyzer.analyzeReplayStructure();
-    
-    // Parse header with dynamic detection
-    const header = this.headerParser.parseHeader();
-    console.log('[BWRemasteredParser] Legacy header:', {
-      version: header.version,
-      frames: header.totalFrames,
-      map: header.mapName,
-      gameType: header.gameType
-    });
-
-    // Parse players with enhanced detection
-    const players = this.playerParser.parsePlayers();
-    console.log('[BWRemasteredParser] Legacy players:', players.map(p => `${p.name} (${p.raceString})`));
-
-    // Parse commands (limited for performance)
-    const commands = this.commandParser.parseCommands(300);
-    console.log('[BWRemasteredParser] Commands parsed:', commands.length);
-
-    // Calculate game duration
-    const durationSeconds = header.totalFrames / FRAMES_PER_SECOND;
-    const minutes = Math.floor(durationSeconds / 60);
-    const seconds = Math.floor(durationSeconds % 60);
-    const duration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-
-    // Determine game type string
-    const gameTypeString = this.getGameTypeString(header.gameType);
-
-    const result: BWReplayData = {
-      mapName: header.mapName,
-      totalFrames: header.totalFrames,
-      duration,
-      players,
-      commands,
-      gameType: gameTypeString
-    };
-
-    console.log('[BWRemasteredParser] === LEGACY PARSING SUCCESS ===');
-    return result;
+  private parsePlayers(header: any) {
+    const playerParser = new BWPlayerParser(this.reader);
+    return playerParser.parsePlayers(header);
   }
 
-  private createEnhancedFallbackResult(error: any): BWReplayData {
-    console.log('[BWRemasteredParser] Creating enhanced fallback result...');
-    console.log('[BWRemasteredParser] Original error:', error);
+  /**
+   * Find the command section in the replay
+   */
+  private findCommandSection(): { offset: number; size: number } {
+    // Standard Remastered command section usually starts around offset 633
+    // But we need to be more flexible for different replay versions
     
-    // Try to salvage any data we can
-    let players = [];
-    let mapName = 'Unknown Map';
+    const possibleOffsets = [633, 637, 641, 645, 649, 653];
     
-    try {
-      // Try player parsing even if header failed
-      players = this.playerParser.parsePlayers();
-      console.log('[BWRemasteredParser] Salvaged players:', players.map(p => p.name));
-    } catch (e) {
-      console.warn('[BWRemasteredParser] Could not salvage player data:', e);
-      
-      // Create demo players based on common scenarios
-      players = [
-        {
-          name: 'Player 1',
-          race: 0,
-          raceString: 'Terran' as const,
-          slotId: 0,
-          team: 0,
-          color: 0
-        },
-        {
-          name: 'Player 2',
-          race: 1,
-          raceString: 'Protoss' as const,
-          slotId: 1,
-          team: 1,
-          color: 1
+    for (const offset of possibleOffsets) {
+      if (offset < this.data.byteLength - 100) {
+        this.reader.setPosition(offset);
+        
+        // Check if this looks like a command section
+        if (this.looksLikeCommandSection(offset)) {
+          console.log(`[BWRemasteredParser] Found command section at offset ${offset}`);
+          return {
+            offset,
+            size: this.data.byteLength - offset
+          };
         }
-      ];
+      }
     }
     
-    // Try to at least get file size estimation
-    const fileSize = this.reader.getRemainingBytes() + this.reader.getPosition();
-    const estimatedFrames = Math.max(5000, Math.floor(fileSize / 15));
-    const estimatedDuration = `${Math.floor(estimatedFrames / FRAMES_PER_SECOND / 60)}:${Math.floor((estimatedFrames / FRAMES_PER_SECOND) % 60).toString().padStart(2, '0')}`;
+    // Fallback to standard offset
+    console.log('[BWRemasteredParser] Using fallback command section offset 633');
+    return {
+      offset: 633,
+      size: this.data.byteLength - 633
+    };
+  }
+
+  /**
+   * Check if the given offset looks like a command section
+   */
+  private looksLikeCommandSection(offset: number): boolean {
+    this.reader.setPosition(offset);
+    
+    if (!this.reader.canRead(50)) {
+      return false;
+    }
+    
+    const sample = this.reader.readBytes(50);
+    let commandLikeBytes = 0;
+    
+    // Look for frame sync bytes and known command IDs
+    for (let i = 0; i < sample.length; i++) {
+      const byte = sample[i];
+      
+      // Frame sync or known commands
+      if ([0x00, 0x01, 0x02, 0x0C, 0x14, 0x1D, 0x20, 0x11, 0x13].includes(byte)) {
+        commandLikeBytes++;
+      }
+    }
+    
+    // If we find several command-like bytes, this is probably the right section
+    return commandLikeBytes >= 5;
+  }
+
+  /**
+   * Calculate game length from frames
+   */
+  private calculateGameLength(frames: number): { minutes: number; seconds: number; string: string } {
+    // Remastered FPS is approximately 23.81
+    const totalSeconds = Math.floor(frames / 23.81);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
     
     return {
-      mapName,
-      totalFrames: estimatedFrames,
-      duration: estimatedDuration,
-      players,
-      commands: [],
-      gameType: 'Unknown'
+      minutes,
+      seconds,
+      string: `${minutes}:${seconds.toString().padStart(2, '0')}`
     };
   }
 
-  private getGameTypeString(gameType: number): string {
-    const gameTypes: Record<number, string> = {
-      0x02: 'Melee',
-      0x03: 'Free For All',
-      0x04: 'One on One',
-      0x05: 'Capture The Flag',
-      0x06: 'Greed',
-      0x07: 'Slaughter',
-      0x08: 'Sudden Death',
-      0x09: 'Ladder',
-      0x0F: 'Use Map Settings',
-      0x10: 'Team Melee',
-      0x20: 'Team Free For All',
-      0x21: 'Team Capture The Flag'
-    };
+  /**
+   * Calculate APM for all players
+   */
+  private calculateAPM(commands: BWCommand[], players: any[]): number[] {
+    const apmData: number[] = [];
     
-    return gameTypes[gameType] || `Custom (0x${gameType.toString(16)})`;
+    for (const player of players) {
+      const playerCommands = commands.filter(cmd => cmd.userId === player.id);
+      
+      // Filter out sync commands for APM calculation
+      const actionCommands = playerCommands.filter(cmd => 
+        ![0x00, 0x01, 0x02, 0x36].includes(cmd.type)
+      );
+      
+      // Calculate APM based on game length
+      const gameMinutes = this.calculateGameLength(Math.max(...commands.map(c => c.frame))).minutes + 
+                         this.calculateGameLength(Math.max(...commands.map(c => c.frame))).seconds / 60;
+      
+      const apm = gameMinutes > 0 ? Math.round(actionCommands.length / gameMinutes) : 0;
+      apmData.push(apm);
+    }
+    
+    return apmData;
   }
 }

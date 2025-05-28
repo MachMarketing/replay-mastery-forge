@@ -1,3 +1,4 @@
+
 /**
  * Enhanced command parser for StarCraft: Brood War Remastered replays
  * Now includes aggressive raw command extraction when decompression fails
@@ -27,7 +28,7 @@ export class BWCommandParser {
     
     try {
       // Strategy 1: Try traditional decompression + parsing
-      const traditionalCommands = this.tryTraditionalParsing(maxCommands);
+      const traditionalCommands = await this.tryTraditionalParsing(maxCommands);
       if (traditionalCommands.length > 100) {
         console.log(`[BWCommandParser] Traditional parsing successful: ${traditionalCommands.length} commands`);
         return traditionalCommands;
@@ -44,7 +45,7 @@ export class BWCommandParser {
       
       // Strategy 3: Fallback to pattern scanning
       console.log('[BWCommandParser] Raw extraction insufficient, trying pattern scanning...');
-      const patternCommands = this.tryPatternScanning(maxCommands);
+      const patternCommands = await this.tryPatternScanning(maxCommands);
       if (patternCommands.length > 0) {
         return patternCommands;
       }
@@ -60,12 +61,12 @@ export class BWCommandParser {
   /**
    * Try traditional decompression and parsing
    */
-  private tryTraditionalParsing(maxCommands: number): BWCommand[] {
+  private async tryTraditionalParsing(maxCommands: number): Promise<BWCommand[]> {
     console.log('[BWCommandParser] Trying traditional decompression + parsing');
     
     try {
       // Multiple parsing strategies to catch all commands
-      return this.findAndProcessCommandSections(maxCommands);
+      return await this.findAndProcessCommandSections(maxCommands);
     } catch (error) {
       console.log('[BWCommandParser] Traditional parsing failed:', error);
       return [];
@@ -91,7 +92,7 @@ export class BWCommandParser {
   /**
    * Try pattern scanning as last resort
    */
-  private tryPatternScanning(maxCommands: number): BWCommand[] {
+  private async tryPatternScanning(maxCommands: number): Promise<BWCommand[]> {
     console.log('[BWCommandParser] Trying pattern scanning as last resort');
     
     const commands: BWCommand[] = [];
@@ -119,13 +120,13 @@ export class BWCommandParser {
   /**
    * Multiple command section detection strategies
    */
-  private findAndProcessCommandSections(maxCommands: number): BWCommand[] {
+  private async findAndProcessCommandSections(maxCommands: number): Promise<BWCommand[]> {
     const commands: BWCommand[] = [];
     const dataSize = this.reader.getRemainingBytes();
     console.log('[BWCommandParser] Available data size:', dataSize);
     
     // Strategy 1: Try decompression first
-    this.tryDecompressionAndParse(commands, maxCommands);
+    await this.tryDecompressionAndParse(commands, maxCommands);
     
     // Strategy 2: Scan for command patterns in raw data
     if (commands.length < 50) {
@@ -145,7 +146,7 @@ export class BWCommandParser {
   /**
    * Try decompression and parse decompressed data
    */
-  private tryDecompressionAndParse(commands: BWCommand[], maxCommands: number): void {
+  private async tryDecompressionAndParse(commands: BWCommand[], maxCommands: number): Promise<void> {
     const currentPos = this.reader.getPosition();
     const sampleSize = Math.min(1000, this.reader.getRemainingBytes());
     const sample = this.reader.readBytes(sampleSize);
@@ -342,8 +343,8 @@ export class BWCommandParser {
         return null;
       }
       
-      if (length === 0) {
-        // Variable length command
+      // Handle variable length commands
+      if (commandType === 0x09 && length === 0) {
         return this.parseVariableLengthCommand(reader, commandType);
       }
 
@@ -368,62 +369,99 @@ export class BWCommandParser {
   }
 
   /**
-   * CORRECT BWAPI Command Lengths based on official documentation
+   * Parse variable length commands (like chat)
+   */
+  private parseVariableLengthCommand(reader: BWBinaryReader, commandType: number): BWCommand | null {
+    try {
+      if (commandType === 0x09) { // Chat command
+        if (!reader.canRead(1)) return null;
+        
+        const playerId = reader.readUInt8();
+        let messageLength = 0;
+        
+        // Find null terminator or reasonable limit
+        const startPos = reader.getPosition();
+        while (reader.canRead(1) && messageLength < 80) {
+          const byte = reader.readUInt8();
+          messageLength++;
+          if (byte === 0) break;
+        }
+        
+        reader.setPosition(startPos);
+        const messageData = reader.readBytes(messageLength);
+        
+        return {
+          frame: this.currentFrame,
+          userId: playerId,
+          type: commandType,
+          typeString: 'Chat',
+          data: messageData,
+          parameters: { message: new TextDecoder().decode(messageData.slice(0, -1)) }
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * CORRECT BWAPI Command Lengths based on user's table and official documentation
    */
   private getCorrectCommandLength(commandType: number): number | undefined {
     const CORRECT_BWAPI_LENGTHS: Record<number, number> = {
       // Frame synchronization
-      0x00: 0,   // Frame Increment (no additional data)
-      0x01: 1,   // Frame Skip (1 byte count)
-      0x02: 2,   // Large Frame Skip (2 byte count)
+      0x00: 0,   // Frame Sync - no additional data
+      0x01: 0,   // Command Sync - no additional data
       
-      // Core game commands with CORRECT lengths
-      0x09: 2,   // Select Units (2 bytes)
-      0x0A: 2,   // Shift Select (2 bytes)
-      0x0B: 2,   // Shift Deselect (2 bytes)
-      0x0C: 10,  // Build (10 bytes) - CORRECTED from 7
-      0x0D: 2,   // Vision (2 bytes)
-      0x0E: 4,   // Cancel Construction (4 bytes)
-      0x0F: 2,   // Cancel Morph (2 bytes)
-      0x10: 1,   // Stop (1 byte)
-      0x11: 10,  // Attack Move (10 bytes) - CORRECTED
-      0x12: 2,   // Cheat (2 bytes)
-      0x13: 10,  // Right Click Move (10 bytes) - CORRECTED
-      0x14: 6,   // Train (6 bytes) - CORRECTED from 4
-      0x15: 6,   // Attack (6 bytes)
-      0x16: 1,   // Cancel (1 byte)
-      0x17: 1,   // Cancel Hatch (1 byte)
-      0x18: 1,   // Stop (1 byte)
-      0x19: 1,   // Carrier Stop (1 byte)
-      0x1A: 6,   // Use Tech (6 bytes)
-      0x1B: 10,  // Use Tech Position (10 bytes)
-      0x1C: 1,   // Return Cargo (1 byte)
-      0x1D: 6,   // Train Unit (6 bytes) - CORRECTED from 2
-      0x1E: 2,   // Cancel Train (2 bytes)
-      0x1F: 1,   // Cloak (1 byte)
-      0x20: 6,   // Build Self/Morph (6 bytes) - CORRECTED from 10
-      0x21: 2,   // Unit Morph (2 bytes)
-      0x22: 2,   // Unload (2 bytes)
-      0x23: 1,   // Unsiege (1 byte)
-      0x24: 1,   // Siege (1 byte)
-      0x25: 2,   // Train Fighter (2 bytes)
-      0x26: 1,   // Unload All (1 byte)
-      0x27: 1,   // Unload All (1 byte)
-      0x28: 2,   // Unload (2 bytes)
-      0x29: 1,   // Merge Archon (1 byte)
-      0x2A: 1,   // Hold Position (1 byte)
-      0x2B: 1,   // Burrow (1 byte)
-      0x2C: 1,   // Unburrow (1 byte)
-      0x2D: 1,   // Cancel Nuke (1 byte)
-      0x2E: 1,   // Lift (1 byte)
-      0x2F: 2,   // Research (2 bytes)
-      0x30: 2,   // Cancel Research (2 bytes)
-      0x31: 2,   // Upgrade (2 bytes)
-      0x32: 2,   // Cancel Upgrade (2 bytes)
-      0x33: 2,   // Cancel Addon (2 bytes)
-      0x34: 2,   // Building Morph (2 bytes)
-      0x35: 1,   // Stim (1 byte)
-      0x36: 1,   // Sync (1 byte)
+      // Core game commands with CORRECT lengths from user's table
+      0x09: 0,   // Chat - variable length
+      0x0A: 2,   // Shift Select
+      0x0B: 2,   // Shift Deselect
+      0x0C: 10,  // Build - CORRECTED to 10 bytes
+      0x0D: 2,   // Vision
+      0x0E: 4,   // Cancel Build/Morph (4-6 bytes, using 4)
+      0x0F: 6,   // Cancel Build/Morph (4-6 bytes, using 6)
+      0x10: 1,   // Stop
+      0x11: 10,  // Attack Move - CORRECTED to 10 bytes
+      0x12: 2,   // Cheat
+      0x13: 10,  // Right Click - CORRECTED to 10 bytes
+      0x14: 6,   // Train - CORRECTED to 6 bytes
+      0x15: 6,   // Attack
+      0x16: 1,   // Cancel
+      0x17: 1,   // Cancel Hatch
+      0x18: 1,   // Stop
+      0x19: 1,   // Carrier Stop
+      0x1A: 6,   // Use Tech - 6 bytes
+      0x1B: 10,  // Use Tech - 10 bytes
+      0x1C: 1,   // Return Cargo
+      0x1D: 6,   // Train Unit - CORRECTED to 6 bytes
+      0x1E: 2,   // Cancel Train
+      0x1F: 1,   // Cloak
+      0x20: 6,   // Build Self (Drone-Morph) - CORRECTED to 6 bytes
+      0x21: 2,   // Unit Morph
+      0x22: 2,   // Unload
+      0x23: 1,   // Unsiege
+      0x24: 1,   // Siege
+      0x25: 2,   // Train Fighter
+      0x26: 1,   // Unload All
+      0x27: 1,   // Unload All
+      0x28: 2,   // Unload
+      0x29: 1,   // Merge Archon
+      0x2A: 1,   // Hold Position
+      0x2B: 1,   // Burrow
+      0x2C: 1,   // Unburrow
+      0x2D: 1,   // Cancel Nuke
+      0x2E: 1,   // Lift
+      0x2F: 2,   // Research
+      0x30: 2,   // Cancel Research
+      0x31: 2,   // Upgrade
+      0x32: 2,   // Cancel Upgrade
+      0x33: 2,   // Cancel Addon
+      0x34: 2,   // Building Morph
+      0x35: 1,   // Stim
+      0x36: 1,   // Sync
       
       // Network commands
       0x37: 1,   // Voice Enable1
@@ -448,40 +486,7 @@ export class BWCommandParser {
   }
 
   /**
-   * Enhanced command-stream detection using "Sync Frame Flooding"
-   */
-  private findCommandStreamStart(data: Uint8Array): number {
-    console.log('[BWCommandParser] Using Sync Frame Flooding detection...');
-    
-    // Look for patterns of frame sync bytes followed by actual commands
-    for (let offset = 500; offset < Math.min(data.length - 100, 3000); offset++) {
-      let syncCount = 0;
-      let commandCount = 0;
-      
-      // Check for sync flooding pattern
-      for (let i = 0; i < 50 && offset + i < data.length; i++) {
-        const byte = data[offset + i];
-        
-        if (byte === 0x00 || byte === 0x01) {
-          syncCount++;
-        } else if ([0x0C, 0x14, 0x1D, 0x20].includes(byte)) {
-          commandCount++;
-        }
-      }
-      
-      // Good pattern: multiple syncs followed by build commands
-      if (syncCount >= 5 && commandCount >= 2) {
-        console.log(`[BWCommandParser] Found command stream at offset ${offset} (${syncCount} syncs, ${commandCount} commands)`);
-        return offset;
-      }
-    }
-    
-    console.log('[BWCommandParser] No clear command stream found, using default offset');
-    return 633; // Fallback to standard offset
-  }
-
-  /**
-   * Enhanced command parameter parsing with correct unit mappings
+   * Enhanced command parameters parsing
    */
   private parseCommandParameters(commandType: number, data: Uint8Array): any {
     if (data.length === 0) return {};
@@ -585,36 +590,5 @@ export class BWCommandParser {
     return {
       playerId: data[1]
     };
-  }
-
-  /**
-   * Log detailed command statistics
-   */
-  private logCommandStatistics(commands: BWCommand[]): void {
-    if (!this.debugMode) return;
-    
-    const stats: Record<string, number> = {};
-    const buildCommands = [];
-    
-    for (const command of commands) {
-      const typeName = command.typeString;
-      stats[typeName] = (stats[typeName] || 0) + 1;
-      
-      // Collect build/train commands for debugging
-      if ([0x0C, 0x14, 0x1D, 0x20].includes(command.type)) {
-        buildCommands.push({
-          type: command.typeString,
-          frame: command.frame,
-          parameters: command.parameters
-        });
-      }
-    }
-    
-    console.log('[BWCommandParser] Command statistics:', stats);
-    console.log('[BWCommandParser] Build/Train commands found:', buildCommands.length);
-    
-    if (buildCommands.length > 0) {
-      console.log('[BWCommandParser] First 10 build commands:', buildCommands.slice(0, 10));
-    }
   }
 }
