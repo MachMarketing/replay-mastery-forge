@@ -1,6 +1,6 @@
 
 /**
- * Enhanced screp-js integration using the robust wrapper - NO MOCK DATA
+ * SIMPLIFIED screp-js parser - ONLY screp-js, no fallbacks
  */
 
 import { ScrepJsWrapper, ReplayParseResult } from './screpJsWrapper';
@@ -51,28 +51,30 @@ export class ScrepParser {
   private static wrapper = ScrepJsWrapper.getInstance();
 
   /**
-   * Parse replay using screp-js wrapper - NO FALLBACKS, ONLY REAL DATA
+   * Parse replay using ONLY screp-js - no custom parser fallback
    */
   static async parseReplay(file: File): Promise<ScrepReplayData> {
-    console.log('[ScrepParser] Starting screp-js parsing - NO MOCK DATA');
+    console.log('[ScrepParser] Using ONLY screp-js - no custom parser');
     
     // Initialize wrapper
     const available = await this.wrapper.initialize();
     
     if (!available) {
-      throw new Error('screp-js ist nicht verfügbar im Browser');
+      throw new Error('screp-js ist nicht verfügbar im Browser - Custom Parser wurde entfernt');
     }
     
-    console.log('[ScrepParser] Using real screp-js');
+    console.log('[ScrepParser] screp-js verfügbar - parsing...');
     const result = await this.wrapper.parseReplay(file);
+    
+    console.log('[ScrepParser] screp-js erfolgreich - konvertiere Daten');
     return this.convertToScrepFormat(result);
   }
 
   private static convertToScrepFormat(result: ReplayParseResult): ScrepReplayData {
-    console.log('[ScrepParser] Converting to screp format - validating real data');
-    console.log('[ScrepParser] Raw result:', result);
+    console.log('[ScrepParser] Converting screp-js result to format');
+    console.log('[ScrepParser] Raw screp result players:', result.players.map(p => p.name));
     
-    // Validierung - keine Mock-Daten akzeptieren
+    // Strict validation - only accept real data
     if (!result.players || result.players.length < 2) {
       throw new Error('screp-js: Nicht genügend Spieler gefunden');
     }
@@ -104,14 +106,14 @@ export class ScrepParser {
       };
     });
 
-    // NEW: Use real APM data from screp-js
+    // Use real APM data from screp-js
     const apm = result.computed.playerAPM;
     const eapm = result.computed.playerEAPM;
     const buildOrders = result.computed.buildOrders;
     
-    console.log('[ScrepParser] Real APM data:', apm);
-    console.log('[ScrepParser] Real EAPM data:', eapm);
-    console.log('[ScrepParser] Real Build Orders:', buildOrders.map(bo => `${bo.length} actions`));
+    console.log('[ScrepParser] Final player data:', players.map(p => `${p.name} (${p.race})`));
+    console.log('[ScrepParser] Final APM data:', apm);
+    console.log('[ScrepParser] Final EAPM data:', eapm);
 
     return {
       header: {
@@ -133,11 +135,11 @@ export class ScrepParser {
       computed: {
         playerDescs: players.map(p => `${p.name} (${p.race})`),
         matchup: players.length >= 2 ? `${players[0].race.charAt(0)}v${players[1].race.charAt(0)}` : '',
-        league: '', // Keine Mock-Liga
+        league: '',
         winnerTeam: -1,
-        apm, // Real APM data from screp-js
-        eapm, // Real EAPM data from screp-js
-        buildOrders // Real build orders from commands
+        apm,
+        eapm,
+        buildOrders
       }
     };
   }
