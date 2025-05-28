@@ -1,4 +1,3 @@
-
 /**
  * Detailed replay file analyzer for debugging and format detection
  */
@@ -97,32 +96,44 @@ export class ReplayAnalyzer {
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
     
-    // Detect compression
+    // Detect compression and format using enhanced detector
     const compressionInfo = CompressionDetector.detectFormat(data.buffer);
     
-    // Estimate version based on file structure
+    // Improved version estimation based on compression info AND magic bytes
     let estimatedVersion = 'Unknown';
     
-    if (magic === '5453494c') { // "LIST" in hex
+    // Use the compression detector's results first (more reliable)
+    if (compressionInfo.isRemastered) {
+      estimatedVersion = compressionInfo.version; // Use the detector's version
+    } else if (compressionInfo.type === 'remastered_zlib') {
+      estimatedVersion = 'StarCraft: Remastered (1.18+)';
+    } else if (magic === '5453494c') { // "LIST" in hex
       estimatedVersion = 'Compressed (Classic/Remastered)';
     } else if (data.length > 633 && data[0] !== 0) {
-      // Look for version indicators
+      // Fallback to legacy detection for uncompressed files
       const versionArea = data.slice(4, 8);
-      const versionValue = new DataView(versionArea.buffer, versionArea.byteOffset).getUint32(0, true);
-      
-      if (versionValue >= 74) {
-        estimatedVersion = 'StarCraft: Remastered (1.18+)';
-      } else if (versionValue >= 59) {
-        estimatedVersion = 'StarCraft: Brood War (1.16.1)';
-      } else {
-        estimatedVersion = 'StarCraft: Classic';
+      if (versionArea.length >= 4) {
+        const versionValue = new DataView(versionArea.buffer, versionArea.byteOffset).getUint32(0, true);
+        
+        if (versionValue >= 74) {
+          estimatedVersion = 'StarCraft: Remastered (1.18+)';
+        } else if (versionValue >= 59) {
+          estimatedVersion = 'StarCraft: Brood War (1.16.1)';
+        } else {
+          estimatedVersion = 'StarCraft: Classic';
+        }
       }
+    }
+    
+    // Additional check: if magic bytes don't match standard patterns but we detected remastered format
+    if (magic !== '5265706c' && compressionInfo.type === 'remastered_zlib') {
+      estimatedVersion = 'StarCraft: Remastered (Compressed)';
     }
     
     return {
       magic: `0x${magic}`,
       isCompressed: compressionInfo.needsDecompression,
-      detectedFormat: compressionInfo.type, // Fixed: changed from .format to .type
+      detectedFormat: compressionInfo.type,
       estimatedVersion
     };
   }
@@ -208,18 +219,29 @@ export class ReplayAnalyzer {
       recommendations.push('screp-js ist im Browser nicht verfügbar - Browser-Polyfills prüfen');
     } else if (!analysis.screpJsCompatibility.parseSuccess) {
       recommendations.push('screp-js kann diese Datei nicht parsen - möglicherweise zu neues Format');
+    } else {
+      recommendations.push('✅ screp-js kann diese Datei erfolgreich parsen - verwende screp-js für normale Analyse');
     }
     
     if (!analysis.customParserResults.parseSuccess) {
-      recommendations.push('Auch der Custom Parser schlägt fehl - Datei könnte beschädigt oder unsupported sein');
+      if (analysis.formatDetection.isCompressed) {
+        recommendations.push('Custom Parser schlägt fehl da Datei komprimiert ist - Decompression-Module verbessern');
+      } else {
+        recommendations.push('Custom Parser schlägt fehl - Datei könnte beschädigt oder unsupported sein');
+      }
     }
     
-    if (analysis.formatDetection.isCompressed) {
-      recommendations.push('Datei ist komprimiert - Decompression-Module prüfen');
+    if (analysis.formatDetection.detectedFormat === 'remastered_zlib') {
+      recommendations.push('✅ Remastered-Format mit Kompression erkannt - screp-js sollte funktionieren');
     }
     
     if (analysis.formatDetection.estimatedVersion.includes('Remastered')) {
-      recommendations.push('Remastered-Format erkannt - screp-js sollte funktionieren');
+      recommendations.push('✅ Remastered-Version bestätigt - moderne Parsing-Tools verwenden');
+    }
+    
+    // Add recommendation based on screp-js success vs custom parser failure
+    if (analysis.screpJsCompatibility.parseSuccess && !analysis.customParserResults.parseSuccess) {
+      recommendations.push('💡 Empfehlung: Nutze "Normal analysieren" statt Custom Parser für beste Ergebnisse');
     }
     
     if (analysis.customParserResults.parseSuccess && analysis.customParserResults.extractedData) {
