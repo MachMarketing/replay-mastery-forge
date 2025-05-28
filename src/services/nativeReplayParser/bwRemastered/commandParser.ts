@@ -155,10 +155,12 @@ export class BWCommandParser {
     if (RemasteredDecompressor.isLikelyCompressed(sample)) {
       console.log('[BWCommandParser] Detected compressed data, attempting decompression...');
       try {
-        const decompressed = RemasteredDecompressor.decompressBlock(sample);
-        const decompressedReader = new BWBinaryReader(decompressed);
-        this.parseCommandsFromReader(decompressedReader, commands, maxCommands);
-        return;
+        const decompressed = await RemasteredDecompressor.decompress(sample.buffer);
+        if (decompressed.success && decompressed.data) {
+          const decompressedReader = new BWBinaryReader(new Uint8Array(decompressed.data));
+          this.parseCommandsFromReader(decompressedReader, commands, maxCommands);
+          return;
+        }
       } catch (error) {
         console.log('[BWCommandParser] Decompression failed, continuing with raw data:', error);
       }
