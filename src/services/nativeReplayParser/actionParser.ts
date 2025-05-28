@@ -1,7 +1,7 @@
 
 /**
- * StarCraft Action Parser
- * Based on screp specification: https://github.com/icza/screp/blob/main/doc/actions.md
+ * Enhanced Action Parser based on screp specification
+ * Extracts REAL actions, APM, and build orders from replay data
  */
 
 export interface ParsedAction {
@@ -10,34 +10,66 @@ export interface ParsedAction {
   playerId: number;
   opcode: number;
   actionName: string;
-  parameters: Record<string, any>;
   isBuildAction: boolean;
   isTrainAction: boolean;
   isMicroAction: boolean;
-  unitType?: string;
   unitId?: number;
+  unitName?: string;
   x?: number;
   y?: number;
   targetId?: number;
+  rawData?: Uint8Array;
 }
 
 export interface ActionParseResult {
   actions: ParsedAction[];
-  playerActionCounts: number[];
+  realAPM: number[];
+  realEAPM: number[];
   buildOrders: Array<Array<{
     frame: number;
     timestamp: string;
     action: string;
     supply?: number;
   }>>;
-  realAPM: number[];
-  realEAPM: number[];
+  totalFrames: number;
+  gameMinutes: number;
 }
 
 export class ActionParser {
   private data: Uint8Array;
   private dataView: DataView;
-  private position: number = 0;
+  
+  // StarCraft unit IDs and names
+  private static readonly UNIT_NAMES: Record<number, string> = {
+    0: 'Marine', 1: 'Ghost', 2: 'Vulture', 3: 'Goliath', 4: 'Siege Tank',
+    5: 'SCV', 7: 'Wraith', 8: 'Science Vessel', 9: 'Dropship',
+    10: 'Battlecruiser', 11: 'Vulture Spider Mine', 12: 'Nuclear Missile',
+    60: 'Zealot', 61: 'Dragoon', 62: 'High Templar', 63: 'Archon',
+    64: 'Shuttle', 65: 'Scout', 66: 'Arbiter', 67: 'Carrier',
+    68: 'Interceptor', 69: 'Probe', 70: 'Reaver', 71: 'Scarab',
+    37: 'Zergling', 38: 'Hydralisk', 39: 'Ultralisk', 40: 'Broodling',
+    41: 'Drone', 42: 'Overlord', 43: 'Mutalisk', 44: 'Guardian',
+    45: 'Queen', 46: 'Defiler', 47: 'Scourge', 103: 'Lurker'
+  };
+
+  // Building IDs and names
+  private static readonly BUILDING_NAMES: Record<number, string> = {
+    106: 'Command Center', 107: 'Comsat Station', 108: 'Nuclear Silo',
+    109: 'Supply Depot', 110: 'Refinery', 111: 'Barracks', 112: 'Academy',
+    113: 'Factory', 114: 'Starport', 115: 'Control Tower', 116: 'Science Facility',
+    117: 'Covert Ops', 118: 'Physics Lab', 119: 'Machine Shop', 120: 'Engineering Bay',
+    121: 'Armory', 122: 'Missile Turret', 123: 'Bunker',
+    154: 'Nexus', 155: 'Robotics Facility', 156: 'Pylon', 157: 'Assimilator',
+    158: 'Observatory', 159: 'Gateway', 160: 'Photon Cannon', 161: 'Citadel of Adun',
+    162: 'Cybernetics Core', 163: 'Templar Archives', 164: 'Forge', 165: 'Stargate',
+    166: 'Fleet Beacon', 167: 'Arbiter Tribunal', 168: 'Robotics Support Bay',
+    169: 'Shield Battery',
+    131: 'Hatchery', 132: 'Lair', 133: 'Hive', 134: 'Nydus Canal',
+    135: 'Hydralisk Den', 136: 'Defiler Mound', 137: 'Greater Spire',
+    138: 'Queens Nest', 139: 'Evolution Chamber', 140: 'Ultralisk Cavern',
+    141: 'Spire', 142: 'Spawning Pool', 143: 'Creep Colony', 144: 'Spore Colony',
+    145: 'Sunken Colony', 146: 'Extractor'
+  };
 
   constructor(data: Uint8Array) {
     this.data = data;
@@ -45,443 +77,321 @@ export class ActionParser {
   }
 
   /**
-   * Parse action blocks according to screp specification
+   * Parse actions with enhanced real data extraction
    */
-  parseActions(playerCount: number, totalFrames: number, commandsStartOffset: number = 633): ActionParseResult {
-    console.log('[ActionParser] Starting action parsing with screp specification');
-    console.log('[ActionParser] Commands start at offset:', `0x${commandsStartOffset.toString(16)}`);
-    console.log('[ActionParser] Expected players:', playerCount);
-    console.log('[ActionParser] Total frames:', totalFrames);
+  async parseActions(playerCount: number, totalFrames: number): Promise<ActionParseResult> {
+    console.log('[ActionParser] ===== STARTING ENHANCED ACTION PARSING =====');
+    console.log('[ActionParser] File size:', this.data.length, 'bytes');
+    console.log('[ActionParser] Expected players:', playerCount, 'Expected frames:', totalFrames);
 
-    this.position = commandsStartOffset;
-    const actions: ParsedAction[] = [];
-    const playerActionCounts: number[] = new Array(playerCount).fill(0);
-    
-    let currentFrame = 0;
-    let actionCount = 0;
-    const maxActions = 5000; // Safety limit
+    // Find the actual command data start position
+    const commandStart = this.findCommandDataStart();
+    console.log('[ActionParser] Command data starts at offset:', commandStart);
 
-    // Parse action stream
-    while (this.position < this.data.length - 8 && actionCount < maxActions) {
-      try {
-        const byte = this.readUInt8();
-        
-        // Handle frame synchronization according to screp spec
-        if (byte === 0x00) {
-          // Frame++
-          currentFrame++;
-          continue;
-        } else if (byte === 0x01) {
-          // Frame += next byte
-          if (this.canRead(1)) {
-            const skipFrames = this.readUInt8();
-            currentFrame += skipFrames;
-            continue;
-          }
-        } else if (byte === 0x02) {
-          // Frame += next 2 bytes (little endian)
-          if (this.canRead(2)) {
-            const skipFrames = this.readUInt16LE();
-            currentFrame += skipFrames;
-            continue;
-          }
-        }
-
-        // Parse action according to screp action specification
-        const action = this.parseAction(byte, currentFrame);
-        if (action && action.playerId < playerCount) {
-          actions.push(action);
-          playerActionCounts[action.playerId]++;
-          actionCount++;
-
-          // Log first few actions for debugging
-          if (actionCount <= 10) {
-            console.log(`[ActionParser] Action ${actionCount}:`, {
-              frame: action.frame,
-              player: action.playerId,
-              opcode: `0x${action.opcode.toString(16)}`,
-              name: action.actionName,
-              params: action.parameters
-            });
-          }
-        }
-
-      } catch (error) {
-        // Skip corrupted byte and continue
-        break;
-      }
+    if (commandStart === -1) {
+      throw new Error('Could not find command data in replay file');
     }
 
-    console.log(`[ActionParser] Parsed ${actions.length} actions`);
-    console.log('[ActionParser] Player action counts:', playerActionCounts);
+    // Parse actions from command data
+    const actions = this.extractActionsFromCommandData(commandStart, totalFrames);
+    console.log('[ActionParser] Total actions extracted:', actions.length);
 
-    // Calculate real APM based on actual actions
+    // Calculate real APM and EAPM
+    const { realAPM, realEAPM } = this.calculateRealAPM(actions, playerCount, totalFrames);
+    console.log('[ActionParser] Real APM calculated:', realAPM);
+    console.log('[ActionParser] Real EAPM calculated:', realEAPM);
+
+    // Generate build orders
+    const buildOrders = this.generateBuildOrders(actions, playerCount);
+    console.log('[ActionParser] Build orders generated:', buildOrders.map(bo => `${bo.length} actions`));
+
     const gameMinutes = totalFrames / (24 * 60);
-    const realAPM = playerActionCounts.map(count => 
-      gameMinutes > 0 ? Math.round(count / gameMinutes) : 0
-    );
-    const realEAPM = realAPM.map(apm => Math.round(apm * 0.8)); // 80% effective ratio
-
-    // Extract build orders from actions
-    const buildOrders = this.extractBuildOrdersFromActions(actions, playerCount);
-
-    console.log('[ActionParser] Final real APM:', realAPM);
-    console.log('[ActionParser] Build orders:', buildOrders.map(bo => `${bo.length} actions`));
 
     return {
       actions,
-      playerActionCounts,
-      buildOrders,
       realAPM,
-      realEAPM
+      realEAPM,
+      buildOrders,
+      totalFrames,
+      gameMinutes
     };
   }
 
   /**
-   * Parse individual action according to screp action specification
+   * Find where the actual command data starts in the file
    */
-  private parseAction(opcode: number, frame: number): ParsedAction | null {
-    try {
-      // Get action specification
-      const actionSpec = this.getActionSpec(opcode);
-      if (!actionSpec) {
-        return null;
-      }
+  private findCommandDataStart(): number {
+    console.log('[ActionParser] Searching for command data start...');
 
-      // Read action data according to specification
-      const parameters: Record<string, any> = {};
-      let playerId = 0;
-      let unitType: string | undefined;
-      let unitId: number | undefined;
-      let x: number | undefined;
-      let y: number | undefined;
-      let targetId: number | undefined;
+    // Common offsets where command data typically starts
+    const possibleOffsets = [633, 512, 768, 1024, 1280];
 
-      // Read parameters according to action specification
-      for (const param of actionSpec.parameters) {
-        if (!this.canRead(param.size)) {
-          return null;
+    for (const offset of possibleOffsets) {
+      if (offset < this.data.length - 100) {
+        console.log(`[ActionParser] Checking offset ${offset} (0x${offset.toString(16)})...`);
+        
+        // Look for patterns indicating command data
+        let actionCount = 0;
+        let frameMarkers = 0;
+        
+        for (let i = 0; i < Math.min(200, this.data.length - offset); i++) {
+          const byte = this.data[offset + i];
+          
+          if (byte === 0x00) {
+            frameMarkers++;
+          } else if (this.isValidActionOpcode(byte)) {
+            actionCount++;
+          }
         }
-
-        let value: number;
-        switch (param.size) {
-          case 1:
-            value = this.readUInt8();
-            break;
-          case 2:
-            value = this.readUInt16LE();
-            break;
-          case 4:
-            value = this.readUInt32LE();
-            break;
-          default:
-            return null;
-        }
-
-        parameters[param.name] = value;
-
-        // Map important parameters
-        if (param.name === 'playerId') {
-          playerId = value;
-        } else if (param.name === 'unitType') {
-          unitId = value;
-          unitType = this.getUnitName(value);
-        } else if (param.name === 'x') {
-          x = value;
-        } else if (param.name === 'y') {
-          y = value;
-        } else if (param.name === 'targetId') {
-          targetId = value;
+        
+        console.log(`[ActionParser] Offset ${offset}: ${actionCount} actions, ${frameMarkers} frame markers`);
+        
+        // If we find a good ratio of actions to frame markers, this is likely command data
+        if (actionCount > 10 && frameMarkers > 5) {
+          console.log(`[ActionParser] Found command data at offset ${offset}`);
+          return offset;
         }
       }
-
-      return {
-        frame,
-        timestamp: this.frameToTimestamp(frame),
-        playerId: playerId % 8, // Normalize player ID
-        opcode,
-        actionName: actionSpec.name,
-        parameters,
-        isBuildAction: actionSpec.isBuild,
-        isTrainAction: actionSpec.isTrain,
-        isMicroAction: actionSpec.isMicro,
-        unitType,
-        unitId,
-        x,
-        y,
-        targetId
-      };
-
-    } catch (error) {
-      return null;
     }
+
+    console.warn('[ActionParser] Could not find reliable command data start');
+    return 633; // Default fallback
   }
 
   /**
-   * Get action specification according to screp documentation
+   * Check if a byte is a valid action opcode
    */
-  private getActionSpec(opcode: number): {
-    name: string;
-    parameters: Array<{ name: string; size: number }>;
-    isBuild: boolean;
-    isTrain: boolean;
-    isMicro: boolean;
-  } | null {
-    // Action specifications from screp documentation
-    const actionSpecs: Record<number, any> = {
-      0x09: {
-        name: 'Select',
-        parameters: [
-          { name: 'playerId', size: 1 },
-          { name: 'unitCount', size: 1 }
-        ],
-        isBuild: false, isTrain: false, isMicro: true
-      },
-      0x0A: {
-        name: 'Shift Select',
-        parameters: [
-          { name: 'playerId', size: 1 },
-          { name: 'unitCount', size: 1 }
-        ],
-        isBuild: false, isTrain: false, isMicro: true
-      },
-      0x0B: {
-        name: 'Shift Deselect',
-        parameters: [
-          { name: 'playerId', size: 1 },
-          { name: 'unitCount', size: 1 }
-        ],
-        isBuild: false, isTrain: false, isMicro: true
-      },
-      0x0C: {
-        name: 'Build',
-        parameters: [
-          { name: 'playerId', size: 1 },
-          { name: 'unitType', size: 2 },
-          { name: 'x', size: 2 },
-          { name: 'y', size: 2 }
-        ],
-        isBuild: true, isTrain: false, isMicro: false
-      },
-      0x0D: {
-        name: 'Vision',
-        parameters: [
-          { name: 'playerId', size: 1 },
-          { name: 'unknown', size: 1 }
-        ],
-        isBuild: false, isTrain: false, isMicro: false
-      },
-      0x0E: {
-        name: 'Alliance',
-        parameters: [
-          { name: 'playerId', size: 1 },
-          { name: 'targetPlayer', size: 1 },
-          { name: 'allianceType', size: 2 }
-        ],
-        isBuild: false, isTrain: false, isMicro: false
-      },
-      0x13: {
-        name: 'Hotkey',
-        parameters: [
-          { name: 'playerId', size: 1 },
-          { name: 'hotkey', size: 1 }
-        ],
-        isBuild: false, isTrain: false, isMicro: true
-      },
-      0x14: {
-        name: 'Move',
-        parameters: [
-          { name: 'playerId', size: 1 },
-          { name: 'x', size: 2 },
-          { name: 'y', size: 2 }
-        ],
-        isBuild: false, isTrain: false, isMicro: true
-      },
-      0x15: {
-        name: 'Attack',
-        parameters: [
-          { name: 'playerId', size: 1 },
-          { name: 'x', size: 2 },
-          { name: 'y', size: 2 },
-          { name: 'targetId', size: 2 }
-        ],
-        isBuild: false, isTrain: false, isMicro: true
-      },
-      0x18: {
-        name: 'Stop',
-        parameters: [
-          { name: 'playerId', size: 1 }
-        ],
-        isBuild: false, isTrain: false, isMicro: true
-      },
-      0x1D: {
-        name: 'Train',
-        parameters: [
-          { name: 'playerId', size: 1 },
-          { name: 'unitType', size: 2 }
-        ],
-        isBuild: false, isTrain: true, isMicro: false
-      },
-      0x1E: {
-        name: 'Cancel Train',
-        parameters: [
-          { name: 'playerId', size: 1 },
-          { name: 'unitType', size: 2 }
-        ],
-        isBuild: false, isTrain: false, isMicro: false
-      },
-      0x2F: {
-        name: 'Research',
-        parameters: [
-          { name: 'playerId', size: 1 },
-          { name: 'techType', size: 2 }
-        ],
-        isBuild: true, isTrain: false, isMicro: false
-      },
-      0x31: {
-        name: 'Upgrade',
-        parameters: [
-          { name: 'playerId', size: 1 },
-          { name: 'upgradeType', size: 2 }
-        ],
-        isBuild: true, isTrain: false, isMicro: false
+  private isValidActionOpcode(opcode: number): boolean {
+    const validOpcodes = [
+      0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, // Basic actions
+      0x13, 0x14, 0x15, 0x18, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, // Advanced actions
+      0x2F, 0x30, 0x31, 0x32 // Research/upgrade actions
+    ];
+    return validOpcodes.includes(opcode);
+  }
+
+  /**
+   * Extract actions from command data
+   */
+  private extractActionsFromCommandData(startOffset: number, maxFrames: number): ParsedAction[] {
+    console.log('[ActionParser] Extracting actions from command data...');
+    
+    const actions: ParsedAction[] = [];
+    let position = startOffset;
+    let currentFrame = 0;
+    let framesSinceLastAction = 0;
+
+    while (position < this.data.length - 4 && currentFrame < maxFrames) {
+      try {
+        const opcode = this.data[position];
+        
+        if (opcode === 0x00) {
+          // Frame advancement
+          currentFrame++;
+          framesSinceLastAction++;
+          position++;
+          continue;
+        }
+
+        if (this.isValidActionOpcode(opcode)) {
+          const action = this.parseActionAtPosition(position, currentFrame);
+          if (action) {
+            actions.push(action);
+            console.log(`[ActionParser] Action ${actions.length}: Frame ${currentFrame}, Player ${action.playerId}, ${action.actionName}`);
+            framesSinceLastAction = 0;
+          }
+          position += this.getActionLength(opcode);
+        } else {
+          // Skip unknown bytes, but be careful not to get stuck
+          position++;
+          if (framesSinceLastAction > 1000) {
+            console.warn('[ActionParser] Too many frames without actions, stopping parse');
+            break;
+          }
+        }
+
+        // Safety check to prevent infinite loops
+        if (actions.length > 10000) {
+          console.warn('[ActionParser] Too many actions parsed, stopping');
+          break;
+        }
+
+      } catch (error) {
+        console.warn('[ActionParser] Error parsing action at position', position, ':', error);
+        position++;
       }
+    }
+
+    console.log('[ActionParser] Final action count:', actions.length);
+    return actions;
+  }
+
+  /**
+   * Parse a single action at the given position
+   */
+  private parseActionAtPosition(position: number, frame: number): ParsedAction | null {
+    if (position >= this.data.length - 1) return null;
+
+    const opcode = this.data[position];
+    const playerId = position + 1 < this.data.length ? this.data[position + 1] : 0;
+
+    const action: ParsedAction = {
+      frame,
+      timestamp: this.frameToTimestamp(frame),
+      playerId,
+      opcode,
+      actionName: this.getActionName(opcode),
+      isBuildAction: this.isBuildOpcode(opcode),
+      isTrainAction: this.isTrainOpcode(opcode),
+      isMicroAction: this.isMicroOpcode(opcode)
     };
 
-    return actionSpecs[opcode] || null;
+    // Extract additional parameters based on opcode
+    switch (opcode) {
+      case 0x0C: // Build
+      case 0x0D: // Train
+        if (position + 3 < this.data.length) {
+          action.unitId = this.data[position + 2] | (this.data[position + 3] << 8);
+          action.unitName = this.getUnitName(action.unitId);
+        }
+        break;
+      
+      case 0x14: // Move/Attack
+      case 0x15: // Move/Attack
+        if (position + 5 < this.data.length) {
+          action.x = this.data[position + 2] | (this.data[position + 3] << 8);
+          action.y = this.data[position + 4] | (this.data[position + 5] << 8);
+        }
+        break;
+    }
+
+    return action;
   }
 
   /**
-   * Extract build orders from parsed actions
+   * Calculate real APM and EAPM from actions
    */
-  private extractBuildOrdersFromActions(actions: ParsedAction[], playerCount: number): Array<Array<{
+  private calculateRealAPM(actions: ParsedAction[], playerCount: number, totalFrames: number): { realAPM: number[], realEAPM: number[] } {
+    console.log('[ActionParser] Calculating real APM...');
+    
+    const gameMinutes = totalFrames / (24 * 60);
+    const realAPM: number[] = [];
+    const realEAPM: number[] = [];
+
+    for (let playerId = 0; playerId < playerCount; playerId++) {
+      const playerActions = actions.filter(action => action.playerId === playerId);
+      const effectiveActions = playerActions.filter(action => 
+        action.isBuildAction || action.isTrainAction || action.isMicroAction
+      );
+
+      const apm = gameMinutes > 0 ? Math.round(playerActions.length / gameMinutes) : 0;
+      const eapm = gameMinutes > 0 ? Math.round(effectiveActions.length / gameMinutes) : 0;
+
+      realAPM.push(apm);
+      realEAPM.push(eapm);
+
+      console.log(`[ActionParser] Player ${playerId}: ${playerActions.length} total actions, ${effectiveActions.length} effective actions, APM: ${apm}, EAPM: ${eapm}`);
+    }
+
+    return { realAPM, realEAPM };
+  }
+
+  /**
+   * Generate build orders from actions
+   */
+  private generateBuildOrders(actions: ParsedAction[], playerCount: number): Array<Array<{
     frame: number;
     timestamp: string;
     action: string;
     supply?: number;
   }>> {
-    const buildOrders: Array<Array<{
-      frame: number;
-      timestamp: string;
-      action: string;
-      supply?: number;
-    }>> = [];
+    console.log('[ActionParser] Generating build orders...');
+    
+    const buildOrders: Array<Array<any>> = [];
 
-    // Initialize build orders for each player
-    for (let i = 0; i < playerCount; i++) {
-      buildOrders.push([]);
+    for (let playerId = 0; playerId < playerCount; playerId++) {
+      const playerBuildActions = actions.filter(action => 
+        action.playerId === playerId && (action.isBuildAction || action.isTrainAction)
+      ).sort((a, b) => a.frame - b.frame);
+
+      const buildOrder = playerBuildActions.map((action, index) => ({
+        frame: action.frame,
+        timestamp: action.timestamp,
+        action: action.unitName || action.actionName,
+        supply: this.estimateSupply(index, action)
+      }));
+
+      buildOrders.push(buildOrder);
+      console.log(`[ActionParser] Player ${playerId} build order: ${buildOrder.length} actions`);
     }
-
-    // Filter build/train actions and sort by frame
-    const buildActions = actions
-      .filter(action => action.isBuildAction || action.isTrainAction)
-      .sort((a, b) => a.frame - b.frame);
-
-    console.log(`[ActionParser] Found ${buildActions.length} build/train actions`);
-
-    // Group by player and create build order
-    buildActions.forEach(action => {
-      if (action.playerId < playerCount) {
-        const actionText = action.unitType ? 
-          `${action.actionName}: ${action.unitType}` : 
-          action.actionName;
-
-        buildOrders[action.playerId].push({
-          frame: action.frame,
-          timestamp: action.timestamp,
-          action: actionText,
-          supply: this.estimateSupply(action.frame, buildOrders[action.playerId].length)
-        });
-
-        // Limit to 25 actions per player
-        if (buildOrders[action.playerId].length > 25) {
-          buildOrders[action.playerId] = buildOrders[action.playerId].slice(0, 25);
-        }
-      }
-    });
 
     return buildOrders;
   }
 
-  /**
-   * Get unit name from unit ID
-   */
-  private getUnitName(unitId: number): string {
-    const unitNames: Record<number, string> = {
-      // Terran Units
-      0: 'Marine', 1: 'Ghost', 2: 'Vulture', 3: 'Goliath', 4: 'Siege Tank',
-      5: 'SCV', 7: 'Wraith', 8: 'Science Vessel', 9: 'Dropship', 10: 'Battlecruiser',
-      11: 'Spider Mine', 14: 'Firebat', 15: 'Medic', 30: 'Valkyrie',
-      
-      // Protoss Units  
-      32: 'Probe', 33: 'Zealot', 34: 'Dragoon', 35: 'High Templar',
-      36: 'Archon', 37: 'Shuttle', 38: 'Scout', 39: 'Arbiter', 40: 'Carrier',
-      41: 'Interceptor', 42: 'Dark Templar', 43: 'Reaver', 44: 'Observer',
-      45: 'Scarab', 46: 'Corsair', 47: 'Dark Archon',
-      
-      // Zerg Units
-      16: 'Larva', 17: 'Egg', 18: 'Zergling', 19: 'Hydralisk',
-      20: 'Ultralisk', 21: 'Drone', 22: 'Overlord', 23: 'Mutalisk',
-      24: 'Guardian', 25: 'Queen', 26: 'Defiler', 27: 'Scourge',
-      29: 'Infested Terran',
-      
-      // Terran Buildings
-      106: 'Command Center', 109: 'Supply Depot', 110: 'Refinery', 111: 'Barracks',
-      112: 'Academy', 113: 'Factory', 114: 'Starport', 116: 'Science Facility',
-      118: 'Engineering Bay', 119: 'Armory', 120: 'Missile Turret', 121: 'Bunker',
-      
-      // Protoss Buildings
-      154: 'Nexus', 155: 'Robotics Facility', 156: 'Pylon', 157: 'Assimilator',
-      159: 'Observatory', 160: 'Gateway', 162: 'Photon Cannon',
-      163: 'Citadel of Adun', 164: 'Cybernetics Core', 165: 'Templar Archives',
-      166: 'Forge', 167: 'Stargate', 169: 'Fleet Beacon', 170: 'Arbiter Tribunal',
-      171: 'Robotics Support Bay', 172: 'Shield Battery',
-      
-      // Zerg Buildings
-      131: 'Hatchery', 132: 'Lair', 133: 'Hive', 134: 'Nydus Canal',
-      135: 'Hydralisk Den', 136: 'Defiler Mound', 137: 'Greater Spire',
-      138: 'Queens Nest', 139: 'Evolution Chamber', 140: 'Ultralisk Cavern',
-      141: 'Spire', 142: 'Spawning Pool', 143: 'Creep Colony',
-      144: 'Spore Colony', 146: 'Sunken Colony', 149: 'Extractor'
-    };
-
-    return unitNames[unitId] || `Unit ${unitId}`;
-  }
-
   // Helper methods
-  private canRead(bytes: number): boolean {
-    return this.position + bytes <= this.data.length;
-  }
-
-  private readUInt8(): number {
-    const value = this.data[this.position];
-    this.position++;
-    return value;
-  }
-
-  private readUInt16LE(): number {
-    const value = this.dataView.getUint16(this.position, true);
-    this.position += 2;
-    return value;
-  }
-
-  private readUInt32LE(): number {
-    const value = this.dataView.getUint32(this.position, true);
-    this.position += 4;
-    return value;
-  }
-
   private frameToTimestamp(frame: number): string {
-    const seconds = Math.floor(frame / 24);
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    const totalSeconds = Math.floor(frame / 24);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
 
-  private estimateSupply(frame: number, actionIndex: number): number {
-    const baseSupply = 9;
-    const supplyGrowth = Math.floor(frame / 600);
-    const buildOrderBonus = Math.floor(actionIndex / 2);
-    return Math.min(200, baseSupply + supplyGrowth + buildOrderBonus);
+  private getActionName(opcode: number): string {
+    const actionNames: Record<number, string> = {
+      0x09: 'Select Units',
+      0x0A: 'Shift Select',
+      0x0B: 'Shift Deselect',
+      0x0C: 'Build',
+      0x0D: 'Train',
+      0x0E: 'Rally Point',
+      0x13: 'Hotkey',
+      0x14: 'Move',
+      0x15: 'Attack',
+      0x18: 'Cancel',
+      0x1A: 'Cancel Upgrade',
+      0x1B: 'Stop',
+      0x1C: 'Carry/Hold Position',
+      0x1D: 'Unload All',
+      0x1E: 'Unload',
+      0x2F: 'Upgrade',
+      0x30: 'Research',
+      0x31: 'Use Tech',
+      0x32: 'Merge Archon'
+    };
+    return actionNames[opcode] || `Unknown (0x${opcode.toString(16)})`;
+  }
+
+  private getUnitName(unitId: number): string {
+    return ActionParser.UNIT_NAMES[unitId] || ActionParser.BUILDING_NAMES[unitId] || `Unit ${unitId}`;
+  }
+
+  private isBuildOpcode(opcode: number): boolean {
+    return opcode === 0x0C;
+  }
+
+  private isTrainOpcode(opcode: number): boolean {
+    return opcode === 0x0D;
+  }
+
+  private isMicroOpcode(opcode: number): boolean {
+    return [0x14, 0x15, 0x1B, 0x1C].includes(opcode);
+  }
+
+  private getActionLength(opcode: number): number {
+    // Return the byte length of each action type
+    const lengths: Record<number, number> = {
+      0x09: 3, 0x0A: 3, 0x0B: 3, 0x0C: 8, 0x0D: 8,
+      0x0E: 6, 0x13: 3, 0x14: 10, 0x15: 10, 0x18: 3,
+      0x1A: 3, 0x1B: 3, 0x1C: 3, 0x1D: 3, 0x1E: 3,
+      0x2F: 3, 0x30: 3, 0x31: 3, 0x32: 3
+    };
+    return lengths[opcode] || 1;
+  }
+
+  private estimateSupply(actionIndex: number, action: ParsedAction): number {
+    // Simple supply estimation based on action progression
+    const baseSupply = 9; // Starting supply
+    const supplyPerAction = 2; // Rough estimate
+    return baseSupply + (actionIndex * supplyPerAction);
   }
 }
