@@ -1,7 +1,7 @@
 
 /**
- * StarCraft: Brood War Remastered Header Parser
- * Based on real .rep file analysis and screp specification
+ * StarCraft: Brood War Header Parser
+ * Based on correct screp specification
  */
 
 import { BWBinaryReader } from './binaryReader';
@@ -15,108 +15,114 @@ export class BWHeaderParser {
   }
 
   parseHeader(): BWReplayHeader {
-    console.log('[BWHeaderParser] Starting header parse...');
+    console.log('[BWHeaderParser] Starting header parse with correct offsets...');
     
-    // First detect the file format
     const format = this.reader.detectFormat();
     console.log('[BWHeaderParser] Detected format:', format);
     
-    // Reset to beginning for actual parsing
     this.reader.setPosition(0);
     
     if (format.isCompressed) {
-      return this.parseCompressedHeader();
-    } else {
-      return this.parseStandardHeader(format);
+      throw new Error('Compressed replays not yet supported');
     }
+    
+    return this.parseStandardHeader();
   }
 
-  private parseCompressedHeader(): BWReplayHeader {
-    console.log('[BWHeaderParser] Parsing compressed header...');
+  private parseStandardHeader(): BWReplayHeader {
+    console.log('[BWHeaderParser] Parsing standard header with correct .rep structure...');
     
-    // For compressed files, we need to decompress first
-    // This is a simplified approach - real decompression would be more complex
-    throw new Error('Compressed replay files are not yet supported. Please try an uncompressed .rep file.');
-  }
-
-  private parseStandardHeader(format: any): BWReplayHeader {
-    console.log('[BWHeaderParser] Parsing standard header...');
+    // Based on screp specification:
+    // 0x00-0x04: Unknown data
+    // 0x04-0x08: Game speed, lock speed, etc.
+    // 0x08-0x0C: Frame count
     
-    // Skip to game data section - this varies by file but typically around 0x00-0x20
-    this.reader.setPosition(0);
-    
-    // Look for game metadata at various known positions
     let totalFrames = 0;
     let mapName = '';
-    let gameType = 0;
+    let gameType = 2; // Default to Melee
     let seed = 0;
     
-    // Try to find frames count (usually at 0x0C or similar)
     try {
+      // Read frame count at correct offset (0x0C according to screp)
       this.reader.setPosition(0x0C);
       if (this.reader.canRead(4)) {
         totalFrames = this.reader.readUInt32LE();
-        console.log('[BWHeaderParser] Found frames at 0x0C:', totalFrames);
+        console.log('[BWHeaderParser] Frame count at 0x0C:', totalFrames);
+        
+        // Validate frame count (should be reasonable)
+        if (totalFrames > 1000000 || totalFrames < 100) {
+          console.warn('[BWHeaderParser] Invalid frame count, using fallback');
+          totalFrames = 0;
+        }
       }
     } catch (e) {
-      console.warn('[BWHeaderParser] Could not read frames at 0x0C');
+      console.warn('[BWHeaderParser] Could not read frame count');
     }
     
-    // Try to find map name at various positions
-    const mapPositions = [0x68, 0x45, 0x61];
-    for (const pos of mapPositions) {
+    // Try to read map name from known locations in .rep files
+    // According to screp, map name can be at different offsets
+    const mapNameOffsets = [0x45, 0x61, 0x68];
+    
+    for (const offset of mapNameOffsets) {
       try {
-        this.reader.setPosition(pos);
+        this.reader.setPosition(offset);
         if (this.reader.canRead(32)) {
           const testName = this.reader.readFixedString(32);
-          if (testName.length > 0 && testName.length < 30) {
+          console.log(`[BWHeaderParser] Testing map name at 0x${offset.toString(16)}: "${testName}"`);
+          
+          if (testName.length > 0 && testName.length < 30 && this.isValidMapName(testName)) {
             mapName = testName;
-            console.log(`[BWHeaderParser] Found map name at 0x${pos.toString(16)}:`, mapName);
+            console.log(`[BWHeaderParser] Found valid map name: "${mapName}"`);
             break;
           }
         }
       } catch (e) {
-        // Try next position
+        console.warn(`[BWHeaderParser] Error reading map name at 0x${offset.toString(16)}:`, e);
       }
     }
     
-    // Try to find game type
+    // Try to read game type and seed
     try {
       this.reader.setPosition(0x1C0);
-      if (this.reader.canRead(2)) {
+      if (this.reader.canRead(6)) {
         gameType = this.reader.readUInt16LE();
-        console.log('[BWHeaderParser] Found game type:', gameType);
-      }
-    } catch (e) {
-      console.warn('[BWHeaderParser] Could not read game type');
-    }
-    
-    // Try to find seed
-    try {
-      this.reader.setPosition(0x1C4);
-      if (this.reader.canRead(4)) {
         seed = this.reader.readUInt32LE();
-        console.log('[BWHeaderParser] Found seed:', seed);
+        console.log('[BWHeaderParser] Game type:', gameType, 'Seed:', seed);
       }
     } catch (e) {
-      console.warn('[BWHeaderParser] Could not read seed');
+      console.warn('[BWHeaderParser] Could not read game type/seed');
     }
     
-    // If we couldn't find frames, estimate based on file size
+    // If frame count is still invalid, estimate from file size
     if (totalFrames === 0 || totalFrames > 100000) {
-      totalFrames = Math.floor(this.reader.getRemainingBytes() / 10); // Rough estimate
-      console.log('[BWHeaderParser] Estimated frames from file size:', totalFrames);
+      totalFrames = Math.floor(this.reader.getRemainingBytes() / 10);
+      console.log('[BWHeaderParser] Estimated frame count:', totalFrames);
     }
     
     return {
-      version: '1.18+', // Assume Remastered
+      version: '1.18+',
       seed: seed || 12345,
       totalFrames: totalFrames || 10000,
       mapName: mapName || 'Unknown Map',
-      playerCount: 0, // Will be determined by player parser
-      gameType: gameType || 2,
+      playerCount: 0,
+      gameType: gameType,
       gameSubType: 0,
       saveTime: Date.now()
     };
+  }
+  
+  private isValidMapName(name: string): boolean {
+    if (!name || name.length === 0) return false;
+    
+    // Check for mostly printable ASCII characters
+    let printableCount = 0;
+    for (let i = 0; i < name.length; i++) {
+      const char = name.charCodeAt(i);
+      if ((char >= 32 && char <= 126) || (char >= 128 && char <= 255)) {
+        printableCount++;
+      }
+    }
+    
+    return (printableCount / name.length) >= 0.8;
   }
 }

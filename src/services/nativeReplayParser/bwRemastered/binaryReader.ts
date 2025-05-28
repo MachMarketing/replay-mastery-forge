@@ -1,7 +1,7 @@
 
 /**
  * Enhanced Binary Reader for StarCraft: Brood War Replay files
- * Based on icza/screp specification and real .rep file analysis
+ * Based on correct .rep file specification from screp
  */
 
 export class BWBinaryReader {
@@ -80,81 +80,58 @@ export class BWBinaryReader {
   }
 
   /**
-   * Detect file format by analyzing magic bytes and structure
+   * Detect correct .rep file structure based on screp specification
    */
-  detectFormat(): { type: string, isCompressed: boolean, playerDataOffset: number } {
+  detectFormat(): { type: string, isCompressed: boolean, headerOffset: number, playerDataOffset: number } {
     const originalPos = this.position;
     this.setPosition(0);
     
-    // Read first few bytes to detect format
-    const firstBytes = this.readBytes(Math.min(32, this.buffer.length));
-    this.setPosition(originalPos);
-    
-    // Check for different StarCraft replay formats
-    const magicStr = String.fromCharCode(...firstBytes.slice(0, 4));
-    
-    if (magicStr === 'PKed') {
-      // Compressed replay
-      return { type: 'compressed', isCompressed: true, playerDataOffset: 0x279 };
-    } else if (magicStr === 'Repl') {
-      // Standard uncompressed replay
-      return { type: 'standard', isCompressed: false, playerDataOffset: 0x279 };
-    } else {
-      // Try to detect by content analysis
-      return this.analyzeUnknownFormat(firstBytes);
-    }
-  }
-
-  private analyzeUnknownFormat(firstBytes: Uint8Array): { type: string, isCompressed: boolean, playerDataOffset: number } {
-    // Look for player name patterns starting at different offsets
-    const possibleOffsets = [0x161, 0x1A1, 0x279, 0x200];
-    
-    for (const offset of possibleOffsets) {
-      if (this.hasValidPlayerDataAt(offset)) {
-        console.log(`[BWBinaryReader] Detected player data at offset 0x${offset.toString(16)}`);
-        return { type: 'detected', isCompressed: false, playerDataOffset: offset };
-      }
-    }
-    
-    // Default fallback
-    return { type: 'unknown', isCompressed: false, playerDataOffset: 0x1A1 };
-  }
-
-  private hasValidPlayerDataAt(offset: number): boolean {
-    if (offset + 200 > this.buffer.length) return false;
-    
-    const originalPos = this.position;
-    this.setPosition(offset);
-    
     try {
-      // Check if there are readable strings that look like player names
-      for (let i = 0; i < 8; i++) {
-        const slotOffset = offset + (i * 36); // Try 36-byte slots
-        if (slotOffset + 25 > this.buffer.length) break;
-        
-        this.setPosition(slotOffset);
-        const nameBytes = this.readBytes(25);
-        const name = this.decodeString(nameBytes);
-        
-        // Valid player name should be 1-25 characters, printable ASCII/Latin
-        if (name.length >= 1 && name.length <= 25 && this.isPrintableString(name)) {
-          this.setPosition(originalPos);
-          return true;
-        }
+      // Read replay header magic bytes
+      const magic = this.readUInt32LE();
+      this.setPosition(0);
+      
+      console.log(`[BWBinaryReader] Magic bytes: 0x${magic.toString(16)}`);
+      
+      // Check for compressed replay
+      if (magic === 0x5453494C) { // "LIST" in little endian
+        console.log('[BWBinaryReader] Detected compressed replay');
+        return { 
+          type: 'compressed', 
+          isCompressed: true, 
+          headerOffset: 0,
+          playerDataOffset: 0x1A1 
+        };
       }
+      
+      // Standard uncompressed replay - correct offsets based on screp
+      return { 
+        type: 'standard', 
+        isCompressed: false, 
+        headerOffset: 0,
+        playerDataOffset: 0x1A1  // Correct offset for player data in .rep files
+      };
+      
     } catch (e) {
-      // Error reading, not valid
+      console.warn('[BWBinaryReader] Error detecting format:', e);
+      return { 
+        type: 'unknown', 
+        isCompressed: false, 
+        headerOffset: 0,
+        playerDataOffset: 0x1A1 
+      };
+    } finally {
+      this.setPosition(originalPos);
     }
-    
-    this.setPosition(originalPos);
-    return false;
   }
 
   /**
-   * Try multiple encodings to decode string properly
+   * Decode string with proper encoding handling
    */
   private decodeString(bytes: Uint8Array): string {
-    // Remove trailing zeros first
+    if (bytes.length === 0) return '';
+    
+    // Remove trailing zeros
     let actualLength = bytes.length;
     for (let i = bytes.length - 1; i >= 0; i--) {
       if (bytes[i] === 0) {
@@ -167,49 +144,19 @@ export class BWBinaryReader {
     const trimmedBytes = bytes.slice(0, actualLength);
     if (trimmedBytes.length === 0) return '';
     
-    // Try different encodings in order of preference
-    const encodings = ['windows-1252', 'iso-8859-1', 'utf-8'];
-    
-    for (const encoding of encodings) {
-      try {
-        const decoder = new TextDecoder(encoding, { fatal: true });
-        const result = decoder.decode(trimmedBytes);
-        
-        // Check if result contains mostly printable characters
-        if (this.isPrintableString(result)) {
-          return result.trim();
-        }
-      } catch (e) {
-        // Try next encoding
-      }
-    }
-    
-    // Fallback: manual ASCII conversion
+    // Convert to string - StarCraft uses Windows-1252 encoding typically
     let result = '';
     for (const byte of trimmedBytes) {
       if (byte >= 32 && byte <= 126) {
+        // Standard ASCII
         result += String.fromCharCode(byte);
-      } else if (byte >= 160 && byte <= 255) {
+      } else if (byte >= 128 && byte <= 255) {
+        // Extended ASCII (Windows-1252)
         result += String.fromCharCode(byte);
       }
     }
     
     return result.trim();
-  }
-
-  private isPrintableString(str: string): boolean {
-    if (str.length === 0) return false;
-    
-    let printableCount = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      if ((char >= 32 && char <= 126) || (char >= 160 && char <= 255) || char === 9 || char === 10 || char === 13) {
-        printableCount++;
-      }
-    }
-    
-    // At least 80% should be printable
-    return (printableCount / str.length) >= 0.8;
   }
 
   /**
