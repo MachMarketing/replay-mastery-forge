@@ -1,3 +1,4 @@
+
 /**
  * Buffer utilities for browser-compatible replay parsing
  * Handles conversion between different buffer types for screp-js compatibility
@@ -21,12 +22,12 @@ export function arrayBufferToBuffer(arrayBuffer: ArrayBuffer): Buffer {
     // Add Buffer methods that screp-js might need
     toString(encoding?: string) {
       if (encoding === 'hex') {
-        return Array.from(this).map(b => b.toString(16).padStart(2, '0')).join('');
+        return Array.from(uint8Array).map(b => b.toString(16).padStart(2, '0')).join('');
       }
-      return new TextDecoder().decode(this);
+      return new TextDecoder().decode(uint8Array);
     },
     slice(start?: number, end?: number) {
-      return this.subarray(start, end);
+      return uint8Array.subarray(start, end);
     }
   });
   
