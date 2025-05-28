@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -11,7 +10,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
-	"github.com/icza/screp/rep"
+	rep "github.com/icza/screp/replay"
 	"github.com/icza/screp/rep/repcmd"
 )
 
@@ -105,12 +104,12 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 	frames := 0
 
 	if replayData.Header != nil {
-		frames = int(replayData.Header.Frames())
-		if replayData.Header.Map() != "" {
-			mapName = replayData.Header.Map()
+		frames = int(replayData.Header.Frames)
+		if replayData.Header.Map != "" {
+			mapName = replayData.Header.Map
 		}
 
-		for _, player := range replayData.Header.Players() {
+		for _, player := range replayData.Header.Players {
 			if player != nil && player.Name != "" {
 				raceStr := getRaceString(int(player.Race))
 				apm := calculateAPM(replayData, int(player.ID), frames)
@@ -132,22 +131,13 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 			if cmd != nil {
-				frame := int(cmd.Frame())
+				frame := int(cmd.Frame)
 				cmdType := fmt.Sprintf("%T", cmd)
-				
-				var playerID byte
-				if builderCmd, ok := cmd.(*repcmd.BuildCmd); ok {
-					playerID = builderCmd.PlayerID()
-				} else if trainCmd, ok := cmd.(*repcmd.TrainCmd); ok {
-					playerID = trainCmd.PlayerID()
-				} else if selectCmd, ok := cmd.(*repcmd.SelectCmd); ok {
-					playerID = selectCmd.PlayerID()
-				}
 				
 				commands = append(commands, Command{
 					Frame: frame,
 					Type:  cmdType,
-					Data:  fmt.Sprintf("Player: %d", playerID),
+					Data:  fmt.Sprintf("Player: %d", cmd.PlayerID),
 				})
 			}
 		}
