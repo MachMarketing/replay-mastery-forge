@@ -1,3 +1,4 @@
+
 /**
  * Enhanced command parser for StarCraft: Brood War Remastered replays
  * Now includes aggressive raw command extraction when decompression fails
@@ -72,7 +73,9 @@ export class BWCommandParser {
     console.log('[BWCommandParser] Trying SmartZlibExtractor');
     
     try {
-      const extractionResult = SmartZlibExtractor.extractAndAssembleStream(this.reader.data);
+      // Convert DataView to Uint8Array for SmartZlibExtractor
+      const uint8Array = new Uint8Array(this.reader.data.buffer, this.reader.data.byteOffset, this.reader.data.byteLength);
+      const extractionResult = SmartZlibExtractor.extractAndAssembleStream(uint8Array);
       
       if (extractionResult.success && extractionResult.combinedStream.length > 1000) {
         console.log(`[BWCommandParser] SmartZlibExtractor found ${extractionResult.totalCommands} commands in stream`);
