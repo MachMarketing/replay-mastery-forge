@@ -62,15 +62,35 @@ export class ImprovedSeRSWrapper {
           race: parseResult.players[0]?.race || 'Terran',
           apm: parseResult.apm[0] || 0,
           eapm: parseResult.eapm[0] || 0,
-          buildOrder: parseResult.buildOrders[0] || []
+          buildOrder: parseResult.buildOrders[0] || [],
+          strengths: [],
+          weaknesses: [],
+          recommendations: []
         },
         secondaryPlayer: {
           name: parseResult.players[1]?.name || 'Player 2',
           race: parseResult.players[1]?.race || 'Protoss',
           apm: parseResult.apm[1] || 0,
           eapm: parseResult.eapm[1] || 0,
-          buildOrder: parseResult.buildOrders[1] || []
-        }
+          buildOrder: parseResult.buildOrders[1] || [],
+          strengths: [],
+          weaknesses: [],
+          recommendations: []
+        },
+        // Legacy compatibility
+        playerName: parseResult.players[0]?.name || 'Player 1',
+        opponentName: parseResult.players[1]?.name || 'Player 2',
+        playerRace: parseResult.players[0]?.race || 'Terran',
+        opponentRace: parseResult.players[1]?.race || 'Protoss',
+        apm: parseResult.apm[0] || 0,
+        eapm: parseResult.eapm[0] || 0,
+        opponentApm: parseResult.apm[1] || 0,
+        opponentEapm: parseResult.eapm[1] || 0,
+        buildOrder: parseResult.buildOrders[0] || [],
+        strengths: [],
+        weaknesses: [],
+        recommendations: [],
+        trainingPlan: []
       };
 
       console.log('[ImprovedSeRSWrapper] ===== FINAL RESULT =====');
