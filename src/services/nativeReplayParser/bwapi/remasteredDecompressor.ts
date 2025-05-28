@@ -1,4 +1,3 @@
-
 /**
  * Remastered Zlib Decompressor basierend auf screp-js Implementierung
  * Speziell für StarCraft: Brood War Remastered Format
@@ -22,6 +21,44 @@ export interface DecompressionResult {
 }
 
 export class RemasteredDecompressor {
+  /**
+   * Check if data appears to be a compressed block
+   */
+  static isCompressedBlock(data: Uint8Array): boolean {
+    if (data.length < 2) return false;
+    
+    // Check for zlib signatures
+    const zlibSignatures = [
+      [0x78, 0x9C], // Standard deflate
+      [0x78, 0xDA], // Best compression
+      [0x78, 0x01], // No compression
+      [0x78, 0x5E], // Fast compression
+      [0x78, 0x2C]  // Alternative
+    ];
+    
+    for (const signature of zlibSignatures) {
+      if (data[0] === signature[0] && data[1] === signature[1]) {
+        return true;
+      }
+    }
+    
+    // Check for other compression indicators
+    const textContent = new TextDecoder('latin1', { fatal: false }).decode(data.slice(0, Math.min(100, data.length)));
+    return textContent.includes('LIST') || textContent.includes('RIFF');
+  }
+
+  /**
+   * Decompress a single block
+   */
+  static decompressBlock(data: Uint8Array): ArrayBuffer {
+    try {
+      const decompressed = pako.inflate(data);
+      return decompressed.buffer;
+    } catch (error) {
+      throw new Error(`Failed to decompress block: ${error}`);
+    }
+  }
+
   /**
    * Hauptfunktion für Remastered Zlib Decompression
    */

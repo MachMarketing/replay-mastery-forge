@@ -11,7 +11,7 @@ export interface BWAPICommand extends Command {
   cmdId: number;
   typeString: string;
   data: Uint8Array;
-  parameters: any;
+  parameters: any; // Required, not optional
   category: 'build' | 'train' | 'micro' | 'macro' | 'selection' | 'sync' | 'other';
   isEffectiveAction: boolean;
   // Kompatibilität mit BWCommand
@@ -239,6 +239,7 @@ export class BWAPICommandEngine {
       cmdId: command.type,
       category,
       isEffectiveAction,
+      parameters: command.parameters || {}, // Ensure parameters is always defined
       // Kompatibilität mit BWCommand
       userId: command.playerId,
       typeString: command.typeString || COMMAND_NAMES[command.type] || `UNKNOWN_${command.type.toString(16)}`

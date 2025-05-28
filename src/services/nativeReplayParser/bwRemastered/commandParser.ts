@@ -92,7 +92,7 @@ export class BWCommandParser {
 
     for (let pos = 0; pos < Math.min(dataSize - 50, 2000); pos++) {
       this.reader.setPosition(currentPos + pos);
-      const byte = this.reader.readByte();
+      const byte = this.reader.readUInt8();
       
       if (patterns.some(pattern => pattern[0] === byte)) {
         // Validate by checking if we can parse a few commands
@@ -119,14 +119,14 @@ export class BWCommandParser {
       for (let i = 0; i < count; i++) {
         if (!this.reader.canRead(1)) break;
         
-        const cmdByte = this.reader.readByte();
+        const cmdByte = this.reader.readUInt8();
         
         // Frame commands
         if (cmdByte === 0x00 || cmdByte === 0x01 || cmdByte === 0x02) {
           if (cmdByte === 0x01 && this.reader.canRead(1)) {
-            this.reader.readByte(); // Skip frame count
+            this.reader.readUInt8(); // Skip frame count
           } else if (cmdByte === 0x02 && this.reader.canRead(2)) {
-            this.reader.readUInt16(); // Skip large frame count
+            this.reader.readUInt16LE(); // Skip large frame count
           }
           validCommands++;
           continue;
@@ -158,7 +158,7 @@ export class BWCommandParser {
     }
 
     try {
-      const commandByte = this.reader.readByte();
+      const commandByte = this.reader.readUInt8();
       
       // Handle frame updates with correct BWAPI logic
       if (commandByte === 0x00) {
@@ -168,7 +168,7 @@ export class BWCommandParser {
       
       if (commandByte === 0x01) {
         if (this.reader.canRead(1)) {
-          const skipFrames = this.reader.readByte();
+          const skipFrames = this.reader.readUInt8();
           this.currentFrame += skipFrames;
         }
         return null;
@@ -176,7 +176,7 @@ export class BWCommandParser {
       
       if (commandByte === 0x02) {
         if (this.reader.canRead(2)) {
-          const skipFrames = this.reader.readUInt16();
+          const skipFrames = this.reader.readUInt16LE();
           this.currentFrame += skipFrames;
         }
         return null;
@@ -206,12 +206,11 @@ export class BWCommandParser {
       }
 
       const commandData = this.reader.readBytes(length);
-      const playerId = commandData[0] || 0;
+      const userId = commandData[0] || 0;
       
       return {
         frame: this.currentFrame,
-        userId: playerId, // BWCommand compatibility
-        playerId,
+        userId, // BWCommand uses userId, not playerId
         type: commandType,
         typeString: COMMAND_NAMES[commandType] || `UNKNOWN_${commandType.toString(16)}`,
         data: commandData,
@@ -231,15 +230,14 @@ export class BWCommandParser {
       return null;
     }
 
-    const playerId = this.reader.readByte();
+    const userId = this.reader.readUInt8();
     
     return {
       frame: this.currentFrame,
-      userId: playerId,
-      playerId,
+      userId,
       type: commandType,
       typeString: COMMAND_NAMES[commandType] || `UNKNOWN_${commandType.toString(16)}`,
-      data: new Uint8Array([playerId]),
+      data: new Uint8Array([userId]),
       parameters: {}
     };
   }
