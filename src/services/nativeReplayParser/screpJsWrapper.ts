@@ -1,9 +1,10 @@
+
 /**
- * Enhanced screp-js wrapper with bulletproof Remastered command extraction
+ * Enhanced screp-js wrapper with screp-compliant parsing
  */
 
 import { ensureBufferPolyfills, fileToBuffer } from './bufferUtils';
-import { RemasteredCommandExtractor, RemasteredExtractionResult } from './remasteredCommandExtractor';
+import { ScrepCompliantParser, ScrepParseResult } from './screpCompliantParser';
 
 // Dynamic import for screp-js
 let screpJs: any = null;
@@ -52,7 +53,7 @@ export interface ReplayParseResult {
       action: string;
       supply?: number;
     }>>;
-    dataSource: 'screp-js' | 'remastered-extractor' | 'hybrid';
+    dataSource: 'screp-js' | 'screp-compliant' | 'hybrid';
   };
 }
 
@@ -71,14 +72,14 @@ export class ScrepJsWrapper {
   async initialize(): Promise<boolean> {
     if (this.isInitialized) return true;
 
-    console.log('[ScrepJsWrapper] ===== INITIALIZING ENHANCED WRAPPER =====');
+    console.log('[ScrepJsWrapper] ===== INITIALIZING SCREP-COMPLIANT WRAPPER =====');
     
     ensureBufferPolyfills();
     this.screpLib = await loadScrepJs();
     this.isInitialized = true;
     
-    console.log('[ScrepJsWrapper] Initialization complete, screp-js available:', !!this.screpLib);
-    return true; // Always return true as we have fallback
+    console.log('[ScrepJsWrapper] Initialization complete');
+    return true;
   }
 
   async parseReplay(file: File): Promise<ReplayParseResult> {
@@ -86,61 +87,45 @@ export class ScrepJsWrapper {
       await this.initialize();
     }
 
-    console.log('[ScrepJsWrapper] ===== STARTING BULLETPROOF REMASTERED PARSING =====');
+    console.log('[ScrepJsWrapper] ===== STARTING SCREP-COMPLIANT PARSING =====');
     console.log('[ScrepJsWrapper] File:', file.name, 'Size:', file.size);
     
     const buffer = await fileToBuffer(file);
     console.log('[ScrepJsWrapper] Buffer size:', buffer.length);
     
-    // Try screp-js first for header data
-    let screpResult: any = null;
-    let headerSuccess = false;
+    // Use our screp-compliant parser for accurate data
+    console.log('[ScrepJsWrapper] Using screp-compliant parser...');
+    const compliantParser = new ScrepCompliantParser(buffer.buffer);
     
+    let parseResult: ScrepParseResult;
+    try {
+      parseResult = await compliantParser.parseReplay();
+      console.log('[ScrepJsWrapper] Screp-compliant parsing: SUCCESS');
+    } catch (error) {
+      console.error('[ScrepJsWrapper] Screp-compliant parsing failed:', error);
+      throw new Error(`Screp-compliant parsing failed: ${error.message}`);
+    }
+
+    // Try to get additional header info from screp-js if available
+    let screpHeader: any = null;
     if (this.screpLib) {
       try {
-        console.log('[ScrepJsWrapper] Attempting screp-js header extraction...');
-        screpResult = await this.tryScrepJsParsing(buffer);
-        headerSuccess = true;
+        console.log('[ScrepJsWrapper] Attempting screp-js for additional header info...');
+        screpHeader = await this.tryScrepJsHeader(buffer);
         console.log('[ScrepJsWrapper] screp-js header extraction: SUCCESS');
-        console.log('[ScrepJsWrapper] Map:', screpResult?.Header?.Map || 'Unknown');
-        console.log('[ScrepJsWrapper] Players:', screpResult?.Header?.Players?.length || 0);
       } catch (error) {
-        console.warn('[ScrepJsWrapper] screp-js header extraction failed:', error);
+        console.warn('[ScrepJsWrapper] screp-js header extraction failed, using parsed data');
       }
     }
 
-    // Always use RemasteredCommandExtractor for commands and metrics
-    console.log('[ScrepJsWrapper] ===== USING REMASTERED COMMAND EXTRACTOR =====');
-    
-    const extractor = new RemasteredCommandExtractor(buffer);
-    const playerCount = this.extractPlayerCount(screpResult);
-    const totalFrames = this.extractFrameCount(screpResult, buffer);
-    
-    console.log('[ScrepJsWrapper] Detected players:', playerCount);
-    console.log('[ScrepJsWrapper] Detected frames:', totalFrames);
-    
-    let commandResult: RemasteredExtractionResult;
-    try {
-      commandResult = await extractor.extractCommands(playerCount, totalFrames);
-      console.log('[ScrepJsWrapper] Remastered extraction: SUCCESS');
-      console.log('[ScrepJsWrapper] Method used:', commandResult.extractionMethod);
-      console.log('[ScrepJsWrapper] Commands found:', commandResult.commands.length);
-      console.log('[ScrepJsWrapper] APM extracted:', commandResult.playerAPM);
-      console.log('[ScrepJsWrapper] Build orders:', commandResult.buildOrders.map(bo => `${bo.length} actions`));
-    } catch (error) {
-      console.error('[ScrepJsWrapper] Remastered extraction failed:', error);
-      throw new Error(`Remastered command extraction failed: ${error.message}`);
-    }
-    
     // Combine results
-    return this.combineResults(screpResult, commandResult, headerSuccess);
+    return this.combineResults(parseResult, screpHeader);
   }
 
-  private async tryScrepJsParsing(buffer: Uint8Array): Promise<any> {
+  private async tryScrepJsHeader(buffer: Uint8Array): Promise<any> {
     const methods = [
       { name: 'parseBuffer', options: { commands: false } },
-      { name: 'parseReplay', options: {} },
-      { name: 'parse', options: {} }
+      { name: 'parseReplay', options: {} }
     ];
 
     for (const method of methods) {
@@ -156,7 +141,7 @@ export class ScrepJsWrapper {
           }
 
           if (result && result.Header) {
-            console.log(`[ScrepJsWrapper] ${method.name} successful for header`);
+            console.log(`[ScrepJsWrapper] ${method.name} successful`);
             return result;
           }
         } catch (error) {
@@ -165,149 +150,66 @@ export class ScrepJsWrapper {
       }
     }
 
-    throw new Error('All screp-js methods failed');
+    return null;
   }
 
-  private extractPlayerCount(screpResult: any): number {
-    if (screpResult?.Header?.Players?.length) {
-      return screpResult.Header.Players.length;
-    }
-    return 2; // Default assumption
-  }
-
-  private extractFrameCount(screpResult: any, buffer: Uint8Array): number {
-    if (screpResult?.Header?.Frames) {
-      return screpResult.Header.Frames;
-    }
-    // Estimate from file size
-    return Math.floor(buffer.length / 15);
-  }
-
-  private combineResults(screpResult: any, commandResult: RemasteredExtractionResult, headerSuccess: boolean): ReplayParseResult {
-    console.log('[ScrepJsWrapper] ===== COMBINING RESULTS =====');
+  private combineResults(parseResult: ScrepParseResult, screpHeader: any): ReplayParseResult {
+    console.log('[ScrepJsWrapper] ===== COMBINING SCREP-COMPLIANT RESULTS =====');
     
-    // Extract header data
-    let header, players;
-    
-    if (headerSuccess && screpResult) {
-      header = this.extractHeaderFromScrep(screpResult);
-      players = this.extractPlayersFromScrep(screpResult);
-      console.log('[ScrepJsWrapper] Using screp-js header and player data');
-    } else {
-      header = this.createFallbackHeader(commandResult);
-      players = this.createFallbackPlayers(commandResult.playerAPM.length);
-      console.log('[ScrepJsWrapper] Using fallback header and player data');
+    // Use screp-compliant data as primary source
+    const players = parseResult.header.playerNames.map((name, index) => ({
+      name,
+      race: parseResult.header.playerRaces[index] || 'Unknown',
+      team: index % 2,
+      color: index
+    }));
+
+    // If screp-js provided additional header info, use it to enhance
+    let mapName = parseResult.header.mapName;
+    if (screpHeader?.Header?.Map) {
+      mapName = screpHeader.Header.Map.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
     }
 
-    // Ensure dataSource is one of the allowed types
-    const dataSource: 'screp-js' | 'remastered-extractor' | 'hybrid' = headerSuccess ? 'hybrid' : 'remastered-extractor';
-    
     const result: ReplayParseResult = {
-      header,
+      header: {
+        engine: 'StarCraft',
+        version: 'Remastered',
+        frames: parseResult.header.frameCount,
+        startTime: new Date(),
+        mapName,
+        gameType: 'Melee',
+        duration: parseResult.header.duration
+      },
       players,
-      commands: [], // Don't include commands for performance
+      commands: [], // Don't include for performance
       computed: {
-        playerAPM: commandResult.playerAPM,
-        playerEAPM: commandResult.playerEAPM,
-        buildOrders: commandResult.buildOrders,
-        dataSource
+        playerAPM: parseResult.metrics.apm,
+        playerEAPM: parseResult.metrics.eapm,
+        buildOrders: parseResult.buildOrders.map(bo => 
+          bo.map(item => ({
+            frame: item.frame,
+            timestamp: item.timestamp,
+            action: item.unitName,
+            supply: item.supply
+          }))
+        ),
+        dataSource: screpHeader ? 'hybrid' : 'screp-compliant'
       }
     };
 
-    console.log('[ScrepJsWrapper] ===== FINAL BULLETPROOF RESULT =====');
-    console.log('[ScrepJsWrapper] Data source:', dataSource);
-    console.log('[ScrepJsWrapper] Game version:', commandResult.gameVersion);
-    console.log('[ScrepJsWrapper] Extraction method:', commandResult.extractionMethod);
+    console.log('[ScrepJsWrapper] ===== FINAL SCREP-COMPLIANT RESULT =====');
+    console.log('[ScrepJsWrapper] Data source:', result.computed.dataSource);
     console.log('[ScrepJsWrapper] Map:', result.header.mapName);
     console.log('[ScrepJsWrapper] Players:', result.players.map(p => `${p.name} (${p.race})`));
-    console.log('[ScrepJsWrapper] APM (100% REAL):', result.computed.playerAPM);
-    console.log('[ScrepJsWrapper] EAPM (100% REAL):', result.computed.playerEAPM);
-    console.log('[ScrepJsWrapper] Build Orders (100% REAL):', result.computed.buildOrders.map(bo => `${bo.length} actions`));
-    console.log('[ScrepJsWrapper] Total commands processed:', commandResult.commands.length);
+    console.log('[ScrepJsWrapper] REAL APM:', result.computed.playerAPM);
+    console.log('[ScrepJsWrapper] REAL EAPM:', result.computed.playerEAPM);
+    console.log('[ScrepJsWrapper] REAL Build Orders:', result.computed.buildOrders.map(bo => `${bo.length} actions`));
+    console.log('[ScrepJsWrapper] Total actions processed:', parseResult.actions.length);
 
     return result;
   }
 
-  private extractHeaderFromScrep(screpResult: any): any {
-    const header = screpResult.Header || {};
-    const frames = header.Frames || 10000;
-    const durationMs = Math.floor(frames * 1000 / 24);
-    const minutes = Math.floor(durationMs / 60000);
-    const seconds = Math.floor((durationMs % 60000) / 1000);
-
-    return {
-      engine: header.Engine?.Name || 'StarCraft',
-      version: 'Remastered',
-      frames: frames,
-      startTime: new Date(header.StartTime || Date.now()),
-      mapName: (header.Map || 'Unknown Map').replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim(),
-      gameType: header.Type?.Name || 'Melee',
-      duration: `${minutes}:${seconds.toString().padStart(2, '0')}`
-    };
-  }
-
-  private extractPlayersFromScrep(screpResult: any): any[] {
-    const rawPlayers = screpResult.Header?.Players || [];
-    
-    return rawPlayers.map((player: any, index: number) => ({
-      name: player.Name || `Player ${index + 1}`,
-      race: this.extractRace(player.Race),
-      team: player.Team || (index % 2),
-      color: player.Color?.ID || index
-    }));
-  }
-
-  private createFallbackHeader(commandResult: RemasteredExtractionResult): any {
-    const estimatedFrames = Math.max(...commandResult.commands.map(cmd => cmd.frame)) || 10000;
-    const minutes = Math.floor(estimatedFrames / (24 * 60));
-    const seconds = Math.floor((estimatedFrames / 24) % 60);
-
-    return {
-      engine: 'StarCraft',
-      version: commandResult.gameVersion,
-      frames: estimatedFrames,
-      startTime: new Date(),
-      mapName: 'Parsed Map',
-      gameType: 'Melee',
-      duration: `${minutes}:${seconds.toString().padStart(2, '0')}`
-    };
-  }
-
-  private createFallbackPlayers(playerCount: number): any[] {
-    const races = ['Terran', 'Protoss', 'Zerg'];
-    
-    return Array.from({ length: playerCount }, (_, index) => ({
-      name: `Player ${index + 1}`,
-      race: races[index % races.length],
-      team: index % 2,
-      color: index
-    }));
-  }
-
-  private extractRace(raceObj: any): string {
-    if (!raceObj) return 'Random';
-    
-    if (raceObj.Name) return raceObj.Name;
-    if (raceObj.ShortName) {
-      const shortNameMap: Record<string, string> = {
-        'toss': 'Protoss',
-        'terr': 'Terran',
-        'zerg': 'Zerg'
-      };
-      return shortNameMap[raceObj.ShortName.toLowerCase()] || raceObj.ShortName;
-    }
-    
-    const raceMap: Record<number, string> = {
-      0: 'Zerg',
-      1: 'Terran', 
-      2: 'Protoss',
-      6: 'Random'
-    };
-    
-    return raceMap[raceObj.ID] || 'Random';
-  }
-
   isAvailable(): boolean {
-    return true; // Always available with fallback
+    return true;
   }
 }
