@@ -19,14 +19,20 @@ export function useReplayParser(): UseReplayParserReturn {
     console.log('[useReplayParser] Starting enhanced parsing for file:', file.name);
     
     try {
+      // Use the new enhanced parsing method
       const result = await EnhancedScrepWrapper.parseReplayEnhanced(file);
       
       console.log('[useReplayParser] Enhanced parsing completed:', {
         method: result.enhanced.extractionMethod,
         hasActions: result.enhanced.hasDetailedActions,
         actionsExtracted: result.enhanced.debugInfo.actionsExtracted,
-        buildOrdersGenerated: result.enhanced.debugInfo.buildOrdersGenerated
+        buildOrdersGenerated: result.enhanced.debugInfo.buildOrdersGenerated,
+        activeParser: result.enhanced.debugInfo.qualityCheck.activeParser,
+        finalAPM: result.enhanced.debugInfo.qualityCheck.apmValidation.chosenAPM
       });
+      
+      // Debug log the full result structure
+      console.log('[useReplayParser] ENHANCED REPLAY DATA:', result);
       
       return result;
     } catch (err) {
