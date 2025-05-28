@@ -1,4 +1,3 @@
-
 /**
  * Buffer utilities for browser-compatible replay parsing
  * Handles conversion between different buffer types for screp-js compatibility
@@ -27,7 +26,7 @@ export function arrayBufferToBuffer(arrayBuffer: ArrayBuffer): Buffer {
       return new TextDecoder().decode(this);
     },
     slice(start?: number, end?: number) {
-      return this.subarray(start, end);
+      return uint8Array.subarray(start, end);
     }
   });
   
