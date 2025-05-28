@@ -1,6 +1,7 @@
 
 /**
  * Smart Zlib Extractor - Robust decompression for SC:BW Remastered .rep files
+ * Browser-compatible version using pako instead of Node.js zlib
  * Based on advanced zlib header validation and command stream analysis
  */
 
@@ -25,7 +26,7 @@ export interface ExtractionResult {
 
 export class SmartZlibExtractor {
   /**
-   * Validate zlib header with CMF+FLG checksum
+   * Validate zlib header with CMF+FLG checksum (Schritt 1)
    */
   private static isValidZlibHeader(buf: Uint8Array, offset: number): boolean {
     if (offset + 1 >= buf.length) return false;
@@ -41,7 +42,7 @@ export class SmartZlibExtractor {
   }
 
   /**
-   * Decompress block with both inflate methods - Fixed to always return result
+   * Decompress block with both inflate methods (Schritt 2) - Browser-compatible with pako
    */
   private static decompressBlock(
     block: Uint8Array,
@@ -63,50 +64,51 @@ export class SmartZlibExtractor {
   }
 
   /**
-   * Count frame sync bytes (0x00)
+   * Count frame sync bytes (0x00) (Schritt 3)
    */
   private static countFrameSyncs(buf: Uint8Array): number {
     return buf.filter(b => b === 0x00).length;
   }
 
   /**
-   * Count valid StarCraft command IDs
+   * Count valid StarCraft command IDs - Updated with correct BWAPI commands (Schritt 3)
    */
   private static countValidCommandIDs(buf: Uint8Array): number {
     const validCommands = new Set([
+      // Core BWAPI commands based on your specification
+      0x0C, // Build
+      0x0D, // Vision
+      0x0F, // Cancel Build/Morph
+      0x10, // Stop
+      0x11, // Attack Move
+      0x13, // Right Click
+      0x14, // Train
+      0x16, // Cancel
+      0x1A, // Use Tech
+      0x1D, // Train Unit
+      0x20, // Build Self (Drone-Morph)
+      0x21, // Unit Morph
+      0x22, // Unload
+      0x23, // Unsiege
+      0x24, // Siege
+      0x25, // Train Fighter
+      // Additional important commands
       0x09, // Select
       0x0A, // Shift Select
       0x0B, // Shift Deselect
-      0x0C, // Build
-      0x0D, // Vision
       0x0E, // Alliance
-      0x11, // Burrow
-      0x13, // Hotkey
-      0x14, // Move
       0x15, // Attack
-      0x16, // Cancel
-      0x17, // Cancel Hatch
-      0x18, // Stop
-      0x1A, // Unit Morph
-      0x1D, // Train
-      0x1E, // Cancel Train
+      0x1B, // Use Tech Position
       0x1F, // Cloak
-      0x20, // Decloak
-      0x21, // Unit Morph
-      0x24, // Research
-      0x25, // Upgrade
       0x2F, // Research
-      0x30, // Cancel Research
       0x31, // Upgrade
-      0x32, // Cancel Upgrade
-      0x34  // Building Morph
     ]);
     
     return buf.filter(b => validCommands.has(b)).length;
   }
 
   /**
-   * Validate if data looks like a StarCraft command stream - Fixed null handling
+   * Validate if data looks like a StarCraft command stream (Schritt 3)
    */
   private static isLikelyCommandStream(data: Uint8Array | null): boolean {
     if (!data || data.length < 50) return false;
@@ -115,12 +117,12 @@ export class SmartZlibExtractor {
     const validCommands = this.countValidCommandIDs(data);
     const frameSyncRatio = frameSyncs / data.length;
     
-    // Frame syncs should be 10-70% of data, with at least 10 valid commands
-    return frameSyncRatio > 0.1 && frameSyncRatio < 0.7 && validCommands > 10;
+    // Frame syncs should be 5-70% of data, with at least 10 valid commands
+    return frameSyncRatio > 0.05 && frameSyncRatio < 0.7 && validCommands > 10;
   }
 
   /**
-   * Extract all valid zlib blocks from buffer
+   * Extract all valid zlib blocks from buffer (Schritt 4)
    */
   public static extractZlibBlocks(buf: Uint8Array): ZlibBlock[] {
     console.log('[SmartZlibExtractor] Starting zlib block extraction');
@@ -129,8 +131,8 @@ export class SmartZlibExtractor {
     for (let i = 32; i < buf.length - 100; i++) {
       if (!this.isValidZlibHeader(buf, i)) continue;
       
-      // Try different block sizes
-      const blockSizes = [128, 256, 512, 1024, 2048, 4096, 8192];
+      // Try different block sizes: 256, 384, 512, 768, 1024, 2048, 4096, 8192
+      const blockSizes = [256, 384, 512, 768, 1024, 2048, 4096, 8192];
       let blockFound = false;
       
       for (const blockSize of blockSizes) {
@@ -173,9 +175,8 @@ export class SmartZlibExtractor {
       
       // If no valid block found, continue to next position
       if (!blockFound) {
-        // Try smaller increments for dense zlib data
-        if (i % 16 === 0) {
-          // Only log every 16th failure to avoid spam
+        // Only log every 32nd failure to avoid spam
+        if (i % 32 === 0) {
           console.log(`[SmartZlibExtractor] No valid block found at ${i}`);
         }
       }
@@ -186,7 +187,7 @@ export class SmartZlibExtractor {
   }
 
   /**
-   * Extract and assemble complete command stream
+   * Extract and assemble complete command stream (Schritt 5)
    */
   public static extractAndAssembleStream(buf: Uint8Array): ExtractionResult {
     console.log('[SmartZlibExtractor] Starting stream assembly');
@@ -228,7 +229,7 @@ export class SmartZlibExtractor {
     console.log(`  - Validation score: ${validationScore}`);
     
     return {
-      success: totalCommands > 100, // Require at least 100 commands for success
+      success: totalCommands > 50, // Reduced threshold for more realistic validation
       combinedStream,
       blocks: validBlocks,
       totalCommands,
@@ -251,33 +252,64 @@ export class SmartZlibExtractor {
     
     // Command density (more commands = better)
     if (commands > 1000) score += 40;
-    else if (commands > 500) score += 30;
-    else if (commands > 100) score += 20;
-    else if (commands > 50) score += 10;
+    else if (commands > 500) score += 35;
+    else if (commands > 200) score += 30;
+    else if (commands > 100) score += 25;
+    else if (commands > 50) score += 15;
     
     // Frame sync ratio (should be reasonable)
-    if (frameSyncRatio > 0.1 && frameSyncRatio < 0.7) score += 30;
-    else if (frameSyncRatio > 0.05 && frameSyncRatio < 0.8) score += 20;
-    else if (frameSyncRatio > 0.02) score += 10;
+    if (frameSyncRatio > 0.05 && frameSyncRatio < 0.7) score += 30;
+    else if (frameSyncRatio > 0.02 && frameSyncRatio < 0.8) score += 20;
+    else if (frameSyncRatio > 0.01) score += 10;
     
     // Stream length (reasonable size)
     if (data.length > 10000) score += 20;
     else if (data.length > 5000) score += 15;
     else if (data.length > 1000) score += 10;
+    else if (data.length > 500) score += 5;
     
     // Diversity check (not all same bytes)
-    const uniqueBytes = new Set(data.slice(0, 1000)).size;
+    const uniqueBytes = new Set(data.slice(0, Math.min(1000, data.length))).size;
     if (uniqueBytes > 50) score += 10;
+    else if (uniqueBytes > 30) score += 8;
     else if (uniqueBytes > 20) score += 5;
     
     return Math.min(score, 100);
   }
 
   /**
-   * Quick extraction for testing
+   * Quick extraction for testing - Browser-friendly interface
    */
   public static quickExtract(buf: Uint8Array): Uint8Array {
     const result = this.extractAndAssembleStream(buf);
     return result.combinedStream;
+  }
+
+  /**
+   * Browser-friendly file processing
+   */
+  public static async processReplayFile(file: File): Promise<ExtractionResult> {
+    console.log(`[SmartZlibExtractor] Processing replay file: ${file.name}`);
+    
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      
+      reader.onload = (event) => {
+        try {
+          const buffer = event.target?.result as ArrayBuffer;
+          const uint8Array = new Uint8Array(buffer);
+          const result = this.extractAndAssembleStream(uint8Array);
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+      };
+      
+      reader.onerror = () => {
+        reject(new Error('Failed to read file'));
+      };
+      
+      reader.readAsArrayBuffer(file);
+    });
   }
 }
