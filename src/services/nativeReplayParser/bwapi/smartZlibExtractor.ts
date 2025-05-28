@@ -41,12 +41,12 @@ export class SmartZlibExtractor {
   }
 
   /**
-   * Decompress block with both inflate methods
+   * Decompress block with both inflate methods - Fixed to always return result
    */
   private static decompressBlock(
     block: Uint8Array,
     useRaw: boolean
-  ): { success: boolean; result?: Uint8Array; error?: string } {
+  ): { success: boolean; result: Uint8Array | null; error?: string } {
     try {
       const result = useRaw 
         ? pako.inflateRaw(block)
@@ -56,6 +56,7 @@ export class SmartZlibExtractor {
     } catch (err) {
       return { 
         success: false, 
+        result: null,
         error: err instanceof Error ? err.message : String(err)
       };
     }
@@ -105,10 +106,10 @@ export class SmartZlibExtractor {
   }
 
   /**
-   * Validate if data looks like a StarCraft command stream
+   * Validate if data looks like a StarCraft command stream - Fixed null handling
    */
-  private static isLikelyCommandStream(data: Uint8Array): boolean {
-    if (data.length < 50) return false;
+  private static isLikelyCommandStream(data: Uint8Array | null): boolean {
+    if (!data || data.length < 50) return false;
     
     const frameSyncs = this.countFrameSyncs(data);
     const validCommands = this.countValidCommandIDs(data);
@@ -139,12 +140,12 @@ export class SmartZlibExtractor {
         
         // Try standard inflate first
         const inflated = this.decompressBlock(slice, false);
-        if (inflated.success && this.isLikelyCommandStream(inflated.result!)) {
+        if (inflated.success && inflated.result && this.isLikelyCommandStream(inflated.result)) {
           console.log(`[SmartZlibExtractor] Found valid block at ${i}, size ${blockSize}, method: inflate`);
           results.push({
             offset: i,
             raw: slice,
-            decompressed: inflated.result!,
+            decompressed: inflated.result,
             method: 'inflate',
             size: blockSize
           });
@@ -155,12 +156,12 @@ export class SmartZlibExtractor {
         
         // Try raw inflate if standard failed
         const inflatedRaw = this.decompressBlock(slice, true);
-        if (inflatedRaw.success && this.isLikelyCommandStream(inflatedRaw.result!)) {
+        if (inflatedRaw.success && inflatedRaw.result && this.isLikelyCommandStream(inflatedRaw.result)) {
           console.log(`[SmartZlibExtractor] Found valid block at ${i}, size ${blockSize}, method: inflateRaw`);
           results.push({
             offset: i,
             raw: slice,
-            decompressed: inflatedRaw.result!,
+            decompressed: inflatedRaw.result,
             method: 'inflateRaw',
             size: blockSize
           });
