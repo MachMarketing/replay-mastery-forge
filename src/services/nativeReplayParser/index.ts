@@ -12,6 +12,15 @@ export async function parseReplayNative(file: File): Promise<ParsedReplayData> {
   // Use only screp-js
   const screpData = await ScrepParser.parseReplay(file);
   
+  // Convert build orders to the correct format
+  const convertBuildOrder = (buildOrder: Array<{ frame: number; timestamp: string; action: string; supply?: number; }>) => {
+    return buildOrder.map(item => ({
+      time: item.timestamp,
+      action: item.action,
+      supply: item.supply || 0
+    }));
+  };
+  
   // Convert to legacy format
   const result: ParsedReplayData = {
     primaryPlayer: {
@@ -19,7 +28,7 @@ export async function parseReplayNative(file: File): Promise<ParsedReplayData> {
       race: screpData.players[0].race,
       apm: screpData.computed.apm[0] || 0,
       eapm: screpData.computed.eapm[0] || 0,
-      buildOrder: screpData.computed.buildOrders[0] || [],
+      buildOrder: convertBuildOrder(screpData.computed.buildOrders[0] || []),
       strengths: [],
       weaknesses: [],
       recommendations: []
@@ -29,7 +38,7 @@ export async function parseReplayNative(file: File): Promise<ParsedReplayData> {
       race: screpData.players[1].race,
       apm: screpData.computed.apm[1] || 0,
       eapm: screpData.computed.eapm[1] || 0,
-      buildOrder: screpData.computed.buildOrders[1] || [],
+      buildOrder: convertBuildOrder(screpData.computed.buildOrders[1] || []),
       strengths: [],
       weaknesses: [],
       recommendations: []
@@ -51,7 +60,7 @@ export async function parseReplayNative(file: File): Promise<ParsedReplayData> {
     eapm: screpData.computed.eapm[0] || 0,
     opponentApm: screpData.computed.apm[1] || 0,
     opponentEapm: screpData.computed.eapm[1] || 0,
-    buildOrder: screpData.computed.buildOrders[0] || [],
+    buildOrder: convertBuildOrder(screpData.computed.buildOrders[0] || []),
     trainingPlan: []
   };
   
