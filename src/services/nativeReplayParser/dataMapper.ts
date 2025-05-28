@@ -58,11 +58,23 @@ export function mapPlayerActionsToUI(playerActions: Record<number, any[]>, total
     const playerId = parseInt(playerIdStr);
     
     // Filter effective actions (exclude sync frames and selections)
-    const effectiveActions = actions.filter(action => 
-      !['Sync', 'Select'].includes(action.type) && 
-      action.cmdId !== 0x00 && action.cmdId !== 0x01 && action.cmdId !== 0x02 && 
-      action.cmdId !== 0x09 && action.cmdId !== 0x0A && action.cmdId !== 0x0B
-    );
+    const effectiveActions = actions.filter(action => {
+      // Check if action has cmdId property
+      if (typeof action.cmdId === 'number') {
+        // Exclude sync and selection commands
+        return action.cmdId !== 0x00 && action.cmdId !== 0x01 && action.cmdId !== 0x02 && 
+               action.cmdId !== 0x09 && action.cmdId !== 0x0A && action.cmdId !== 0x0B;
+      }
+      
+      // Check if action has type property
+      if (typeof action.type === 'string') {
+        // Exclude sync and selection actions by type
+        return !['Sync', 'Select', 'Frame'].includes(action.type);
+      }
+      
+      // Include action if we can't determine type
+      return true;
+    });
     
     const apm = gameMinutes > 0 ? Math.round(actions.length / gameMinutes) : 0;
     const eapm = gameMinutes > 0 ? Math.round(effectiveActions.length / gameMinutes) : 0;
@@ -93,13 +105,23 @@ export function mapDirectReplayDataToUI(directData: DirectParserResult): {
   const buildOrders = mapBuildOrdersToUI(directData.buildOrders, directData.playerActions);
   const playerStats = mapPlayerActionsToUI(directData.playerActions, directData.totalFrames);
   
-  // Generate validation data for debug UI
+  // Generate enhanced validation data for debug UI
   const validationData: any = { playersWithActions: {} };
   
   Object.entries(directData.playerActions).forEach(([playerIdStr, actions]) => {
     const playerId = parseInt(playerIdStr);
-    const firstCommands = actions.slice(0, 5).map(cmd => `0x${cmd.cmdId.toString(16).padStart(2, '0')}`);
-    const firstUnits = actions.filter(cmd => cmd.unitName).slice(0, 3).map(cmd => cmd.unitName);
+    const firstCommands = actions.slice(0, 5).map(cmd => {
+      if (typeof cmd.cmdId === 'number') {
+        return `0x${cmd.cmdId.toString(16).padStart(2, '0')}`;
+      }
+      return cmd.type || 'Unknown';
+    });
+    
+    const firstUnits = actions
+      .filter(cmd => cmd.unitName || (cmd.type && ['Build', 'Train'].includes(cmd.type)))
+      .slice(0, 3)
+      .map(cmd => cmd.unitName || cmd.type || 'Unknown');
+    
     const realisticAPM = playerStats.find(p => p.id === playerId)?.apm || 0;
     
     validationData.playersWithActions[playerId] = {
@@ -111,7 +133,8 @@ export function mapDirectReplayDataToUI(directData: DirectParserResult): {
         build: actions.filter(a => a.type === 'Build').length,
         train: actions.filter(a => a.type === 'Train').length,
         select: actions.filter(a => a.type === 'Select').length,
-        move: actions.filter(a => a.type === 'Move').length
+        move: actions.filter(a => a.type === 'Move').length,
+        other: actions.filter(a => !['Build', 'Train', 'Select', 'Move'].includes(a.type)).length
       }
     };
   });

@@ -18,13 +18,14 @@ export class BWCommandParser {
     this.commandsStartOffset = 633;
   }
 
-  parseCommands(maxCommands: number = 1000): BWCommand[] {
+  parseCommands(maxCommands: number = 5000): BWCommand[] {
     console.log('[BWCommandParser] Starting command parse...');
     console.log('[BWCommandParser] Commands start at offset:', `0x${this.commandsStartOffset.toString(16)}`);
     
     const commands: BWCommand[] = [];
     let currentFrame = 0;
     let commandCount = 0;
+    let skipCount = 0;
     
     this.reader.setPosition(this.commandsStartOffset);
     
@@ -42,7 +43,9 @@ export class BWCommandParser {
           if (this.reader.canRead(1)) {
             const skipFrames = this.reader.readUInt8();
             currentFrame += skipFrames;
-            console.log(`[BWCommandParser] Frame skip: +${skipFrames} (frame ${currentFrame})`);
+            if (skipFrames > 100) {
+              console.log(`[BWCommandParser] Large frame skip: +${skipFrames} (frame ${currentFrame})`);
+            }
           }
           continue;
         } else if (commandByte === 0x02) {
@@ -50,10 +53,23 @@ export class BWCommandParser {
           if (this.reader.canRead(2)) {
             const skipFrames = this.reader.readUInt16LE();
             currentFrame += skipFrames;
-            console.log(`[BWCommandParser] Large frame skip: +${skipFrames} (frame ${currentFrame})`);
+            console.log(`[BWCommandParser] Very large frame skip: +${skipFrames} (frame ${currentFrame})`);
           }
           continue;
         }
+        
+        // Skip obviously invalid commands (too high values that are likely data corruption)
+        if (commandByte > 0x50) {
+          skipCount++;
+          if (skipCount > 100) {
+            console.log('[BWCommandParser] Too many invalid commands, stopping');
+            break;
+          }
+          continue;
+        }
+        
+        // Reset skip count on valid command
+        skipCount = 0;
         
         // Parse actual game command
         const command = this.parseGameCommand(commandByte, currentFrame);
@@ -61,24 +77,30 @@ export class BWCommandParser {
           commands.push(command);
           commandCount++;
           
-          // Log first few commands for debugging
-          if (commandCount <= 10) {
+          // Log first few and some interesting commands for debugging
+          if (commandCount <= 20 || [0x0C, 0x1D, 0x21, 0x34].includes(commandByte)) {
             console.log(`[BWCommandParser] Command ${commandCount}:`, {
               frame: command.frame,
               type: `0x${command.type.toString(16)}`,
               typeString: command.typeString,
-              userId: command.userId
+              userId: command.userId,
+              dataLength: command.data.length
             });
           }
         }
         
       } catch (error) {
-        console.warn('[BWCommandParser] Command parsing error:', error);
-        break;
+        console.warn('[BWCommandParser] Command parsing error at position', this.reader.getPosition(), ':', error);
+        // Try to skip a few bytes and continue
+        if (this.reader.canRead(4)) {
+          this.reader.readBytes(4);
+        } else {
+          break;
+        }
       }
     }
     
-    console.log(`[BWCommandParser] Parsed ${commands.length} commands, final frame: ${currentFrame}`);
+    console.log(`[BWCommandParser] Parsed ${commands.length} commands, final frame: ${currentFrame}, skipped ${skipCount} invalid bytes`);
     return commands;
   }
 
@@ -130,7 +152,7 @@ export class BWCommandParser {
 
   private readVariableLengthCommand(commandType: number): Uint8Array {
     // For unknown/variable length commands, read a reasonable amount
-    const maxVariableLength = 32;
+    const maxVariableLength = 16;
     const availableBytes = Math.min(maxVariableLength, this.reader.getRemainingBytes());
     
     if (availableBytes > 0) {
@@ -141,14 +163,22 @@ export class BWCommandParser {
   }
 
   private getCommandLength(commandType: number): number {
-    // Based on BWAPI and screp specifications
+    // Based on BWAPI and screp specifications - Updated with more commands
     const commandLengths: Record<number, number> = {
+      0x05: 1,   // Keep Alive
+      0x06: 1,   // Save Game
+      0x07: 1,   // Load Game
+      0x08: 1,   // Restart Game
       0x09: 2,   // Select
       0x0A: 2,   // Shift Select  
       0x0B: 2,   // Shift Deselect
       0x0C: 7,   // Build
       0x0D: 2,   // Vision
       0x0E: 4,   // Alliance
+      0x0F: 1,   // Game Speed
+      0x10: 1,   // Pause
+      0x11: 1,   // Resume
+      0x12: 2,   // Cheat
       0x13: 2,   // Hotkey
       0x14: 4,   // Move
       0x15: 6,   // Attack
@@ -164,9 +194,11 @@ export class BWCommandParser {
       0x1F: 1,   // Cloak
       0x20: 1,   // Decloak
       0x21: 2,   // Unit Morph
+      0x22: 1,   // Unload
       0x23: 1,   // Unsiege
       0x24: 1,   // Siege
       0x25: 2,   // Train Fighter
+      0x26: 1,   // Unload All
       0x27: 1,   // Unload All
       0x28: 2,   // Unload
       0x29: 1,   // Merge Archon
@@ -182,6 +214,7 @@ export class BWCommandParser {
       0x33: 2,   // Cancel Addon
       0x34: 2,   // Building Morph
       0x35: 1,   // Stim
+      0x36: 1,   // Sync
       0x48: 10   // Load Game
     };
 
