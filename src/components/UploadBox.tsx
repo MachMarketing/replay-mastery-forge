@@ -120,18 +120,18 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
         console.log("  - Ergebnis Keys:", analysis.screpJsCompatibility.resultKeys.join(', '));
       }
       
-      console.log("Custom Parser:");
-      console.log("  - Parse erfolgreich:", analysis.customParserResults.parseSuccess);
-      if (analysis.customParserResults.error) {
-        console.log("  - Fehler:", analysis.customParserResults.error);
-      }
-      if (analysis.customParserResults.extractedData) {
-        const data = analysis.customParserResults.extractedData;
+      // Log extracted data if available
+      if (analysis.screpJsCompatibility.extractedData) {
+        const data = analysis.screpJsCompatibility.extractedData;
+        console.log("screp-js Extrahierte Daten:");
         console.log("  - Map:", data.mapName);
         console.log("  - Spieler gefunden:", data.playersFound);
         console.log("  - Spieler Namen:", data.playerNames.join(', '));
-        console.log("  - Commands:", data.commandsFound);
         console.log("  - Dauer:", data.duration);
+        console.log("  - Frames:", data.totalFrames);
+        if (data.apm.length > 0) {
+          console.log("  - APM:", data.apm.join(', '));
+        }
       }
       
       console.log("Empfehlungen:");
