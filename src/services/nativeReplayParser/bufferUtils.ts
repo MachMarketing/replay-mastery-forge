@@ -17,7 +17,7 @@ export function arrayBufferToBuffer(arrayBuffer: ArrayBuffer): Buffer {
   const uint8Array = new Uint8Array(arrayBuffer);
   
   // Create a Buffer-like object that should work with screp-js
-  const bufferLike = Object.assign(new Uint8Array(arrayBuffer), {
+  const bufferLike = Object.assign(uint8Array, {
     constructor: Buffer,
     // Add Buffer methods that screp-js might need
     toString(encoding?: string) {
@@ -31,7 +31,7 @@ export function arrayBufferToBuffer(arrayBuffer: ArrayBuffer): Buffer {
     }
   });
   
-  return bufferLike as Buffer;
+  return bufferLike as unknown as Buffer;
 }
 
 /**
