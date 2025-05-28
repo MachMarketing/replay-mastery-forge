@@ -101,20 +101,20 @@ export class ScrepJsWrapper {
       console.log('[ScrepJsWrapper] Converting file to buffer...');
       const buffer = await fileToBuffer(file);
       
-      console.log('[ScrepJsWrapper] === COMPREHENSIVE SCREP-JS DEBUGGING ===');
+      console.log('[ScrepJsWrapper] === ENHANCED COMMAND DEBUGGING ===');
       console.log('[ScrepJsWrapper] Available screp-js methods:', Object.keys(this.screpLib));
       
-      // NEW: Test multiple parsing approaches to find working commands
-      const results = await this.testMultipleParseMethods(buffer);
+      // NEW: Test command-focused parsing approaches
+      const results = await this.testCommandExtractionMethods(buffer);
       
       // Find the best result with commands
-      const bestResult = this.selectBestResult(results);
+      const bestResult = this.selectBestCommandResult(results);
       
       if (!bestResult) {
-        throw new Error('All screp-js parsing methods failed');
+        throw new Error('All screp-js command extraction methods failed');
       }
       
-      console.log('[ScrepJsWrapper] === SELECTED BEST RESULT ===');
+      console.log('[ScrepJsWrapper] === SELECTED COMMAND RESULT ===');
       console.log('[ScrepJsWrapper] Method used:', bestResult.method);
       console.log('[ScrepJsWrapper] Commands available:', !!bestResult.result.Commands);
       console.log('[ScrepJsWrapper] Commands count:', Array.isArray(bestResult.result.Commands) ? bestResult.result.Commands.length : 'null/undefined');
@@ -128,36 +128,68 @@ export class ScrepJsWrapper {
   }
 
   /**
-   * NEW: Test multiple parse methods to find one that returns commands
+   * NEW: Focused testing on command extraction methods
    */
-  private async testMultipleParseMethods(buffer: Uint8Array): Promise<Array<{method: string, result: any, error?: Error}>> {
+  private async testCommandExtractionMethods(buffer: Uint8Array): Promise<Array<{method: string, result: any, error?: Error}>> {
     const results: Array<{method: string, result: any, error?: Error}> = [];
     
-    // Test different parsing options
-    const testConfigs = [
-      { method: 'parseBuffer', options: { includeCommands: true, withCmds: true, cmdDetails: true } },
+    // Test different command-focused parsing options
+    const commandConfigs = [
+      // Try with explicit command flags
+      { method: 'parseBuffer', options: { commands: true, includeCommands: true, withCmds: true } },
+      { method: 'parseBuffer', options: { commands: true, includeCommands: true } },
+      { method: 'parseBuffer', options: { withCmds: true, cmdDetails: true } },
       { method: 'parseBuffer', options: { includeCommands: true, verboseCommands: true } },
-      { method: 'parseBuffer', options: { withCmds: true } },
+      { method: 'parseBuffer', options: { parseCommands: true } },
+      { method: 'parseBuffer', options: { extractCommands: true } },
+      { method: 'parseBuffer', options: { fullParse: true } },
+      { method: 'parseBuffer', options: { complete: true } },
+      { method: 'parseBuffer', options: { all: true } },
+      
+      // Try different parsing modes
+      { method: 'parseBuffer', options: { mode: 'full' } },
+      { method: 'parseBuffer', options: { mode: 'complete' } },
+      { method: 'parseBuffer', options: { mode: 'commands' } },
+      { method: 'parseBuffer', options: { detail: 'full' } },
+      { method: 'parseBuffer', options: { level: 'full' } },
+      
+      // Try without options
       { method: 'parseBuffer', options: {} },
+      
+      // Try alternative method names if they exist
       { method: 'parseReplay', options: { includeCommands: true, withCmds: true } },
-      { method: 'parseReplay', options: {} },
       { method: 'parse', options: { includeCommands: true } },
-      { method: 'parse', options: {} }
+      { method: 'parseWithCommands', options: {} },
+      { method: 'parseComplete', options: {} },
+      { method: 'parseFull', options: {} }
     ];
     
-    for (const config of testConfigs) {
+    for (const config of commandConfigs) {
       try {
-        console.log(`[ScrepJsWrapper] Testing ${config.method} with options:`, config.options);
+        console.log(`[ScrepJsWrapper] === TESTING ${config.method.toUpperCase()} ===`);
+        console.log(`[ScrepJsWrapper] Options:`, config.options);
         
         if (typeof this.screpLib[config.method] === 'function') {
           let result;
           
-          // Try with options first, then without
+          // Try with options first, then without if that fails
           try {
-            result = await this.screpLib[config.method](buffer, config.options);
+            if (Object.keys(config.options).length > 0) {
+              console.log(`[ScrepJsWrapper] Calling ${config.method} WITH options`);
+              result = await this.screpLib[config.method](buffer, config.options);
+            } else {
+              console.log(`[ScrepJsWrapper] Calling ${config.method} WITHOUT options`);
+              result = await this.screpLib[config.method](buffer);
+            }
           } catch (optionError) {
-            console.log(`[ScrepJsWrapper] ${config.method} with options failed, trying without:`, optionError);
-            result = await this.screpLib[config.method](buffer);
+            console.log(`[ScrepJsWrapper] ${config.method} with options failed:`, optionError.message);
+            try {
+              console.log(`[ScrepJsWrapper] Retrying ${config.method} without options`);
+              result = await this.screpLib[config.method](buffer);
+            } catch (noOptionError) {
+              console.log(`[ScrepJsWrapper] ${config.method} without options also failed:`, noOptionError.message);
+              throw noOptionError;
+            }
           }
           
           // Handle Promise results
@@ -169,48 +201,70 @@ export class ScrepJsWrapper {
             const hasCommands = !!(result.Commands && Array.isArray(result.Commands));
             const commandsCount = hasCommands ? result.Commands.length : 0;
             
-            console.log(`[ScrepJsWrapper] ${config.method} SUCCESS:`, {
-              hasCommands,
-              commandsCount,
-              resultKeys: Object.keys(result),
-              headerKeys: result.Header ? Object.keys(result.Header) : 'no header',
-              computedKeys: result.Computed ? Object.keys(result.Computed) : 'no computed'
-            });
+            console.log(`[ScrepJsWrapper] ${config.method} RESULT ANALYSIS:`);
+            console.log(`  - Has Commands: ${hasCommands}`);
+            console.log(`  - Commands Count: ${commandsCount}`);
+            console.log(`  - Result Keys: ${Object.keys(result).join(', ')}`);
+            console.log(`  - Commands Type: ${typeof result.Commands}`);
+            console.log(`  - Commands isArray: ${Array.isArray(result.Commands)}`);
             
-            // Log first few commands if available
-            if (hasCommands && commandsCount > 0) {
-              console.log(`[ScrepJsWrapper] ${config.method} First 3 commands:`, 
-                result.Commands.slice(0, 3).map((cmd: any) => ({
-                  frame: cmd.Frame || cmd.frame,
-                  type: cmd.Type?.Name || cmd.Type?.ID || cmd.type,
-                  player: cmd.PlayerID || cmd.playerId || cmd.Player
-                }))
-              );
+            if (result.Header) {
+              console.log(`  - Header Keys: ${Object.keys(result.Header).join(', ')}`);
+            }
+            if (result.Computed) {
+              console.log(`  - Computed Keys: ${Object.keys(result.Computed).join(', ')}`);
             }
             
-            results.push({ method: `${config.method}_${JSON.stringify(config.options)}`, result });
+            // Deep inspect Commands
+            if (result.Commands) {
+              console.log(`[ScrepJsWrapper] COMMANDS DEEP ANALYSIS:`);
+              console.log(`  - Commands length: ${result.Commands.length}`);
+              console.log(`  - Commands[0]: ${result.Commands[0] ? JSON.stringify(result.Commands[0]) : 'undefined'}`);
+              console.log(`  - Commands[1]: ${result.Commands[1] ? JSON.stringify(result.Commands[1]) : 'undefined'}`);
+              console.log(`  - Commands[2]: ${result.Commands[2] ? JSON.stringify(result.Commands[2]) : 'undefined'}`);
+              
+              if (result.Commands.length > 0) {
+                const sampleCommand = result.Commands[0];
+                console.log(`  - Sample Command Type: ${typeof sampleCommand}`);
+                console.log(`  - Sample Command Keys: ${sampleCommand ? Object.keys(sampleCommand).join(', ') : 'none'}`);
+              }
+            }
+            
+            results.push({ 
+              method: `${config.method}_${JSON.stringify(config.options)}`, 
+              result,
+              commandsFound: commandsCount
+            } as any);
           } else {
-            console.log(`[ScrepJsWrapper] ${config.method} returned null`);
+            console.log(`[ScrepJsWrapper] ${config.method} returned null/undefined`);
           }
         } else {
           console.log(`[ScrepJsWrapper] ${config.method} method not available`);
         }
       } catch (error) {
         console.error(`[ScrepJsWrapper] ${config.method} failed:`, error);
-        results.push({ method: `${config.method}_${JSON.stringify(config.options)}`, result: null, error: error as Error });
+        results.push({ 
+          method: `${config.method}_${JSON.stringify(config.options)}`, 
+          result: null, 
+          error: error as Error 
+        });
       }
+      
+      console.log(`[ScrepJsWrapper] ========================`);
     }
     
-    // Also try any other methods that might exist
-    const possibleMethods = Object.keys(this.screpLib).filter(key => 
+    // Also try any other methods that might exist for command extraction
+    const possibleCommandMethods = Object.keys(this.screpLib).filter(key => 
       typeof this.screpLib[key] === 'function' && 
-      key.toLowerCase().includes('parse') &&
-      !['parseBuffer', 'parseReplay', 'parse'].includes(key)
+      (key.toLowerCase().includes('command') || 
+       key.toLowerCase().includes('action') ||
+       key.toLowerCase().includes('full') ||
+       key.toLowerCase().includes('complete'))
     );
     
-    for (const methodName of possibleMethods) {
+    for (const methodName of possibleCommandMethods) {
       try {
-        console.log(`[ScrepJsWrapper] Testing additional method: ${methodName}`);
+        console.log(`[ScrepJsWrapper] === TESTING DISCOVERED METHOD: ${methodName} ===`);
         const result = await this.screpLib[methodName](buffer);
         
         if (result) {
@@ -232,9 +286,9 @@ export class ScrepJsWrapper {
   }
 
   /**
-   * NEW: Select the best result - prioritize ones with commands
+   * NEW: Select the best result prioritizing command availability
    */
-  private selectBestResult(results: Array<{method: string, result: any, error?: Error}>): {method: string, result: any} | null {
+  private selectBestCommandResult(results: Array<{method: string, result: any, error?: Error}>): {method: string, result: any} | null {
     const validResults = results.filter(r => r.result && !r.error);
     
     if (validResults.length === 0) {
@@ -242,16 +296,22 @@ export class ScrepJsWrapper {
       return null;
     }
     
-    // First priority: Results with commands
+    console.log('[ScrepJsWrapper] === COMMAND RESULT SELECTION ===');
+    
+    // First priority: Results with actual commands
     const resultsWithCommands = validResults.filter(r => 
       r.result.Commands && Array.isArray(r.result.Commands) && r.result.Commands.length > 0
     );
     
     if (resultsWithCommands.length > 0) {
+      // Sort by command count (more commands = better)
+      resultsWithCommands.sort((a, b) => b.result.Commands.length - a.result.Commands.length);
       const best = resultsWithCommands[0];
-      console.log(`[ScrepJsWrapper] Selected result with commands: ${best.method} (${best.result.Commands.length} commands)`);
+      console.log(`[ScrepJsWrapper] Selected result WITH COMMANDS: ${best.method} (${best.result.Commands.length} commands)`);
       return best;
     }
+    
+    console.log('[ScrepJsWrapper] NO RESULTS WITH COMMANDS FOUND!');
     
     // Second priority: Results with header data
     const resultsWithHeader = validResults.filter(r => 
@@ -260,13 +320,13 @@ export class ScrepJsWrapper {
     
     if (resultsWithHeader.length > 0) {
       const best = resultsWithHeader[0];
-      console.log(`[ScrepJsWrapper] Selected result with header: ${best.method}`);
+      console.log(`[ScrepJsWrapper] Selected result with header (no commands): ${best.method}`);
       return best;
     }
     
     // Fallback: Any valid result
     const best = validResults[0];
-    console.log(`[ScrepJsWrapper] Selected fallback result: ${best.method}`);
+    console.log(`[ScrepJsWrapper] Selected fallback result (no commands): ${best.method}`);
     return best;
   }
 
@@ -578,7 +638,6 @@ export class ScrepJsWrapper {
     return Math.min(200, baseSupply + supplyGrowth + buildOrderBonus);
   }
 
-  // ... keep existing code (frameToTimestamp, extractRace, extractColor, extractGameType, extractEngine methods)
   private frameToTimestamp(frame: number): string {
     const seconds = Math.floor(frame / 24); // 24 FPS
     const minutes = Math.floor(seconds / 60);
