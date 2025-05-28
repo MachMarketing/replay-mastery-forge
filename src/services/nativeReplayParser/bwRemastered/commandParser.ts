@@ -1,7 +1,7 @@
 
 /**
  * Enhanced command parser for StarCraft: Brood War Remastered replays
- * Updated with BWAPI-conform command lengths and Remastered decompression
+ * Completely rewritten based on BWAPI documentation for maximum command extraction
  */
 
 import { BWBinaryReader } from './binaryReader';
@@ -12,205 +12,272 @@ import { RemasteredDecompressor } from '../bwapi/remasteredDecompressor';
 export class BWCommandParser {
   private reader: BWBinaryReader;
   private currentFrame: number = 0;
+  private debugMode: boolean = true;
 
   constructor(reader: BWBinaryReader) {
     this.reader = reader;
   }
 
   /**
-   * Parse commands with enhanced Remastered support and BWAPI-conform lengths
+   * Parse commands with aggressive detection and maximum extraction
    */
-  parseCommands(maxCommands: number = 1000): BWCommand[] {
-    console.log('[BWCommandParser] Starting enhanced command parsing with BWAPI compliance');
+  parseCommands(maxCommands: number = 10000): BWCommand[] {
+    console.log('[BWCommandParser] Starting aggressive command parsing for maximum extraction');
     const commands: BWCommand[] = [];
     let commandCount = 0;
+    let totalBytesProcessed = 0;
 
     try {
-      // Try to find command section with enhanced detection
-      this.findCommandSection();
+      // Multiple parsing strategies to catch all commands
+      this.findAndProcessCommandSections(commands, maxCommands);
       
-      while (this.reader.canRead(1) && commandCount < maxCommands) {
-        const command = this.parseNextCommand();
-        if (command) {
-          commands.push(command);
-          commandCount++;
-          
-          if (commandCount % 100 === 0) {
-            console.log(`[BWCommandParser] Parsed ${commandCount} commands, current frame: ${this.currentFrame}`);
-          }
-        }
-      }
     } catch (error) {
-      console.log(`[BWCommandParser] Command parsing completed with ${commandCount} commands:`, error);
+      console.log(`[BWCommandParser] Command parsing completed with ${commands.length} commands:`, error);
     }
 
-    console.log(`[BWCommandParser] Enhanced command parsing finished: ${commands.length} total commands`);
+    console.log(`[BWCommandParser] Final result: ${commands.length} total commands from ${totalBytesProcessed} bytes`);
+    this.logCommandStatistics(commands);
     return commands;
   }
 
   /**
-   * Enhanced command section detection for Remastered
+   * Multiple command section detection strategies
    */
-  private findCommandSection(): void {
-    console.log('[BWCommandParser] Searching for command section with Remastered support...');
-    
+  private findAndProcessCommandSections(commands: BWCommand[], maxCommands: number): void {
     const dataSize = this.reader.getRemainingBytes();
     console.log('[BWCommandParser] Available data size:', dataSize);
     
-    if (dataSize < 100) {
-      console.log('[BWCommandParser] Data too small, using current position');
-      return;
-    }
-
-    // Try decompression if we detect compressed blocks
-    const currentPos = this.reader.getPosition();
-    const sample = this.reader.readBytes(Math.min(100, dataSize));
-    this.reader.setPosition(currentPos);
+    // Strategy 1: Try decompression first
+    this.tryDecompressionAndParse(commands, maxCommands);
     
-    // Check for Remastered compressed patterns
-    if (RemasteredDecompressor.isCompressedBlock(sample)) {
-      console.log('[BWCommandParser] Detected compressed Remastered data, attempting decompression...');
-      try {
-        const decompressed = RemasteredDecompressor.decompressBlock(sample);
-        console.log('[BWCommandParser] Successfully decompressed block, size:', decompressed.byteLength);
-        
-        // Create new reader with decompressed data
-        this.reader = new BWBinaryReader(decompressed);
-        return;
-      } catch (error) {
-        console.log('[BWCommandParser] Decompression failed, using raw data:', error);
-      }
-    }
-
-    // Pattern-based command section detection
-    const patterns = [
-      new Uint8Array([0x00]), // Frame increment
-      new Uint8Array([0x09]), // Select command
-      new Uint8Array([0x0C]), // Build command
-      new Uint8Array([0x14])  // Train command
-    ];
-
-    for (let pos = 0; pos < Math.min(dataSize - 50, 2000); pos++) {
-      this.reader.setPosition(currentPos + pos);
-      const byte = this.reader.readUInt8();
-      
-      if (patterns.some(pattern => pattern[0] === byte)) {
-        // Validate by checking if we can parse a few commands
-        if (this.validateCommandSequence(3)) {
-          console.log(`[BWCommandParser] Found command section at position ${currentPos + pos}`);
-          this.reader.setPosition(currentPos + pos);
-          return;
-        }
-      }
+    // Strategy 2: Scan for command patterns in raw data
+    if (commands.length < 50) {
+      console.log('[BWCommandParser] Low command count, trying raw data parsing...');
+      this.scanForCommandPatterns(commands, maxCommands);
     }
     
-    console.log('[BWCommandParser] Command section detection failed, using current position');
-    this.reader.setPosition(currentPos);
+    // Strategy 3: Brute force scan with different offsets
+    if (commands.length < 100) {
+      console.log('[BWCommandParser] Still low command count, trying brute force scan...');
+      this.bruteForceCommandScan(commands, maxCommands);
+    }
   }
 
   /**
-   * Validate command sequence for better detection
+   * Try decompression and parse decompressed data
    */
-  private validateCommandSequence(count: number): boolean {
-    const startPos = this.reader.getPosition();
-    let validCommands = 0;
+  private tryDecompressionAndParse(commands: BWCommand[], maxCommands: number): void {
+    const currentPos = this.reader.getPosition();
+    const sampleSize = Math.min(1000, this.reader.getRemainingBytes());
+    const sample = this.reader.readBytes(sampleSize);
+    this.reader.setPosition(currentPos);
     
-    try {
-      for (let i = 0; i < count; i++) {
-        if (!this.reader.canRead(1)) break;
+    if (RemasteredDecompressor.isLikelyCompressed(sample)) {
+      console.log('[BWCommandParser] Detected compressed data, attempting decompression...');
+      try {
+        const decompressed = RemasteredDecompressor.decompressBlock(sample);
+        const decompressedReader = new BWBinaryReader(decompressed);
+        this.parseCommandsFromReader(decompressedReader, commands, maxCommands);
+        return;
+      } catch (error) {
+        console.log('[BWCommandParser] Decompression failed, continuing with raw data:', error);
+      }
+    }
+    
+    // Parse raw data if no decompression
+    this.parseCommandsFromReader(this.reader, commands, maxCommands);
+  }
+
+  /**
+   * Scan for command patterns in data
+   */
+  private scanForCommandPatterns(commands: BWCommand[], maxCommands: number): void {
+    const startPos = this.reader.getPosition();
+    const dataSize = this.reader.getRemainingBytes();
+    
+    // Look for command-like patterns
+    for (let offset = 0; offset < Math.min(dataSize - 100, 5000); offset += 1) {
+      this.reader.setPosition(startPos + offset);
+      
+      if (this.reader.canRead(10)) {
+        const testBytes = this.reader.readBytes(10);
+        this.reader.setPosition(startPos + offset);
         
-        const cmdByte = this.reader.readUInt8();
-        
-        // Frame commands
-        if (cmdByte === 0x00 || cmdByte === 0x01 || cmdByte === 0x02) {
-          if (cmdByte === 0x01 && this.reader.canRead(1)) {
-            this.reader.readUInt8(); // Skip frame count
-          } else if (cmdByte === 0x02 && this.reader.canRead(2)) {
-            this.reader.readUInt16LE(); // Skip large frame count
-          }
-          validCommands++;
-          continue;
-        }
-        
-        // Regular commands
-        const length = BWAPI_COMMAND_LENGTHS[cmdByte] || 1;
-        if (length > 0 && this.reader.canRead(length)) {
-          this.reader.readBytes(length);
-          validCommands++;
-        } else {
-          break;
+        // Check if this looks like a command sequence
+        if (this.looksLikeCommandSequence(testBytes)) {
+          console.log(`[BWCommandParser] Found potential command sequence at offset ${offset}`);
+          const foundCommands = this.parseCommandsFromReader(this.reader, [], Math.min(maxCommands - commands.length, 1000));
+          commands.push(...foundCommands);
+          
+          if (commands.length >= maxCommands) break;
         }
       }
-    } catch (error) {
-      // Validation failed
     }
     
     this.reader.setPosition(startPos);
-    return validCommands >= count * 0.7; // At least 70% valid
   }
 
   /**
-   * Parse the next command with BWAPI-conform structure
+   * Brute force scan with aggressive command detection
    */
-  private parseNextCommand(): BWCommand | null {
-    if (!this.reader.canRead(1)) {
+  private bruteForceCommandScan(commands: BWCommand[], maxCommands: number): void {
+    const startPos = this.reader.getPosition();
+    const dataSize = this.reader.getRemainingBytes();
+    
+    console.log('[BWCommandParser] Starting brute force scan...');
+    
+    for (let offset = 0; offset < Math.min(dataSize - 50, 10000); offset += 4) {
+      this.reader.setPosition(startPos + offset);
+      
+      if (this.reader.canRead(20)) {
+        // Try to parse commands from this position
+        const localCommands = this.parseAggressiveCommands(50);
+        if (localCommands.length > 5) {
+          console.log(`[BWCommandParser] Found ${localCommands.length} commands at offset ${offset}`);
+          commands.push(...localCommands);
+          
+          if (commands.length >= maxCommands) break;
+        }
+      }
+    }
+    
+    this.reader.setPosition(startPos);
+  }
+
+  /**
+   * Check if byte sequence looks like commands
+   */
+  private looksLikeCommandSequence(bytes: Uint8Array): boolean {
+    let commandLikeBytes = 0;
+    
+    for (let i = 0; i < bytes.length; i++) {
+      const byte = bytes[i];
+      
+      // Check for known command IDs or frame updates
+      if (BWAPI_COMMAND_LENGTHS[byte] !== undefined || 
+          [0x00, 0x01, 0x02].includes(byte)) {
+        commandLikeBytes++;
+      }
+    }
+    
+    return commandLikeBytes >= 3; // At least 3 command-like bytes
+  }
+
+  /**
+   * Parse commands from a specific reader
+   */
+  private parseCommandsFromReader(reader: BWBinaryReader, commands: BWCommand[], maxCommands: number): BWCommand[] {
+    const localCommands: BWCommand[] = [];
+    let commandCount = 0;
+    
+    while (reader.canRead(1) && commandCount < maxCommands) {
+      const command = this.parseNextCommandFromReader(reader);
+      if (command) {
+        localCommands.push(command);
+        commandCount++;
+        
+        if (commandCount % 100 === 0) {
+          console.log(`[BWCommandParser] Parsed ${commandCount} commands from reader`);
+        }
+      }
+    }
+    
+    commands.push(...localCommands);
+    return localCommands;
+  }
+
+  /**
+   * Aggressive command parsing with more liberal detection
+   */
+  private parseAggressiveCommands(maxLocal: number): BWCommand[] {
+    const commands: BWCommand[] = [];
+    let count = 0;
+    
+    while (this.reader.canRead(1) && count < maxLocal) {
+      try {
+        const command = this.parseNextCommandFromReader(this.reader);
+        if (command) {
+          commands.push(command);
+          count++;
+        }
+      } catch (error) {
+        // Skip problematic bytes and continue
+        if (this.reader.canRead(1)) {
+          this.reader.readUInt8();
+        }
+      }
+    }
+    
+    return commands;
+  }
+
+  /**
+   * Parse the next command from reader with enhanced detection
+   */
+  private parseNextCommandFromReader(reader: BWBinaryReader): BWCommand | null {
+    if (!reader.canRead(1)) {
       return null;
     }
 
     try {
-      const commandByte = this.reader.readUInt8();
+      const commandByte = reader.readUInt8();
       
-      // Handle frame updates with correct BWAPI logic
+      // Handle frame updates
       if (commandByte === 0x00) {
         this.currentFrame++;
         return null;
       }
       
       if (commandByte === 0x01) {
-        if (this.reader.canRead(1)) {
-          const skipFrames = this.reader.readUInt8();
+        if (reader.canRead(1)) {
+          const skipFrames = reader.readUInt8();
           this.currentFrame += skipFrames;
         }
         return null;
       }
       
       if (commandByte === 0x02) {
-        if (this.reader.canRead(2)) {
-          const skipFrames = this.reader.readUInt16LE();
+        if (reader.canRead(2)) {
+          const skipFrames = reader.readUInt16LE();
           this.currentFrame += skipFrames;
         }
         return null;
       }
 
-      // Parse actual command with BWAPI-conform lengths
-      return this.parseCommand(commandByte);
+      // Parse actual command
+      return this.parseCommand(reader, commandByte);
     } catch (error) {
       return null;
     }
   }
 
   /**
-   * Parse command with BWAPI-conform byte lengths
+   * Parse command with enhanced parameter extraction
    */
-  private parseCommand(commandType: number): BWCommand | null {
+  private parseCommand(reader: BWBinaryReader, commandType: number): BWCommand | null {
     try {
-      const length = BWAPI_COMMAND_LENGTHS[commandType] || 1;
+      const length = BWAPI_COMMAND_LENGTHS[commandType];
+      
+      if (length === undefined) {
+        // Unknown command, try to skip safely
+        return null;
+      }
       
       if (length === 0) {
-        // Variable length command - handle specially
-        return this.parseVariableLengthCommand(commandType);
+        // Variable length command
+        return this.parseVariableLengthCommand(reader, commandType);
       }
 
-      if (!this.reader.canRead(length)) {
+      if (!reader.canRead(length)) {
         return null;
       }
 
-      const commandData = this.reader.readBytes(length);
-      const userId = commandData[0] || 0;
+      const commandData = reader.readBytes(length);
+      const userId = commandData.length > 0 ? commandData[0] : 0;
       
       return {
         frame: this.currentFrame,
-        userId, // BWCommand uses userId, not playerId
+        userId,
         type: commandType,
         typeString: COMMAND_NAMES[commandType] || `UNKNOWN_${commandType.toString(16)}`,
         data: commandData,
@@ -224,13 +291,12 @@ export class BWCommandParser {
   /**
    * Handle variable length commands
    */
-  private parseVariableLengthCommand(commandType: number): BWCommand | null {
-    // Most variable length commands have at least 1 byte for player ID
-    if (!this.reader.canRead(1)) {
+  private parseVariableLengthCommand(reader: BWBinaryReader, commandType: number): BWCommand | null {
+    if (!reader.canRead(1)) {
       return null;
     }
 
-    const userId = this.reader.readUInt8();
+    const userId = reader.readUInt8();
     
     return {
       frame: this.currentFrame,
@@ -243,7 +309,7 @@ export class BWCommandParser {
   }
 
   /**
-   * Enhanced command parameter parsing with BWAPI-conform structure
+   * Enhanced command parameter parsing
    */
   private parseCommandParameters(commandType: number, data: Uint8Array): any {
     if (data.length === 0) return {};
@@ -284,6 +350,37 @@ export class BWCommandParser {
       }
     } catch (error) {
       return {};
+    }
+  }
+
+  /**
+   * Log detailed command statistics
+   */
+  private logCommandStatistics(commands: BWCommand[]): void {
+    if (!this.debugMode) return;
+    
+    const stats: Record<string, number> = {};
+    const buildCommands = [];
+    
+    for (const command of commands) {
+      const typeName = command.typeString;
+      stats[typeName] = (stats[typeName] || 0) + 1;
+      
+      // Collect build/train commands for debugging
+      if ([0x0C, 0x14, 0x1D, 0x20].includes(command.type)) {
+        buildCommands.push({
+          type: command.typeString,
+          frame: command.frame,
+          parameters: command.parameters
+        });
+      }
+    }
+    
+    console.log('[BWCommandParser] Command statistics:', stats);
+    console.log('[BWCommandParser] Build/Train commands found:', buildCommands.length);
+    
+    if (buildCommands.length > 0) {
+      console.log('[BWCommandParser] First 10 build commands:', buildCommands.slice(0, 10));
     }
   }
 }

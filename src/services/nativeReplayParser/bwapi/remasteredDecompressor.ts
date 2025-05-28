@@ -1,6 +1,6 @@
+
 /**
- * Remastered Zlib Decompressor basierend auf screp-js Implementierung
- * Speziell für StarCraft: Brood War Remastered Format
+ * Enhanced Remastered Decompressor with better compression detection
  */
 
 import * as pako from 'pako';
@@ -22,9 +22,9 @@ export interface DecompressionResult {
 
 export class RemasteredDecompressor {
   /**
-   * Check if data appears to be a compressed block
+   * Enhanced compression detection
    */
-  static isCompressedBlock(data: Uint8Array): boolean {
+  static isLikelyCompressed(data: Uint8Array): boolean {
     if (data.length < 2) return false;
     
     // Check for zlib signatures
@@ -42,9 +42,29 @@ export class RemasteredDecompressor {
       }
     }
     
-    // Check for other compression indicators
+    // Additional heuristics
     const textContent = new TextDecoder('latin1', { fatal: false }).decode(data.slice(0, Math.min(100, data.length)));
-    return textContent.includes('LIST') || textContent.includes('RIFF');
+    return textContent.includes('LIST') || textContent.includes('RIFF') || this.hasCompressionPatterns(data);
+  }
+
+  /**
+   * Check for compression patterns
+   */
+  private static hasCompressionPatterns(data: Uint8Array): boolean {
+    let lowEntropyBytes = 0;
+    let repeatedBytes = 0;
+    
+    for (let i = 0; i < Math.min(100, data.length - 1); i++) {
+      if (data[i] === data[i + 1]) {
+        repeatedBytes++;
+      }
+      if (data[i] < 32 || data[i] > 126) {
+        lowEntropyBytes++;
+      }
+    }
+    
+    return (lowEntropyBytes / Math.min(100, data.length)) > 0.3 || 
+           (repeatedBytes / Math.min(99, data.length - 1)) > 0.2;
   }
 
   /**

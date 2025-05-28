@@ -1,7 +1,6 @@
 
 /**
- * Data mapping layer for converting DirectParser results to UI format
- * Enhanced with BWAPI-conform command processing and Remastered FPS
+ * Enhanced data mapping with improved build order generation
  */
 
 import { DirectParserResult, BuildOrderItem } from './types';
@@ -10,78 +9,117 @@ import { BWAPICommandEngine, REMASTERED_FPS } from './bwapi/commandEngine';
 import { UNIT_NAMES, BUILDING_NAMES } from './bwRemastered/constants';
 
 /**
- * Converts frame number to timestamp string "mm:ss" mit Remastered FPS
+ * Converts frame number to timestamp string "mm:ss" with Remastered FPS
  */
 export function frameToTimestamp(frame: number): string {
-  const totalSeconds = Math.floor(frame / REMASTERED_FPS); // Korrekte Remastered FPS
+  const totalSeconds = Math.floor(frame / REMASTERED_FPS);
   const minutes = String(Math.floor(totalSeconds / 60)).padStart(1, '0');
   const seconds = String(totalSeconds % 60).padStart(2, '0');
   return `${minutes}:${seconds}`;
 }
 
 /**
- * Estimates supply based on game progression mit realistischen Werten
+ * Enhanced supply estimation based on actual commands
  */
-export function estimateSupply(frame: number, playerActions: any[]): number {
-  const timeBasedSupply = Math.floor((frame / REMASTERED_FPS) / 25) * 2; // Alle 25 Sekunden +2 Supply
+export function estimateSupply(frame: number, playerActions: any[], commandIndex: number): number {
+  const baseSupply = 4; // Starting supply
   
-  // Zähle tatsächliche Einheiten und Gebäude für bessere Schätzung
-  const buildActions = playerActions.filter(action => {
-    if (typeof action.type === 'string') {
-      return ['Build', 'Train', 'Build Self'].includes(action.type);
+  // Count actual supply-affecting buildings and units up to this point
+  const relevantActions = playerActions.slice(0, commandIndex + 1);
+  let supplyFromBuildings = 0;
+  let unitsBuilt = 0;
+  
+  for (const action of relevantActions) {
+    if (action.parameters && action.parameters.unitTypeId) {
+      const unitId = action.parameters.unitTypeId;
+      
+      // Supply buildings (rough estimates)
+      if ([84, 85, 86].includes(unitId)) { // Pylon, Overlord, Supply Depot
+        supplyFromBuildings += 8;
+      }
+      
+      // Count units for supply usage estimation
+      if ([0x0C, 0x14, 0x1D].includes(action.type)) {
+        unitsBuilt++;
+      }
     }
-    if (typeof action.cmdId === 'number') {
-      return [0x0C, 0x14, 0x1D, 0x20].includes(action.cmdId);
-    }
-    return false;
-  });
+  }
   
-  const baseSupply = 4; // Startwert
-  const unitSupply = Math.min(buildActions.length * 0.8, 100); // Schätzung basierend auf Build-Actions
+  const timeBasedSupply = Math.floor((frame / REMASTERED_FPS) / 30) * 2; // Slower progression
+  const estimatedUsed = Math.min(baseSupply + Math.floor(unitsBuilt * 1.2), 200);
   
-  return Math.min(Math.max(baseSupply + timeBasedSupply + unitSupply, baseSupply), 200);
+  return Math.max(estimatedUsed, baseSupply + timeBasedSupply);
 }
 
 /**
- * Mappe Unit/Building ID zu Namen
+ * Get unit/building name with enhanced mapping
  */
 export function getUnitName(unitId: number): string {
-  return UNIT_NAMES[unitId as keyof typeof UNIT_NAMES] || 
-         BUILDING_NAMES[unitId as keyof typeof BUILDING_NAMES] || 
-         `Unit ${unitId}`;
+  const unitName = UNIT_NAMES[unitId as keyof typeof UNIT_NAMES];
+  const buildingName = BUILDING_NAMES[unitId as keyof typeof BUILDING_NAMES];
+  
+  if (unitName) return unitName;
+  if (buildingName) return buildingName;
+  
+  // Fallback with some common IDs
+  const commonUnits: Record<number, string> = {
+    0: 'Marine',
+    1: 'Ghost',
+    2: 'Vulture',
+    3: 'Goliath',
+    7: 'SCV',
+    41: 'Zealot',
+    42: 'Dragoon',
+    43: 'High Templar',
+    64: 'Probe',
+    37: 'Zergling',
+    38: 'Hydralisk',
+    46: 'Drone'
+  };
+  
+  return commonUnits[unitId] || `Unit_${unitId}`;
 }
 
 /**
- * Enhanced Build Order Mapping mit BWAPI-konformen Commands
+ * Enhanced Build Order Mapping with better command filtering
  */
 export function mapBuildOrdersToUI(buildOrders: BuildOrderItem[][], playerActions: Record<number, any[]>): Array<Array<{ frame: number; timestamp: string; action: string; supply: number; unitName?: string; category?: string }>> {
   return buildOrders.map((playerBuildOrder, playerIndex) => {
     const actions = playerActions[playerIndex] || [];
     
-    return playerBuildOrder.map(item => {
-      // Verbesserte Action-Namen mit Unit-Mapping
+    // If build order is empty, try to generate from actions directly
+    let workingBuildOrder = playerBuildOrder;
+    if (workingBuildOrder.length === 0) {
+      workingBuildOrder = generateBuildOrderFromActions(actions);
+    }
+    
+    return workingBuildOrder.map((item, index) => {
       let actionName = item.action;
       let unitName: string | undefined;
       let category: string | undefined;
       
-      // Extrahiere Unit-Namen aus Command-Parametern wenn verfügbar
-      if (actions.length > 0) {
-        const matchingAction = actions.find(action => 
-          Math.abs(action.frame - item.frame) <= 2 // Frame-Toleranz
-        );
-        
-        if (matchingAction && matchingAction.parameters) {
-          const unitId = matchingAction.parameters.unitTypeId;
-          if (unitId) {
-            unitName = getUnitName(unitId);
+      // Enhanced action name resolution
+      const matchingAction = actions.find(action => 
+        Math.abs(action.frame - item.frame) <= 5 // Increased tolerance
+      );
+      
+      if (matchingAction && matchingAction.parameters) {
+        const unitId = matchingAction.parameters.unitTypeId;
+        if (unitId !== undefined) {
+          unitName = getUnitName(unitId);
+          
+          // Determine action type based on command
+          if (matchingAction.type === 0x0C || matchingAction.type === 0x20) {
+            actionName = `Build ${unitName}`;
+          } else if (matchingAction.type === 0x14 || matchingAction.type === 0x1D) {
+            actionName = `Train ${unitName}`;
+          } else {
             actionName = `${item.action} ${unitName}`;
           }
-          
-          // Kategorisiere basierend auf Command
-          if (matchingAction.cmdId) {
-            const cmdCategory = BWAPICommandEngine.categorizeCommand(matchingAction.cmdId);
-            category = cmdCategory;
-          }
+        }
+        
+        if (matchingAction.type !== undefined) {
+          category = BWAPICommandEngine.categorizeCommand(matchingAction.type);
         }
       }
       
@@ -89,7 +127,7 @@ export function mapBuildOrdersToUI(buildOrders: BuildOrderItem[][], playerAction
         frame: item.frame,
         timestamp: item.timestamp || frameToTimestamp(item.frame),
         action: actionName,
-        supply: item.supply || estimateSupply(item.frame, actions),
+        supply: item.supply || estimateSupply(item.frame, actions, index),
         unitName,
         category
       };
@@ -98,33 +136,65 @@ export function mapBuildOrdersToUI(buildOrders: BuildOrderItem[][], playerAction
 }
 
 /**
- * Enhanced Player Actions Mapping mit realistischer APM-Berechnung
+ * Generate build order directly from actions if none exists
+ */
+function generateBuildOrderFromActions(actions: any[]): BuildOrderItem[] {
+  const buildActions = actions.filter(action => {
+    if (typeof action.type === 'number') {
+      return [0x0C, 0x14, 0x1D, 0x20].includes(action.type);
+    }
+    if (typeof action.typeString === 'string') {
+      return ['Build', 'Train', 'Build Self'].includes(action.typeString);
+    }
+    return false;
+  });
+  
+  return buildActions.slice(0, 30).map((action, index) => {
+    let actionType = 'Build';
+    
+    if (action.type === 0x14 || action.type === 0x1D) {
+      actionType = 'Train';
+    } else if (action.type === 0x20) {
+      actionType = 'Morph';
+    }
+    
+    let unitName = '';
+    if (action.parameters && action.parameters.unitTypeId) {
+      unitName = getUnitName(action.parameters.unitTypeId);
+    }
+    
+    return {
+      frame: action.frame,
+      timestamp: frameToTimestamp(action.frame),
+      action: unitName ? `${actionType} ${unitName}` : actionType,
+      supply: estimateSupply(action.frame, buildActions, index)
+    };
+  });
+}
+
+/**
+ * Enhanced Player Actions Mapping with realistic APM
  */
 export function mapPlayerActionsToUI(playerActions: Record<number, any[]>, totalFrames: number): Array<{ id: number; apm: number; eapm: number; actions: any[]; quality: string }> {
-  const gameMinutes = totalFrames / REMASTERED_FPS / 60; // Korrekte Remastered FPS
+  const gameMinutes = totalFrames / REMASTERED_FPS / 60;
   
   return Object.entries(playerActions).map(([playerIdStr, actions]) => {
     const playerId = parseInt(playerIdStr);
     
-    // Separiere verschiedene Command-Typen für realistische APM/EAPM
+    // Enhanced effective action filtering
     const effectiveActions = actions.filter(action => {
-      // BWAPI-konforme Filterung für EAPM
-      if (typeof action.cmdId === 'number') {
-        return BWAPICommandEngine.isEffectiveAction(action.cmdId);
+      if (typeof action.type === 'number') {
+        return BWAPICommandEngine.isEffectiveAction(action.type);
       }
-      
-      // Fallback für String-basierte Types
-      if (typeof action.type === 'string') {
-        return !['Sync', 'Select', 'Frame'].includes(action.type);
+      if (typeof action.typeString === 'string') {
+        return !['Frame Increment', 'Frame Skip', 'Select Units', 'Sync'].includes(action.typeString);
       }
-      
       return true;
     });
     
     const totalActionCount = actions.length;
     const effectiveActionCount = effectiveActions.length;
     
-    // Verwende BWAPI-Engine für APM-Validierung
     const apmValidation = BWAPICommandEngine.validateAPM(
       totalActionCount, 
       effectiveActionCount, 
@@ -142,7 +212,7 @@ export function mapPlayerActionsToUI(playerActions: Record<number, any[]>, total
 }
 
 /**
- * Main mapping function mit erweiterten Validierungen
+ * Main mapping function with enhanced validation
  */
 export function mapDirectReplayDataToUI(directData: DirectParserResult): {
   buildOrders: Array<Array<{ frame: number; timestamp: string; action: string; supply: number; unitName?: string; category?: string }>>;
@@ -156,24 +226,22 @@ export function mapDirectReplayDataToUI(directData: DirectParserResult): {
     realisticDataQuality: string;
   };
 } {
-  console.log('[DataMapper] Mapping DirectParser data to UI format with BWAPI enhancements');
+  console.log('[DataMapper] Enhanced mapping with improved build order generation');
   
   const buildOrders = mapBuildOrdersToUI(directData.buildOrders, directData.playerActions);
   const playerStats = mapPlayerActionsToUI(directData.playerActions, directData.totalFrames);
   
-  // Berechne erweiterte Validierungsmetriken
   const gameDurationMinutes = directData.totalFrames / REMASTERED_FPS / 60;
   const totalCommands = directData.commands.length;
   const averageAPM = playerStats.reduce((sum, p) => sum + p.apm, 0) / Math.max(playerStats.length, 1);
   
-  // Validiere Gesamtqualität der Daten
   const commandValidation = BWAPICommandEngine.validateCommandCount(
     totalCommands, 
     gameDurationMinutes, 
     playerStats.length
   );
   
-  // Generate enhanced validation data for debug UI
+  // Enhanced validation data
   const validationData: any = { 
     playersWithActions: {},
     gameMetrics: {
@@ -181,52 +249,37 @@ export function mapDirectReplayDataToUI(directData: DirectParserResult): {
       totalCommands,
       averageAPM: Math.round(averageAPM),
       commandQuality: commandValidation.quality,
-      expectedCommandRange: commandValidation.expectedRange
+      expectedCommandRange: commandValidation.expectedRange,
+      buildOrdersFound: buildOrders.reduce((sum, bo) => sum + bo.length, 0)
     }
   };
   
   Object.entries(directData.playerActions).forEach(([playerIdStr, actions]) => {
     const playerId = parseInt(playerIdStr);
     const playerStat = playerStats.find(p => p.id === playerId);
-    
-    // Analysiere Command-Typen für bessere Debugging-Info
-    const commandTypes: Record<string, number> = {};
-    const firstCommands = actions.slice(0, 5).map(cmd => {
-      let cmdStr = '';
-      if (typeof cmd.cmdId === 'number') {
-        cmdStr = `0x${cmd.cmdId.toString(16).padStart(2, '0')}`;
-        const category = BWAPICommandEngine.categorizeCommand(cmd.cmdId);
-        commandTypes[category] = (commandTypes[category] || 0) + 1;
-      } else if (typeof cmd.type === 'string') {
-        cmdStr = cmd.type;
-      } else {
-        cmdStr = 'Unknown';
-      }
-      return cmdStr;
-    });
+    const playerBuildOrder = buildOrders[playerId] || [];
     
     const buildActions = actions.filter(a => 
-      (typeof a.cmdId === 'number' && [0x0C, 0x14, 0x1D, 0x20].includes(a.cmdId)) ||
-      (typeof a.type === 'string' && ['Build', 'Train'].includes(a.type))
+      (typeof a.type === 'number' && [0x0C, 0x14, 0x1D, 0x20].includes(a.type)) ||
+      (typeof a.typeString === 'string' && ['Build', 'Train', 'Build Self'].includes(a.typeString))
     );
     
     const firstUnits = buildActions
-      .slice(0, 3)
+      .slice(0, 5)
       .map(cmd => {
         if (cmd.parameters && cmd.parameters.unitTypeId) {
           return getUnitName(cmd.parameters.unitTypeId);
         }
-        return cmd.unitName || (typeof cmd.type === 'string' ? cmd.type : 'Unknown');
+        return cmd.unitName || (typeof cmd.typeString === 'string' ? cmd.typeString : 'Unknown');
       });
     
     validationData.playersWithActions[playerId] = {
       detectedCommands: actions.length,
-      firstCommands,
+      buildOrderItems: playerBuildOrder.length,
       firstUnits,
       apm: playerStat?.apm || 0,
       eapm: playerStat?.eapm || 0,
       quality: playerStat?.quality || 'unknown',
-      commandTypeBreakdown: commandTypes,
       buildActionsCount: buildActions.length
     };
   });
