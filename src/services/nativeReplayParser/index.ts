@@ -1,4 +1,3 @@
-
 /**
  * Enhanced StarCraft: Brood War Remastered replay parser
  * Now uses real screp-js integration with robust fallbacks
@@ -7,6 +6,7 @@
 import { ParsedReplayData } from '../replayParser/types';
 import { parseBWRemasteredReplay } from './bwRemastered';
 import { ensureBufferPolyfills } from './bufferUtils';
+import { ImprovedSeRSWrapper } from './improvedSeRSWrapper';
 
 export class NativeReplayParser {
   /**
@@ -63,7 +63,42 @@ export class NativeReplayParser {
 
 // Export the main parsing function
 export async function parseReplayNative(file: File): Promise<ParsedReplayData> {
-  return NativeReplayParser.parseReplay(file);
+  console.log('[nativeReplayParser] Starting enhanced native parsing...');
+  console.log('[nativeReplayParser] File:', file.name, 'Size:', file.size);
+  
+  try {
+    // Check if it's a seRS file first
+    const arrayBuffer = await file.arrayBuffer();
+    const data = new Uint8Array(arrayBuffer);
+    
+    // Check for seRS magic at offset 12
+    if (data.length >= 16) {
+      const magic = String.fromCharCode(...data.slice(12, 16));
+      if (magic === 'seRS') {
+        console.log('[nativeReplayParser] seRS format detected, using improved parser');
+        
+        // Create a new File object from the buffer for the improved parser
+        const blob = new Blob([arrayBuffer], { type: 'application/octet-stream' });
+        const seRSFile = new File([blob], file.name, { type: file.type });
+        
+        return await ImprovedSeRSWrapper.parseReplay(seRSFile);
+      }
+    }
+    
+    console.log('[nativeReplayParser] Not seRS format, falling back to legacy parser');
+    
+    // Fallback to existing parsers
+    try {
+      return await parseBWRemasteredReplay(file);
+    } catch (error) {
+      console.error('[nativeReplayParser] All parsers failed:', error);
+      throw new Error(`Replay parsing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+    
+  } catch (error) {
+    console.error('[nativeReplayParser] Native parsing failed:', error);
+    throw new Error(`Native parsing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 // Re-export types
