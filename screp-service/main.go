@@ -10,9 +10,8 @@ import (
 	"os"
 
 	"github.com/gorilla/mux"
-	"github.com/icza/screp/screp"
-	"github.com/icza/screp/rep"
 	"github.com/joho/godotenv"
+	"github.com/nicklaw5/go-starscape-replay/replay"
 )
 
 type Player struct {
@@ -92,7 +91,7 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpFile.Close()
 
-	replay, err := screp.ParseFile(tmpFile.Name())
+	replayData, err := replay.ParseFile(tmpFile.Name())
 	if err != nil {
 		log.Printf("Error parsing replay: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to parse replay: %v", err), http.StatusBadRequest)
@@ -104,16 +103,16 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 	mapName := "Unknown Map"
 	frames := 0
 
-	if replay.Header != nil {
-		frames = int(replay.Header.Frames)
-		if replay.Header.Map != "" {
-			mapName = replay.Header.Map
+	if replayData.Header != nil {
+		frames = int(replayData.Header.Frames)
+		if replayData.Header.Map != "" {
+			mapName = replayData.Header.Map
 		}
 
-		for _, player := range replay.Header.Players {
+		for _, player := range replayData.Header.Players {
 			if player != nil && player.Name != "" {
 				raceStr := getRaceString(player.Race)
-				apm := calculateAPM(replay, player.ID, frames)
+				apm := calculateAPM(replayData, player.ID, frames)
 
 				players = append(players, Player{
 					Name: player.Name,
@@ -125,29 +124,20 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if replay.Commands != nil && replay.Commands.Cmds != nil {
+	if replayData.Commands != nil && len(replayData.Commands) > 0 {
 		maxCommands := 100
-		for i, cmd := range replay.Commands.Cmds {
+		for i, cmd := range replayData.Commands {
 			if i >= maxCommands {
 				break
 			}
 			if cmd != nil {
-				// Use cmd.At for frame and cmd.PlayerID for player identification
-				frame := 0
-				playerID := byte(0)
-				
-				// Extract frame information - cmd.At gives the frame
-				if cmd.At != nil {
-					frame = int(*cmd.At)
-				}
-				
-				// Extract player ID - different commands have different ways to access player
+				frame := int(cmd.Frame)
 				cmdType := fmt.Sprintf("%T", cmd)
 				
 				commands = append(commands, Command{
 					Frame: frame,
 					Type:  cmdType,
-					Data:  fmt.Sprintf("Player: %d", playerID),
+					Data:  fmt.Sprintf("Player: %d", cmd.PlayerID),
 				})
 			}
 		}
@@ -172,30 +162,29 @@ func parseHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Parsed replay: %d players, %d commands", len(players), len(commands))
 }
 
-func getRaceString(race rep.Race) string {
+func getRaceString(race int) string {
 	switch race {
-	case rep.RaceZerg:
+	case 0:
 		return "Zerg"
-	case rep.RaceTerran:
+	case 1:
 		return "Terran"
-	case rep.RaceProtoss:
+	case 2:
 		return "Protoss"
-	case rep.RaceRandom:
+	case 6:
 		return "Random"
 	default:
 		return "Unknown"
 	}
 }
 
-func calculateAPM(replay *rep.Replay, playerID byte, totalFrames int) int {
-	if replay.Commands == nil || replay.Commands.Cmds == nil || totalFrames <= 0 {
+func calculateAPM(replayData *replay.Replay, playerID int, totalFrames int) int {
+	if replayData.Commands == nil || len(replayData.Commands) == 0 || totalFrames <= 0 {
 		return 0
 	}
 
 	playerCommands := 0
-	for _, cmd := range replay.Commands.Cmds {
-		if cmd != nil {
-			// Count all commands for now since player identification varies by command type
+	for _, cmd := range replayData.Commands {
+		if cmd != nil && cmd.PlayerID == playerID {
 			playerCommands++
 		}
 	}
@@ -203,11 +192,6 @@ func calculateAPM(replay *rep.Replay, playerID byte, totalFrames int) int {
 	gameDurationMinutes := float64(totalFrames) / (24.0 * 60.0)
 	if gameDurationMinutes < 1 {
 		gameDurationMinutes = 1
-	}
-
-	// Distribute commands equally among players for basic APM calculation
-	if len(replay.Header.Players) > 0 {
-		playerCommands = playerCommands / len(replay.Header.Players)
 	}
 
 	return int(float64(playerCommands) / gameDurationMinutes)
