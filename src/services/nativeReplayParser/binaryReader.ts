@@ -1,4 +1,3 @@
-
 /**
  * Binary data reader for StarCraft replay files
  */
@@ -23,6 +22,13 @@ export class BinaryReader {
    */
   setPosition(position: number): void {
     this.position = Math.max(0, Math.min(position, this.buffer.length));
+  }
+
+  /**
+   * Get the underlying buffer
+   */
+  getBuffer(): Uint8Array {
+    return this.buffer;
   }
 
   /**

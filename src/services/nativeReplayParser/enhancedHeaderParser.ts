@@ -1,4 +1,3 @@
-
 /**
  * Enhanced header parser for various StarCraft replay formats
  */
@@ -170,8 +169,7 @@ export class EnhancedHeaderParser {
    * Find map name by scanning file
    */
   private findMapName(): string | null {
-    const buffer = this.reader.getRemainingBytes();
-    const view = new Uint8Array(this.reader.buffer as ArrayBuffer);
+    const view = this.reader.getBuffer();
     
     // Look for common map file extensions or patterns
     const patterns = ['.scm', '.scx', 'Maps\\', 'maps\\'];
@@ -217,7 +215,7 @@ export class EnhancedHeaderParser {
    */
   private scanForPlayerNames(): PlayerInfo[] {
     const players: PlayerInfo[] = [];
-    const view = new Uint8Array(this.reader.buffer as ArrayBuffer);
+    const view = this.reader.getBuffer();
     
     // Look for sequences that could be player names
     // Player names are typically 3-24 characters, printable ASCII
