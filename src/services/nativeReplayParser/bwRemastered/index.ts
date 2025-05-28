@@ -1,6 +1,7 @@
+
 /**
  * StarCraft: Brood War Remastered parser entry point
- * Updated to use the new robust parser
+ * Updated to support async decompression
  */
 
 import { BWRemasteredParser } from './parser';
@@ -17,7 +18,8 @@ export async function parseBWRemasteredReplay(file: File): Promise<ParsedReplayD
   const parser = new BWRemasteredParser(buffer);
   
   try {
-    const bwData = parser.parseReplay();
+    // Now using async parseReplay method for decompression support
+    const bwData = await parser.parseReplay();
     console.log('[parseBWRemasteredReplay] Parse successful:', {
       map: bwData.mapName,
       players: bwData.players.length,

@@ -1,7 +1,7 @@
 
 /**
  * StarCraft: Brood War Remastered .rep file parser
- * Enhanced with comprehensive structure analysis
+ * Enhanced with zlib decompression support
  */
 
 import { BWReplayData } from './types';
@@ -10,6 +10,8 @@ import { BWHeaderParser } from './headerParser';
 import { BWPlayerParser } from './playerParser';
 import { BWCommandParser } from './commandParser';
 import { BWHexAnalyzer } from './hexAnalyzer';
+import { CompressionDetector } from '../compressionDetector';
+import { ReplayDecompressor } from '../decompressor';
 import { FRAMES_PER_SECOND } from './constants';
 
 export class BWRemasteredParser {
@@ -35,13 +37,33 @@ export class BWRemasteredParser {
   }
 
   /**
-   * Parse the complete replay file with enhanced analysis
+   * Parse the complete replay file with enhanced analysis and decompression
    */
-  parseReplay(): BWReplayData {
+  async parseReplay(): Promise<BWReplayData> {
     console.log('[BWRemasteredParser] Starting enhanced replay parse...');
     
     try {
-      // Comprehensive file analysis first
+      // First detect if the file needs decompression
+      const originalBuffer = this.reader.data.buffer;
+      const format = CompressionDetector.detectFormat(originalBuffer);
+      
+      console.log('[BWRemasteredParser] Detected format:', format);
+      
+      let processedBuffer = originalBuffer;
+      if (format.needsDecompression) {
+        console.log('[BWRemasteredParser] File requires decompression');
+        processedBuffer = await ReplayDecompressor.decompress(originalBuffer, format);
+        console.log('[BWRemasteredParser] Decompressed buffer size:', processedBuffer.byteLength);
+        
+        // Reinitialize reader with decompressed data
+        this.reader = new BWBinaryReader(processedBuffer);
+        this.headerParser = new BWHeaderParser(this.reader);
+        this.playerParser = new BWPlayerParser(this.reader);
+        this.commandParser = new BWCommandParser(this.reader);
+        this.analyzer = new BWHexAnalyzer(this.reader);
+      }
+      
+      // Comprehensive file analysis
       console.log('[BWRemasteredParser] === STARTING COMPREHENSIVE ANALYSIS ===');
       this.analyzer.analyzeReplayStructure();
       

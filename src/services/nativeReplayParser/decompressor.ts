@@ -1,9 +1,10 @@
-
 /**
  * Decompression utilities for StarCraft replay files
+ * Enhanced with pako for zlib decompression
  */
 
 import { ReplayFormat } from './compressionDetector';
+import * as pako from 'pako';
 
 export class ReplayDecompressor {
   /**
@@ -18,10 +19,12 @@ export class ReplayDecompressor {
     
     try {
       switch (format.type) {
+        case 'remastered_zlib':
+          return this.decompressRemasteredZlib(buffer);
+        case 'zlib':
+          return this.decompressZlib(buffer);
         case 'pkware':
           return await this.decompressPKWare(buffer);
-        case 'zlib':
-          return await this.decompressZlib(buffer);
         case 'bzip2':
           return await this.decompressBzip2(buffer);
         default:
@@ -30,6 +33,68 @@ export class ReplayDecompressor {
     } catch (error) {
       console.error('[ReplayDecompressor] Decompression failed:', error);
       throw new Error(`Decompression failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+  
+  /**
+   * Decompress Brood War Remastered zlib format
+   */
+  private static decompressRemasteredZlib(buffer: ArrayBuffer): ArrayBuffer {
+    console.log('[ReplayDecompressor] Processing Remastered zlib format');
+    
+    // Skip the first 16 bytes which contain metadata/header
+    const dataStart = 16;
+    const uint8Array = new Uint8Array(buffer, dataStart);
+    
+    console.log('[ReplayDecompressor] Compressed data size:', uint8Array.length);
+    console.log('[ReplayDecompressor] First few compressed bytes:', 
+      Array.from(uint8Array.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+    
+    try {
+      // Use pako to decompress the zlib data
+      const decompressed = pako.inflate(uint8Array);
+      console.log('[ReplayDecompressor] Decompressed size:', decompressed.length);
+      console.log('[ReplayDecompressor] First few decompressed bytes:', 
+        Array.from(decompressed.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
+      
+      // Check if we now have a valid replay header
+      const headerCheck = new TextDecoder('latin1').decode(decompressed.slice(0, 4));
+      console.log('[ReplayDecompressor] Decompressed header:', headerCheck);
+      
+      return decompressed.buffer;
+    } catch (error) {
+      console.error('[ReplayDecompressor] Pako decompression failed:', error);
+      
+      // Try alternative decompression approach - maybe the data starts at different offset
+      for (const offset of [0, 8, 12, 20, 24]) {
+        try {
+          console.log(`[ReplayDecompressor] Trying offset ${offset}`);
+          const alternativeData = new Uint8Array(buffer, offset);
+          const result = pako.inflate(alternativeData);
+          console.log(`[ReplayDecompressor] Success with offset ${offset}, size:`, result.length);
+          return result.buffer;
+        } catch (e) {
+          console.log(`[ReplayDecompressor] Offset ${offset} failed:`, e);
+          continue;
+        }
+      }
+      
+      throw error;
+    }
+  }
+  
+  /**
+   * Decompress standard zlib compressed data
+   */
+  private static decompressZlib(buffer: ArrayBuffer): ArrayBuffer {
+    try {
+      const uint8Array = new Uint8Array(buffer);
+      const decompressed = pako.inflate(uint8Array);
+      console.log('[ReplayDecompressor] Standard zlib decompression successful, size:', decompressed.length);
+      return decompressed.buffer;
+    } catch (error) {
+      console.error('[ReplayDecompressor] Standard zlib decompression failed:', error);
+      throw error;
     }
   }
   
@@ -82,26 +147,6 @@ export class ReplayDecompressor {
     }
     
     throw new Error('Invalid ZIP structure');
-  }
-  
-  /**
-   * Decompress zlib compressed data
-   */
-  private static async decompressZlib(buffer: ArrayBuffer): Promise<ArrayBuffer> {
-    try {
-      if ('DecompressionStream' in window) {
-        const stream = new DecompressionStream('deflate');
-        const response = new Response(buffer);
-        const decompressed = await response.body?.pipeThrough(stream);
-        if (decompressed) {
-          return await new Response(decompressed).arrayBuffer();
-        }
-      }
-      throw new Error('DecompressionStream not available');
-    } catch (error) {
-      console.error('[ReplayDecompressor] Zlib decompression failed:', error);
-      throw error;
-    }
   }
   
   /**
