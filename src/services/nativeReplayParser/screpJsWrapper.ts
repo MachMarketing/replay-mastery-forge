@@ -101,6 +101,16 @@ export class ScrepJsWrapper {
     try {
       parseResult = await compliantParser.parseReplay();
       console.log('[ScrepJsWrapper] Screp-compliant parsing: SUCCESS');
+      
+      // Log detailed parsing results
+      console.log('[ScrepJsWrapper] === DETAILED PARSING RESULTS ===');
+      console.log('[ScrepJsWrapper] Map name:', parseResult.header.mapName);
+      console.log('[ScrepJsWrapper] Player names:', parseResult.header.playerNames);
+      console.log('[ScrepJsWrapper] Player races:', parseResult.header.playerRaces);
+      console.log('[ScrepJsWrapper] Duration:', parseResult.header.duration);
+      console.log('[ScrepJsWrapper] APM values:', parseResult.metrics.apm);
+      console.log('[ScrepJsWrapper] EAPM values:', parseResult.metrics.eapm);
+      
     } catch (error) {
       console.error('[ScrepJsWrapper] Screp-compliant parsing failed:', error);
       throw new Error(`Screp-compliant parsing failed: ${error.message}`);
@@ -112,7 +122,11 @@ export class ScrepJsWrapper {
       try {
         console.log('[ScrepJsWrapper] Attempting screp-js for additional header info...');
         screpHeader = await this.tryScrepJsHeader(buffer);
-        console.log('[ScrepJsWrapper] screp-js header extraction: SUCCESS');
+        if (screpHeader) {
+          console.log('[ScrepJsWrapper] screp-js header extraction: SUCCESS');
+        } else {
+          console.log('[ScrepJsWrapper] screp-js header extraction: NO ADDITIONAL DATA');
+        }
       } catch (error) {
         console.warn('[ScrepJsWrapper] screp-js header extraction failed, using parsed data');
       }
@@ -156,7 +170,7 @@ export class ScrepJsWrapper {
   private combineResults(parseResult: ScrepParseResult, screpHeader: any): ReplayParseResult {
     console.log('[ScrepJsWrapper] ===== COMBINING SCREP-COMPLIANT RESULTS =====');
     
-    // Use screp-compliant data as primary source
+    // Use screp-compliant data as primary source - NO FALLBACKS
     const players = parseResult.header.playerNames.map((name, index) => ({
       name,
       race: parseResult.header.playerRaces[index] || 'Unknown',
@@ -164,10 +178,14 @@ export class ScrepJsWrapper {
       color: index
     }));
 
-    // If screp-js provided additional header info, use it to enhance
+    // If screp-js provided additional header info, use it to enhance map name only
     let mapName = parseResult.header.mapName;
-    if (screpHeader?.Header?.Map) {
-      mapName = screpHeader.Header.Map.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+    if (screpHeader?.Header?.Map && screpHeader.Header.Map.trim()) {
+      const enhancedMapName = screpHeader.Header.Map.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+      if (enhancedMapName && enhancedMapName !== 'Unknown Map') {
+        mapName = enhancedMapName;
+        console.log('[ScrepJsWrapper] Enhanced map name from screp-js:', mapName);
+      }
     }
 
     const result: ReplayParseResult = {

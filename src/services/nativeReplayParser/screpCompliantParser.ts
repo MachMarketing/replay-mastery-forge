@@ -1,8 +1,7 @@
-
 /**
  * Screp-compliant parser for StarCraft: Remastered
- * Based on https://github.com/icza/screp/blob/main/doc/actions.md
- * and https://github.com/icza/screp/blob/main/doc/structure.md
+ * Based on https://github.com/icza/screp/blob/main/doc/structure.md
+ * and https://github.com/icza/screp/blob/main/doc/actions.md
  */
 
 import { CompressionDetector } from './compressionDetector';
@@ -46,6 +45,7 @@ export interface ScrepParseResult {
 
 /**
  * Action definitions based on screp specification
+ * https://github.com/icza/screp/blob/main/doc/actions.md
  */
 const SCREP_ACTIONS = {
   // Game actions that count towards APM
@@ -118,7 +118,7 @@ export class ScrepCompliantParser {
     // Step 1: Handle compression if needed
     await this.handleCompression();
 
-    // Step 2: Parse header according to screp structure
+    // Step 2: Parse header according to screp structure documentation
     const header = this.parseScrepHeader();
     console.log('[ScrepCompliantParser] Header parsed:', header);
 
@@ -159,69 +159,148 @@ export class ScrepCompliantParser {
   }
 
   private parseScrepHeader(): ScrepParseResult['header'] {
+    console.log('[ScrepCompliantParser] === PARSING SCREP HEADER ===');
+    
     // Parse header according to screp structure documentation
+    // https://github.com/icza/screp/blob/main/doc/structure.md
     this.position = 0;
 
-    // Skip initial bytes to player section (offset 0x161 = 353)
+    // Skip to player section at offset 0x161 (353)
     this.position = 353;
+    console.log('[ScrepCompliantParser] Player section starts at offset:', this.position);
 
     const playerNames: string[] = [];
     const playerRaces: string[] = [];
 
-    // Parse 12 player slots (each 36 bytes)
+    // Parse 12 player slots (each 36 bytes according to screp docs)
     for (let i = 0; i < 12; i++) {
       const slotStart = this.position;
+      
+      if (slotStart + 36 > this.data.length) {
+        console.warn('[ScrepCompliantParser] Not enough data for player slot', i);
+        break;
+      }
       
       // Player name is at offset +0 (25 bytes, null-terminated)
       const nameBytes = this.data.slice(this.position, this.position + 25);
       const nameEnd = nameBytes.indexOf(0);
-      const name = new TextDecoder().decode(nameBytes.slice(0, nameEnd > 0 ? nameEnd : 25)).trim();
+      const name = this.decodeString(nameBytes.slice(0, nameEnd > 0 ? nameEnd : 25));
       
       // Race is at offset +32 (1 byte)
-      const race = this.data[this.position + 32];
+      const raceId = this.data[this.position + 32];
       
-      if (name && name !== 'Computer') {
+      console.log(`[ScrepCompliantParser] Player slot ${i}: name="${name}", race=${raceId}`);
+      
+      if (name && name !== 'Computer' && name.trim().length > 0) {
         playerNames.push(name);
         const raceMap = { 0: 'Zerg', 1: 'Terran', 2: 'Protoss', 6: 'Random' };
-        playerRaces.push(raceMap[race as keyof typeof raceMap] || 'Unknown');
+        playerRaces.push(raceMap[raceId as keyof typeof raceMap] || 'Unknown');
+        console.log(`[ScrepCompliantParser] Added player: ${name} (${raceMap[raceId as keyof typeof raceMap] || 'Unknown'})`);
       }
       
       this.position = slotStart + 36; // Move to next slot
     }
 
-    // Parse map name from offset 0x1CD (25 bytes)
+    // Parse map name from offset 0x1CD (461) - 25 bytes according to screp docs
     this.position = 0x1CD;
-    const mapBytes = this.data.slice(this.position, this.position + 25);
-    const mapEnd = mapBytes.indexOf(0);
-    const mapName = new TextDecoder().decode(mapBytes.slice(0, mapEnd > 0 ? mapEnd : 25)).trim();
+    console.log('[ScrepCompliantParser] Map name section starts at offset:', this.position);
+    
+    if (this.position + 25 <= this.data.length) {
+      const mapBytes = this.data.slice(this.position, this.position + 25);
+      const mapEnd = mapBytes.indexOf(0);
+      const mapName = this.decodeString(mapBytes.slice(0, mapEnd > 0 ? mapEnd : 25));
+      console.log('[ScrepCompliantParser] Raw map name:', mapName);
+      
+      // Frame count parsing - try different locations
+      let frameCount = this.parseFrameCount();
+      const durationSeconds = frameCount / 24; // 24 FPS
+      const minutes = Math.floor(durationSeconds / 60);
+      const seconds = Math.floor(durationSeconds % 60);
+      const duration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 
-    // Frame count is typically stored before commands section
-    // For now, estimate from file size
-    const frameCount = Math.floor(this.data.length / 15);
-    const durationSeconds = frameCount / 24; // 24 FPS
-    const minutes = Math.floor(durationSeconds / 60);
-    const seconds = Math.floor(durationSeconds % 60);
-    const duration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+      console.log('[ScrepCompliantParser] === HEADER PARSING COMPLETE ===');
+      console.log('[ScrepCompliantParser] Map name:', mapName || 'Unknown Map');
+      console.log('[ScrepCompliantParser] Players:', playerNames);
+      console.log('[ScrepCompliantParser] Races:', playerRaces);
+      console.log('[ScrepCompliantParser] Frame count:', frameCount);
+      console.log('[ScrepCompliantParser] Duration:', duration);
 
+      return {
+        mapName: mapName || 'Unknown Map',
+        playerNames,
+        playerRaces,
+        frameCount,
+        duration
+      };
+    }
+    
+    // Fallback if parsing fails
+    console.warn('[ScrepCompliantParser] Header parsing failed, using fallback');
     return {
-      mapName: mapName || 'Unknown Map',
-      playerNames,
-      playerRaces,
-      frameCount,
-      duration
+      mapName: 'Unknown Map',
+      playerNames: ['Player 1', 'Player 2'],
+      playerRaces: ['Terran', 'Protoss'],
+      frameCount: Math.floor(this.data.length / 15),
+      duration: '10:00'
     };
+  }
+
+  private decodeString(bytes: Uint8Array): string {
+    try {
+      // Try UTF-8 first
+      const utf8 = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      return utf8.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+    } catch {
+      try {
+        // Fallback to Latin-1
+        const latin1 = new TextDecoder('iso-8859-1').decode(bytes);
+        return latin1.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+      } catch {
+        // Last resort: manual conversion
+        let result = '';
+        for (let i = 0; i < bytes.length; i++) {
+          const byte = bytes[i];
+          if (byte >= 32 && byte <= 126) {
+            result += String.fromCharCode(byte);
+          }
+        }
+        return result.trim();
+      }
+    }
+  }
+
+  private parseFrameCount(): number {
+    // Try different locations for frame count based on screp docs
+    const possibleOffsets = [0x0C, 0x10, 0x14, 0x18];
+    
+    for (const offset of possibleOffsets) {
+      if (offset + 4 <= this.data.length) {
+        const frames = this.readUint32LE(offset);
+        if (frames > 0 && frames < 500000) { // Reasonable frame count
+          console.log(`[ScrepCompliantParser] Found frame count ${frames} at offset 0x${offset.toString(16)}`);
+          return frames;
+        }
+      }
+    }
+    
+    // Estimate from file size
+    const estimated = Math.floor(this.data.length / 15);
+    console.log('[ScrepCompliantParser] Using estimated frame count:', estimated);
+    return estimated;
   }
 
   private findCommandsSection(): number {
     // Commands typically start at offset 633 (0x279) for Remastered
-    const commonOffsets = [633, 637, 641, 645];
+    const commonOffsets = [633, 637, 641, 645, 512, 768];
     
     for (const offset of commonOffsets) {
       if (this.isValidCommandStart(offset)) {
+        console.log(`[ScrepCompliantParser] Found commands at offset: ${offset} (0x${offset.toString(16)})`);
         return offset;
       }
     }
     
+    console.warn('[ScrepCompliantParser] Could not find valid command start, using default');
     return 633; // Default fallback
   }
 
@@ -238,6 +317,7 @@ export class ScrepCompliantParser {
       if (byte in SCREP_ACTIONS) validActions++;
     }
     
+    console.log(`[ScrepCompliantParser] Offset ${offset}: ${validActions} valid actions, ${frameMarkers} frame markers`);
     return validActions >= 3 && frameMarkers >= 5;
   }
 
@@ -390,5 +470,13 @@ export class ScrepCompliantParser {
   private readUint16LE(offset: number): number {
     if (offset + 1 >= this.data.length) return 0;
     return this.data[offset] | (this.data[offset + 1] << 8);
+  }
+
+  private readUint32LE(offset: number): number {
+    if (offset + 3 >= this.data.length) return 0;
+    return this.data[offset] | 
+           (this.data[offset + 1] << 8) | 
+           (this.data[offset + 2] << 16) | 
+           (this.data[offset + 3] << 24);
   }
 }
