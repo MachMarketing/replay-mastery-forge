@@ -1,184 +1,345 @@
+
 /**
- * Compression and format detection for StarCraft replay files
- * Enhanced with better Remastered detection
+ * Enhanced compression detection for StarCraft replays
+ * Updated for Remastered format changes and new compression methods
  */
 
-import { BinaryReader } from './binaryReader';
-
 export interface ReplayFormat {
-  type: 'uncompressed' | 'pkware' | 'zlib' | 'bzip2' | 'remastered_zlib' | 'unknown';
-  magicBytes: string;
+  type: 'uncompressed' | 'zlib' | 'remastered_zlib' | 'pkware' | 'bzip2' | 'unknown';
   needsDecompression: boolean;
   headerOffset: number;
+  confidence: number;
+  version: string;
+  isRemastered: boolean;
 }
 
 export class CompressionDetector {
   /**
-   * Detect the format and compression of a replay file
+   * Detect the compression format and version of a StarCraft replay
    */
   static detectFormat(buffer: ArrayBuffer): ReplayFormat {
-    const reader = new BinaryReader(buffer);
+    const view = new Uint8Array(buffer);
+    const dataView = new DataView(buffer);
     
-    // Read first 64 bytes for comprehensive analysis
-    const magicBytes = reader.readBytes(Math.min(64, buffer.byteLength));
-    const magicString = new TextDecoder('latin1').decode(magicBytes.slice(0, 4));
+    console.log('[CompressionDetector] Analyzing file format...');
+    console.log('[CompressionDetector] File size:', buffer.byteLength);
+    console.log('[CompressionDetector] First 16 bytes:', 
+      Array.from(view.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '));
     
-    console.log('[CompressionDetector] Comprehensive file analysis:');
-    console.log('[CompressionDetector] File size:', buffer.byteLength, 'bytes');
-    console.log('[CompressionDetector] First 64 bytes hex:');
-    
-    // Log in 16-byte chunks for readability
-    for (let i = 0; i < Math.min(64, magicBytes.length); i += 16) {
-      const chunk = Array.from(magicBytes.slice(i, i + 16));
-      const hex = chunk.map(b => b.toString(16).padStart(2, '0')).join(' ');
-      const ascii = chunk.map(b => b >= 32 && b <= 126 ? String.fromCharCode(b) : '.').join('');
-      console.log(`[CompressionDetector] ${i.toString(16).padStart(2, '0')}: ${hex} | ${ascii}`);
+    // Check for uncompressed replay first
+    const uncompressedResult = this.checkUncompressed(view);
+    if (uncompressedResult.confidence > 0.8) {
+      return uncompressedResult;
     }
     
-    console.log('[CompressionDetector] Magic string (first 4 bytes):', magicString);
-    
-    // Check for Brood War Remastered compression patterns
-    if (magicBytes[0] === 0xC2 && magicBytes[1] === 0x19 && 
-        magicBytes[2] === 0xC2 && magicBytes[3] === 0x93) {
-      console.log('[CompressionDetector] Detected Brood War Remastered format with header signature');
-      
-      // Look for zlib data in the file
-      const hasZlibData = this.findZlibData(magicBytes);
-      if (hasZlibData >= 0) {
-        console.log(`[CompressionDetector] Found zlib data at offset ${hasZlibData} in header`);
-      }
-      
-      return {
-        type: 'remastered_zlib',
-        magicBytes: 'C2 19 C2 93',
-        needsDecompression: true,
-        headerOffset: 0
-      };
+    // Check for Remastered-specific zlib compression
+    const remasteredResult = this.checkRemasteredZlib(view, dataView);
+    if (remasteredResult.confidence > 0.7) {
+      return remasteredResult;
     }
     
-    // Check for uncompressed StarCraft replay
-    if (magicString === 'Repl') {
-      console.log('[CompressionDetector] Detected uncompressed StarCraft replay');
-      return {
-        type: 'uncompressed',
-        magicBytes: magicString,
-        needsDecompression: false,
-        headerOffset: 0
-      };
-    }
-    
-    // Check for standard zlib compression (starts with 0x78)
-    if (magicBytes[0] === 0x78) {
-      console.log('[CompressionDetector] Detected standard zlib compression');
-      return {
-        type: 'zlib',
-        magicBytes: '78',
-        needsDecompression: true,
-        headerOffset: 0
-      };
-    }
-    
-    // Look for zlib data anywhere in the first 64 bytes
-    const zlibOffset = this.findZlibData(magicBytes);
-    if (zlibOffset >= 0) {
-      console.log(`[CompressionDetector] Found zlib signature at offset ${zlibOffset}`);
-      return {
-        type: 'remastered_zlib',
-        magicBytes: `zlib@${zlibOffset}`,
-        needsDecompression: true,
-        headerOffset: 0
-      };
+    // Check for standard zlib
+    const zlibResult = this.checkStandardZlib(view);
+    if (zlibResult.confidence > 0.6) {
+      return zlibResult;
     }
     
     // Check for PKWare/ZIP compression
-    if (magicBytes[0] === 0x50 && magicBytes[1] === 0x4B) {
-      console.log('[CompressionDetector] Detected PKWare/ZIP compression');
-      return {
-        type: 'pkware',
-        magicBytes: 'PK',
-        needsDecompression: true,
-        headerOffset: 0
-      };
+    const pkwareResult = this.checkPKWare(view, dataView);
+    if (pkwareResult.confidence > 0.5) {
+      return pkwareResult;
     }
     
-    // Check for bzip2 compression
-    if (magicBytes[0] === 0x42 && magicBytes[1] === 0x5A && magicBytes[2] === 0x68) {
-      console.log('[CompressionDetector] Detected bzip2 compression');
-      return {
-        type: 'bzip2',
-        magicBytes: 'BZh',
-        needsDecompression: true,
-        headerOffset: 0
-      };
+    // Check for bzip2
+    const bzip2Result = this.checkBzip2(view);
+    if (bzip2Result.confidence > 0.5) {
+      return bzip2Result;
     }
     
-    // Check for alternative SC:BW formats by scanning for "Repl"
-    if (this.scanForReplayHeader(buffer)) {
-      console.log('[CompressionDetector] Found "Repl" signature in file');
-      return {
-        type: 'uncompressed',
-        magicBytes: 'Repl',
-        needsDecompression: false,
-        headerOffset: this.findReplayHeaderOffset(buffer)
-      };
-    }
-    
-    console.log('[CompressionDetector] Unknown format detected - might be compressed');
+    // Default fallback
+    console.warn('[CompressionDetector] Could not determine format, using unknown');
     return {
-      type: 'remastered_zlib', // Assume it's a Remastered file that needs decompression
-      magicBytes: magicString,
-      needsDecompression: true,
-      headerOffset: 0
+      type: 'unknown',
+      needsDecompression: false,
+      headerOffset: 0,
+      confidence: 0.1,
+      version: 'Unknown',
+      isRemastered: false
     };
   }
   
   /**
-   * Find zlib compression signature in data
+   * Check for uncompressed replay format
    */
-  private static findZlibData(data: Uint8Array): number {
-    // Look for zlib magic bytes: 0x78 followed by various compression levels
-    const zlibHeaders = [0x9c, 0xda, 0x01, 0x5e, 0x2c];
+  private static checkUncompressed(data: Uint8Array): ReplayFormat {
+    let confidence = 0;
+    let isRemastered = false;
+    let version = 'Classic';
+    
+    // Look for "Repl" magic bytes at various offsets
+    const magicOffsets = [0, 4, 8, 12, 16, 32];
+    let foundMagic = false;
+    let headerOffset = 0;
+    
+    for (const offset of magicOffsets) {
+      if (offset + 4 <= data.length) {
+        const magic = new TextDecoder('latin1').decode(data.slice(offset, offset + 4));
+        if (magic === 'Repl') {
+          foundMagic = true;
+          headerOffset = offset;
+          confidence += 0.4;
+          break;
+        }
+      }
+    }
+    
+    // Check for StarCraft-specific strings
+    const textContent = new TextDecoder('latin1', { fatal: false })
+      .decode(data.slice(0, Math.min(1000, data.length)));
+    
+    if (textContent.includes('StarCraft')) confidence += 0.2;
+    if (textContent.includes('Brood War')) {
+      confidence += 0.1;
+      isRemastered = true;
+      version = 'Brood War';
+    }
+    if (textContent.includes('scenario.chk')) confidence += 0.1;
+    if (textContent.includes('Protoss') || textContent.includes('Terran') || textContent.includes('Zerg')) {
+      confidence += 0.1;
+    }
+    
+    // Check version indicators
+    if (data.length > 8) {
+      const versionBytes = new DataView(data.buffer).getUint32(4, true);
+      if (versionBytes >= 74) {
+        version = 'Remastered 1.23+';
+        isRemastered = true;
+        confidence += 0.1;
+      }
+    }
+    
+    return {
+      type: 'uncompressed',
+      needsDecompression: false,
+      headerOffset,
+      confidence,
+      version,
+      isRemastered
+    };
+  }
+  
+  /**
+   * Check for Remastered-specific zlib compression
+   */
+  private static checkRemasteredZlib(data: Uint8Array, dataView: DataView): ReplayFormat {
+    let confidence = 0;
+    let headerOffset = 0;
+    
+    // Remastered often has a specific structure with multiple zlib blocks
+    const zlibHeaders = this.findZlibHeaders(data);
+    
+    if (zlibHeaders.length > 1) {
+      confidence += 0.3; // Multiple zlib blocks suggest Remastered
+    }
+    
+    // Check for Remastered-specific file structure
+    if (data.length > 100) {
+      // Look for extended header patterns
+      const hasExtendedHeader = this.hasRemasteredHeader(data);
+      if (hasExtendedHeader) {
+        confidence += 0.3;
+      }
+      
+      // Check for UTF-8 encoded strings (Remastered feature)
+      const hasUTF8 = this.hasUTF8Content(data.slice(0, 500));
+      if (hasUTF8) {
+        confidence += 0.2;
+      }
+    }
+    
+    // Find the main zlib block offset
+    if (zlibHeaders.length > 0) {
+      headerOffset = zlibHeaders[0];
+      confidence += 0.2;
+    }
+    
+    return {
+      type: 'remastered_zlib',
+      needsDecompression: confidence > 0.5,
+      headerOffset,
+      confidence,
+      version: 'Remastered',
+      isRemastered: true
+    };
+  }
+  
+  /**
+   * Check for standard zlib compression
+   */
+  private static checkStandardZlib(data: Uint8Array): ReplayFormat {
+    let confidence = 0;
+    let headerOffset = 0;
+    
+    const zlibHeaders = this.findZlibHeaders(data);
+    
+    if (zlibHeaders.length === 1) {
+      confidence += 0.4; // Single zlib block suggests classic format
+      headerOffset = zlibHeaders[0];
+    } else if (zlibHeaders.length > 1) {
+      confidence += 0.2; // Multiple blocks possible but less likely for classic
+      headerOffset = zlibHeaders[0];
+    }
+    
+    // Check zlib header validity
+    if (zlibHeaders.length > 0) {
+      const header = (data[zlibHeaders[0]] << 8) | data[zlibHeaders[0] + 1];
+      if ((header & 0x0F00) === 0x0800 && (header % 31) === 0) {
+        confidence += 0.2; // Valid zlib header
+      }
+    }
+    
+    return {
+      type: 'zlib',
+      needsDecompression: confidence > 0.3,
+      headerOffset,
+      confidence,
+      version: 'Classic',
+      isRemastered: false
+    };
+  }
+  
+  /**
+   * Check for PKWare/ZIP compression
+   */
+  private static checkPKWare(data: Uint8Array, dataView: DataView): ReplayFormat {
+    let confidence = 0;
+    
+    // Check for ZIP local file header
+    if (data.length >= 4) {
+      const signature = dataView.getUint32(0, true);
+      if (signature === 0x04034b50) { // ZIP local file header
+        confidence += 0.6;
+      }
+    }
+    
+    // Check for PKWare signature
+    if (data.length >= 2) {
+      if (data[0] === 0x50 && data[1] === 0x4B) {
+        confidence += 0.3;
+      }
+    }
+    
+    return {
+      type: 'pkware',
+      needsDecompression: confidence > 0.3,
+      headerOffset: 0,
+      confidence,
+      version: 'Classic',
+      isRemastered: false
+    };
+  }
+  
+  /**
+   * Check for bzip2 compression
+   */
+  private static checkBzip2(data: Uint8Array): ReplayFormat {
+    let confidence = 0;
+    
+    // Check for bzip2 magic bytes
+    if (data.length >= 3) {
+      if (data[0] === 0x42 && data[1] === 0x5A && data[2] === 0x68) {
+        confidence += 0.7;
+      }
+    }
+    
+    return {
+      type: 'bzip2',
+      needsDecompression: confidence > 0.5,
+      headerOffset: 0,
+      confidence,
+      version: 'Classic',
+      isRemastered: false
+    };
+  }
+  
+  /**
+   * Find all zlib header positions in the data
+   */
+  private static findZlibHeaders(data: Uint8Array): number[] {
+    const positions: number[] = [];
     
     for (let i = 0; i < data.length - 1; i++) {
-      if (data[i] === 0x78 && zlibHeaders.includes(data[i + 1])) {
-        return i;
+      // Check for zlib magic bytes
+      if (data[i] === 0x78 && [0x9c, 0xda, 0x01, 0x5e, 0x2c].includes(data[i + 1])) {
+        positions.push(i);
       }
     }
-    return -1;
+    
+    return positions;
   }
   
   /**
-   * Scan buffer for "Repl" signature that might be offset
+   * Check if the file has Remastered-specific header structure
    */
-  private static scanForReplayHeader(buffer: ArrayBuffer): boolean {
-    const reader = new BinaryReader(buffer);
-    const searchLength = Math.min(1024, buffer.byteLength); // Search first 1KB
+  private static hasRemasteredHeader(data: Uint8Array): boolean {
+    // Remastered files typically have extended headers and specific patterns
+    if (data.length < 200) return false;
     
-    for (let i = 0; i < searchLength - 4; i++) {
-      reader.setPosition(i);
-      const chunk = reader.readFixedString(4);
-      if (chunk === 'Repl') {
-        console.log('[CompressionDetector] Found "Repl" at offset:', i);
-        return true;
+    // Look for extended header indicators
+    const header = data.slice(0, 200);
+    
+    // Check for specific byte patterns that indicate Remastered format
+    let remasteredPatterns = 0;
+    
+    // Pattern 1: Extended version info
+    for (let i = 0; i < header.length - 4; i++) {
+      const value = new DataView(header.buffer, i, 4).getUint32(0, true);
+      if (value >= 74 && value < 1000) { // Remastered version range
+        remasteredPatterns++;
+        break;
       }
     }
-    return false;
+    
+    // Pattern 2: Look for longer player name sections (Remastered supports longer names)
+    const nullSequences = this.countNullSequences(header);
+    if (nullSequences > 5) {
+      remasteredPatterns++;
+    }
+    
+    return remasteredPatterns >= 1;
   }
   
   /**
-   * Find the offset where the replay header starts
+   * Check if data contains UTF-8 encoded content (Remastered feature)
    */
-  private static findReplayHeaderOffset(buffer: ArrayBuffer): number {
-    const reader = new BinaryReader(buffer);
-    const searchLength = Math.min(1024, buffer.byteLength);
+  private static hasUTF8Content(data: Uint8Array): boolean {
+    try {
+      const text = new TextDecoder('utf-8', { fatal: true }).decode(data);
+      // Look for non-ASCII characters that would indicate UTF-8 usage
+      return /[^\x00-\x7F]/.test(text);
+    } catch {
+      return false;
+    }
+  }
+  
+  /**
+   * Count null byte sequences in header
+   */
+  private static countNullSequences(data: Uint8Array): number {
+    let count = 0;
+    let inSequence = false;
     
-    for (let i = 0; i < searchLength - 4; i++) {
-      reader.setPosition(i);
-      const chunk = reader.readFixedString(4);
-      if (chunk === 'Repl') {
-        return i;
+    for (let i = 0; i < data.length; i++) {
+      if (data[i] === 0) {
+        if (!inSequence) {
+          count++;
+          inSequence = true;
+        }
+      } else {
+        inSequence = false;
       }
     }
-    return 0;
+    
+    return count;
   }
 }
