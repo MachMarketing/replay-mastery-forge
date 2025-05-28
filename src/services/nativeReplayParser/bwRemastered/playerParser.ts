@@ -1,38 +1,62 @@
 
 /**
  * StarCraft: Brood War Player Parser
- * Based on correct screp specification for .rep files
+ * Enhanced with dynamic player data detection
  */
 
 import { BWBinaryReader } from './binaryReader';
 import { BWPlayer } from './types';
 import { RACE_MAPPING } from './constants';
+import { BWHexAnalyzer } from './hexAnalyzer';
 
 export class BWPlayerParser {
   private reader: BWBinaryReader;
+  private analyzer: BWHexAnalyzer;
 
   constructor(reader: BWBinaryReader) {
     this.reader = reader;
+    this.analyzer = new BWHexAnalyzer(reader);
   }
 
   parsePlayers(): BWPlayer[] {
-    console.log('[BWPlayerParser] Starting player parsing with correct .rep offsets...');
+    console.log('[BWPlayerParser] Starting enhanced player parsing...');
     
-    // According to screp specification, player data starts at 0x1A1 (417 decimal)
-    const playerDataOffset = 0x1A1;
-    console.log(`[BWPlayerParser] Using correct player offset: 0x${playerDataOffset.toString(16)}`);
+    // First try to discover the actual player data offset
+    const discoveredOffset = this.analyzer.discoverPlayerDataOffset();
     
-    this.reader.setPosition(playerDataOffset);
+    if (discoveredOffset) {
+      console.log(`[BWPlayerParser] Using discovered offset: 0x${discoveredOffset.toString(16)}`);
+      return this.parsePlayersAtOffset(discoveredOffset);
+    }
     
-    // Show hex dump of player area for debugging
-    console.log('[BWPlayerParser] Player area hex dump:');
-    console.log(this.reader.createHexDump(playerDataOffset, 256));
+    // Fallback to trying multiple known offsets
+    const knownOffsets = [0x1A1, 0x161, 0x18C, 0x1B0, 0x200, 0x240];
     
+    for (const offset of knownOffsets) {
+      console.log(`[BWPlayerParser] Trying offset: 0x${offset.toString(16)}`);
+      const players = this.parsePlayersAtOffset(offset);
+      
+      if (players.length > 0) {
+        console.log(`[BWPlayerParser] Found ${players.length} players at offset 0x${offset.toString(16)}`);
+        return players;
+      }
+    }
+    
+    // Last resort: scan the entire file
+    console.log('[BWPlayerParser] No players found, scanning entire file...');
+    return this.scanForPlayerNames();
+  }
+
+  private parsePlayersAtOffset(startOffset: number): BWPlayer[] {
     const players: BWPlayer[] = [];
     
-    // Parse 8 possible player slots (36 bytes each according to screp)
+    console.log(`[BWPlayerParser] Parsing players at offset 0x${startOffset.toString(16)}`);
+    console.log('[BWPlayerParser] Player area hex dump:');
+    console.log(this.reader.createHexDump(startOffset, 288)); // 8 players * 36 bytes
+    
+    // Parse up to 8 player slots
     for (let slotIndex = 0; slotIndex < 8; slotIndex++) {
-      const slotOffset = playerDataOffset + (slotIndex * 36);
+      const slotOffset = startOffset + (slotIndex * 36);
       
       if (slotOffset + 36 > this.reader.getRemainingBytes() + this.reader.getPosition()) {
         break;
@@ -44,30 +68,62 @@ export class BWPlayerParser {
         console.log(`[BWPlayerParser] Parsing slot ${slotIndex} at offset 0x${slotOffset.toString(16)}`);
         console.log(`[BWPlayerParser] Slot ${slotIndex} hex:`, this.reader.createHexDump(slotOffset, 36));
         
-        // Read player name (first 25 bytes)
-        const playerName = this.reader.readFixedString(25);
-        console.log(`[BWPlayerParser] Slot ${slotIndex} raw name: "${playerName}"`);
+        // Try different name field sizes
+        const nameFieldSizes = [25, 24, 32];
+        let playerName = '';
+        let bestNameSize = 25;
         
-        if (playerName.length === 0 || !this.isValidPlayerName(playerName)) {
+        for (const nameSize of nameFieldSizes) {
+          this.reader.setPosition(slotOffset);
+          const testName = this.reader.readFixedString(nameSize);
+          
+          if (this.isValidPlayerName(testName) && testName.length > playerName.length) {
+            playerName = testName;
+            bestNameSize = nameSize;
+          }
+        }
+        
+        console.log(`[BWPlayerParser] Slot ${slotIndex} best name (size ${bestNameSize}): "${playerName}"`);
+        
+        if (!this.isValidPlayerName(playerName)) {
           console.log(`[BWPlayerParser] Slot ${slotIndex} invalid name, skipping`);
           continue;
         }
         
-        // Read race (byte 32 according to screp)
-        this.reader.setPosition(slotOffset + 32);
-        const race = this.reader.canRead(1) ? this.reader.readUInt8() : 0;
+        // Read race, team, color at different possible offsets
+        let race = 0;
+        let team = 0;
+        let color = 0;
         
-        // Read team and color
-        const team = this.reader.canRead(1) ? this.reader.readUInt8() : 0;
-        const color = this.reader.canRead(1) ? this.reader.readUInt8() : 0;
+        // Try different control byte layouts
+        const controlOffsets = [25, 24, 32];
+        for (const ctrlOffset of controlOffsets) {
+          this.reader.setPosition(slotOffset + ctrlOffset);
+          if (this.reader.canRead(11)) {
+            const controlBytes = this.reader.readBytes(11);
+            
+            // Test different race positions within control bytes
+            for (let racePos = 0; racePos < 8; racePos++) {
+              const testRace = controlBytes[racePos];
+              if (testRace <= 6) { // Valid race range
+                race = testRace;
+                team = controlBytes[Math.min(racePos + 1, 10)] % 8;
+                color = controlBytes[Math.min(racePos + 2, 10)] % 16;
+                break;
+              }
+            }
+            
+            if (race <= 6) break; // Found valid race
+          }
+        }
         
         const player: BWPlayer = {
           name: playerName,
           race,
           raceString: this.getRaceString(race),
           slotId: slotIndex,
-          team: team % 8,
-          color: color % 16
+          team: team,
+          color: color
         };
         
         players.push(player);
@@ -75,7 +131,8 @@ export class BWPlayerParser {
           name: player.name,
           race: player.raceString,
           slot: slotIndex,
-          team: player.team
+          team: player.team,
+          color: player.color
         });
         
       } catch (error) {
@@ -84,52 +141,50 @@ export class BWPlayerParser {
       }
     }
     
-    // If no players found with standard method, try alternative scanning
-    if (players.length === 0) {
-      console.log('[BWPlayerParser] No players found with standard method, trying scan...');
-      return this.scanForPlayerNames();
-    }
-    
-    console.log(`[BWPlayerParser] Successfully found ${players.length} players`);
     return players;
   }
 
   private scanForPlayerNames(): BWPlayer[] {
-    console.log('[BWPlayerParser] Scanning file for player names...');
+    console.log('[BWPlayerParser] Scanning entire file for player names...');
     const players: BWPlayer[] = [];
+    const foundNames = new Set<string>();
     
-    // Scan a reasonable area around the expected player data
-    const startOffset = 0x100;
-    const endOffset = Math.min(startOffset + 1000, this.reader.getRemainingBytes());
+    const fileSize = this.reader.getRemainingBytes() + this.reader.getPosition();
+    const scanSize = Math.min(4096, fileSize);
     
-    for (let offset = startOffset; offset < endOffset; offset += 1) {
+    for (let offset = 0x100; offset < scanSize; offset += 1) {
       try {
         this.reader.setPosition(offset);
-        if (!this.reader.canRead(25)) break;
+        if (!this.reader.canRead(32)) break;
         
-        const testName = this.reader.readFixedString(25);
-        
-        if (this.isValidPlayerName(testName) && testName.length >= 2) {
-          console.log(`[BWPlayerParser] Found potential player at 0x${offset.toString(16)}: "${testName}"`);
+        // Try different name lengths
+        for (const nameLength of [25, 24, 32, 16]) {
+          this.reader.setPosition(offset);
+          const testName = this.reader.readFixedString(nameLength);
           
-          // Check if we already found this name
-          if (players.some(p => p.name === testName)) {
-            continue;
+          if (this.isValidPlayerName(testName) && 
+              testName.length >= 2 && 
+              !foundNames.has(testName)) {
+            
+            console.log(`[BWPlayerParser] Found potential player at 0x${offset.toString(16)}: "${testName}"`);
+            foundNames.add(testName);
+            
+            const player: BWPlayer = {
+              name: testName,
+              race: 0,
+              raceString: 'Unknown' as const,
+              slotId: players.length,
+              team: 0,
+              color: players.length % 16
+            };
+            
+            players.push(player);
+            
+            if (players.length >= 8) break;
           }
-          
-          const player: BWPlayer = {
-            name: testName,
-            race: 0,
-            raceString: 'Unknown' as const,
-            slotId: players.length,
-            team: 0,
-            color: players.length % 16
-          };
-          
-          players.push(player);
-          
-          if (players.length >= 8) break;
         }
+        
+        if (players.length >= 8) break;
       } catch (e) {
         // Continue scanning
       }
@@ -143,23 +198,38 @@ export class BWPlayerParser {
       return false;
     }
     
-    // Check for printable characters
+    // Check for printable characters with better encoding support
     let printableCount = 0;
+    let letterCount = 0;
+    
     for (let i = 0; i < name.length; i++) {
       const char = name.charCodeAt(i);
-      if ((char >= 32 && char <= 126) || (char >= 128 && char <= 255)) {
+      
+      // ASCII printable
+      if (char >= 32 && char <= 126) {
         printableCount++;
+        if ((char >= 65 && char <= 90) || (char >= 97 && char <= 122)) {
+          letterCount++;
+        }
+      }
+      // Extended ASCII (Windows-1252, Korean, etc.)
+      else if (char >= 160 && char <= 255) {
+        printableCount++;
+      }
+      // Korean Hangul range (very common in SC replays)
+      else if (char >= 0xAC00 && char <= 0xD7AF) {
+        printableCount++;
+        letterCount++;
       }
     }
     
     // Must be mostly printable
-    if (printableCount / name.length < 0.8) {
+    if (printableCount / name.length < 0.6) {
       return false;
     }
     
-    // Check if it contains at least one letter
-    const hasLetter = /[a-zA-Z]/.test(name);
-    if (!hasLetter) {
+    // Must contain at least one letter or be very short
+    if (letterCount === 0 && name.length > 4) {
       return false;
     }
     
@@ -169,7 +239,14 @@ export class BWPlayerParser {
       return false;
     }
     
-    return true;
+    // Check for common player name patterns
+    const namePatterns = [
+      /^[a-zA-Z0-9_\-\[\]{}()]+$/,  // Basic alphanumeric + symbols
+      /^[a-zA-Z]/,  // Starts with letter
+      /\d+$/,  // Ends with numbers (common pattern)
+    ];
+    
+    return namePatterns.some(pattern => pattern.test(name.trim()));
   }
 
   private getRaceString(raceId: number): 'Zerg' | 'Terran' | 'Protoss' | 'Random' | 'Unknown' {

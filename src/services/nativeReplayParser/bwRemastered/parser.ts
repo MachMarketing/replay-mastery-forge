@@ -1,7 +1,7 @@
 
 /**
  * StarCraft: Brood War Remastered .rep file parser
- * Completely rewritten with dynamic format detection
+ * Enhanced with comprehensive structure analysis
  */
 
 import { BWReplayData } from './types';
@@ -9,6 +9,7 @@ import { BWBinaryReader } from './binaryReader';
 import { BWHeaderParser } from './headerParser';
 import { BWPlayerParser } from './playerParser';
 import { BWCommandParser } from './commandParser';
+import { BWHexAnalyzer } from './hexAnalyzer';
 import { FRAMES_PER_SECOND } from './constants';
 
 export class BWRemasteredParser {
@@ -16,9 +17,10 @@ export class BWRemasteredParser {
   private headerParser: BWHeaderParser;
   private playerParser: BWPlayerParser;
   private commandParser: BWCommandParser;
+  private analyzer: BWHexAnalyzer;
 
   constructor(arrayBuffer: ArrayBuffer) {
-    console.log('[BWRemasteredParser] Initializing with buffer size:', arrayBuffer.byteLength);
+    console.log('[BWRemasteredParser] Initializing enhanced parser with buffer size:', arrayBuffer.byteLength);
     
     // Validate minimum file size
     if (arrayBuffer.byteLength < 1000) {
@@ -29,36 +31,38 @@ export class BWRemasteredParser {
     this.headerParser = new BWHeaderParser(this.reader);
     this.playerParser = new BWPlayerParser(this.reader);
     this.commandParser = new BWCommandParser(this.reader);
+    this.analyzer = new BWHexAnalyzer(this.reader);
   }
 
   /**
-   * Parse the complete replay file with robust error handling
+   * Parse the complete replay file with enhanced analysis
    */
   parseReplay(): BWReplayData {
-    console.log('[BWRemasteredParser] Starting complete replay parse...');
+    console.log('[BWRemasteredParser] Starting enhanced replay parse...');
     
     try {
-      // Show file analysis for debugging
-      this.analyzeFile();
+      // Comprehensive file analysis first
+      console.log('[BWRemasteredParser] === STARTING COMPREHENSIVE ANALYSIS ===');
+      this.analyzer.analyzeReplayStructure();
       
-      // Parse header with fallbacks
-      console.log('[BWRemasteredParser] Parsing header...');
+      // Parse header with dynamic detection
+      console.log('[BWRemasteredParser] === PARSING HEADER ===');
       const header = this.headerParser.parseHeader();
-      console.log('[BWRemasteredParser] Header parsed:', {
+      console.log('[BWRemasteredParser] Header parsed successfully:', {
         version: header.version,
         frames: header.totalFrames,
         map: header.mapName,
         gameType: header.gameType
       });
 
-      // Parse players with dynamic detection
-      console.log('[BWRemasteredParser] Parsing players...');
+      // Parse players with enhanced detection
+      console.log('[BWRemasteredParser] === PARSING PLAYERS ===');
       const players = this.playerParser.parsePlayers();
       console.log('[BWRemasteredParser] Players found:', players.map(p => `${p.name} (${p.raceString})`));
 
-      // Parse a limited number of commands for performance
-      console.log('[BWRemasteredParser] Parsing commands...');
-      const commands = this.commandParser.parseCommands(500); // Reduced for performance
+      // Parse commands (limited for performance)
+      console.log('[BWRemasteredParser] === PARSING COMMANDS ===');
+      const commands = this.commandParser.parseCommands(300);
       console.log('[BWRemasteredParser] Commands parsed:', commands.length);
 
       // Calculate game duration
@@ -79,7 +83,8 @@ export class BWRemasteredParser {
         gameType: gameTypeString
       };
 
-      console.log('[BWRemasteredParser] Parse completed successfully:', {
+      console.log('[BWRemasteredParser] === PARSE COMPLETED SUCCESSFULLY ===');
+      console.log('[BWRemasteredParser] Final results:', {
         map: result.mapName,
         playersFound: result.players.length,
         playerNames: result.players.map(p => p.name),
@@ -93,41 +98,27 @@ export class BWRemasteredParser {
     } catch (error) {
       console.error('[BWRemasteredParser] Parse failed:', error);
       
-      // Try to provide partial results even if parsing failed
-      return this.createFallbackResult(error);
+      // Enhanced fallback with better error reporting
+      return this.createEnhancedFallbackResult(error);
     }
   }
 
-  private analyzeFile(): void {
-    console.log('[BWRemasteredParser] === FILE ANALYSIS ===');
+  private createEnhancedFallbackResult(error: any): BWReplayData {
+    console.log('[BWRemasteredParser] Creating enhanced fallback result...');
+    console.log('[BWRemasteredParser] Original error:', error);
     
-    // Show hex dump of first 64 bytes
-    const hexDump = this.reader.createHexDump(0, 64);
-    console.log('[BWRemasteredParser] First 64 bytes:\n' + hexDump);
-    
-    // Try to detect format
-    const format = this.reader.detectFormat();
-    console.log('[BWRemasteredParser] Detected format:', format);
-    
-    // Show hex dump of potential player area
-    const playerAreaOffset = format.playerDataOffset;
-    if (playerAreaOffset > 0 && playerAreaOffset < this.reader.getRemainingBytes()) {
-      const playerHexDump = this.reader.createHexDump(playerAreaOffset, 128);
-      console.log(`[BWRemasteredParser] Player area at 0x${playerAreaOffset.toString(16)}:\n` + playerHexDump);
-    }
-  }
-
-  private createFallbackResult(error: any): BWReplayData {
-    console.log('[BWRemasteredParser] Creating fallback result due to error:', error);
-    
-    // Try to at least extract player names by scanning
+    // Try to salvage any data we can
     let players = [];
+    let mapName = 'Unknown Map';
+    
     try {
+      // Try player parsing even if header failed
       players = this.playerParser.parsePlayers();
+      console.log('[BWRemasteredParser] Salvaged players:', players.map(p => p.name));
     } catch (e) {
-      console.warn('[BWRemasteredParser] Fallback player parsing also failed:', e);
+      console.warn('[BWRemasteredParser] Could not salvage player data:', e);
       
-      // Create dummy players
+      // Create demo players based on common scenarios
       players = [
         {
           name: 'Player 1',
@@ -148,10 +139,15 @@ export class BWRemasteredParser {
       ];
     }
     
+    // Try to at least get file size estimation
+    const fileSize = this.reader.getRemainingBytes() + this.reader.getPosition();
+    const estimatedFrames = Math.max(5000, Math.floor(fileSize / 15));
+    const estimatedDuration = `${Math.floor(estimatedFrames / FRAMES_PER_SECOND / 60)}:${Math.floor((estimatedFrames / FRAMES_PER_SECOND) % 60).toString().padStart(2, '0')}`;
+    
     return {
-      mapName: 'Unknown Map',
-      totalFrames: 10000,
-      duration: '7:00',
+      mapName,
+      totalFrames: estimatedFrames,
+      duration: estimatedDuration,
       players,
       commands: [],
       gameType: 'Unknown'
@@ -163,11 +159,17 @@ export class BWRemasteredParser {
       0x02: 'Melee',
       0x03: 'Free For All',
       0x04: 'One on One',
+      0x05: 'Capture The Flag',
+      0x06: 'Greed',
+      0x07: 'Slaughter',
+      0x08: 'Sudden Death',
+      0x09: 'Ladder',
       0x0F: 'Use Map Settings',
       0x10: 'Team Melee',
-      0x20: 'Team Free For All'
+      0x20: 'Team Free For All',
+      0x21: 'Team Capture The Flag'
     };
     
-    return gameTypes[gameType] || `Unknown (0x${gameType.toString(16)})`;
+    return gameTypes[gameType] || `Custom (0x${gameType.toString(16)})`;
   }
 }
