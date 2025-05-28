@@ -30,6 +30,7 @@ export interface BWCommand {
   type: number;
   typeString: string;
   data: Uint8Array;
+  parameters: any; // Added parameters property to match BWAPICommand
 }
 
 export interface BWReplayData {
