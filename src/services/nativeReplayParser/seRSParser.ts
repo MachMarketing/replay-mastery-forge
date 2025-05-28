@@ -126,7 +126,7 @@ export class SeRSParser {
       const testData = this.data.slice(offset, Math.min(offset + 100, this.data.length));
       pako.inflate(testData);
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.log(`[SeRSParser] Validation failed at offset ${offset}:`, error.message);
       return false;
     }
@@ -198,7 +198,7 @@ export class SeRSParser {
         } else {
           console.warn('[SeRSParser] Decompressed data failed validation with:', decomp.name);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.log(`[SeRSParser] ${decomp.name} failed:`, error.message);
       }
     }
