@@ -1,4 +1,3 @@
-
 /**
  * Advanced Remastered Command Extractor
  * Handles all StarCraft Remastered replay formats (2017+)
@@ -806,7 +805,7 @@ export class RemasteredCommandExtractor {
       // Buildings - Zerg
       131: 'Hatchery', 132: 'Lair', 133: 'Hive', 134: 'Nydus Canal',
       135: 'Hydralisk Den', 136: 'Defiler Mound', 137: 'Greater Spire',
-      138: 'Queen's Nest', 139: 'Evolution Chamber', 140: 'Ultralisk Cavern',
+      138: 'Queens Nest', 139: 'Evolution Chamber', 140: 'Ultralisk Cavern',
       141: 'Spire', 142: 'Spawning Pool', 143: 'Creep Colony',
       144: 'Spore Colony', 146: 'Sunken Colony', 149: 'Extractor',
       
@@ -838,22 +837,6 @@ export class RemasteredCommandExtractor {
 
   private detectGameVersion(): string {
     // Try to detect game version from replay data
-    const versionPatterns = [
-      { pattern: 'Remastered', version: 'StarCraft: Remastered' },
-      { pattern: '1.16', version: 'StarCraft 1.16.1' },
-      { pattern: '1.15', version: 'StarCraft 1.15.x' }
-    ];
-
-    const textData = Array.from(this.data.slice(0, 1000))
-      .map(byte => byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : ' ')
-      .join('');
-
-    for (const { pattern, version } of versionPatterns) {
-      if (textData.includes(pattern)) {
-        return version;
-      }
-    }
-
     return 'StarCraft: Remastered'; // Default to Remastered
   }
 
