@@ -144,78 +144,142 @@ export class ScrepJsWrapper {
   }
 
   private normalizeResult(screpResult: any): ReplayParseResult {
-    console.log('[ScrepJsWrapper] Normalizing result with keys:', Object.keys(screpResult));
+    console.log('[ScrepJsWrapper] === DETAILED SCREP-JS RESULT ANALYSIS ===');
+    console.log('[ScrepJsWrapper] Top-level keys:', Object.keys(screpResult));
     
-    // Handle different possible result structures
-    const data = screpResult.replay || screpResult.data || screpResult;
+    // screp-js returns structure with Header, Commands, MapData, Computed
+    const header = screpResult.Header || screpResult.header || {};
+    const computed = screpResult.Computed || screpResult.computed || {};
     
-    // Extract header information
-    const header = data.header || data;
+    console.log('[ScrepJsWrapper] Header keys:', Object.keys(header));
+    console.log('[ScrepJsWrapper] Computed keys:', Object.keys(computed));
     
-    // Extract frames
-    const frames = header.frames || header.gameLength || data.frames || 10000;
-    const durationMs = Math.floor(frames * 1000 / 24);
+    // Extract frame count from Header
+    const frames = header.Frames || header.frames || 10000;
+    console.log('[ScrepJsWrapper] Frame count:', frames);
+    
+    // Calculate duration
+    const durationMs = Math.floor(frames * 1000 / 24); // 24 FPS for StarCraft
     const minutes = Math.floor(durationMs / 60000);
     const seconds = Math.floor((durationMs % 60000) / 1000);
     
-    // Extract players - more robust extraction
-    let rawPlayers = [];
-    if (data.players && Array.isArray(data.players)) {
-      rawPlayers = data.players;
-    } else if (data.playerInfo && Array.isArray(data.playerInfo)) {
-      rawPlayers = data.playerInfo;
-    } else if (header.players && Array.isArray(header.players)) {
-      rawPlayers = header.players;
+    // Extract map name from Header.Map (has color codes)
+    let mapName = 'Unknown Map';
+    if (header.Map) {
+      // Remove StarCraft color codes (e.g., \u0007D\u0006)
+      mapName = header.Map.replace(/[\u0000-\u001F\u007F-\u009F]/g, '').trim();
+      console.log('[ScrepJsWrapper] Cleaned map name:', mapName);
     }
     
-    console.log('[ScrepJsWrapper] Found raw players:', rawPlayers.length, rawPlayers);
+    // Extract players from Header.Players array
+    const rawPlayers = header.Players || [];
+    console.log('[ScrepJsWrapper] Raw players from Header.Players:', rawPlayers.length, rawPlayers);
     
-    const players = rawPlayers.map((player: any, index: number) => ({
-      name: player.name || player.playerName || `Player ${index + 1}`,
-      race: this.normalizeRace(player.race || player.raceId || player.raceString),
-      team: player.team !== undefined ? player.team : index % 2,
-      color: player.color !== undefined ? player.color : index
-    }));
+    const players = rawPlayers.map((player: any, index: number) => {
+      const playerName = player.Name || `Player ${index + 1}`;
+      const playerRace = this.extractRace(player.Race);
+      const playerTeam = player.Team || (index % 2);
+      const playerColor = this.extractColor(player.Color);
+      
+      console.log(`[ScrepJsWrapper] Player ${index}:`, {
+        name: playerName,
+        race: playerRace,
+        team: playerTeam,
+        color: playerColor
+      });
+      
+      return {
+        name: playerName,
+        race: playerRace,
+        team: playerTeam,
+        color: playerColor
+      };
+    });
     
-    // Extract map name - more robust extraction
-    const mapName = data.mapName || header.mapName || data.map || header.map || 'Unknown Map';
+    // Extract game type
+    const gameType = this.extractGameType(header.Type);
     
-    // Extract commands
-    const commands = (data.commands || data.actions || []).slice(0, 100).map((cmd: any) => ({
-      frame: cmd.frame || cmd.gameFrame || 0,
-      type: cmd.type || cmd.actionType || 'unknown',
-      data: cmd.data || cmd.payload || {}
-    }));
-
+    // Extract engine info
+    const engine = this.extractEngine(header.Engine);
+    
     const normalizedResult = {
       header: {
-        engine: data.engine || header.engine || 'StarCraft',
-        version: data.version || header.version || 'Unknown',
+        engine: engine,
+        version: 'Remastered',
         frames: frames,
-        startTime: new Date(data.startTime || header.startTime || Date.now()),
+        startTime: new Date(header.StartTime || Date.now()),
         mapName: mapName,
-        gameType: data.gameType || header.gameType || 'Melee',
+        gameType: gameType,
         duration: `${minutes}:${seconds.toString().padStart(2, '0')}`
       },
       players,
-      commands
+      commands: [] // Commands sind in screp-js meist null oder sehr groß
     };
     
-    console.log('[ScrepJsWrapper] Normalized result:', normalizedResult);
+    console.log('[ScrepJsWrapper] === FINAL NORMALIZED RESULT ===');
+    console.log('[ScrepJsWrapper] Map:', normalizedResult.header.mapName);
+    console.log('[ScrepJsWrapper] Players:', normalizedResult.players.map(p => `${p.name} (${p.race})`));
+    console.log('[ScrepJsWrapper] Duration:', normalizedResult.header.duration);
+    console.log('[ScrepJsWrapper] Game Type:', normalizedResult.header.gameType);
+    
     return normalizedResult;
   }
 
-  private normalizeRace(raceId: number | string): string {
-    if (typeof raceId === 'string') return raceId;
+  private extractRace(raceObj: any): string {
+    if (!raceObj) return 'Random';
     
-    const races: Record<number, string> = {
+    // screp-js race object has Name, ID, ShortName properties
+    if (raceObj.Name) return raceObj.Name;
+    if (raceObj.ShortName) {
+      const shortNameMap: Record<string, string> = {
+        'toss': 'Protoss',
+        'terr': 'Terran',
+        'zerg': 'Zerg'
+      };
+      return shortNameMap[raceObj.ShortName.toLowerCase()] || raceObj.ShortName;
+    }
+    
+    // Fallback to ID
+    const raceMap: Record<number, string> = {
       0: 'Zerg',
-      1: 'Terran', 
+      1: 'Terran',
       2: 'Protoss',
       6: 'Random'
     };
     
-    return races[raceId] || 'Random';
+    return raceMap[raceObj.ID] || 'Random';
+  }
+
+  private extractColor(colorObj: any): number {
+    if (!colorObj) return 0;
+    return colorObj.ID || colorObj.id || 0;
+  }
+
+  private extractGameType(typeObj: any): string {
+    if (!typeObj) return 'Melee';
+    
+    if (typeObj.Name) return typeObj.Name;
+    if (typeObj.ShortName) return typeObj.ShortName;
+    
+    // Fallback game type mapping
+    const gameTypeMap: Record<number, string> = {
+      2: 'Melee',
+      3: 'Free For All',
+      4: 'One on One',
+      15: 'Top vs Bottom',
+      16: 'Team Melee'
+    };
+    
+    return gameTypeMap[typeObj.ID] || 'Melee';
+  }
+
+  private extractEngine(engineObj: any): string {
+    if (!engineObj) return 'StarCraft';
+    
+    if (engineObj.Name) return engineObj.Name;
+    if (engineObj.ShortName) return engineObj.ShortName;
+    
+    return 'StarCraft';
   }
 
   isAvailable(): boolean {

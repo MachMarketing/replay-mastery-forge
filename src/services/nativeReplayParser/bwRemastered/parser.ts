@@ -1,7 +1,6 @@
-
 /**
  * StarCraft: Brood War Remastered .rep file parser
- * Enhanced with zlib decompression support
+ * Updated for 2017+ Remastered structure changes
  */
 
 import { BWReplayData } from './types';
@@ -13,6 +12,7 @@ import { BWHexAnalyzer } from './hexAnalyzer';
 import { CompressionDetector } from '../compressionDetector';
 import { ReplayDecompressor } from '../decompressor';
 import { FRAMES_PER_SECOND } from './constants';
+import { RemasteredStructureParser } from './remasteredStructure';
 
 export class BWRemasteredParser {
   private reader: BWBinaryReader;
@@ -37,10 +37,10 @@ export class BWRemasteredParser {
   }
 
   /**
-   * Parse the complete replay file with enhanced analysis and decompression
+   * Parse the complete replay file with enhanced Remastered structure support
    */
   async parseReplay(): Promise<BWReplayData> {
-    console.log('[BWRemasteredParser] Starting enhanced replay parse...');
+    console.log('[BWRemasteredParser] Starting enhanced Remastered parsing...');
     
     try {
       // First detect if the file needs decompression
@@ -63,66 +63,130 @@ export class BWRemasteredParser {
         this.analyzer = new BWHexAnalyzer(this.reader);
       }
       
-      // Comprehensive file analysis
-      console.log('[BWRemasteredParser] === STARTING COMPREHENSIVE ANALYSIS ===');
-      this.analyzer.analyzeReplayStructure();
+      // Try Remastered structure parser first
+      console.log('[BWRemasteredParser] === TRYING REMASTERED STRUCTURE PARSER ===');
+      const remasteredParser = new RemasteredStructureParser(processedBuffer);
       
-      // Parse header with dynamic detection
-      console.log('[BWRemasteredParser] === PARSING HEADER ===');
-      const header = this.headerParser.parseHeader();
-      console.log('[BWRemasteredParser] Header parsed successfully:', {
-        version: header.version,
-        frames: header.totalFrames,
-        map: header.mapName,
-        gameType: header.gameType
-      });
-
-      // Parse players with enhanced detection
-      console.log('[BWRemasteredParser] === PARSING PLAYERS ===');
-      const players = this.playerParser.parsePlayers();
-      console.log('[BWRemasteredParser] Players found:', players.map(p => `${p.name} (${p.raceString})`));
-
-      // Parse commands (limited for performance)
-      console.log('[BWRemasteredParser] === PARSING COMMANDS ===');
-      const commands = this.commandParser.parseCommands(300);
-      console.log('[BWRemasteredParser] Commands parsed:', commands.length);
-
-      // Calculate game duration
-      const durationSeconds = header.totalFrames / FRAMES_PER_SECOND;
-      const minutes = Math.floor(durationSeconds / 60);
-      const seconds = Math.floor(durationSeconds % 60);
-      const duration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-
-      // Determine game type string
-      const gameTypeString = this.getGameTypeString(header.gameType);
-
-      const result: BWReplayData = {
-        mapName: header.mapName,
-        totalFrames: header.totalFrames,
-        duration,
-        players,
-        commands,
-        gameType: gameTypeString
-      };
-
-      console.log('[BWRemasteredParser] === PARSE COMPLETED SUCCESSFULLY ===');
-      console.log('[BWRemasteredParser] Final results:', {
-        map: result.mapName,
-        playersFound: result.players.length,
-        playerNames: result.players.map(p => p.name),
-        commands: result.commands.length,
-        duration: result.duration,
-        gameType: result.gameType
-      });
-
-      return result;
+      if (remasteredParser.isRemasteredFormat()) {
+        console.log('[BWRemasteredParser] Using Remastered structure parser');
+        return await this.parseWithRemasteredStructure(remasteredParser);
+      }
+      
+      // Fallback to legacy parsing
+      console.log('[BWRemasteredParser] === FALLING BACK TO LEGACY PARSING ===');
+      return await this.parseWithLegacyStructure();
       
     } catch (error) {
       console.error('[BWRemasteredParser] Parse failed:', error);
-      
-      // Enhanced fallback with better error reporting
       return this.createEnhancedFallbackResult(error);
     }
+  }
+
+  /**
+   * Parse using the new Remastered structure (2017+)
+   */
+  private async parseWithRemasteredStructure(parser: RemasteredStructureParser): Promise<BWReplayData> {
+    console.log('[BWRemasteredParser] === PARSING WITH REMASTERED STRUCTURE ===');
+    
+    // Parse header
+    const header = parser.parseHeader();
+    console.log('[BWRemasteredParser] Remastered header:', {
+      engineVersion: header.engineVersion,
+      frameCount: header.frameCount,
+      mapName: header.mapName,
+      gameCreator: header.gameCreator
+    });
+    
+    // Parse players
+    const remasteredPlayers = parser.parsePlayerSlots();
+    console.log('[BWRemasteredParser] Remastered players:', remasteredPlayers.map(p => `${p.name} (${RemasteredStructureParser.getRaceString(p.race)})`));
+    
+    // Convert to BWReplayData format
+    const players = remasteredPlayers.map(p => ({
+      name: p.name,
+      race: p.race,
+      raceString: RemasteredStructureParser.getRaceString(p.race) as 'Terran' | 'Protoss' | 'Zerg',
+      slotId: 0,
+      team: p.team,
+      color: p.color
+    }));
+    
+    // Calculate duration
+    const durationSeconds = header.frameCount / FRAMES_PER_SECOND;
+    const minutes = Math.floor(durationSeconds / 60);
+    const seconds = Math.floor(durationSeconds % 60);
+    const duration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    
+    // Parse commands (limited for performance)
+    const commands = this.commandParser.parseCommands(300);
+    
+    const result: BWReplayData = {
+      mapName: header.mapName || 'Unknown Map',
+      totalFrames: header.frameCount,
+      duration,
+      players,
+      commands,
+      gameType: 'Remastered Melee'
+    };
+    
+    console.log('[BWRemasteredParser] === REMASTERED PARSING SUCCESS ===');
+    console.log('[BWRemasteredParser] Results:', {
+      map: result.mapName,
+      players: result.players.length,
+      playerNames: result.players.map(p => p.name),
+      duration: result.duration,
+      frames: result.totalFrames
+    });
+    
+    return result;
+  }
+
+  /**
+   * Parse using legacy structure (fallback)
+   */
+  private async parseWithLegacyStructure(): Promise<BWReplayData> {
+    console.log('[BWRemasteredParser] === PARSING WITH LEGACY STRUCTURE ===');
+    
+    // Comprehensive file analysis
+    this.analyzer.analyzeReplayStructure();
+    
+    // Parse header with dynamic detection
+    const header = this.headerParser.parseHeader();
+    console.log('[BWRemasteredParser] Legacy header:', {
+      version: header.version,
+      frames: header.totalFrames,
+      map: header.mapName,
+      gameType: header.gameType
+    });
+
+    // Parse players with enhanced detection
+    const players = this.playerParser.parsePlayers();
+    console.log('[BWRemasteredParser] Legacy players:', players.map(p => `${p.name} (${p.raceString})`));
+
+    // Parse commands (limited for performance)
+    const commands = this.commandParser.parseCommands(300);
+    console.log('[BWRemasteredParser] Commands parsed:', commands.length);
+
+    // Calculate game duration
+    const durationSeconds = header.totalFrames / FRAMES_PER_SECOND;
+    const minutes = Math.floor(durationSeconds / 60);
+    const seconds = Math.floor(durationSeconds % 60);
+    const duration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+    // Determine game type string
+    const gameTypeString = this.getGameTypeString(header.gameType);
+
+    const result: BWReplayData = {
+      mapName: header.mapName,
+      totalFrames: header.totalFrames,
+      duration,
+      players,
+      commands,
+      gameType: gameTypeString
+    };
+
+    console.log('[BWRemasteredParser] === LEGACY PARSING SUCCESS ===');
+    return result;
   }
 
   private createEnhancedFallbackResult(error: any): BWReplayData {
