@@ -1,4 +1,3 @@
-
 /**
  * Types for the native replay parser
  */
@@ -118,4 +117,31 @@ export interface NativeReplayData {
   map: string;
   matchup: string;
   date: string;
+}
+
+// Additional types for DirectReplayParser
+export interface ParsedCommand extends Command {
+  timestamp: string;
+  cmdId: number;
+  unitName?: string;
+  type: string;
+  data: number[];
+}
+
+export interface BuildOrderItem {
+  frame: number;
+  timestamp: string;
+  action: string;
+  supply: number;
+}
+
+export interface DirectParserResult {
+  success: boolean;
+  commands: ParsedCommand[];
+  playerActions: Record<number, ParsedCommand[]>;
+  apm: number[];
+  eapm: number[];
+  buildOrders: BuildOrderItem[][];
+  totalFrames: number;
+  error?: string;
 }

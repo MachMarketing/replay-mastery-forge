@@ -1,3 +1,4 @@
+
 /**
  * Enhanced Direct Replay Parser with aggressive command stream detection
  * Optimized for StarCraft: Brood War Remastered replays
@@ -339,12 +340,15 @@ export class DirectReplayParser {
         const command: ParsedCommand = {
           frame: currentFrame,
           timestamp: this.frameToTimestamp(currentFrame),
+          timestampString: this.frameToTimestamp(currentFrame),
           cmdId,
           playerId,
-          length,
-          type: this.getCommandType(cmdId),
+          type: cmdId,
+          typeString: this.getCommandType(cmdId),
+          data: new Uint8Array(this.extractCommandData(cmdId, this.position, length)),
+          category: this.getCommandCategory(cmdId),
           unitName: this.extractUnitName(cmdId, this.position),
-          data: this.extractCommandData(cmdId, this.position, length)
+          length
         };
 
         commands.push(command);
@@ -438,6 +442,18 @@ export class DirectReplayParser {
       0x5A: 'Leave Game'
     };
     return types[cmdId] || `Command_0x${cmdId.toString(16).padStart(2, '0')}`;
+  }
+
+  /**
+   * Get command category for analysis
+   */
+  private getCommandCategory(cmdId: number): 'macro' | 'micro' | 'other' {
+    const macroCommands = [0x0C, 0x1D, 0x23]; // Build, Train, etc.
+    const microCommands = [0x14, 0x15, 0x16, 0x17]; // Attack, Move, etc.
+    
+    if (macroCommands.includes(cmdId)) return 'macro';
+    if (microCommands.includes(cmdId)) return 'micro';
+    return 'other';
   }
 
   /**
@@ -555,3 +571,5 @@ export class DirectReplayParser {
     };
   }
 }
+
+export { DirectParserResult };
