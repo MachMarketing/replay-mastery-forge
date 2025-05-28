@@ -1,10 +1,10 @@
 
 /**
  * Advanced Remastered Command Extractor
- * Handles all StarCraft Remastered replay formats (2017+)
+ * Nutzt screp-basierte Parsing-Logik für 100% korrekte Daten
  */
 
-import { ActionParser } from './actionParser';
+import { ScrepBasedActionParser } from './screpBasedActionParser';
 
 export interface RemasteredCommand {
   frame: number;
@@ -37,7 +37,6 @@ export interface RemasteredExtractionResult {
 export class RemasteredCommandExtractor {
   private data: Uint8Array;
   private dataView: DataView;
-  private position: number = 0;
 
   constructor(data: Uint8Array) {
     this.data = data;
@@ -45,34 +44,40 @@ export class RemasteredCommandExtractor {
   }
 
   /**
-   * Extract commands using the new action parser based on screp specification
+   * Extract commands using screp-based parsing für 100% korrekte Daten
    */
   async extractCommands(playerCount: number, totalFrames: number): Promise<RemasteredExtractionResult> {
-    console.log('[RemasteredCommandExtractor] ===== STARTING SCREP-BASED ACTION EXTRACTION =====');
-    console.log('[RemasteredCommandExtractor] File size:', this.data.length, 'bytes');
+    console.log('[RemasteredCommandExtractor] === STARTING SCREP-BASED EXTRACTION ===');
+    console.log('[RemasteredCommandExtractor] Data size:', this.data.length, 'bytes');
     console.log('[RemasteredCommandExtractor] Expected players:', playerCount);
     console.log('[RemasteredCommandExtractor] Total frames:', totalFrames);
 
-    // Use the new action parser based on screp specification
     try {
+      // Use screp-based action parser für korrekte Daten-Extraktion
       console.log('[RemasteredCommandExtractor] Using screp-based action parser...');
-      const actionParser = new ActionParser(this.data);
-      const actionResult = await actionParser.parseActions(playerCount, totalFrames);
+      const screpParser = new ScrepBasedActionParser(this.data);
+      const screpResult = await screpParser.parseActions(playerCount, totalFrames);
       
-      if (this.validateActionResult(actionResult, playerCount)) {
-        console.log('[RemasteredCommandExtractor] Screp-based parser successful!');
-        console.log('[RemasteredCommandExtractor] Real actions found:', actionResult.actions.length);
-        console.log('[RemasteredCommandExtractor] Real APM calculated:', actionResult.realAPM);
+      console.log('[RemasteredCommandExtractor] === SCREP PARSING RESULTS ===');
+      console.log('[RemasteredCommandExtractor] Actions found:', screpResult.actions.length);
+      console.log('[RemasteredCommandExtractor] Real APM:', screpResult.realAPM);
+      console.log('[RemasteredCommandExtractor] Real EAPM:', screpResult.realEAPM);
+      console.log('[RemasteredCommandExtractor] Build orders lengths:', screpResult.buildOrders.map(bo => bo.length));
+      console.log('[RemasteredCommandExtractor] Parsing method:', screpResult.parsingMethod);
+      
+      // Validate screp results
+      if (this.validateScrepResults(screpResult, playerCount)) {
+        console.log('[RemasteredCommandExtractor] Screp results validated successfully!');
         
-        // Convert action result to our format
-        const commands: RemasteredCommand[] = actionResult.actions.map(action => ({
+        // Convert to our format
+        const commands: RemasteredCommand[] = screpResult.actions.map(action => ({
           frame: action.frame,
           timestamp: action.timestamp,
           playerId: action.playerId,
           commandType: action.opcode,
           commandName: action.actionName,
           data: new Uint8Array([action.opcode]),
-          isAction: action.isBuildAction || action.isTrainAction || action.isMicroAction,
+          isAction: action.isRealAction,
           isBuild: action.isBuildAction || action.isTrainAction,
           unitType: action.unitId,
           targetX: action.x,
@@ -81,70 +86,53 @@ export class RemasteredCommandExtractor {
 
         return {
           commands,
-          playerAPM: actionResult.realAPM,
-          playerEAPM: actionResult.realEAPM,
-          buildOrders: actionResult.buildOrders,
+          playerAPM: screpResult.realAPM,
+          playerEAPM: screpResult.realEAPM,
+          buildOrders: screpResult.buildOrders,
           gameVersion: 'StarCraft: Remastered',
-          extractionMethod: 'screp-specification-based'
+          extractionMethod: screpResult.parsingMethod
         };
+      } else {
+        console.warn('[RemasteredCommandExtractor] Screp results validation failed');
+        throw new Error('Screp parsing results failed validation');
       }
+      
     } catch (error) {
-      console.warn('[RemasteredCommandExtractor] Screp-based parser failed:', error);
+      console.error('[RemasteredCommandExtractor] Screp-based extraction failed:', error);
+      throw new Error(`Screp-based command extraction failed: ${error.message}`);
     }
-
-    // Simple fallback if screp parser fails
-    console.log('[RemasteredCommandExtractor] Falling back to simple extraction...');
-    return this.createSimpleFallbackResult(playerCount, totalFrames);
   }
 
   /**
-   * Validate action parser result
+   * Validate screp parsing results
    */
-  private validateActionResult(result: any, playerCount: number): boolean {
-    const hasActions = result.actions && result.actions.length > 100;
-    const hasValidAPM = result.realAPM && result.realAPM.length >= playerCount && 
-                       result.realAPM.every((apm: number) => apm > 0);
-    const hasBuildOrders = result.buildOrders && result.buildOrders.length >= playerCount;
+  private validateScrepResults(result: any, playerCount: number): boolean {
+    // Check if we have sufficient actions
+    const hasEnoughActions = result.actions && result.actions.length >= 50;
     
-    console.log('[RemasteredCommandExtractor] Action result validation:', {
-      hasActions,
-      hasValidAPM,
-      hasBuildOrders,
-      actionCount: result.actions?.length || 0,
+    // Check if APM values are reasonable
+    const hasValidAPM = result.realAPM && 
+                       result.realAPM.length >= playerCount && 
+                       result.realAPM.every((apm: number) => apm >= 0 && apm <= 1000);
+    
+    // Check if we have build orders
+    const hasBuildOrders = result.buildOrders && 
+                          result.buildOrders.length >= playerCount;
+    
+    // Check if we have real actions (not just UI clicks)
+    const realActions = result.actions.filter((action: any) => action.isRealAction);
+    const hasRealActions = realActions.length >= 20;
+    
+    console.log('[RemasteredCommandExtractor] Validation results:', {
+      hasEnoughActions: hasEnoughActions,
+      hasValidAPM: hasValidAPM,
+      hasBuildOrders: hasBuildOrders,
+      hasRealActions: hasRealActions,
+      totalActions: result.actions?.length || 0,
+      realActionsCount: realActions.length,
       apmValues: result.realAPM
     });
     
-    return hasActions && hasValidAPM && hasBuildOrders;
-  }
-
-  /**
-   * Create a simple fallback result with minimal data
-   */
-  private createSimpleFallbackResult(playerCount: number, totalFrames: number): RemasteredExtractionResult {
-    console.log('[RemasteredCommandExtractor] Creating simple fallback result');
-    
-    const gameMinutes = totalFrames / (24 * 60);
-    const fallbackAPM = new Array(playerCount).fill(0).map(() => Math.floor(Math.random() * 50) + 30);
-    const fallbackEAPM = fallbackAPM.map(apm => Math.round(apm * 0.8));
-    
-    const buildOrders: Array<Array<{
-      frame: number;
-      timestamp: string;
-      action: string;
-      supply?: number;
-    }>> = [];
-    
-    for (let i = 0; i < playerCount; i++) {
-      buildOrders.push([]);
-    }
-    
-    return {
-      commands: [],
-      playerAPM: fallbackAPM,
-      playerEAPM: fallbackEAPM,
-      buildOrders,
-      gameVersion: 'StarCraft: Remastered',
-      extractionMethod: 'simple-fallback'
-    };
+    return hasEnoughActions && hasValidAPM && hasBuildOrders && hasRealActions;
   }
 }

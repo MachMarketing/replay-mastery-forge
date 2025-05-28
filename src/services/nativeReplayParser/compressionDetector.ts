@@ -1,4 +1,3 @@
-
 /**
  * Enhanced compression detector for StarCraft replay files
  * Handles various compression formats including PKWare and zlib
