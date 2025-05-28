@@ -73,18 +73,18 @@ export const COMMAND_TYPES = {
 // Unit IDs for build order analysis
 export const UNIT_IDS = {
   // Terran
-  60: 'SCV',
-  61: 'Marine',
-  62: 'Firebat',
-  63: 'Medic',
-  64: 'Ghost',
-  65: 'Vulture',
-  66: 'Siege Tank',
-  67: 'Goliath',
-  68: 'Wraith',
-  69: 'Dropship',
-  70: 'Battlecruiser',
-  71: 'Valkyrie',
+  7: 'SCV',
+  0: 'Marine',
+  1: 'Firebat',
+  34: 'Medic',
+  1: 'Ghost',
+  2: 'Vulture',
+  5: 'Siege Tank',
+  3: 'Goliath',
+  8: 'Wraith',
+  11: 'Dropship',
+  12: 'Battlecruiser',
+  58: 'Valkyrie',
   
   // Protoss
   64: 'Probe',
@@ -97,11 +97,10 @@ export const UNIT_IDS = {
   71: 'Arbiter',
   72: 'Carrier',
   73: 'Interceptor',
-  74: 'Dark Templar',
-  75: 'Dark Archon',
-  76: 'Probe',
+  61: 'Dark Templar',
+  63: 'Dark Archon',
   77: 'Corsair',
-  78: 'Reaver',
+  83: 'Reaver',
   
   // Zerg
   37: 'Larva',
@@ -125,10 +124,10 @@ export const UNIT_IDS = {
   55: 'Kukulza Mutalisk',
   56: 'Kukulza Guardian',
   57: 'Yggdrasill',
-  58: 'Mature Chrysalis',
-  59: 'Cerebrate',
-  60: 'Cerebrate Daggoth',
-  61: 'Infested Duran'
+  59: 'Mature Chrysalis',
+  94: 'Cerebrate',
+  95: 'Cerebrate Daggoth',
+  96: 'Infested Duran'
 } as const;
 
 // Building IDs
