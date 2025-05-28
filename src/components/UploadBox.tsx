@@ -1,4 +1,3 @@
-
 import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Upload, FileText, Loader2 } from 'lucide-react';
@@ -18,17 +17,20 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
     const file = acceptedFiles[0];
     if (!file) return;
 
-    console.log('[UploadBox] Processing file:', file.name);
+    console.log('[UploadBox] === NEUER UPLOAD VERSUCH ===');
+    console.log('[UploadBox] File:', file.name, 'Size:', file.size);
     setIsUploading(true);
 
     try {
-      // DIREKT parseReplay verwenden - das nutzt jetzt screp-js direkt
+      // DIREKT die neue parseReplay-Funktion verwenden
+      console.log('[UploadBox] Calling parseReplay...');
       const parsedData = await parseReplay(file);
       
-      console.log('[UploadBox] === PARSED DATA RECEIVED ===');
+      console.log('[UploadBox] === EMPFANGENE DATEN ===');
       console.log('[UploadBox] Primary Player:', parsedData.primaryPlayer.name);
       console.log('[UploadBox] Secondary Player:', parsedData.secondaryPlayer.name);
-      console.log('[UploadBox] APM Values:', parsedData.primaryPlayer.apm, parsedData.secondaryPlayer.apm);
+      console.log('[UploadBox] Primary APM:', parsedData.primaryPlayer.apm);
+      console.log('[UploadBox] Secondary APM:', parsedData.secondaryPlayer.apm);
       
       toast({
         title: "Replay erfolgreich analysiert!",
@@ -37,7 +39,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
 
       onUploadComplete(file, parsedData);
     } catch (error) {
-      console.error('[UploadBox] Upload error:', error);
+      console.error('[UploadBox] FEHLER beim Upload:', error);
       toast({
         title: "Fehler beim Analysieren",
         description: error instanceof Error ? error.message : "Unbekannter Fehler",
