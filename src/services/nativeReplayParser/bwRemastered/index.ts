@@ -31,7 +31,7 @@ export async function parseBWRemasteredReplay(file: File): Promise<ParsedReplayD
 }
 
 /**
- * Convert screp data to legacy ParsedReplayData format - NO MOCK DATA
+ * Convert screp data to legacy ParsedReplayData format - WITH REAL APM DATA
  */
 function convertScrepToLegacyFormat(screpData: ScrepReplayData): ParsedReplayData {
   console.log('[convertScrepToLegacyFormat] Converting screp data to legacy format');
@@ -44,13 +44,28 @@ function convertScrepToLegacyFormat(screpData: ScrepReplayData): ParsedReplayDat
   const player1 = screpData.players[0];
   const player2 = screpData.players[1];
   
-  // Nur echte APM-Werte verwenden, keine Mock-Daten
-  const player1Apm = screpData.computed.apm[0];
-  const player2Apm = screpData.computed.apm[1];
+  // NEW: Use real APM values from screp-js
+  const player1Apm = screpData.computed.apm[0] || 0;
+  const player2Apm = screpData.computed.apm[1] || 0;
+  const player1Eapm = screpData.computed.eapm[0] || 0;
+  const player2Eapm = screpData.computed.eapm[1] || 0;
   
-  if (!player1Apm || !player2Apm) {
-    throw new Error('Keine APM-Daten verfügbar');
-  }
+  console.log('[convertScrepToLegacyFormat] Real APM data - Player 1:', player1Apm, 'Player 2:', player2Apm);
+  
+  // NEW: Convert build orders from screp-js to legacy format
+  const player1BuildOrder = screpData.computed.buildOrders[0]?.map(action => ({
+    time: action.timestamp,
+    action: action.action,
+    supply: action.supply?.toString() || '?'
+  })) || [];
+  
+  const player2BuildOrder = screpData.computed.buildOrders[1]?.map(action => ({
+    time: action.timestamp,
+    action: action.action,
+    supply: action.supply?.toString() || '?'
+  })) || [];
+  
+  console.log('[convertScrepToLegacyFormat] Real Build Orders - Player 1:', player1BuildOrder.length, 'Player 2:', player2BuildOrder.length);
   
   // Validierung der Basisdaten
   if (!screpData.header.mapName || screpData.header.mapName === 'Unknown Map') {
@@ -65,9 +80,9 @@ function convertScrepToLegacyFormat(screpData: ScrepReplayData): ParsedReplayDat
     primaryPlayer: {
       name: player1.name,
       race: player1.race,
-      apm: player1Apm,
-      eapm: Math.floor(player1Apm * 0.8),
-      buildOrder: [], // Echte Build Order wird vom Command Parser extrahiert
+      apm: player1Apm, // Real APM from screp-js
+      eapm: player1Eapm, // Real EAPM from screp-js
+      buildOrder: player1BuildOrder, // Real build order from commands
       strengths: [], // Keine Mock-Stärken
       weaknesses: [], // Keine Mock-Schwächen  
       recommendations: [] // Keine Mock-Empfehlungen
@@ -75,9 +90,9 @@ function convertScrepToLegacyFormat(screpData: ScrepReplayData): ParsedReplayDat
     secondaryPlayer: {
       name: player2.name,
       race: player2.race,
-      apm: player2Apm,
-      eapm: Math.floor(player2Apm * 0.8),
-      buildOrder: [], // Echte Build Order wird vom Command Parser extrahiert
+      apm: player2Apm, // Real APM from screp-js
+      eapm: player2Eapm, // Real EAPM from screp-js
+      buildOrder: player2BuildOrder, // Real build order from commands
       strengths: [], // Keine Mock-Stärken
       weaknesses: [], // Keine Mock-Schwächen
       recommendations: [] // Keine Mock-Empfehlungen
@@ -99,11 +114,11 @@ function convertScrepToLegacyFormat(screpData: ScrepReplayData): ParsedReplayDat
     opponentName: player2.name,
     playerRace: player1.race,
     opponentRace: player2.race,
-    apm: player1Apm,
-    eapm: Math.floor(player1Apm * 0.8),
-    opponentApm: player2Apm,
-    opponentEapm: Math.floor(player2Apm * 0.8),
-    buildOrder: [], // Echte Build Order wird extrahiert
+    apm: player1Apm, // Real APM
+    eapm: player1Eapm, // Real EAPM
+    opponentApm: player2Apm, // Real APM
+    opponentEapm: player2Eapm, // Real EAPM
+    buildOrder: player1BuildOrder, // Real build order
     
     trainingPlan: [] // Keine Mock-Trainingspläne
   };

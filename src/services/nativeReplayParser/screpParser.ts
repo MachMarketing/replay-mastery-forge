@@ -37,6 +37,13 @@ export interface ScrepReplayData {
     league: string;
     winnerTeam: number;
     apm: number[];
+    eapm: number[];
+    buildOrders: Array<Array<{
+      frame: number;
+      timestamp: string;
+      action: string;
+      supply?: number;
+    }>>;
   };
 }
 
@@ -97,13 +104,14 @@ export class ScrepParser {
       };
     });
 
-    // APM aus echten Daten extrahieren - keine Mock-Werte
-    const apm: number[] = [];
-    for (let i = 0; i < players.length; i++) {
-      // Hier würden echte APM-Werte aus screp-js kommen
-      // Momentan hat screp-js keine APM-Daten, also Fehler werfen
-      apm.push(0); // Temporär 0, aber markiert als "keine Daten verfügbar"
-    }
+    // NEW: Use real APM data from screp-js
+    const apm = result.computed.playerAPM;
+    const eapm = result.computed.playerEAPM;
+    const buildOrders = result.computed.buildOrders;
+    
+    console.log('[ScrepParser] Real APM data:', apm);
+    console.log('[ScrepParser] Real EAPM data:', eapm);
+    console.log('[ScrepParser] Real Build Orders:', buildOrders.map(bo => `${bo.length} actions`));
 
     return {
       header: {
@@ -127,7 +135,9 @@ export class ScrepParser {
         matchup: players.length >= 2 ? `${players[0].race.charAt(0)}v${players[1].race.charAt(0)}` : '',
         league: '', // Keine Mock-Liga
         winnerTeam: -1,
-        apm
+        apm, // Real APM data from screp-js
+        eapm, // Real EAPM data from screp-js
+        buildOrders // Real build orders from commands
       }
     };
   }
