@@ -1,4 +1,3 @@
-
 /**
  * Enhanced command parser for StarCraft: Brood War Remastered replays
  * Now includes aggressive raw command extraction when decompression fails
@@ -9,6 +8,7 @@ import { BWCommand } from './types';
 import { BWAPICommandEngine, BWAPI_COMMAND_LENGTHS, COMMAND_NAMES } from '../bwapi/commandEngine';
 import { RemasteredDecompressor } from '../bwapi/remasteredDecompressor';
 import { RawCommandExtractor } from '../bwapi/rawCommandExtractor';
+import { SmartZlibExtractor } from '../bwapi/smartZlibExtractor';
 
 export class BWCommandParser {
   private reader: BWBinaryReader;
@@ -27,15 +27,22 @@ export class BWCommandParser {
     const commands: BWCommand[] = [];
     
     try {
-      // Strategy 1: Try traditional decompression + parsing
+      // Strategy 1: Try SmartZlibExtractor first (our enhanced method)
+      const smartExtractorCommands = await this.trySmartZlibExtraction(maxCommands);
+      if (smartExtractorCommands.length > 100) {
+        console.log(`[BWCommandParser] SmartZlibExtractor successful: ${smartExtractorCommands.length} commands`);
+        return smartExtractorCommands;
+      }
+      
+      // Strategy 2: Try traditional decompression + parsing
       const traditionalCommands = await this.tryTraditionalParsing(maxCommands);
       if (traditionalCommands.length > 100) {
         console.log(`[BWCommandParser] Traditional parsing successful: ${traditionalCommands.length} commands`);
         return traditionalCommands;
       }
       
-      // Strategy 2: Use raw command extractor on the entire buffer
-      console.log('[BWCommandParser] Traditional parsing failed, using raw extraction...');
+      // Strategy 3: Use raw command extractor on the entire buffer
+      console.log('[BWCommandParser] Using raw extraction as fallback...');
       const rawResult = await RawCommandExtractor.extractCommands(this.reader.data.buffer);
       
       if (rawResult.commands.length > 50) {
@@ -43,7 +50,7 @@ export class BWCommandParser {
         return this.convertRawCommands(rawResult.commands);
       }
       
-      // Strategy 3: Fallback to pattern scanning
+      // Strategy 4: Fallback to pattern scanning
       console.log('[BWCommandParser] Raw extraction insufficient, trying pattern scanning...');
       const patternCommands = await this.tryPatternScanning(maxCommands);
       if (patternCommands.length > 0) {
@@ -55,6 +62,31 @@ export class BWCommandParser {
     }
 
     console.log('[BWCommandParser] No commands extracted, returning empty array');
+    return [];
+  }
+
+  /**
+   * Try SmartZlibExtractor as primary method
+   */
+  private async trySmartZlibExtraction(maxCommands: number): Promise<BWCommand[]> {
+    console.log('[BWCommandParser] Trying SmartZlibExtractor');
+    
+    try {
+      const extractionResult = SmartZlibExtractor.extractAndAssembleStream(this.reader.data);
+      
+      if (extractionResult.success && extractionResult.combinedStream.length > 1000) {
+        console.log(`[BWCommandParser] SmartZlibExtractor found ${extractionResult.totalCommands} commands in stream`);
+        
+        const smartReader = new BWBinaryReader(extractionResult.combinedStream);
+        const commands = this.parseCommandsFromReader(smartReader, [], maxCommands);
+        
+        console.log(`[BWCommandParser] Parsed ${commands.length} commands from SmartZlibExtractor stream`);
+        return commands;
+      }
+    } catch (error) {
+      console.log('[BWCommandParser] SmartZlibExtractor failed:', error);
+    }
+    
     return [];
   }
 
