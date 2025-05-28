@@ -1,7 +1,7 @@
 
 /**
  * StarCraft: Brood War Remastered .rep file parser
- * Based on the official replay format specification
+ * Based on official format specification from icza/screp and BWAPI
  */
 
 import { BWReplayHeader, BWPlayer, BWCommand, BWReplayData } from './types';
@@ -22,17 +22,21 @@ export class BWRemasteredParser {
     console.log('[BWRemasteredParser] Starting BW Remastered replay parse');
     console.log('[BWRemasteredParser] File size:', this.data.byteLength);
 
-    // Parse header (first 520 bytes)
+    // Validate minimum file size
+    if (this.data.byteLength < 633) {
+      throw new Error('File too small to be a valid replay');
+    }
+
+    // Parse header (first 633 bytes)
     const header = this.parseHeader();
     console.log('[BWRemasteredParser] Header parsed:', header);
 
-    // Parse players
+    // Parse players from header section
     const players = this.parsePlayers();
     console.log('[BWRemasteredParser] Players parsed:', players.length);
 
-    // Parse commands (starting after header + player data)
-    this.position = 633; // Standard command start position
-    const commands = this.parseCommands(100); // Parse first 100 commands for analysis
+    // Parse commands starting after header
+    const commands = this.parseCommands(200); // Parse more commands for better analysis
     console.log('[BWRemasteredParser] Commands parsed:', commands.length);
 
     // Calculate game duration
@@ -52,101 +56,100 @@ export class BWRemasteredParser {
   }
 
   /**
-   * Parse the replay header (520 bytes)
+   * Parse the replay header according to .rep specification
    */
   private parseHeader(): BWReplayHeader {
     this.position = 0;
 
-    // Check for replay signature at different positions
-    let foundSignature = false;
-    let signaturePosition = 0;
-
-    // Try common positions where the header might start
-    const tryPositions = [0, 8, 16, 32];
-    
-    for (const pos of tryPositions) {
-      this.position = pos;
-      if (this.position + 4 < this.data.byteLength) {
-        const magic = this.readString(4);
-        if (magic === 'Repl') {
-          foundSignature = true;
-          signaturePosition = pos;
-          break;
-        }
-      }
+    // Read and verify replay ID (4 bytes) - should be "Repl"
+    const replayId = this.readString(4);
+    if (replayId !== 'Repl') {
+      throw new Error(`Invalid replay file - expected "Repl", got "${replayId}"`);
     }
 
-    if (!foundSignature) {
-      // If no standard signature found, scan the file
-      console.log('[BWRemasteredParser] No standard signature found, scanning file...');
-      this.position = this.findReplayStart();
-    } else {
-      this.position = signaturePosition;
-    }
+    // Engine version (4 bytes) - skip for now
+    this.position = 8;
 
-    console.log('[BWRemasteredParser] Replay data starts at position:', this.position);
-
-    // Skip magic bytes
-    this.position += 4;
-
-    // Read version info
-    const version = this.readUInt32LE().toString();
-    
-    // Skip to frame count (offset 0x0C from start)
-    this.position = signaturePosition + 0x0C;
+    // Frame count (4 bytes at offset 0x0C)
+    this.position = 0x0C;
     const totalFrames = this.readUInt32LE();
 
-    // Skip to map name (offset 0x61 from start)
-    this.position = signaturePosition + 0x61;
-    const mapName = this.readString(32).replace(/\0/g, '').trim();
+    // Skip to keyframe interval (4 bytes at offset 0x10)
+    this.position = 0x10;
+    const keyframeInterval = this.readUInt32LE();
 
-    // Game type info
-    this.position = signaturePosition + 0x1A1;
-    const gameType = this.readUInt8();
+    // Skip to map name (32 bytes at offset 0x61)
+    this.position = 0x61;
+    const mapName = this.readFixedString(32);
+
+    // Game type and sub type (at offset 0x1A1)
+    this.position = 0x1A1;
+    const gameType = this.readUInt16LE();
+    const gameSubType = this.readUInt16LE();
+
+    // Random seed (4 bytes at offset 0x1A5)
+    this.position = 0x1A5;
+    const seed = this.readUInt32LE();
+
+    // Player count is determined by scanning player slots
+    let playerCount = 0;
+    const tempPos = this.position;
+    this.position = 0x161; // Player data starts here
+    
+    for (let i = 0; i < 8; i++) {
+      const playerStart = 0x161 + (i * 36);
+      this.position = playerStart;
+      const name = this.readFixedString(24);
+      if (name.trim().length > 0) {
+        playerCount++;
+      }
+    }
+    
+    this.position = tempPos;
 
     return {
-      version,
-      seed: 0, // Will be calculated if needed
+      version: '1.16.1',
+      seed,
       totalFrames,
-      mapName: mapName || 'Unknown Map',
-      playerCount: 0, // Will be set after parsing players
+      mapName: mapName.trim() || 'Unknown Map',
+      playerCount,
       gameType
     };
   }
 
   /**
-   * Parse player data
+   * Parse player data from the header section
    */
   private parsePlayers(): BWPlayer[] {
     const players: BWPlayer[] = [];
     
-    // Players start at offset 0x161
-    this.position = 0x161;
-
+    // Player data starts at offset 0x161, each player slot is 36 bytes
     for (let i = 0; i < 8; i++) {
-      const startPos = this.position;
+      const playerOffset = 0x161 + (i * 36);
+      this.position = playerOffset;
       
       // Player name (24 bytes)
-      const name = this.readString(24).replace(/\0/g, '').trim();
+      const name = this.readFixedString(24);
       
-      if (name.length === 0) {
-        // Skip empty player slot
-        this.position = startPos + 36;
-        continue;
+      if (name.trim().length === 0) {
+        continue; // Skip empty player slot
       }
 
-      // Skip 8 bytes to race
-      this.position = startPos + 32;
+      // Skip 8 bytes to reach race info
+      this.position = playerOffset + 32;
       const race = this.readUInt8();
       
-      // Team and color
-      this.position = startPos + 33;
+      // Team info
+      this.position = playerOffset + 33;
       const team = this.readUInt8();
+      
+      // Color
       const color = this.readUInt8();
 
-      if (race <= 6) { // Valid race
+      // Only add players with valid races
+      if (race <= 6) {
         players.push({
-          name,
+          name: name.trim(),
           race,
           raceString: RACE_MAPPING[race as keyof typeof RACE_MAPPING] || 'Unknown',
           slotId: i,
@@ -154,44 +157,49 @@ export class BWRemasteredParser {
           color
         });
       }
-
-      // Move to next player slot (36 bytes per player)
-      this.position = startPos + 36;
     }
 
     return players;
   }
 
   /**
-   * Parse commands from the replay
+   * Parse commands from the replay data section
    */
-  private parseCommands(maxCommands: number = 100): BWCommand[] {
+  private parseCommands(maxCommands: number = 200): BWCommand[] {
     const commands: BWCommand[] = [];
     let currentFrame = 0;
     let commandCount = 0;
+
+    // Commands start at offset 633 (0x279)
+    this.position = 633;
 
     while (this.position < this.data.byteLength && commandCount < maxCommands) {
       try {
         const commandByte = this.readUInt8();
 
-        // Handle frame updates
+        // Handle frame synchronization commands
         if (commandByte === 0x00) {
+          // Frame advance
           currentFrame++;
           continue;
         } else if (commandByte === 0x01) {
-          // Frame skip
-          const skipFrames = this.readUInt8();
-          currentFrame += skipFrames;
+          // Frame skip (next byte contains skip count)
+          if (this.position < this.data.byteLength) {
+            const skipFrames = this.readUInt8();
+            currentFrame += skipFrames;
+          }
           continue;
         } else if (commandByte === 0x02) {
-          // Large frame skip
-          const skipFrames = this.readUInt16LE();
-          currentFrame += skipFrames;
+          // Large frame skip (next 2 bytes contain skip count)
+          if (this.position + 1 < this.data.byteLength) {
+            const skipFrames = this.readUInt16LE();
+            currentFrame += skipFrames;
+          }
           continue;
         }
 
-        // Parse actual command
-        if (commandByte >= 0x09) {
+        // Parse actual game command
+        if (commandByte >= 0x09 && commandByte <= 0x48) {
           const command = this.parseCommand(commandByte, currentFrame);
           if (command) {
             commands.push(command);
@@ -199,7 +207,8 @@ export class BWRemasteredParser {
           }
         }
       } catch (error) {
-        // End of parseable data
+        // End of parseable data or corrupted command
+        console.log('[BWRemasteredParser] Command parsing stopped:', error);
         break;
       }
     }
@@ -208,29 +217,33 @@ export class BWRemasteredParser {
   }
 
   /**
-   * Parse a specific command
+   * Parse a specific command based on type
    */
   private parseCommand(commandType: number, frame: number): BWCommand | null {
     try {
-      // Get command length
-      const length = this.getCommandLength(commandType);
-      if (length === 0) return null;
+      const commandLength = this.getCommandLength(commandType);
+      if (commandLength === 0 || this.position + commandLength > this.data.byteLength) {
+        return null;
+      }
 
-      // Save position to read command data
-      const startPos = this.position;
+      // Save start position
+      const commandStart = this.position;
       
-      // Read user ID (usually first byte)
-      const userId = this.readUInt8();
-      
-      // Reset to start and read all data
-      this.position = startPos;
-      const commandData = this.readBytes(length);
+      // Most commands start with player ID
+      let userId = 0;
+      if (commandLength > 0) {
+        userId = this.readUInt8();
+      }
+
+      // Read remaining command data
+      this.position = commandStart;
+      const commandData = this.readBytes(commandLength);
 
       return {
         frame,
         userId,
         type: commandType,
-        typeString: COMMAND_MAPPING[commandType as keyof typeof COMMAND_MAPPING] || `Unknown_0x${commandType.toString(16)}`,
+        typeString: COMMAND_MAPPING[commandType as keyof typeof COMMAND_MAPPING] || `Unknown_0x${commandType.toString(16).toUpperCase()}`,
         data: commandData
       };
     } catch (error) {
@@ -239,84 +252,117 @@ export class BWRemasteredParser {
   }
 
   /**
-   * Get expected command length
+   * Get the expected length for each command type
    */
   private getCommandLength(commandType: number): number {
-    const lengths: Record<number, number> = {
-      0x09: 2,  // Select
-      0x0A: 2,  // Shift Select
-      0x0B: 2,  // Shift Deselect
-      0x0C: 7,  // Build
-      0x0D: 2,  // Vision
-      0x0E: 4,  // Alliance
-      0x13: 2,  // Hotkey
-      0x14: 4,  // Move
-      0x15: 6,  // Attack
-      0x16: 0,  // Cancel
-      0x18: 1,  // Stop
-      0x1D: 2,  // Train
-      0x1E: 2,  // Cancel Train
-      0x1F: 1,  // Cloak
-      0x20: 1,  // Decloak
-      0x21: 2,  // Unit Morph
-      0x23: 1,  // Unsiege
-      0x24: 1,  // Siege
-      0x2A: 1,  // Hold Position
-      0x2B: 1,  // Burrow
-      0x2C: 1,  // Unburrow
-      0x2F: 2,  // Research
-      0x31: 2,  // Upgrade
-      0x34: 2,  // Building Morph
-      0x35: 1   // Stim
+    // Command lengths based on BWAPI specification
+    const commandLengths: Record<number, number> = {
+      0x09: 2,   // Select
+      0x0A: 2,   // Shift Select
+      0x0B: 2,   // Shift Deselect
+      0x0C: 7,   // Build
+      0x0D: 2,   // Vision
+      0x0E: 4,   // Alliance
+      0x13: 2,   // Hotkey
+      0x14: 4,   // Move
+      0x15: 6,   // Attack
+      0x16: 0,   // Cancel
+      0x17: 0,   // Cancel Hatch
+      0x18: 1,   // Stop
+      0x19: 1,   // Carrier Stop
+      0x1A: 1,   // Reaver Stop
+      0x1B: 1,   // Order Nothing
+      0x1C: 1,   // Return Cargo
+      0x1D: 2,   // Train
+      0x1E: 2,   // Cancel Train
+      0x1F: 1,   // Cloak
+      0x20: 1,   // Decloak
+      0x21: 2,   // Unit Morph
+      0x23: 1,   // Unsiege
+      0x24: 1,   // Siege
+      0x25: 2,   // Train Fighter
+      0x27: 1,   // Unload All
+      0x28: 2,   // Unload
+      0x29: 1,   // Merge Archon
+      0x2A: 1,   // Hold Position
+      0x2B: 1,   // Burrow
+      0x2C: 1,   // Unburrow
+      0x2D: 1,   // Cancel Nuke
+      0x2E: 1,   // Lift
+      0x2F: 2,   // Research
+      0x30: 2,   // Cancel Research
+      0x31: 2,   // Upgrade
+      0x32: 2,   // Cancel Upgrade
+      0x33: 2,   // Cancel Addon
+      0x34: 2,   // Building Morph
+      0x35: 1,   // Stim
+      0x48: 10   // Load Game
     };
 
-    return lengths[commandType] || 1;
+    return commandLengths[commandType] || 1;
   }
 
-  /**
-   * Find where replay data starts by scanning for patterns
-   */
-  private findReplayStart(): number {
-    // Look for the "Repl" signature anywhere in the first 1KB
-    for (let i = 0; i < Math.min(1024, this.data.byteLength - 4); i++) {
-      this.position = i;
-      const chunk = this.readString(4);
-      if (chunk === 'Repl') {
-        return i;
-      }
-    }
-    
-    // If not found, start from beginning
-    return 0;
-  }
-
-  // Utility methods for reading binary data
+  // Binary reading utility methods
   private readUInt8(): number {
+    if (this.position >= this.data.byteLength) {
+      throw new Error('End of buffer reached');
+    }
     const value = this.data.getUint8(this.position);
     this.position += 1;
     return value;
   }
 
   private readUInt16LE(): number {
-    const value = this.data.getUint16(this.position, true);
+    if (this.position + 1 >= this.data.byteLength) {
+      throw new Error('End of buffer reached');
+    }
+    const value = this.data.getUint16(this.position, true); // true = little endian
     this.position += 2;
     return value;
   }
 
   private readUInt32LE(): number {
-    const value = this.data.getUint32(this.position, true);
+    if (this.position + 3 >= this.data.byteLength) {
+      throw new Error('End of buffer reached');
+    }
+    const value = this.data.getUint32(this.position, true); // true = little endian
     this.position += 4;
     return value;
   }
 
   private readString(length: number): string {
-    const bytes = new Uint8Array(this.data.buffer, this.position, length);
+    if (this.position + length > this.data.byteLength) {
+      throw new Error('End of buffer reached');
+    }
+    const bytes = new Uint8Array(this.data.buffer, this.data.byteOffset + this.position, length);
     this.position += length;
     return new TextDecoder('utf-8').decode(bytes);
   }
 
+  private readFixedString(length: number): string {
+    if (this.position + length > this.data.byteLength) {
+      throw new Error('End of buffer reached');
+    }
+    const bytes = new Uint8Array(this.data.buffer, this.data.byteOffset + this.position, length);
+    this.position += length;
+    
+    // Find null terminator
+    let actualLength = length;
+    for (let i = 0; i < length; i++) {
+      if (bytes[i] === 0) {
+        actualLength = i;
+        break;
+      }
+    }
+    
+    return new TextDecoder('utf-8').decode(bytes.slice(0, actualLength));
+  }
+
   private readBytes(length: number): Uint8Array {
-    const bytes = new Uint8Array(this.data.buffer, this.position, length);
+    if (this.position + length > this.data.byteLength) {
+      throw new Error('End of buffer reached');
+    }
+    const bytes = new Uint8Array(this.data.buffer, this.data.byteOffset + this.position, length);
     this.position += length;
     return bytes;
   }
