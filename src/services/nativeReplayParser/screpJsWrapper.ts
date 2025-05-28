@@ -13,8 +13,10 @@ async function loadScrepJs() {
   
   try {
     // Try to load screp-js
-    screpJs = await import('screp-js');
-    console.log('[ScrepJsWrapper] screp-js loaded successfully');
+    const module = await import('screp-js');
+    // screp-js might export differently - check for default export or named exports
+    screpJs = module.default || module;
+    console.log('[ScrepJsWrapper] screp-js loaded:', Object.keys(screpJs));
     return screpJs;
   } catch (error) {
     console.warn('[ScrepJsWrapper] Could not load screp-js:', error);
@@ -69,6 +71,10 @@ export class ScrepJsWrapper {
     this.screpLib = await loadScrepJs();
     this.isInitialized = true;
     
+    if (this.screpLib) {
+      console.log('[ScrepJsWrapper] Available methods:', Object.keys(this.screpLib));
+    }
+    
     return this.screpLib !== null;
   }
 
@@ -86,13 +92,38 @@ export class ScrepJsWrapper {
       const buffer = await fileToBuffer(file);
       
       console.log('[ScrepJsWrapper] Parsing with screp-js...');
-      const result = this.screpLib.parseReplay(buffer);
+      console.log('[ScrepJsWrapper] Available screp-js methods:', Object.keys(this.screpLib));
+      
+      let result;
+      
+      // Try different possible API methods
+      if (typeof this.screpLib.parseReplay === 'function') {
+        result = this.screpLib.parseReplay(buffer);
+      } else if (typeof this.screpLib.parse === 'function') {
+        result = this.screpLib.parse(buffer);
+      } else if (typeof this.screpLib.default === 'function') {
+        result = this.screpLib.default(buffer);
+      } else if (typeof this.screpLib === 'function') {
+        result = this.screpLib(buffer);
+      } else {
+        // Look for any function that might be the parser
+        const methods = Object.keys(this.screpLib).filter(key => typeof this.screpLib[key] === 'function');
+        console.log('[ScrepJsWrapper] Available function methods:', methods);
+        
+        if (methods.length > 0) {
+          const parseMethod = methods.find(m => m.toLowerCase().includes('parse')) || methods[0];
+          console.log('[ScrepJsWrapper] Trying method:', parseMethod);
+          result = this.screpLib[parseMethod](buffer);
+        } else {
+          throw new Error('No suitable parsing method found in screp-js');
+        }
+      }
       
       if (!result) {
         throw new Error('screp-js returned null result');
       }
 
-      console.log('[ScrepJsWrapper] screp-js parsing successful');
+      console.log('[ScrepJsWrapper] screp-js parsing successful, result keys:', Object.keys(result));
       return this.normalizeResult(result);
       
     } catch (error) {
@@ -102,33 +133,48 @@ export class ScrepJsWrapper {
   }
 
   private normalizeResult(screpResult: any): ReplayParseResult {
-    // Normalize screp-js output to our standard format
-    const frames = screpResult.frames || screpResult.header?.frames || 10000;
+    console.log('[ScrepJsWrapper] Normalizing result:', screpResult);
+    
+    // Handle different possible result structures
+    const data = screpResult.data || screpResult.replay || screpResult;
+    
+    // Extract frames
+    const frames = data.frames || data.header?.frames || data.gameLength || 10000;
     const durationMs = Math.floor(frames * 1000 / 24);
     const minutes = Math.floor(durationMs / 60000);
     const seconds = Math.floor((durationMs % 60000) / 1000);
     
+    // Extract players
+    const rawPlayers = data.players || data.playerInfo || [];
+    const players = rawPlayers.map((player: any, index: number) => ({
+      name: player.name || player.playerName || `Player ${index + 1}`,
+      race: this.normalizeRace(player.race || player.raceId || player.raceString),
+      team: player.team || index % 2,
+      color: player.color || index
+    }));
+    
+    // Extract map name
+    const mapName = data.mapName || data.map || data.header?.mapName || 'Unknown Map';
+    
+    // Extract commands
+    const commands = (data.commands || data.actions || []).slice(0, 100).map((cmd: any) => ({
+      frame: cmd.frame || cmd.gameFrame || 0,
+      type: cmd.type || cmd.actionType || 'unknown',
+      data: cmd.data || cmd.payload || {}
+    }));
+
     return {
       header: {
-        engine: screpResult.engine || 'StarCraft',
-        version: screpResult.version || 'Unknown',
+        engine: data.engine || 'StarCraft',
+        version: data.version || 'Unknown',
         frames: frames,
-        startTime: new Date(screpResult.startTime || Date.now()),
-        mapName: screpResult.mapName || screpResult.header?.mapName || 'Unknown Map',
-        gameType: screpResult.gameType || 'Melee',
+        startTime: new Date(data.startTime || Date.now()),
+        mapName: mapName,
+        gameType: data.gameType || 'Melee',
         duration: `${minutes}:${seconds.toString().padStart(2, '0')}`
       },
-      players: (screpResult.players || []).map((player: any, index: number) => ({
-        name: player.name || `Player ${index + 1}`,
-        race: this.normalizeRace(player.race || player.raceId),
-        team: player.team || index % 2,
-        color: player.color || index
-      })),
-      commands: (screpResult.commands || []).slice(0, 100).map((cmd: any) => ({
-        frame: cmd.frame || 0,
-        type: cmd.type || 'unknown',
-        data: cmd.data || {}
-      }))
+      players,
+      commands
     };
   }
 
@@ -137,7 +183,7 @@ export class ScrepJsWrapper {
     
     const races: Record<number, string> = {
       0: 'Zerg',
-      1: 'Terran',
+      1: 'Terran', 
       2: 'Protoss',
       6: 'Random'
     };
