@@ -75,20 +75,39 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     setStatusMessage('Datei wird hochgeladen...');
     setProgress(0);
     
-    // Simulate upload progress
+    // Simulate upload progress - faster progression
     const progressInterval = setInterval(() => {
-      setProgress(prev => prev >= 90 ? 90 : prev + 15);
-    }, 200);
+      setProgress(prev => {
+        if (prev >= 95) {
+          return 95; // Stop at 95% until upload is "complete"
+        }
+        return prev + 20;
+      });
+    }, 150);
     
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Simulate upload time - shorter
+      await new Promise(resolve => setTimeout(resolve, 800));
       clearInterval(progressInterval);
       setProgress(100);
       
+      // Brief pause to show 100% upload completion
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Now transition to parsing
       setUploadStatus('parsing');
       setStatusMessage('Replay wird analysiert...');
+      setProgress(0); // Reset progress for parsing phase
+      
+      // Start parsing progress animation
+      const parsingInterval = setInterval(() => {
+        setProgress(prev => prev >= 90 ? 90 : prev + 10);
+      }, 300);
       
       const parsedData = await parseReplay(file);
+      
+      clearInterval(parsingInterval);
+      setProgress(100);
       
       setUploadStatus('success');
       setStatusMessage('Analyse erfolgreich abgeschlossen!');
@@ -112,6 +131,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       setErrorDetails(errorMessage);
       setUploadStatus('error');
       setStatusMessage('Fehler beim Analysieren');
+      setProgress(0);
       
       toast({
         title: "Analyse fehlgeschlagen",
@@ -254,6 +274,22 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       )}
     </div>
   );
+
+  function handleCancel() {
+    setFile(null);
+    setUploadStatus('idle');
+    setStatusMessage('');
+    setErrorDetails(null);
+    setProgress(0);
+  }
+
+  function handleRetry() {
+    if (file) {
+      processFile(file);
+    } else {
+      handleCancel();
+    }
+  }
 };
 
 export default UploadBox;
