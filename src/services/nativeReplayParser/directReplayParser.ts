@@ -1,712 +1,557 @@
 /**
- * Direct StarCraft Replay Parser based on BWAPI specifications
- * Enhanced with sync frame flooding detection and unit mapping
+ * Enhanced Direct Replay Parser with aggressive command stream detection
+ * Optimized for StarCraft: Brood War Remastered replays
  */
 
-export interface ParsedCommand {
-  frame: number;
-  cmdId: number;
-  playerId: number;
-  type: string;
-  unitType?: number;
-  unitName?: string;
-  position?: { x: number; y: number };
-  targetId?: number;
-  data?: Uint8Array;
-}
-
-export interface BuildAction {
-  timestamp: string;
-  frame: number;
-  action: string;
-  unitName?: string;
-  supply?: number;
-}
-
-export interface DirectParserResult {
-  commands: ParsedCommand[];
-  buildOrders: BuildAction[][];
-  playerActions: ParsedCommand[][];
-  totalFrames: number;
-  apm: number[];
-  eapm: number[];
-  success: boolean;
-  error?: string;
-}
-
-// Enhanced command length table based on BWAPI specifications
-const COMMAND_LENGTHS: Record<number, number> = {
-  0x09: 2,   // Select
-  0x0A: 2,   // Shift Select  
-  0x0B: 2,   // Shift Deselect
-  0x0C: 10,  // Build (enhanced length)
-  0x0D: 2,   // Vision
-  0x0E: 4,   // Alliance
-  0x13: 2,   // Hotkey
-  0x14: 9,   // Move (enhanced length)
-  0x15: 9,   // Attack (enhanced length)
-  0x16: 1,   // Cancel
-  0x17: 1,   // Cancel Hatch
-  0x18: 1,   // Stop
-  0x19: 1,   // Carrier Stop
-  0x1A: 1,   // Reaver Stop
-  0x1B: 3,   // Select (variable, minimum 3)
-  0x1C: 1,   // Return Cargo
-  0x1D: 6,   // Train (enhanced length)
-  0x1E: 2,   // Cancel Train
-  0x1F: 1,   // Cloak
-  0x20: 1,   // Decloak
-  0x21: 2,   // Unit Morph
-  0x23: 1,   // Unsiege
-  0x24: 1,   // Siege
-  0x25: 2,   // Train Fighter
-  0x27: 1,   // Unload All
-  0x28: 2,   // Unload
-  0x29: 1,   // Merge Archon
-  0x2A: 1,   // Hold Position
-  0x2B: 1,   // Burrow
-  0x2C: 1,   // Unburrow
-  0x2D: 1,   // Cancel Nuke
-  0x2E: 1,   // Lift
-  0x2F: 2,   // Research
-  0x30: 2,   // Cancel Research
-  0x31: 2,   // Upgrade
-  0x32: 2,   // Cancel Upgrade
-  0x33: 2,   // Cancel Addon
-  0x34: 2,   // Building Morph
-  0x35: 1,   // Stim
-  0x48: 10   // Load Game
-};
-
-// Valid action command IDs for APM calculation (excludes frame sync)
-const VALID_APM_COMMANDS = [
-  0x0C, 0x1D, 0x1B, 0x14, 0x15, 0x09, 0x0A, 0x0B, 0x13, 0x1E, 0x1F, 0x20,
-  0x21, 0x23, 0x24, 0x25, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E,
-  0x2F, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35
-];
-
-// Enhanced unit ID to name mapping based on BWAPI UnitTypes
-const UNIT_MAPPING: Record<number, string> = {
-  // Protoss Units
-  60: 'Probe',
-  61: 'Zealot',
-  62: 'Dragoon',
-  64: 'Photon Cannon',
-  65: 'High Templar',
-  66: 'Dark Templar',
-  67: 'Archon',
-  69: 'Scout',
-  70: 'Arbiter',
-  71: 'Carrier',
-  83: 'Interceptor',
-  84: 'Dark Archon',
-  85: 'Corsair',
-  
-  // Protoss Buildings
-  154: 'Nexus',
-  155: 'Robotics Facility',
-  156: 'Pylon',
-  157: 'Assimilator',
-  159: 'Gateway',
-  160: 'Photon Cannon',
-  162: 'Cybernetics Core',
-  163: 'Templar Archives',
-  164: 'Forge',
-  165: 'Stargate',
-  167: 'Citadel of Adun',
-  168: 'Robotics Support Bay',
-  169: 'Fleet Beacon',
-  170: 'Templar Archives',
-  172: 'Observatory',
-  
-  // Terran Units
-  0: 'Marine',
-  1: 'Ghost',
-  2: 'Vulture',
-  3: 'Goliath',
-  5: 'Siege Tank',
-  7: 'SCV',
-  8: 'Wraith',
-  9: 'Science Vessel',
-  11: 'Dropship',
-  12: 'Battlecruiser',
-  32: 'Firebat',
-  33: 'Medic',
-  
-  // Terran Buildings
-  106: 'Command Center',
-  107: 'Comsat Station',
-  108: 'Nuclear Silo',
-  109: 'Supply Depot',
-  110: 'Refinery',
-  111: 'Barracks',
-  112: 'Academy',
-  113: 'Factory',
-  114: 'Starport',
-  115: 'Control Tower',
-  116: 'Science Facility',
-  117: 'Covert Ops',
-  118: 'Physics Lab',
-  120: 'Machine Shop',
-  122: 'Engineering Bay',
-  123: 'Armory',
-  124: 'Missile Turret',
-  125: 'Bunker',
-  
-  // Zerg Units
-  37: 'Zergling',
-  38: 'Hydralisk',
-  39: 'Ultralisk',
-  40: 'Broodling',
-  41: 'Drone',
-  42: 'Overlord',
-  43: 'Mutalisk',
-  44: 'Guardian',
-  45: 'Queen',
-  46: 'Defiler',
-  47: 'Scourge',
-  103: 'Lurker',
-  
-  // Zerg Buildings
-  131: 'Hatchery',
-  132: 'Lair',
-  133: 'Hive',
-  134: 'Nydus Canal',
-  135: 'Hydralisk Den',
-  136: 'Defiler Mound',
-  137: 'Greater Spire',
-  138: 'Queens Nest',
-  139: 'Evolution Chamber',
-  140: 'Ultralisk Cavern',
-  141: 'Spire',
-  142: 'Spawning Pool',
-  143: 'Creep Colony',
-  144: 'Spore Colony',
-  145: 'Sunken Colony',
-  149: 'Extractor'
-};
+import { ParsedCommand, BuildOrderItem, DirectParserResult } from './types';
 
 export class DirectReplayParser {
-  private buffer: Uint8Array;
-  private offset: number;
-  private originalOffset: number;
+  private data: DataView;
+  private position: number = 0;
+  private totalFrames: number = 0;
+
+  // Enhanced command length table
+  private static readonly COMMAND_LENGTHS: Record<number, number> = {
+    0x00: 1,   // Keep Alive / Sync
+    0x01: 1,   // Save Game / Sync
+    0x02: 1,   // Load Game / Sync
+    0x05: 3,   // Restart Game
+    0x06: 4,   // Select
+    0x07: 6,   // Shift Select
+    0x08: 12,  // Shift Deselect
+    0x09: 2,   // Build
+    0x0A: 3,   // Vision
+    0x0B: 4,   // Alliance
+    0x0C: 9,   // Game Speed
+    0x0D: 1,   // Pause
+    0x0E: 1,   // Resume
+    0x0F: 5,   // Cheat
+    0x10: 8,   // Hotkey
+    0x11: 8,   // Move
+    0x12: 9,   // Select
+    0x13: 2,   // Cancel
+    0x14: 8,   // Cancel Hatch
+    0x15: 12,  // Stop
+    0x16: 9,   // Carrier Stop
+    0x17: 9,   // Reaver Stop
+    0x18: 11,  // Order Nothing
+    0x19: 10,  // Train Fighter
+    0x1A: 29,  // Merge Dark Archon
+    0x1B: 7,   // Merge High Templar
+    0x1C: 7,   // Hold Position
+    0x1D: 7,   // Unload All
+    0x1E: 9,   // Unload
+    0x1F: 10,  // Merge Dark Archon
+    0x20: 26,  // Merge High Templar
+    0x21: 30,  // Use Stim Pack
+    0x22: 4,   // Synchronize Selection
+    // More commands...
+    0x5A: 1,   // Leave Game
+  };
+
+  // Unit ID to name mapping for readable build orders
+  private static readonly UNIT_NAMES: Record<number, string> = {
+    // Protoss Units
+    64: 'Probe',
+    65: 'Zealot',
+    66: 'Dragoon',
+    67: 'High Templar',
+    68: 'Archon',
+    69: 'Shuttle',
+    70: 'Scout',
+    71: 'Arbiter',
+    72: 'Carrier',
+    73: 'Interceptor',
+    74: 'Dark Templar',
+    75: 'Dark Archon',
+    76: 'Observer',
+    77: 'Warp Prism',
+    78: 'Corsair',
+    79: 'Disruption Web',
+    
+    // Protoss Buildings
+    154: 'Nexus',
+    155: 'Robotics Facility',
+    156: 'Pylon',
+    157: 'Assimilator',
+    158: 'Observatory',
+    159: 'Gateway',
+    160: 'Photon Cannon',
+    161: 'Citadel of Adun',
+    162: 'Cybernetics Core',
+    163: 'Templar Archives',
+    164: 'Forge',
+    165: 'Stargate',
+    166: 'Fleet Beacon',
+    167: 'Arbiter Tribunal',
+    168: 'Robotics Support Bay',
+    169: 'Shield Battery',
+    
+    // Terran Units
+    0: 'Marine',
+    1: 'Ghost',
+    2: 'Vulture',
+    3: 'Goliath',
+    5: 'Siege Tank',
+    7: 'SCV',
+    8: 'Wraith',
+    9: 'Science Vessel',
+    11: 'Dropship',
+    12: 'Battlecruiser',
+    13: 'Vulture Spider Mine',
+    14: 'Nuclear Missile',
+    15: 'Siege Tank (Siege Mode)',
+    32: 'Firebat',
+    33: 'Medic',
+    58: 'Valkyrie',
+    
+    // Terran Buildings
+    106: 'Command Center',
+    107: 'Comsat Station',
+    108: 'Nuclear Silo',
+    109: 'Supply Depot',
+    110: 'Refinery',
+    111: 'Barracks',
+    112: 'Academy',
+    113: 'Factory',
+    114: 'Starport',
+    115: 'Control Tower',
+    116: 'Science Facility',
+    117: 'Covert Ops',
+    118: 'Physics Lab',
+    120: 'Machine Shop',
+    122: 'Engineering Bay',
+    123: 'Armory',
+    124: 'Missile Turret',
+    125: 'Bunker',
+    
+    // Zerg Units
+    37: 'Larva',
+    38: 'Egg',
+    39: 'Zergling',
+    40: 'Hydralisk',
+    41: 'Ultralisk',
+    42: 'Broodling',
+    43: 'Drone',
+    44: 'Overlord',
+    45: 'Mutalisk',
+    46: 'Guardian',
+    47: 'Queen',
+    48: 'Defiler',
+    49: 'Scourge',
+    62: 'Lurker',
+    103: 'Devourer',
+    
+    // Zerg Buildings
+    131: 'Infested Command Center',
+    132: 'Hatchery',
+    133: 'Lair',
+    134: 'Hive',
+    135: 'Nydus Canal',
+    136: 'Hydralisk Den',
+    137: 'Defiler Mound',
+    138: 'Greater Spire',
+    139: 'Queens Nest',
+    140: 'Evolution Chamber',
+    141: 'Ultralisk Cavern',
+    142: 'Spire',
+    143: 'Spawning Pool',
+    144: 'Creep Colony',
+    145: 'Spore Colony',
+    147: 'Sunken Colony',
+    149: 'Extractor',
+  };
 
   constructor(arrayBuffer: ArrayBuffer) {
-    this.buffer = new Uint8Array(arrayBuffer);
-    this.offset = 0x279; // Default offset, will be dynamically detected
-    this.originalOffset = this.offset;
-    console.log('[DirectReplayParser] Initialized with buffer size:', this.buffer.length);
+    this.data = new DataView(arrayBuffer);
+    console.log('[DirectReplayParser] Initialized with buffer size:', arrayBuffer.byteLength);
   }
 
-  /**
-   * Parse the entire replay and extract all data with enhanced detection
-   */
   parseReplay(): DirectParserResult {
     console.log('[DirectReplayParser] === STARTING ENHANCED DIRECT PARSING ===');
     
     try {
-      // Dynamic command stream detection using sync frame flooding
-      const commandStart = this.findCommandStreamWithSyncFlooding();
-      if (commandStart !== -1) {
-        this.offset = commandStart;
-        console.log('[DirectReplayParser] Found command stream via sync flooding at offset:', commandStart.toString(16));
-      } else {
-        console.log('[DirectReplayParser] Using default offset:', this.offset.toString(16));
+      // Phase 1: Find command stream using sync frame flooding
+      const commandStreamStart = this.findCommandStreamStart();
+      if (commandStreamStart === -1) {
+        console.error('[DirectReplayParser] Could not find command stream start');
+        return this.createFailureResult('Command stream not found');
       }
 
-      const commands = this.parseCommandsEnhanced();
-      console.log('[DirectReplayParser] Parsed commands:', commands.length);
+      console.log('[DirectReplayParser] Command stream found at offset:', commandStreamStart);
+      this.position = commandStreamStart;
 
-      // === DETAILED COMMAND ANALYSIS ===
-      this.analyzeCommandsEnhanced(commands);
+      // Phase 2: Parse commands with enhanced detection
+      const commands = this.parseCommands();
+      console.log('[DirectReplayParser] Commands parsed:', commands.length);
 
-      const playerActions = this.groupCommandsByPlayer(commands);
-      const buildOrders = this.generateEnhancedBuildOrders(playerActions);
-      const { apm, eapm } = this.calculateEnhancedAPM(playerActions);
-      const totalFrames = this.getTotalFrames(commands);
+      // Phase 3: Organize by players and calculate metrics
+      const playerActions = this.organizeCommandsByPlayer(commands);
+      const { apm, eapm } = this.calculatePlayerMetrics(playerActions);
+      const buildOrders = this.extractBuildOrders(playerActions);
 
-      console.log('[DirectReplayParser] === ENHANCED PARSING COMPLETE ===');
-      console.log('  - Total commands:', commands.length);
-      console.log('  - Total frames:', totalFrames);
-      console.log('  - Players with actions:', Object.keys(playerActions).length);
-      console.log('  - Build orders generated:', buildOrders.reduce((sum, bo) => sum + bo.length, 0));
-      console.log('  - Enhanced APM:', apm);
+      console.log('[DirectReplayParser] Player actions organized:');
+      Object.keys(playerActions).forEach(playerId => {
+        console.log(`  Player ${playerId}: ${playerActions[parseInt(playerId)].length} actions`);
+      });
+
+      console.log('[DirectReplayParser] APM calculated:', apm);
+      console.log('[DirectReplayParser] Build orders extracted:', buildOrders.map(bo => bo.length));
 
       return {
+        success: true,
         commands,
-        buildOrders,
         playerActions,
-        totalFrames,
         apm,
         eapm,
-        success: true
+        buildOrders,
+        totalFrames: this.totalFrames,
+        error: undefined
       };
 
     } catch (error) {
-      console.error('[DirectReplayParser] Enhanced parsing failed:', error);
-      return {
-        commands: [],
-        buildOrders: [],
-        playerActions: [],
-        totalFrames: 0,
-        apm: [],
-        eapm: [],
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
+      console.error('[DirectReplayParser] Parsing failed:', error);
+      return this.createFailureResult(error instanceof Error ? error.message : 'Unknown error');
     }
   }
 
   /**
-   * Find command stream using sync frame flooding detection
+   * Enhanced command stream detection using sync frame flooding
    */
-  private findCommandStreamWithSyncFlooding(): number {
-    console.log('[DirectReplayParser] === SYNC FRAME FLOODING DETECTION ===');
+  private findCommandStreamStart(): number {
+    console.log('[DirectReplayParser] Searching for command stream using sync frame flooding...');
     
-    // Search for areas with 3-5 consecutive frame sync commands
-    const searchEnd = Math.min(this.buffer.length - 100, 0x800); // Search first 2KB
-    
-    for (let testOffset = 0x200; testOffset < searchEnd; testOffset += 1) {
-      let consecutiveSyncFrames = 0;
-      let testPos = testOffset;
-      
-      // Look for consecutive sync frames (0x00, 0x01, 0x02)
-      for (let i = 0; i < 20 && testPos < this.buffer.length - 5; i++) {
-        const byte = this.buffer[testPos];
-        
-        if (byte === 0x00) {
-          consecutiveSyncFrames++;
-          testPos++;
-        } else if (byte === 0x01 && testPos + 1 < this.buffer.length) {
-          consecutiveSyncFrames++;
-          testPos += 2; // Skip frame count
-        } else if (byte === 0x02 && testPos + 2 < this.buffer.length) {
-          consecutiveSyncFrames++;
-          testPos += 3; // Skip frame count (16-bit)
-        } else {
-          // Check if it's a valid game command
-          const cmdLength = COMMAND_LENGTHS[byte] || 1;
-          if (cmdLength > 0 && testPos + cmdLength < this.buffer.length) {
-            // Verify player ID is valid (next byte after command)
-            const nextByte = this.buffer[testPos + 1];
-            if (nextByte < 12) { // Valid player ID range
-              consecutiveSyncFrames++;
-            }
-          }
-          testPos += cmdLength;
-        }
-      }
-      
-      // If we found a good sync pattern, this is likely the command stream start
-      if (consecutiveSyncFrames >= 4) {
-        console.log(`[DirectReplayParser] Found sync flooding pattern at 0x${testOffset.toString(16)} with ${consecutiveSyncFrames} sync frames`);
-        return testOffset;
-      }
-    }
-    
-    console.log('[DirectReplayParser] No sync flooding pattern found, using fallback detection');
-    return this.findCommandStreamStartFallback();
-  }
+    // Search for patterns of sync commands (0x00, 0x01, 0x02)
+    const syncCommands = [0x00, 0x01, 0x02];
+    let consecutiveSyncs = 0;
+    let potentialStart = -1;
 
-  /**
-   * Fallback command stream detection
-   */
-  private findCommandStreamStartFallback(): number {
-    const potentialOffsets = [
-      0x279, 0x280, 0x300, 0x320, 0x350, 0x400, 0x450, 0x500
-    ];
-    
-    for (const testOffset of potentialOffsets) {
-      if (testOffset >= this.buffer.length - 50) continue;
-      
-      let validCommandCount = 0;
-      let testPos = testOffset;
-      
-      for (let i = 0; i < 30 && testPos < this.buffer.length - 6; i++) {
-        const byte = this.buffer[testPos];
+    // Start searching after typical header size (skip first 1KB)
+    for (let offset = 1024; offset < this.data.byteLength - 100; offset++) {
+      try {
+        const byte = this.data.getUint8(offset);
         
-        if ([0x00, 0x01, 0x02].includes(byte)) {
-          validCommandCount++;
-          testPos += byte === 0x00 ? 1 : (byte === 0x01 ? 2 : 3);
-        } else {
-          const cmdLength = COMMAND_LENGTHS[byte] || 1;
-          if (cmdLength > 0 && testPos + cmdLength < this.buffer.length) {
-            const nextByte = this.buffer[testPos + 1];
-            if (nextByte < 12) {
-              validCommandCount++;
+        if (syncCommands.includes(byte)) {
+          if (consecutiveSyncs === 0) {
+            potentialStart = offset;
+          }
+          consecutiveSyncs++;
+          
+          // If we find 3+ consecutive sync commands, we likely found the stream
+          if (consecutiveSyncs >= 3) {
+            console.log('[DirectReplayParser] Found sync frame flooding at offset:', potentialStart);
+            
+            // Validate by checking if we can parse a few commands
+            if (this.validateCommandStream(potentialStart)) {
+              return potentialStart;
             }
           }
-          testPos += cmdLength;
+        } else {
+          consecutiveSyncs = 0;
+          potentialStart = -1;
         }
-      }
-      
-      if (validCommandCount >= 8) {
-        console.log(`[DirectReplayParser] Fallback found offset: 0x${testOffset.toString(16)}`);
-        return testOffset;
+      } catch (e) {
+        // Continue searching if we hit a boundary error
+        continue;
       }
     }
-    
+
+    // Fallback: Try common offsets for different replay formats
+    const fallbackOffsets = [0x279, 0x300, 0x400, 0x500, 0x600, 0x800];
+    for (const offset of fallbackOffsets) {
+      if (offset < this.data.byteLength && this.validateCommandStream(offset)) {
+        console.log('[DirectReplayParser] Using fallback offset:', offset);
+        return offset;
+      }
+    }
+
     return -1;
   }
 
   /**
-   * Enhanced command parsing with improved accuracy
+   * Validate command stream by trying to parse first few commands
    */
-  parseCommandsEnhanced(): ParsedCommand[] {
+  private validateCommandStream(offset: number): boolean {
+    try {
+      let pos = offset;
+      let validCommands = 0;
+      
+      for (let i = 0; i < 10 && pos < this.data.byteLength - 10; i++) {
+        const cmdId = this.data.getUint8(pos);
+        const length = this.getCommandLength(cmdId, pos);
+        
+        if (length > 0 && length < 50 && pos + length <= this.data.byteLength) {
+          validCommands++;
+          pos += length;
+        } else {
+          break;
+        }
+      }
+      
+      return validCommands >= 5; // Need at least 5 valid commands
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * Enhanced command parsing with better error handling
+   */
+  private parseCommands(): ParsedCommand[] {
     const commands: ParsedCommand[] = [];
-    let consecutiveErrors = 0;
-    const maxErrors = 15;
     let currentFrame = 0;
+    let safetyCounter = 0;
+    const maxCommands = 10000; // Safety limit
 
-    console.log('[DirectReplayParser] Starting enhanced command parsing from offset:', this.offset.toString(16));
+    console.log('[DirectReplayParser] Starting command parsing from position:', this.position);
 
-    while (this.offset < this.buffer.length - 6 && consecutiveErrors < maxErrors) {
+    while (this.position < this.data.byteLength - 1 && safetyCounter < maxCommands) {
       try {
-        const startOffset = this.offset;
-        
-        // Handle frame sync commands first
-        const cmdByte = this.buffer[this.offset];
-        
-        if (cmdByte === 0x00) {
-          currentFrame++;
-          this.offset++;
-          consecutiveErrors = 0;
-          continue;
-        } else if (cmdByte === 0x01) {
-          if (this.offset + 1 < this.buffer.length) {
-            const skipFrames = this.buffer[this.offset + 1];
-            currentFrame += skipFrames;
-            this.offset += 2;
-            consecutiveErrors = 0;
+        const cmdId = this.data.getUint8(this.position);
+        const length = this.getCommandLength(cmdId, this.position);
+
+        if (length <= 0 || this.position + length > this.data.byteLength) {
+          console.warn('[DirectReplayParser] Invalid command length, stopping parsing');
+          break;
+        }
+
+        // Parse frame sync commands to track game time
+        if (cmdId === 0x00 || cmdId === 0x01) {
+          if (length >= 2) {
+            currentFrame += this.data.getUint8(this.position + 1);
+          } else {
+            currentFrame++;
           }
-          continue;
-        } else if (cmdByte === 0x02) {
-          if (this.offset + 2 < this.buffer.length) {
-            const skipFrames = this.buffer[this.offset + 1] | (this.buffer[this.offset + 2] << 8);
-            currentFrame += skipFrames;
-            this.offset += 3;
-            consecutiveErrors = 0;
+          this.totalFrames = Math.max(this.totalFrames, currentFrame);
+        }
+
+        // Extract player ID (usually in second byte for player commands)
+        let playerId = 0;
+        if (length > 1 && cmdId !== 0x00 && cmdId !== 0x01 && cmdId !== 0x02) {
+          playerId = this.data.getUint8(this.position + 1);
+          // Validate player ID (should be 0-7)
+          if (playerId > 7) {
+            playerId = 0;
           }
-          continue;
-        }
-        
-        // Parse game command with enhanced validation
-        const cmdId = this.readUint8();
-        
-        // Skip invalid commands
-        if (cmdId === 0xFF || cmdId > 0x50) {
-          this.offset = startOffset + 1;
-          consecutiveErrors++;
-          continue;
         }
 
-        consecutiveErrors = 0;
-
-        // Read player ID with validation
-        const playerId = this.readUint8();
-        if (playerId > 11) {
-          this.offset = startOffset + 1;
-          continue;
-        }
-
+        // Create command object
         const command: ParsedCommand = {
           frame: currentFrame,
+          timestamp: this.frameToTimestamp(currentFrame),
           cmdId,
           playerId,
-          type: this.getCommandType(cmdId)
+          length,
+          type: this.getCommandType(cmdId),
+          unitName: this.extractUnitName(cmdId, this.position),
+          data: this.extractCommandData(cmdId, this.position, length)
         };
 
-        // Enhanced command-specific data parsing
-        this.parseEnhancedCommandData(command);
-
         commands.push(command);
-
-        // Use enhanced command length table
-        this.skipEnhancedCommandPayload(cmdId);
+        this.position += length;
+        safetyCounter++;
 
       } catch (error) {
-        console.warn('[DirectReplayParser] Error parsing command at offset', this.offset.toString(16), ':', error);
-        this.offset += 1;
-        consecutiveErrors++;
+        console.warn('[DirectReplayParser] Error parsing command at position', this.position, ':', error);
+        this.position++;
+        safetyCounter++;
       }
     }
 
-    console.log('[DirectReplayParser] Enhanced parsing completed:', commands.length, 'commands');
+    console.log('[DirectReplayParser] Command parsing complete. Total commands:', commands.length);
+    console.log('[DirectReplayParser] Total frames detected:', this.totalFrames);
+    
     return commands;
   }
 
   /**
-   * Enhanced command data parsing with unit mapping
+   * Get command length using enhanced table and dynamic detection
    */
-  private parseEnhancedCommandData(command: ParsedCommand): void {
-    switch (command.cmdId) {
-      case 0x0C: // Build
-      case 0x1D: // Train
-        if (this.offset + 2 < this.buffer.length) {
-          command.unitType = this.readUint16();
-          command.unitName = this.getUnitNameEnhanced(command.unitType);
-        }
-        break;
-        
-      case 0x14: // Attack Move
-      case 0x15: // Move
-        if (this.offset + 4 < this.buffer.length) {
-          command.position = {
-            x: this.readUint16(),
-            y: this.readUint16()
-          };
-        }
-        break;
-        
-      case 0x1B: // Select
-        if (this.offset + 2 < this.buffer.length) {
-          const unitCount = this.readUint8();
-          // Skip unit selection data
-          this.offset += Math.min(unitCount * 2, 24);
-        }
-        break;
+  private getCommandLength(cmdId: number, position: number): number {
+    // Use table lookup first
+    if (DirectReplayParser.COMMAND_LENGTHS[cmdId]) {
+      return DirectReplayParser.COMMAND_LENGTHS[cmdId];
     }
-  }
 
-  /**
-   * Enhanced command payload skipping using command length table
-   */
-  private skipEnhancedCommandPayload(cmdId: number): void {
-    const commandLength = COMMAND_LENGTHS[cmdId];
-    
-    if (commandLength) {
-      // We already read cmdId (1 byte) and playerId (1 byte), so skip remaining
-      const remainingBytes = Math.max(0, commandLength - 2);
-      this.offset += Math.min(remainingBytes, this.buffer.length - this.offset);
-    } else {
-      // Unknown command, skip conservatively
-      this.offset += Math.min(2, this.buffer.length - this.offset);
-    }
-  }
-
-  /**
-   * Enhanced unit name mapping
-   */
-  private getUnitNameEnhanced(unitType: number): string {
-    return UNIT_MAPPING[unitType] || `Unit ${unitType}`;
-  }
-
-  /**
-   * Enhanced command analysis with detailed breakdown
-   */
-  private analyzeCommandsEnhanced(commands: ParsedCommand[]): void {
-    console.log('[DirectReplayParser] === ENHANCED COMMAND ANALYSIS ===');
-    
-    console.log(`Found ${commands.length} commands total.`);
-    
-    const commandsByType: Record<number, number> = {};
-    const commandsByPlayer: Record<number, ParsedCommand[]> = {};
-    
-    commands.forEach(cmd => {
-      commandsByType[cmd.cmdId] = (commandsByType[cmd.cmdId] || 0) + 1;
-      
-      if (!commandsByPlayer[cmd.playerId]) {
-        commandsByPlayer[cmd.playerId] = [];
+    // Dynamic detection for unknown commands
+    try {
+      // Most commands are between 1-30 bytes
+      for (let len = 1; len <= 30; len++) {
+        if (position + len >= this.data.byteLength) {
+          return len - 1;
+        }
+        
+        // Check if next byte could be a valid command ID
+        const nextByte = this.data.getUint8(position + len);
+        if (this.isLikelyCommandId(nextByte)) {
+          return len;
+        }
       }
-      commandsByPlayer[cmd.playerId].push(cmd);
-    });
-    
-    // Enhanced command type breakdown
-    console.log('[DirectReplayParser] Command types found:');
-    Object.entries(commandsByType)
-      .sort(([,a], [,b]) => b - a)
-      .slice(0, 10) // Top 10
-      .forEach(([cmdId, count]) => {
-        const cmdName = this.getCommandType(parseInt(cmdId));
-        console.log(`  - 0x${parseInt(cmdId).toString(16).padStart(2, '0')} (${cmdName}): ${count}`);
-      });
-    
-    // Enhanced per-player breakdown with action counting
-    console.log('[DirectReplayParser] Enhanced per-player action breakdown:');
-    Object.entries(commandsByPlayer).forEach(([playerId, playerCommands]) => {
-      const pid = parseInt(playerId);
-      
-      const frameSync = playerCommands.filter(c => [0x00, 0x01, 0x02].includes(c.cmdId)).length;
-      const build = playerCommands.filter(c => c.cmdId === 0x0C).length;
-      const train = playerCommands.filter(c => c.cmdId === 0x1D).length;
-      const moveAttack = playerCommands.filter(c => [0x14, 0x15].includes(c.cmdId)).length;
-      const select = playerCommands.filter(c => c.cmdId === 0x1B).length;
-      const validActions = playerCommands.filter(c => VALID_APM_COMMANDS.includes(c.cmdId));
-      
-      console.log(`Player ${pid}: ${playerCommands.length} total commands`);
-      console.log(`  - ${frameSync} FrameSync (excluded from APM)`);
-      console.log(`  - ${build} Build Commands`);
-      console.log(`  - ${train} Train Commands`);
-      console.log(`  - ${moveAttack} Move/Attack Commands`);
-      console.log(`  - ${select} Select Commands`);
-      console.log(`  - ${validActions.length} Valid APM Actions`);
-      
-      // Calculate enhanced APM for this player
-      const lastFrame = Math.max(...playerCommands.map(c => c.frame), 0);
-      const minutes = lastFrame / (24 * 60);
-      const playerAPM = minutes > 0 ? Math.round(validActions.length / minutes) : 0;
-      
-      console.log(`  - Game duration: ${minutes.toFixed(2)} minutes`);
-      console.log(`  - Enhanced APM: ${playerAPM}`);
-    });
+    } catch (e) {
+      // Fallback
+    }
+
+    return 1; // Minimum safe length
   }
 
   /**
-   * Enhanced APM calculation using valid action commands only
+   * Check if a byte is likely a command ID
    */
-  private calculateEnhancedAPM(playerActions: ParsedCommand[][]): { apm: number[]; eapm: number[] } {
+  private isLikelyCommandId(byte: number): boolean {
+    // Common command IDs
+    const commonCommands = [0x00, 0x01, 0x02, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20, 0x21, 0x22, 0x5A];
+    return commonCommands.includes(byte);
+  }
+
+  /**
+   * Extract unit name from build/train commands
+   */
+  private extractUnitName(cmdId: number, position: number): string | undefined {
+    try {
+      // Build/Train commands typically have unit ID
+      if (cmdId === 0x0C || cmdId === 0x1D || cmdId === 0x23) { // Build, Train, etc.
+        if (position + 4 < this.data.byteLength) {
+          const unitId = this.data.getUint16(position + 2, true); // Little endian
+          return DirectReplayParser.UNIT_NAMES[unitId] || `Unit_${unitId}`;
+        }
+      }
+    } catch (e) {
+      // Return undefined if extraction fails
+    }
+    return undefined;
+  }
+
+  /**
+   * Get human-readable command type
+   */
+  private getCommandType(cmdId: number): string {
+    const types: Record<number, string> = {
+      0x00: 'Sync',
+      0x01: 'Sync',
+      0x02: 'Sync',
+      0x0C: 'Build',
+      0x1D: 'Train',
+      0x06: 'Select',
+      0x12: 'Select',
+      0x14: 'Attack',
+      0x15: 'Move',
+      0x5A: 'Leave Game'
+    };
+    return types[cmdId] || `Command_0x${cmdId.toString(16).padStart(2, '0')}`;
+  }
+
+  /**
+   * Extract raw command data for debugging
+   */
+  private extractCommandData(cmdId: number, position: number, length: number): number[] {
+    const data: number[] = [];
+    for (let i = 0; i < Math.min(length, 10); i++) {
+      if (position + i < this.data.byteLength) {
+        data.push(this.data.getUint8(position + i));
+      }
+    }
+    return data;
+  }
+
+  /**
+   * Organize commands by player with enhanced filtering
+   */
+  private organizeCommandsByPlayer(commands: ParsedCommand[]): Record<number, ParsedCommand[]> {
+    const playerActions: Record<number, ParsedCommand[]> = {};
+    
+    // Initialize for players 0-7
+    for (let i = 0; i < 8; i++) {
+      playerActions[i] = [];
+    }
+
+    for (const cmd of commands) {
+      // Only count meaningful actions (exclude sync commands)
+      if (cmd.cmdId !== 0x00 && cmd.cmdId !== 0x01 && cmd.cmdId !== 0x02) {
+        playerActions[cmd.playerId].push(cmd);
+      }
+    }
+
+    return playerActions;
+  }
+
+  /**
+   * Calculate realistic APM and EAPM based on actual actions
+   */
+  private calculatePlayerMetrics(playerActions: Record<number, ParsedCommand[]>): { apm: number[], eapm: number[] } {
     const apm: number[] = [];
     const eapm: number[] = [];
+    const gameTimeMinutes = this.totalFrames / (24 * 60); // 24 FPS
 
-    console.log('[DirectReplayParser] === ENHANCED APM CALCULATION ===');
-
-    Object.keys(playerActions).forEach(playerIdStr => {
-      const playerId = parseInt(playerIdStr);
+    for (let playerId = 0; playerId < 8; playerId++) {
       const actions = playerActions[playerId] || [];
       
-      if (actions.length === 0) {
-        apm[playerId] = 0;
-        eapm[playerId] = 0;
-        return;
-      }
-
-      const lastFrame = Math.max(...actions.map(a => a.frame));
-      const gameTimeMinutes = lastFrame / (24 * 60); // 24 FPS
+      // APM: All actions per minute
+      const playerAPM = gameTimeMinutes > 0 ? Math.round(actions.length / gameTimeMinutes) : 0;
       
-      // Enhanced APM: Only count valid action commands (exclude frame sync)
-      const validActions = actions.filter(a => VALID_APM_COMMANDS.includes(a.cmdId));
-      
-      // Enhanced EAPM: Exclude selection and movement for effective actions
-      const effectiveActions = validActions.filter(a => 
-        ![0x1B, 0x14, 0x15, 0x09, 0x0A, 0x0B].includes(a.cmdId)
+      // EAPM: Exclude selection and sync actions
+      const effectiveActions = actions.filter(cmd => 
+        ![0x06, 0x07, 0x12, 0x00, 0x01, 0x02].includes(cmd.cmdId)
       );
-      
-      const playerAPM = gameTimeMinutes > 0 ? Math.round(validActions.length / gameTimeMinutes) : 0;
       const playerEAPM = gameTimeMinutes > 0 ? Math.round(effectiveActions.length / gameTimeMinutes) : 0;
       
-      apm[playerId] = playerAPM;
-      eapm[playerId] = playerEAPM;
-      
-      console.log(`[DirectReplayParser] Enhanced APM for Player ${playerId}:`);
-      console.log(`  - Total commands: ${actions.length}`);
-      console.log(`  - Valid actions: ${validActions.length}`);
-      console.log(`  - Effective actions: ${effectiveActions.length}`);
-      console.log(`  - Game time: ${gameTimeMinutes.toFixed(2)} minutes`);
-      console.log(`  - Final APM: ${playerAPM}`);
-      console.log(`  - Final EAPM: ${playerEAPM}`);
-    });
+      apm.push(playerAPM);
+      eapm.push(playerEAPM);
+    }
 
     return { apm, eapm };
   }
 
   /**
-   * Enhanced build order generation with readable unit names
+   * Extract build orders with readable unit names
    */
-  private generateEnhancedBuildOrders(playerActions: ParsedCommand[][]): BuildAction[][] {
-    const buildOrders: BuildAction[][] = [];
+  private extractBuildOrders(playerActions: Record<number, ParsedCommand[]>): BuildOrderItem[][] {
+    const buildOrders: BuildOrderItem[][] = [];
 
-    Object.keys(playerActions).forEach(playerIdStr => {
-      const playerId = parseInt(playerIdStr);
+    for (let playerId = 0; playerId < 8; playerId++) {
       const actions = playerActions[playerId] || [];
-      
-      const buildActions = actions
-        .filter(cmd => cmd.cmdId === 0x0C || cmd.cmdId === 0x1D) // Build or Train
-        .map((cmd, index) => ({
-          timestamp: this.framesToTime(cmd.frame),
-          frame: cmd.frame,
-          action: cmd.unitName ? `${cmd.type} ${cmd.unitName}` : cmd.type,
-          unitName: cmd.unitName,
-          supply: this.estimateSupply(cmd.frame, index)
-        }));
+      const buildOrder: BuildOrderItem[] = [];
 
-      buildOrders[playerId] = buildActions;
-    });
+      for (const action of actions) {
+        // Include build, train, and other production commands
+        if ([0x0C, 0x1D, 0x23].includes(action.cmdId) && action.unitName) {
+          buildOrder.push({
+            frame: action.frame,
+            timestamp: action.timestamp,
+            action: `Build ${action.unitName}`,
+            supply: 0 // TODO: Extract supply if available
+          });
+        }
+      }
+
+      buildOrders.push(buildOrder);
+    }
 
     return buildOrders;
   }
 
-  private groupCommandsByPlayer(commands: ParsedCommand[]): ParsedCommand[][] {
-    const playerActions: ParsedCommand[][] = [];
-    
-    commands.forEach(cmd => {
-      if (!playerActions[cmd.playerId]) {
-        playerActions[cmd.playerId] = [];
-      }
-      playerActions[cmd.playerId].push(cmd);
-    });
-
-    return playerActions;
-  }
-
-  private getTotalFrames(commands: ParsedCommand[]): number {
-    if (commands.length === 0) return 0;
-    return Math.max(...commands.map(cmd => cmd.frame));
-  }
-
-  // Utility methods
-  private readUint8(): number {
-    if (this.offset >= this.buffer.length) {
-      throw new Error('Buffer overflow');
-    }
-    return this.buffer[this.offset++];
-  }
-
-  private readUint16(): number {
-    if (this.offset + 1 >= this.buffer.length) {
-      throw new Error('Buffer overflow');
-    }
-    const value = this.buffer[this.offset] | (this.buffer[this.offset + 1] << 8);
-    this.offset += 2;
-    return value;
-  }
-
-  private readUint32(): number {
-    if (this.offset + 3 >= this.buffer.length) {
-      throw new Error('Buffer overflow');
-    }
-    const value =
-      this.buffer[this.offset] |
-      (this.buffer[this.offset + 1] << 8) |
-      (this.buffer[this.offset + 2] << 16) |
-      (this.buffer[this.offset + 3] << 24);
-    this.offset += 4;
-    return value;
-  }
-
-  private getCommandType(cmdId: number): string {
-    switch (cmdId) {
-      case 0x00: return 'Frame Sync';
-      case 0x01: return 'Keep Alive';
-      case 0x02: return 'Right Click';
-      case 0x0C: return 'Build';
-      case 0x1D: return 'Train';
-      case 0x14: return 'Attack Move';
-      case 0x15: return 'Move';
-      case 0x1B: return 'Select';
-      case 0x1E: return 'Morph';
-      case 0x23: return 'Research';
-      case 0x24: return 'Upgrade';
-      default: return `Command 0x${cmdId.toString(16).padStart(2, '0')}`;
-    }
-  }
-
-  private framesToTime(frame: number): string {
-    const totalSeconds = Math.floor(frame / 24);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  }
-
-  private estimateSupply(frame: number, buildIndex: number): number {
-    const timeMinutes = frame / (24 * 60);
-    return Math.min(9 + buildIndex * 8 + Math.floor(timeMinutes * 5), 200);
+  /**
+   * Convert frame to timestamp string
+   */
+  private frameToTimestamp(frame: number): string {
+    const seconds = Math.floor(frame / 24);
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   }
 
   /**
-   * Get build order for a specific player
+   * Create failure result
    */
-  getBuildOrder(playerId: number): BuildAction[] {
-    const result = this.parseReplay();
-    return result.buildOrders[playerId] || [];
+  private createFailureResult(error: string): DirectParserResult {
+    return {
+      success: false,
+      commands: [],
+      playerActions: {},
+      apm: [],
+      eapm: [],
+      buildOrders: [],
+      totalFrames: 0,
+      error
+    };
   }
 }

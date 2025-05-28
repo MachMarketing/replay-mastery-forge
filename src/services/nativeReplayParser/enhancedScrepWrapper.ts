@@ -1,3 +1,4 @@
+
 /**
  * Enhanced screp-js wrapper with native action parsing for Remastered replays
  * Combines screp-js metadata with detailed action extraction
@@ -50,10 +51,10 @@ export class EnhancedScrepWrapper {
   private static screpWrapper = ScrepJsWrapper.getInstance();
 
   /**
-   * Parse replay with aggressive DirectParser activation and quality validation
+   * Parse replay with ULTRA-AGGRESSIVE DirectParser activation and enhanced validation
    */
   static async parseReplayEnhanced(file: File): Promise<EnhancedReplayData> {
-    console.log('[ENHANCED-PARSER] === STARTING ENHANCED PARSING WITH AGGRESSIVE VALIDATION ===');
+    console.log('[ENHANCED-PARSER] === STARTING ULTRA-AGGRESSIVE ENHANCED PARSING ===');
     console.log('[ENHANCED-PARSER] File:', file.name, 'Size:', file.size);
     const startTime = Date.now();
 
@@ -106,23 +107,33 @@ export class EnhancedScrepWrapper {
       throw error;
     }
 
-    // === STEP 2: AGGRESSIVE DIRECT PARSER ATTEMPT (Always run) ===
-    console.log('[ENHANCED-PARSER] === AGGRESSIVE DIRECT PARSER ATTEMPT ===');
+    // === STEP 2: ULTRA-AGGRESSIVE DIRECT PARSER ATTEMPT (ALWAYS RUNS FIRST) ===
+    console.log('[ENHANCED-PARSER] === ULTRA-AGGRESSIVE DIRECT PARSER ATTEMPT ===');
     let directParserData: DirectParserResult | undefined;
     let directParserRealistic = false;
 
     try {
       const arrayBuffer = await file.arrayBuffer();
+      console.log('[ENHANCED-PARSER] Starting DirectParser with buffer size:', arrayBuffer.byteLength);
+      
       const directParser = new DirectReplayParser(arrayBuffer);
       directParserData = directParser.parseReplay();
+      
+      console.log('[ENHANCED-PARSER] DirectParser completed, result:', {
+        success: directParserData.success,
+        commandsFound: directParserData.commands.length,
+        playersWithActions: Object.keys(directParserData.playerActions).length,
+        apm: directParserData.apm,
+        error: directParserData.error
+      });
       
       debugInfo.directParserSuccess = directParserData.success;
       
       if (directParserData.success) {
         debugInfo.qualityCheck.apmValidation.directAPM = directParserData.apm;
         
-        // ENHANCED QUALITY CHECK: 30+ actions per player minimum
-        directParserRealistic = this.validateParserWithActionCount({
+        // ULTRA-STRICT QUALITY CHECK: Minimum 30 actions per active player
+        directParserRealistic = this.ultraStrictQualityCheck({
           actions: directParserData.commands.length,
           buildOrders: directParserData.buildOrders.reduce((sum, bo) => sum + bo.length, 0),
           apm: directParserData.apm,
@@ -133,24 +144,34 @@ export class EnhancedScrepWrapper {
         
         debugInfo.qualityCheck.directParserRealistic = directParserRealistic;
         
-        console.log('[ENHANCED-PARSER] Direct parser results:');
+        console.log('[ENHANCED-PARSER] DirectParser quality check results:');
         console.log('  - Commands found:', directParserData.commands.length);
-        console.log('  - Build orders:', directParserData.buildOrders.reduce((sum, bo) => sum + bo.length, 0));
-        console.log('  - APM:', directParserData.apm);
-        console.log('  - Realistic quality:', directParserRealistic);
+        console.log('  - Build orders total:', directParserData.buildOrders.reduce((sum, bo) => sum + bo.length, 0));
+        console.log('  - APM calculated:', directParserData.apm);
+        console.log('  - Per-player action breakdown:');
+        
+        Object.keys(directParserData.playerActions).forEach(playerId => {
+          const playerCommands = directParserData.playerActions[parseInt(playerId)] || [];
+          console.log(`    Player ${playerId}: ${playerCommands.length} actions`);
+        });
+        
+        console.log('  - Realistic quality:', directParserRealistic ? '✅ PASSED' : '❌ FAILED');
+      } else {
+        console.log('[ENHANCED-PARSER] DirectParser failed:', directParserData.error);
       }
 
     } catch (directError) {
-      console.warn('[ENHANCED-PARSER] Direct parser failed:', directError);
+      console.error('[ENHANCED-PARSER] DirectParser crashed:', directError);
       debugInfo.directParserError = directError instanceof Error ? directError.message : 'Unknown error';
     }
 
-    // === STEP 3: Try native action parser (only if DirectParser failed) ===
+    // === STEP 3: Try native action parser ONLY if DirectParser failed quality check ===
     let actionData: RemasteredActionData | undefined;
     let nativeParserRealistic = false;
 
     if (!directParserRealistic) {
       console.log('[ENHANCED-PARSER] === FALLBACK TO NATIVE ACTION PARSING ===');
+      console.log('[ENHANCED-PARSER] DirectParser failed quality check, trying native parser...');
       
       try {
         actionData = await RemasteredActionParser.parseActions(file);
@@ -168,8 +189,8 @@ export class EnhancedScrepWrapper {
         
         debugInfo.qualityCheck.apmValidation.nativeAPM = nativeAPM;
         
-        // ENHANCED QUALITY CHECK with action count validation
-        nativeParserRealistic = this.validateParserWithActionCount({
+        // ULTRA-STRICT QUALITY CHECK for native parser
+        nativeParserRealistic = this.ultraStrictQualityCheck({
           actions: actionData.actions.length,
           buildOrders: debugInfo.buildOrdersGenerated,
           apm: nativeAPM,
@@ -184,57 +205,60 @@ export class EnhancedScrepWrapper {
         console.log('  - Actions found:', actionData.actions.length);
         console.log('  - Build orders:', debugInfo.buildOrdersGenerated);
         console.log('  - Calculated APM:', nativeAPM);
-        console.log('  - Realistic quality:', nativeParserRealistic);
+        console.log('  - Realistic quality:', nativeParserRealistic ? '✅ PASSED' : '❌ FAILED');
 
       } catch (actionError) {
-        console.warn('[ENHANCED-PARSER] Native action parsing failed:', actionError);
+        console.error('[ENHANCED-PARSER] Native action parsing failed:', actionError);
         debugInfo.nativeParserError = actionError instanceof Error ? actionError.message : 'Unknown error';
       }
+    } else {
+      console.log('[ENHANCED-PARSER] Skipping native parser - DirectParser passed quality check');
     }
 
-    // === STEP 4: Choose best parser with aggressive DirectParser preference ===
+    // === STEP 4: Choose parser with ULTRA-AGGRESSIVE DirectParser preference ===
     let hasDetailedActions = false;
     let chosenAPM = screpResult.computed.apm;
     let validationData: any = undefined;
 
     if (directParserRealistic && directParserData?.success) {
-      // DirectParser is realistic - use it
+      // DirectParser passed strict validation - use it
       extractionMethod = 'direct-parser';
       hasDetailedActions = true;
       debugInfo.qualityCheck.activeParser = 'direct';
       chosenAPM = directParserData.apm;
       
-      console.log('[ENHANCED-PARSER] ✅ Using DIRECT PARSER (realistic results)');
+      console.log('[ENHANCED-PARSER] 🎯 USING DIRECT PARSER (passed ultra-strict validation)');
       this.enhanceWithDirectParserData(screpResult, directParserData);
       
-      // Generate validation data
+      // Generate validation data for UI
       validationData = this.generateValidationData(directParserData);
       
     } else if (nativeParserRealistic && actionData) {
-      // Native parser has realistic results
+      // Native parser has realistic results (fallback)
       extractionMethod = 'combined';
       hasDetailedActions = true;
       debugInfo.qualityCheck.activeParser = 'native';
       chosenAPM = debugInfo.qualityCheck.apmValidation.nativeAPM;
       
-      console.log('[ENHANCED-PARSER] ✅ Using NATIVE PARSER (fallback with realistic results)');
+      console.log('[ENHANCED-PARSER] 🔄 USING NATIVE PARSER (DirectParser failed, native passed)');
       this.enhanceWithNativeData(screpResult, actionData);
       
     } else {
-      // Both parsers failed - stick with screp-js
+      // Both parsers failed strict validation - stick with screp-js
       extractionMethod = 'screp-js';
       hasDetailedActions = false;
       debugInfo.qualityCheck.activeParser = 'screp-fallback';
       chosenAPM = screpResult.computed.apm;
       
-      console.log('[ENHANCED-PARSER] ⚠️ Using SCREP-JS FALLBACK (all parsers unrealistic)');
+      console.log('[ENHANCED-PARSER] ⚠️ USING SCREP-JS FALLBACK (all parsers failed validation)');
       console.log('  - Direct realistic:', directParserRealistic);
       console.log('  - Native realistic:', nativeParserRealistic);
+      console.log('  - Falling back to screp-js APM:', chosenAPM);
     }
 
     debugInfo.qualityCheck.apmValidation.chosenAPM = chosenAPM;
     
-    // Update final actions/build orders count
+    // Update final metrics
     if (hasDetailedActions) {
       if (debugInfo.qualityCheck.activeParser === 'direct' && directParserData) {
         debugInfo.actionsExtracted = directParserData.commands.length;
@@ -260,10 +284,10 @@ export class EnhancedScrepWrapper {
       }
     };
 
-    console.log('[ENHANCED-PARSER] === ENHANCED PARSING COMPLETE ===');
+    console.log('[ENHANCED-PARSER] === ULTRA-AGGRESSIVE PARSING COMPLETE ===');
     console.log('  - Method:', extractionMethod);
     console.log('  - Active Parser:', debugInfo.qualityCheck.activeParser);
-    console.log('  - Has actions:', hasDetailedActions);
+    console.log('  - Has detailed actions:', hasDetailedActions);
     console.log('  - Time taken:', extractionTime, 'ms');
     console.log('  - Total actions extracted:', debugInfo.actionsExtracted);
     console.log('  - Total build orders generated:', debugInfo.buildOrdersGenerated);
@@ -276,9 +300,9 @@ export class EnhancedScrepWrapper {
   }
 
   /**
-   * Enhanced validation with aggressive action count requirements
+   * ULTRA-STRICT quality validation with higher thresholds
    */
-  private static validateParserWithActionCount(data: {
+  private static ultraStrictQualityCheck(data: {
     actions: number;
     buildOrders: number;
     apm: number[];
@@ -286,51 +310,60 @@ export class EnhancedScrepWrapper {
     parserName: string;
     playerActions?: any;
   }): boolean {
-    console.log(`[ENHANCED-PARSER] 🔍 ENHANCED VALIDATION for ${data.parserName} parser:`);
-    console.log('  - Actions:', data.actions);
+    console.log(`[ENHANCED-PARSER] 🔍 ULTRA-STRICT VALIDATION for ${data.parserName} parser:`);
+    console.log('  - Total actions:', data.actions);
     console.log('  - Build orders:', data.buildOrders);
-    console.log('  - APM:', data.apm);
+    console.log('  - APM array:', data.apm);
     console.log('  - Game time:', data.gameTimeMinutes, 'minutes');
 
-    // Calculate minimum expected actions based on game length (aggressive)
-    const minExpectedActions = Math.floor(data.gameTimeMinutes * 50); // 50 actions per minute minimum
-    console.log('  - Min expected actions (aggressive):', minExpectedActions);
+    // Minimum 100 total actions for any meaningful game
+    const minTotalActions = 100;
+    console.log('  - Min total actions required:', minTotalActions);
 
-    // Check if we have enough total actions
-    if (data.actions < minExpectedActions) {
-      console.log(`  - ❌ Too few total actions (${data.actions} < ${minExpectedActions})`);
+    if (data.actions < minTotalActions) {
+      console.log(`  - ❌ Too few total actions (${data.actions} < ${minTotalActions})`);
       return false;
     }
 
-    // Check per-player action count (30+ per player minimum)
+    // Check per-player action count (minimum 30 per active player)
     if (data.playerActions) {
-      const playerActionCounts = Object.values(data.playerActions).map((actions: any) => Array.isArray(actions) ? actions.length : 0);
-      const minPerPlayer = 30;
+      const playerActionCounts = Object.values(data.playerActions).map((actions: any) => 
+        Array.isArray(actions) ? actions.length : 0
+      );
+      const activePlayerCount = playerActionCounts.filter(count => count > 10).length;
+      const minPerActivePlayer = 30;
       
       console.log('  - Per-player actions:', playerActionCounts);
+      console.log('  - Active players detected:', activePlayerCount);
       
-      if (playerActionCounts.some(count => count < minPerPlayer)) {
-        console.log(`  - ❌ Player with too few actions (minimum ${minPerPlayer} required)`);
+      if (activePlayerCount < 2) {
+        console.log('  - ❌ Less than 2 active players detected');
+        return false;
+      }
+      
+      const playersWithEnoughActions = playerActionCounts.filter(count => count >= minPerActivePlayer).length;
+      if (playersWithEnoughActions < 2) {
+        console.log(`  - ❌ Less than 2 players with minimum ${minPerActivePlayer} actions`);
         return false;
       }
     }
 
-    // Check if APM is realistic (between 50-500)
-    const hasRealisticAPM = data.apm.some(apm => apm >= 50 && apm <= 500);
-    console.log('  - Realistic APM found:', hasRealisticAPM);
+    // Check if APM values are realistic (50-500 range for active players)
+    const realisticAPMs = data.apm.filter(apm => apm >= 50 && apm <= 500);
+    console.log('  - Realistic APM values (50-500):', realisticAPMs);
     
-    if (!hasRealisticAPM) {
-      console.log('  - ❌ No realistic APM values found (50-500 range)');
+    if (realisticAPMs.length < 2) {
+      console.log('  - ❌ Less than 2 players with realistic APM (50-500 range)');
       return false;
     }
 
-    // Check if we have meaningful build orders
-    if (data.buildOrders < 5) {
-      console.log(`  - ❌ Too few build orders (${data.buildOrders} < 5)`);
+    // Check build orders (minimum 3 build actions total)
+    if (data.buildOrders < 3) {
+      console.log(`  - ❌ Too few build orders (${data.buildOrders} < 3)`);
       return false;
     }
 
-    console.log(`  - ✅ ${data.parserName} parser results are REALISTIC`);
+    console.log(`  - ✅ ${data.parserName} parser passed ULTRA-STRICT validation`);
     return true;
   }
 
