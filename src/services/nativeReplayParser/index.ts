@@ -1,104 +1,119 @@
+
 /**
- * Enhanced StarCraft: Brood War Remastered replay parser
- * Now uses real screp-js integration with robust fallbacks
+ * EINFACHE LÖSUNG: Direkte Nutzung der funktionierenden screp-js Daten
  */
 
 import { ParsedReplayData } from '../replayParser/types';
-import { parseBWRemasteredReplay } from './bwRemastered';
+import { ScrepJsWrapper } from './screpJsWrapper';
 import { ensureBufferPolyfills } from './bufferUtils';
-import { ImprovedSeRSWrapper } from './improvedSeRSWrapper';
 
 export class NativeReplayParser {
   /**
-   * Parse a StarCraft: Brood War Remastered replay file
+   * VEREINFACHTE Parsing-Strategie: Direkt screp-js verwenden
    */
   static async parseReplay(file: File): Promise<ParsedReplayData> {
-    console.log('[NativeReplayParser] Starting enhanced parse with real screp-js integration');
+    console.log('[NativeReplayParser] === EINFACHE LÖSUNG: Direkte screp-js Nutzung ===');
+    console.log('[NativeReplayParser] File:', file.name, 'Size:', file.size);
     
-    // Ensure buffer polyfills are available for screp-js
-    const hasPolyfills = ensureBufferPolyfills();
-    console.log('[NativeReplayParser] Buffer polyfills available:', hasPolyfills);
+    // Buffer polyfills sicherstellen
+    ensureBufferPolyfills();
     
     try {
-      // Use the enhanced BW Remastered parser with real screp-js integration
-      const result = await parseBWRemasteredReplay(file);
-      console.log('[NativeReplayParser] Enhanced parsing successful');
+      // Direkt ScrepJsWrapper verwenden - der funktioniert bereits perfekt!
+      const wrapper = ScrepJsWrapper.getInstance();
+      await wrapper.initialize();
+      
+      const screpResult = await wrapper.parseReplay(file);
+      
+      console.log('[NativeReplayParser] === SCREP-JS DATEN ERFOLGREICH ===');
+      console.log('[NativeReplayParser] Map:', screpResult.header.mapName);
+      console.log('[NativeReplayParser] Spieler:', screpResult.players.map(p => `${p.name} (${p.race})`));
+      console.log('[NativeReplayParser] APM:', screpResult.computed.playerAPM);
+      console.log('[NativeReplayParser] EAPM:', screpResult.computed.playerEAPM);
+      
+      // Direkte Konvertierung zu ParsedReplayData
+      const result: ParsedReplayData = {
+        map: screpResult.header.mapName,
+        matchup: this.determineMatchup(screpResult.players.map(p => p.race)),
+        duration: screpResult.header.duration,
+        durationMS: screpResult.header.frames * (1000 / 24),
+        date: new Date().toISOString().split('T')[0],
+        result: 'unknown',
+        
+        // Korrekte Spielerdaten direkt von screp-js
+        primaryPlayer: {
+          name: screpResult.players[0]?.name || 'Player 1',
+          race: screpResult.players[0]?.race || 'Terran',
+          apm: screpResult.computed.playerAPM[0] || 0,
+          eapm: screpResult.computed.playerEAPM[0] || 0,
+          buildOrder: this.convertBuildOrder(screpResult.computed.buildOrders[0] || []),
+          strengths: [],
+          weaknesses: [],
+          recommendations: []
+        },
+        secondaryPlayer: {
+          name: screpResult.players[1]?.name || 'Player 2',
+          race: screpResult.players[1]?.race || 'Protoss',
+          apm: screpResult.computed.playerAPM[1] || 0,
+          eapm: screpResult.computed.playerEAPM[1] || 0,
+          buildOrder: this.convertBuildOrder(screpResult.computed.buildOrders[1] || []),
+          strengths: [],
+          weaknesses: [],
+          recommendations: []
+        },
+        
+        // Legacy Felder für Kompatibilität
+        playerName: screpResult.players[0]?.name || 'Player 1',
+        opponentName: screpResult.players[1]?.name || 'Player 2',
+        playerRace: screpResult.players[0]?.race || 'Terran',
+        opponentRace: screpResult.players[1]?.race || 'Protoss',
+        apm: screpResult.computed.playerAPM[0] || 0,
+        eapm: screpResult.computed.playerEAPM[0] || 0,
+        opponentApm: screpResult.computed.playerAPM[1] || 0,
+        opponentEapm: screpResult.computed.playerEAPM[1] || 0,
+        buildOrder: this.convertBuildOrder(screpResult.computed.buildOrders[0] || []),
+        strengths: [],
+        weaknesses: [],
+        recommendations: [],
+        trainingPlan: []
+      };
+
+      console.log('[NativeReplayParser] === FINALE KORREKTE DATEN ===');
+      console.log('[NativeReplayParser] Spieler 1:', result.primaryPlayer.name, 'APM:', result.primaryPlayer.apm);
+      console.log('[NativeReplayParser] Spieler 2:', result.secondaryPlayer.name, 'APM:', result.secondaryPlayer.apm);
+      
       return result;
       
     } catch (error) {
-      console.error('[NativeReplayParser] All parsing methods failed:', error);
-      throw new Error(this.getHelpfulErrorMessage(error));
+      console.error('[NativeReplayParser] Screp-js parsing failed:', error);
+      throw new Error(`Replay parsing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  /**
-   * Generate helpful error messages based on the type of error
-   */
-  private static getHelpfulErrorMessage(error: unknown): string {
-    const baseMessage = error instanceof Error ? error.message : 'Unbekannter Fehler';
-    
-    if (baseMessage.includes('screp')) {
-      return 'Die Replay-Datei konnte nicht mit screp-js geparst werden. Stelle sicher, dass es sich um eine gültige StarCraft: Brood War .rep-Datei handelt.';
+  private static convertBuildOrder(buildOrder: Array<{frame: number; timestamp: string; action: string; supply?: number}>) {
+    return buildOrder.map(item => ({
+      time: item.timestamp,
+      supply: item.supply || 0,
+      action: item.action
+    }));
+  }
+
+  private static determineMatchup(races: string[]): string {
+    if (races.length >= 2) {
+      const race1 = races[0]?.charAt(0).toUpperCase() || 'T';
+      const race2 = races[1]?.charAt(0).toUpperCase() || 'P';
+      return `${race1}v${race2}`;
     }
-    
-    if (baseMessage.includes('Buffer')) {
-      return 'Browser-Kompatibilitätsproblem beim Parsing. Versuche es mit einer anderen .rep-Datei oder einem anderen Browser.';
-    }
-    
-    if (baseMessage.includes('magic')) {
-      return 'Die Replay-Datei hat ein unbekanntes Format. Stelle sicher, dass es sich um eine gültige StarCraft: Brood War .rep-Datei handelt.';
-    }
-    
-    if (baseMessage.includes('Decompression')) {
-      return 'Die Replay-Datei konnte nicht dekomprimiert werden. Möglicherweise ist die Datei beschädigt oder verwendet ein nicht unterstütztes Komprimierungsformat.';
-    }
-    
-    if (baseMessage.includes('parsing failed')) {
-      return 'Replay-Parsing fehlgeschlagen. Die Datei könnte beschädigt sein oder ein nicht unterstütztes Format haben.';
-    }
-    
-    return `Replay-Parsing fehlgeschlagen: ${baseMessage}. Versuche es mit einer anderen .rep-Datei.`;
+    return 'TvP';
   }
 }
 
-// Export the main parsing function
+// Export der Haupt-Parsing-Funktion - EINFACH und DIREKT
 export async function parseReplayNative(file: File): Promise<ParsedReplayData> {
-  console.log('[nativeReplayParser] Starting enhanced native parsing...');
-  console.log('[nativeReplayParser] File:', file.name, 'Size:', file.size);
+  console.log('[parseReplayNative] === DIREKTE screp-js PARSING ===');
   
-  try {
-    // Check if it's a seRS file first
-    const arrayBuffer = await file.arrayBuffer();
-    const data = new Uint8Array(arrayBuffer);
-    
-    // Check for seRS magic at offset 12
-    if (data.length >= 16) {
-      const magic = String.fromCharCode(...data.slice(12, 16));
-      if (magic === 'seRS') {
-        console.log('[nativeReplayParser] seRS format detected, using improved parser');
-        
-        // Create a new File object from the buffer for the improved parser
-        const blob = new Blob([arrayBuffer], { type: 'application/octet-stream' });
-        const seRSFile = new File([blob], file.name, { type: file.type });
-        
-        return await ImprovedSeRSWrapper.parseReplay(seRSFile);
-      }
-    }
-    
-    console.log('[nativeReplayParser] Not seRS format, falling back to legacy parser');
-    
-    // Fallback to existing parsers
-    try {
-      return await parseBWRemasteredReplay(file);
-    } catch (error) {
-      console.error('[nativeReplayParser] All parsers failed:', error);
-      throw new Error(`Replay parsing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-    
-  } catch (error) {
-    console.error('[nativeReplayParser] Native parsing failed:', error);
-    throw new Error(`Native parsing failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
+  // Sofort und direkt NativeReplayParser verwenden
+  return await NativeReplayParser.parseReplay(file);
 }
 
 // Re-export types

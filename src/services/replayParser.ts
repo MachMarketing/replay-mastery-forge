@@ -3,25 +3,23 @@ import { ParsedReplayData } from './replayParser/types';
 import { parseReplayNative } from './nativeReplayParser';
 
 export async function parseReplay(file: File): Promise<ParsedReplayData> {
-  console.log('[replayParser] Starting parse with native parser');
-  console.log('[replayParser] File details:', {
-    name: file.name,
-    size: file.size,
-    type: file.type
-  });
+  console.log('[replayParser] === EINFACHE DIREKTE PARSING ===');
+  console.log('[replayParser] File:', file.name, 'Size:', file.size);
   
   if (!file.name.toLowerCase().endsWith('.rep')) {
     throw new Error('Nur .rep-Dateien werden unterstützt');
   }
   
-  // Use native parser only
+  // DIREKT und EINFACH: Nur noch native Parser mit screp-js
   try {
-    console.log('[replayParser] Attempting native parsing...');
+    console.log('[replayParser] Verwende direkten screp-js Parser...');
     const result = await parseReplayNative(file);
-    console.log('[replayParser] Native parsing successful');
+    console.log('[replayParser] === ERFOLG mit korrekten Daten ===');
+    console.log('[replayParser] Spieler 1:', result.primaryPlayer.name);
+    console.log('[replayParser] Spieler 2:', result.secondaryPlayer.name);
     return result;
-  } catch (nativeError) {
-    console.error('[replayParser] Native parsing failed:', nativeError);
-    throw new Error(`Parsing fehlgeschlagen: ${nativeError instanceof Error ? nativeError.message : 'Unbekannter Fehler'}`);
+  } catch (error) {
+    console.error('[replayParser] Parsing failed:', error);
+    throw new Error(`Parsing fehlgeschlagen: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
   }
 }
