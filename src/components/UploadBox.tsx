@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Button } from '@/components/ui/button';
@@ -102,6 +101,53 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
       const analyzer = new ReplayAnalyzer();
       const analysis = await analyzer.analyzeReplay(file);
       
+      // === DETAILED CONSOLE LOGGING FOR AI ACCESS ===
+      console.log("=== DETAILANALYSE ERGEBNISSE FÜR AI ===");
+      console.log("Datei:", file.name, "| Größe:", (file.size / 1024).toFixed(2), "KB");
+      console.log("Format-Erkennung:");
+      console.log("  - Magic Bytes:", analysis.formatDetection.magic);
+      console.log("  - Komprimiert:", analysis.formatDetection.isCompressed);
+      console.log("  - Format:", analysis.formatDetection.detectedFormat);
+      console.log("  - Version:", analysis.formatDetection.estimatedVersion);
+      
+      console.log("screp-js Kompatibilität:");
+      console.log("  - Verfügbar:", analysis.screpJsCompatibility.available);
+      console.log("  - Parse erfolgreich:", analysis.screpJsCompatibility.parseSuccess);
+      if (analysis.screpJsCompatibility.error) {
+        console.log("  - Fehler:", analysis.screpJsCompatibility.error);
+      }
+      if (analysis.screpJsCompatibility.resultKeys) {
+        console.log("  - Ergebnis Keys:", analysis.screpJsCompatibility.resultKeys.join(', '));
+      }
+      
+      console.log("Custom Parser:");
+      console.log("  - Parse erfolgreich:", analysis.customParserResults.parseSuccess);
+      if (analysis.customParserResults.error) {
+        console.log("  - Fehler:", analysis.customParserResults.error);
+      }
+      if (analysis.customParserResults.extractedData) {
+        const data = analysis.customParserResults.extractedData;
+        console.log("  - Map:", data.mapName);
+        console.log("  - Spieler gefunden:", data.playersFound);
+        console.log("  - Spieler Namen:", data.playerNames.join(', '));
+        console.log("  - Commands:", data.commandsFound);
+        console.log("  - Dauer:", data.duration);
+      }
+      
+      console.log("Empfehlungen:");
+      analysis.recommendations.forEach((rec, i) => {
+        console.log(`  ${i + 1}. ${rec}`);
+      });
+      
+      console.log("Erste 64 Bytes (Hex):");
+      console.log(analysis.hexDump.first256Bytes.substring(0, 200) + "...");
+      
+      console.log("=== ENDE DETAILANALYSE ===");
+      
+      // Store in window for potential AI access
+      (window as any).lastAnalysisResult = analysis;
+      (window as any).lastAnalysisFile = file.name;
+      
       clearInterval(progressInterval);
       setProgress(100);
       setAnalysisResult(analysis);
@@ -117,6 +163,11 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete, maxFileSize = 1
     } catch (error) {
       clearInterval(progressInterval);
       console.error("[UploadBox] Analysis error:", error);
+      console.log("=== ANALYSE FEHLER FÜR AI ===");
+      console.log("Datei:", file.name);
+      console.log("Fehler:", error instanceof Error ? error.message : 'Unbekannter Fehler');
+      console.log("Stack:", error instanceof Error ? error.stack : 'Keine Stack-Trace');
+      console.log("=== ENDE FEHLER ===");
       
       const errorMessage = error instanceof Error ? error.message : 'Analyse-Fehler';
       setErrorDetails(errorMessage);

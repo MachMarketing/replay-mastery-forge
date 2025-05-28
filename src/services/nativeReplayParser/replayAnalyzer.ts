@@ -45,6 +45,12 @@ export class ReplayAnalyzer {
     const arrayBuffer = await file.arrayBuffer();
     const uint8Array = new Uint8Array(arrayBuffer);
     
+    // Log raw file data for AI debugging
+    console.log('[ReplayAnalyzer] Raw file info:');
+    console.log('  - Size:', file.size, 'bytes');
+    console.log('  - Type:', file.type);
+    console.log('  - First 16 bytes:', Array.from(uint8Array.slice(0, 16)).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' '));
+    
     // Basic file info
     const fileInfo = {
       name: file.name,
@@ -54,12 +60,15 @@ export class ReplayAnalyzer {
     
     // Format detection
     const formatDetection = this.analyzeFormat(uint8Array);
+    console.log('[ReplayAnalyzer] Format detection result:', formatDetection);
     
     // Test screp-js compatibility
     const screpJsCompatibility = await this.testScrepJs(file);
+    console.log('[ReplayAnalyzer] screp-js test result:', screpJsCompatibility);
     
     // Test custom parser
     const customParserResults = await this.testCustomParser(arrayBuffer);
+    console.log('[ReplayAnalyzer] Custom parser result:', customParserResults);
     
     // Create hex dumps
     const hexDump = this.createHexDumps(uint8Array);
@@ -70,6 +79,7 @@ export class ReplayAnalyzer {
       screpJsCompatibility,
       customParserResults
     });
+    console.log('[ReplayAnalyzer] Generated recommendations:', recommendations);
     
     return {
       fileInfo,
