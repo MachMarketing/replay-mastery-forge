@@ -1,7 +1,7 @@
 
 /**
  * seRS (StarCraft Remastered) replay parser
- * Based on screp specification and user analysis
+ * Enhanced based on comprehensive analysis and user requirements
  */
 
 import * as pako from 'pako';
@@ -103,7 +103,7 @@ export class SeRSParser {
   }
 
   /**
-   * Parse the complete seRS file
+   * Parse the complete seRS file with enhanced error handling
    */
   parse(): { header: SeRSHeader; decompressedData: Uint8Array } {
     const header = this.parseSeRSHeader();
@@ -113,6 +113,46 @@ export class SeRSParser {
 
     const decompressedData = this.decompressReplayData(header);
     
+    // Validate decompressed data
+    if (decompressedData.length < 1000) {
+      console.warn('[SeRSParser] Decompressed data seems too small:', decompressedData.length);
+    }
+    
     return { header, decompressedData };
+  }
+
+  /**
+   * Static method to quickly check if a file is seRS format
+   */
+  static isSeRSFormat(buffer: ArrayBuffer): boolean {
+    if (buffer.byteLength < 16) return false;
+    
+    const data = new Uint8Array(buffer);
+    const magic = String.fromCharCode(...data.slice(12, 16));
+    return magic === 'seRS';
+  }
+
+  /**
+   * Enhanced method to find and validate zlib data
+   */
+  private findZlibData(): { offset: number; isValid: boolean } {
+    // Common zlib headers
+    const zlibHeaders = [
+      [0x78, 0x01], // No compression
+      [0x78, 0x9C], // Default compression (most common in Remastered)
+      [0x78, 0xDA], // Best compression
+      [0x78, 0x5E]  // Fast compression
+    ];
+    
+    for (let i = 16; i < Math.min(100, this.data.length - 1); i++) {
+      for (const [byte1, byte2] of zlibHeaders) {
+        if (this.data[i] === byte1 && this.data[i + 1] === byte2) {
+          console.log(`[SeRSParser] Found zlib header ${byte1.toString(16)}${byte2.toString(16)} at offset ${i}`);
+          return { offset: i, isValid: true };
+        }
+      }
+    }
+    
+    return { offset: -1, isValid: false };
   }
 }

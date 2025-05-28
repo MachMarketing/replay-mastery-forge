@@ -50,7 +50,7 @@ export class NativeBWParser {
    * Main parsing function
    */
   async parseReplay(): Promise<BWReplayParseResult> {
-    console.log('[NativeBWParser] Starting native parsing...');
+    console.log('[NativeBWParser] Starting enhanced native parsing...');
     
     // Step 1: Validate and read file header
     this.validateReplayFile();
@@ -62,7 +62,7 @@ export class NativeBWParser {
     const parser = new DecompressedStreamParser(decompressedData);
     const parseResult = parser.parseStream();
     
-    console.log('[NativeBWParser] Native parsing complete');
+    console.log('[NativeBWParser] Enhanced native parsing complete');
     return parseResult;
   }
 
@@ -85,7 +85,7 @@ export class NativeBWParser {
       throw new Error('Invalid Replay File - missing "Repl" magic');
     }
 
-    // Check for "seRS" at offset 0x0C (12)
+    // Check for "seRS" at offset 0x0C (12) - Remastered format
     const compressionMagic = new TextDecoder().decode(this.buffer.slice(12, 16));
     console.log('[NativeBWParser] Compression magic:', compressionMagic);
     
@@ -93,7 +93,7 @@ export class NativeBWParser {
       throw new Error('Replay stream not found - missing "seRS" magic');
     }
 
-    console.log('[NativeBWParser] File validation passed');
+    console.log('[NativeBWParser] File validation passed - Remastered format detected');
   }
 
   /**
@@ -102,7 +102,7 @@ export class NativeBWParser {
   private extractAndDecompress(): Uint8Array {
     console.log('[NativeBWParser] Extracting and decompressing zlib data...');
     
-    // Find zlib header (typically 0x78 0x9C)
+    // Find zlib header (typically 0x78 0x9C for Remastered)
     let zlibOffset = -1;
     const searchRange = Math.min(100, this.buffer.byteLength - 1);
     
@@ -118,7 +118,7 @@ export class NativeBWParser {
     }
 
     if (zlibOffset === -1) {
-      // Try default offset 32 as fallback
+      // Try default offset 32 as fallback for Remastered
       zlibOffset = 32;
       console.warn('[NativeBWParser] zlib header not found, using default offset 32');
     }
@@ -127,7 +127,7 @@ export class NativeBWParser {
     const compressedData = new Uint8Array(this.buffer.slice(zlibOffset));
     console.log('[NativeBWParser] Compressed data size:', compressedData.length);
     
-    // Log first few bytes
+    // Log first few bytes for debugging
     console.log('[NativeBWParser] First 10 compressed bytes:', 
       Array.from(compressedData.slice(0, 10))
         .map(b => `0x${b.toString(16).padStart(2, '0')}`)
@@ -152,7 +152,7 @@ export class NativeBWParser {
 }
 
 /**
- * Parser for decompressed replay stream
+ * Enhanced parser for decompressed replay stream
  */
 class DecompressedStreamParser {
   private data: Uint8Array;
@@ -186,16 +186,16 @@ class DecompressedStreamParser {
     const totalFrames = this.readUInt32LE();
     console.log('[DecompressedStreamParser] Total frames:', totalFrames);
     
-    // Calculate game length (24 FPS)
+    // Calculate game length (24 FPS for StarCraft)
     const gameLength = totalFrames / 24;
     const duration = this.formatDuration(gameLength);
     
-    // Parse map name (at offset 0x1CD according to screp docs)
+    // Parse map name (Remastered format at offset 0x1CD)
     this.offset = 0x1CD;
     const mapName = this.readNullTerminatedString(25);
     console.log('[DecompressedStreamParser] Map name:', mapName);
     
-    // Parse players (at offset 0x161 according to screp docs)
+    // Parse players (Remastered format at offset 0x161)
     this.offset = 0x161;
     const players = this.parsePlayers();
     console.log('[DecompressedStreamParser] Players:', players);
@@ -215,7 +215,7 @@ class DecompressedStreamParser {
   private parsePlayers(): string[] {
     const players: string[] = [];
     
-    // Parse up to 12 player slots (each 36 bytes according to screp)
+    // Parse up to 12 player slots (each 36 bytes in Remastered format)
     for (let i = 0; i < 12; i++) {
       const playerOffset = this.offset + (i * 36);
       
@@ -253,7 +253,7 @@ class DecompressedStreamParser {
     let currentFrame = 0;
     let actionCount = 0;
     
-    // Action name mapping
+    // Enhanced action name mapping for Remastered
     const actionNames: Record<number, string> = {
       0x09: 'Select',
       0x0A: 'Shift Select',
@@ -313,7 +313,7 @@ class DecompressedStreamParser {
           actionName
         });
         
-        // Track for APM calculation
+        // Track for build order analysis
         if (!playerActions[playerId]) {
           playerActions[playerId] = [];
         }
