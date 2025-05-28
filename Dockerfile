@@ -1,23 +1,23 @@
 
-# Build stage
+# Stage: Build
 FROM golang:1.19-alpine AS builder
+WORKDIR /build
 RUN apk add --no-cache git
 
-# Copy the entire screp-service directory
-COPY screp-service /app/screp-service
-WORKDIR /app/screp-service
+# Copy entire repo
+COPY . .
 
-# Download modules and build
+# Build screp-service
+WORKDIR /build/screp-service
 RUN go mod tidy
 RUN go build -o screp-service .
 
-# Production stage
+# Stage: Production
 FROM alpine:latest
+WORKDIR /app
 RUN apk add --no-cache wget
-WORKDIR /root
 
-# Copy built binary
-COPY --from=builder /app/screp-service/screp-service .  
+COPY --from=builder /build/screp-service/screp-service .
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s \
   CMD wget -qO- http://localhost:8080/health || exit 1
