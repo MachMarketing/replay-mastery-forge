@@ -97,7 +97,10 @@ export class ScrepJsWrapper {
       let result;
       
       // Try different possible API methods
-      if (typeof this.screpLib.parseReplay === 'function') {
+      if (typeof this.screpLib.parseBuffer === 'function') {
+        console.log('[ScrepJsWrapper] Using parseBuffer method');
+        result = this.screpLib.parseBuffer(buffer);
+      } else if (typeof this.screpLib.parseReplay === 'function') {
         result = this.screpLib.parseReplay(buffer);
       } else if (typeof this.screpLib.parse === 'function') {
         result = this.screpLib.parse(buffer);
@@ -119,11 +122,19 @@ export class ScrepJsWrapper {
         }
       }
       
+      // CRITICAL FIX: Handle Promise results properly
+      if (result && typeof result.then === 'function') {
+        console.log('[ScrepJsWrapper] Result is a Promise, awaiting...');
+        result = await result;
+      }
+      
       if (!result) {
         throw new Error('screp-js returned null result');
       }
 
       console.log('[ScrepJsWrapper] screp-js parsing successful, result keys:', Object.keys(result));
+      console.log('[ScrepJsWrapper] Full result for debugging:', result);
+      
       return this.normalizeResult(result);
       
     } catch (error) {
@@ -133,28 +144,41 @@ export class ScrepJsWrapper {
   }
 
   private normalizeResult(screpResult: any): ReplayParseResult {
-    console.log('[ScrepJsWrapper] Normalizing result:', screpResult);
+    console.log('[ScrepJsWrapper] Normalizing result with keys:', Object.keys(screpResult));
     
     // Handle different possible result structures
-    const data = screpResult.data || screpResult.replay || screpResult;
+    const data = screpResult.replay || screpResult.data || screpResult;
+    
+    // Extract header information
+    const header = data.header || data;
     
     // Extract frames
-    const frames = data.frames || data.header?.frames || data.gameLength || 10000;
+    const frames = header.frames || header.gameLength || data.frames || 10000;
     const durationMs = Math.floor(frames * 1000 / 24);
     const minutes = Math.floor(durationMs / 60000);
     const seconds = Math.floor((durationMs % 60000) / 1000);
     
-    // Extract players
-    const rawPlayers = data.players || data.playerInfo || [];
+    // Extract players - more robust extraction
+    let rawPlayers = [];
+    if (data.players && Array.isArray(data.players)) {
+      rawPlayers = data.players;
+    } else if (data.playerInfo && Array.isArray(data.playerInfo)) {
+      rawPlayers = data.playerInfo;
+    } else if (header.players && Array.isArray(header.players)) {
+      rawPlayers = header.players;
+    }
+    
+    console.log('[ScrepJsWrapper] Found raw players:', rawPlayers.length, rawPlayers);
+    
     const players = rawPlayers.map((player: any, index: number) => ({
       name: player.name || player.playerName || `Player ${index + 1}`,
       race: this.normalizeRace(player.race || player.raceId || player.raceString),
-      team: player.team || index % 2,
-      color: player.color || index
+      team: player.team !== undefined ? player.team : index % 2,
+      color: player.color !== undefined ? player.color : index
     }));
     
-    // Extract map name
-    const mapName = data.mapName || data.map || data.header?.mapName || 'Unknown Map';
+    // Extract map name - more robust extraction
+    const mapName = data.mapName || header.mapName || data.map || header.map || 'Unknown Map';
     
     // Extract commands
     const commands = (data.commands || data.actions || []).slice(0, 100).map((cmd: any) => ({
@@ -163,19 +187,22 @@ export class ScrepJsWrapper {
       data: cmd.data || cmd.payload || {}
     }));
 
-    return {
+    const normalizedResult = {
       header: {
-        engine: data.engine || 'StarCraft',
-        version: data.version || 'Unknown',
+        engine: data.engine || header.engine || 'StarCraft',
+        version: data.version || header.version || 'Unknown',
         frames: frames,
-        startTime: new Date(data.startTime || Date.now()),
+        startTime: new Date(data.startTime || header.startTime || Date.now()),
         mapName: mapName,
-        gameType: data.gameType || 'Melee',
+        gameType: data.gameType || header.gameType || 'Melee',
         duration: `${minutes}:${seconds.toString().padStart(2, '0')}`
       },
       players,
       commands
     };
+    
+    console.log('[ScrepJsWrapper] Normalized result:', normalizedResult);
+    return normalizedResult;
   }
 
   private normalizeRace(raceId: number | string): string {
