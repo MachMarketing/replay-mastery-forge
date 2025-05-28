@@ -20,8 +20,8 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
   const player2 = replayData.players[1];
   
   // Use enhanced APM data if available
-  const player1APM = replayData.enhanced.debugInfo.qualityCheck.apmValidation.chosenAPM[0] || replayData.computed.apm[0] || 0;
-  const player2APM = replayData.enhanced.debugInfo.qualityCheck.apmValidation.chosenAPM[1] || replayData.computed.apm[1] || 0;
+  const player1APM = replayData.enhanced?.debugInfo?.qualityCheck?.apmValidation?.chosenAPM?.[0] || replayData.computed.apm[0] || 0;
+  const player2APM = replayData.enhanced?.debugInfo?.qualityCheck?.apmValidation?.chosenAPM?.[1] || replayData.computed.apm[1] || 0;
   
   const buildOrder1 = replayData.computed.buildOrders[0] || [];
   const buildOrder2 = replayData.computed.buildOrders[1] || [];
@@ -61,11 +61,11 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
         <div>
           <h2 className="text-2xl font-bold">Enhanced Replay Analysis</h2>
           <div className="flex items-center gap-2 mt-2">
-            <Badge variant={replayData.enhanced.hasDetailedActions ? "default" : "secondary"}>
-              {replayData.enhanced.extractionMethod.toUpperCase()}
+            <Badge variant={replayData.enhanced?.hasDetailedActions ? "default" : "secondary"}>
+              {replayData.enhanced?.extractionMethod?.toUpperCase() || 'DIRECT'}
             </Badge>
             <Badge variant="outline">
-              {replayData.enhanced.debugInfo.actionsExtracted} actions
+              {replayData.enhanced?.debugInfo?.actionsExtracted || 0} actions
             </Badge>
             <Badge variant="outline">
               Command ID Mapping ✅
@@ -122,7 +122,7 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
                 <div>
                   <p className="text-sm font-medium text-gray-500">Data Quality</p>
                   <p className="text-lg font-semibold">
-                    {replayData.enhanced.hasDetailedActions ? '✅ Enhanced' : '⚠️ Basic'}
+                    {replayData.enhanced?.hasDetailedActions ? '✅ Enhanced' : '⚠️ Basic'}
                   </p>
                 </div>
               </div>
@@ -361,19 +361,19 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
                 <div className="grid grid-cols-4 gap-4 text-center">
                   <div>
                     <div className="text-2xl font-bold text-blue-600">
-                      {replayData.enhanced.debugInfo.actionsExtracted}
+                      {replayData.enhanced?.debugInfo?.actionsExtracted || 0}
                     </div>
                     <div className="text-sm text-gray-500">Actions Extracted</div>
                   </div>
                   <div>
                     <div className="text-2xl font-bold text-green-600">
-                      {replayData.enhanced.debugInfo.buildOrdersGenerated}
+                      {replayData.enhanced?.debugInfo?.buildOrdersGenerated || 0}
                     </div>
                     <div className="text-sm text-gray-500">Build Orders</div>
                   </div>
                   <div>
                     <div className="text-2xl font-bold text-purple-600">
-                      {replayData.enhanced.extractionTime}ms
+                      {replayData.enhanced?.extractionTime || 0}ms
                     </div>
                     <div className="text-sm text-gray-500">Parse Time</div>
                   </div>
