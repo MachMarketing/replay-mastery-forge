@@ -26,8 +26,10 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
   const buildOrder1 = replayData.computed.buildOrders[0] || [];
   const buildOrder2 = replayData.computed.buildOrders[1] || [];
 
-  // Get enhanced build orders if available - fix property access
-  const enhancedBuildOrders = replayData.enhanced?.enhancedBuildOrders || [];
+  // Get enhanced build orders if available - try multiple possible locations
+  const enhancedBuildOrders = replayData.enhanced?.debugInfo?.enhancedBuildOrders || 
+                             replayData.enhanced?.validationData?.enhancedBuildOrders || 
+                             [];
 
   const getRaceColor = (race: string) => {
     switch (race?.toLowerCase()) {
@@ -283,7 +285,7 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
 
         <TabsContent value="build-orders" className="space-y-6">
           <div className="grid grid-cols-1 gap-8">
-            {enhancedBuildOrders.length > 0 ? (
+            {Array.isArray(enhancedBuildOrders) && enhancedBuildOrders.length > 0 ? (
               enhancedBuildOrders.map((buildOrder, index) => (
                 <EnhancedBuildOrderDisplay
                   key={index}

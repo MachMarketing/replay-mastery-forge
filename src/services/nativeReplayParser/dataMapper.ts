@@ -179,8 +179,9 @@ export function mapDirectReplayDataToUI(directData: DirectParserResult): {
     const enhancedBO = enhancedBuildOrders[playerId];
     
     const buildActions = actions.filter(a => {
-      // Fix: Use correct property names for action commands
-      const category = categorizeAction(a.type || a.commandId || 0, a.parameters?.unitTypeId);
+      // Fix: Use correct property names for action commands - try multiple possible properties
+      const commandType = a.type || a.command || a.id || 0;
+      const category = categorizeAction(commandType, a.parameters?.unitTypeId);
       return ['build', 'train', 'tech'].includes(category);
     });
     
