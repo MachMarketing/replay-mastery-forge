@@ -8,20 +8,19 @@ import { useDropzone } from 'react-dropzone';
 import { Upload, FileText, CheckCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { useRemasteredParser } from '@/hooks/useRemasteredParser';
+import { useEnhancedReplayParser } from '@/hooks/useEnhancedReplayParser';
 import { useToast } from '@/hooks/use-toast';
-import { RemasteredReplayData } from '@/services/replayParser/scRemasteredParser';
+import { EnhancedReplayResult } from '@/services/nativeReplayParser/enhancedDataMapper';
 
 interface ReplayUploadProps {
-  onParseComplete: (data: RemasteredReplayData) => void;
+  onParseComplete: (data: EnhancedReplayResult) => void;
 }
 
 const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'parsing' | 'complete' | 'error'>('idle');
-  const [progress, setProgress] = useState(0);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   
-  const { parseReplay, isLoading, error } = useRemasteredParser();
+  const { parseReplay, isLoading, error, progress } = useEnhancedReplayParser();
   const { toast } = useToast();
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
@@ -32,18 +31,10 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
     
     setSelectedFile(file);
     setUploadStatus('parsing');
-    setProgress(0);
 
     try {
-      // Simulate progress
-      const progressInterval = setInterval(() => {
-        setProgress(prev => Math.min(prev + 20, 90));
-      }, 200);
-
       const result = await parseReplay(file);
       
-      clearInterval(progressInterval);
-      setProgress(100);
       setUploadStatus('complete');
       
       toast({
@@ -89,9 +80,9 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
   const getStatusText = () => {
     switch (uploadStatus) {
       case 'parsing':
-        return 'Replay wird geparst...';
+        return 'Enhanced Replay wird geparst...';
       case 'complete':
-        return 'Parse erfolgreich!';
+        return 'Enhanced Parse erfolgreich!';
       case 'error':
         return error || 'Parse-Fehler';
       default:
@@ -132,7 +123,7 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
             <div className="w-full max-w-xs">
               <Progress value={progress} className="h-2" />
               <p className="text-xs text-gray-500 mt-1">
-                {progress < 90 ? `${progress}%` : 'Finalisiere...'}
+                Enhanced Parser: {Math.round(progress)}%
               </p>
             </div>
           )}
@@ -148,7 +139,6 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
               onClick={() => {
                 setUploadStatus('idle');
                 setSelectedFile(null);
-                setProgress(0);
               }}
               variant="outline"
             >
@@ -161,7 +151,7 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
       {uploadStatus === 'idle' && (
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-600">
-            Unterstützt: StarCraft: Remastered .rep Dateien
+            Enhanced Parser für StarCraft: Remastered .rep Dateien
           </p>
         </div>
       )}

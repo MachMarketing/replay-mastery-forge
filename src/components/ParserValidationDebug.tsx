@@ -2,53 +2,46 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { EnhancedReplayData } from '@/services/nativeReplayParser/enhancedScrepWrapper';
+import { EnhancedReplayResult } from '@/services/nativeReplayParser/enhancedDataMapper';
 
 interface ParserValidationDebugProps {
-  enhancedData: EnhancedReplayData;
+  enhancedData: EnhancedReplayResult;
 }
 
 export function ParserValidationDebug({ enhancedData }: ParserValidationDebugProps) {
-  const { enhanced } = enhancedData;
-  const { debugInfo } = enhanced;
+  const { dataQuality } = enhancedData;
 
   return (
     <div className="space-y-4">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            🔍 Enhanced Remastered Parser Debug
-            <Badge variant={enhanced.hasDetailedActions ? "default" : "destructive"}>
-              {debugInfo.qualityCheck.activeParser.toUpperCase()}
+            🔍 Enhanced Data Mapper Debug
+            <Badge variant={dataQuality.reliability === 'high' ? "default" : "destructive"}>
+              {dataQuality.source.toUpperCase()}
             </Badge>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Parser Status - Updated for Remastered parsers */}
-          <div className="grid grid-cols-4 gap-4">
+          {/* Parser Status */}
+          <div className="grid grid-cols-3 gap-4">
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-600">
-                {debugInfo.screpJsSuccess ? '✅' : '❌'}
+                ✅
               </div>
               <div className="text-sm">screp-js</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-green-600">
-                {debugInfo.directParserSuccess ? '✅' : '❌'}
+                {dataQuality.source === 'enhanced' ? '✅' : '❌'}
               </div>
-              <div className="text-sm">Direct Parser</div>
+              <div className="text-sm">Hex Analysis</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-purple-600">
-                {debugInfo.remasteredParserSuccess ? '✅' : '❌'}
+                {dataQuality.reliability === 'high' ? '✅' : '⚠️'}
               </div>
-              <div className="text-sm">BW Remastered</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-orange-600">
-                {debugInfo.remasteredActionParserSuccess ? '✅' : '❌'}
-              </div>
-              <div className="text-sm">Remastered Actions</div>
+              <div className="text-sm">Data Quality</div>
             </div>
           </div>
 
@@ -56,80 +49,81 @@ export function ParserValidationDebug({ enhancedData }: ParserValidationDebugPro
           <div className="grid grid-cols-4 gap-4">
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-600">
-                {debugInfo.actionsExtracted}
+                {dataQuality.commandsExtracted}
               </div>
-              <div className="text-sm">Actions Extracted</div>
+              <div className="text-sm">Commands Extracted</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-green-600">
-                {debugInfo.buildOrdersGenerated}
+                {Object.values(enhancedData.enhancedBuildOrders).reduce((sum, bo) => sum + bo.length, 0)}
               </div>
               <div className="text-sm">Build Orders</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-purple-600">
-                {enhanced.extractionTime}ms
+                {enhancedData.realCommands.length}
               </div>
-              <div className="text-sm">Parse Time</div>
+              <div className="text-sm">Real Commands</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-orange-600">
-                {debugInfo.qualityCheck.activeParser === 'remastered-action-parser' ? '🎯' : '⚠️'}
+                {dataQuality.source === 'enhanced' ? '🎯' : '⚠️'}
               </div>
-              <div className="text-sm">Remastered Parser</div>
+              <div className="text-sm">Enhanced Parser</div>
             </div>
           </div>
 
-          {/* Enhanced Debug Information for Remastered Action Parser */}
-          {debugInfo.qualityCheck.activeParser === 'remastered-action-parser' && (
+          {/* Enhanced Debug Information */}
+          {dataQuality.source === 'enhanced' && (
             <div className="border rounded-lg p-4 bg-green-50 dark:bg-green-950/20">
-              <h4 className="font-semibold mb-3 text-green-800 dark:text-green-200">🎯 Remastered Action Parser (Enhanced)</h4>
+              <h4 className="font-semibold mb-3 text-green-800 dark:text-green-200">🎯 Enhanced Data Mapper (Active)</h4>
               
               {/* Actions Overview */}
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
-                  <h5 className="font-medium mb-2">Action Detection</h5>
+                  <h5 className="font-medium mb-2">Command Detection</h5>
                   <div className="space-y-1 text-sm">
-                    <div>Real Actions: <Badge variant="outline">{debugInfo.actionsExtracted}</Badge></div>
-                    <div>Build Orders: <Badge variant="outline">{debugInfo.buildOrdersGenerated}</Badge></div>
+                    <div>Real Commands: <Badge variant="outline">{enhancedData.realCommands.length}</Badge></div>
+                    <div>Build Orders: <Badge variant="outline">{Object.values(enhancedData.enhancedBuildOrders).reduce((sum, bo) => sum + bo.length, 0)}</Badge></div>
                     <div>Frame Count: <Badge variant="outline">{enhancedData.header.frames}</Badge></div>
                   </div>
                 </div>
                 <div>
                   <h5 className="font-medium mb-2">Parse Quality</h5>
                   <div className="space-y-1 text-sm">
-                    <div>Quality: <Badge variant={debugInfo.qualityCheck.commandValidation.quality === 'realistic' ? 'default' : 'destructive'}>{debugInfo.qualityCheck.commandValidation.quality}</Badge></div>
-                    <div>Remastered Format: ✅</div>
-                    <div>Real Actions: ✅</div>
+                    <div>Quality: <Badge variant={dataQuality.reliability === 'high' ? 'default' : 'destructive'}>{dataQuality.reliability}</Badge></div>
+                    <div>Source: <Badge variant="outline">{dataQuality.source}</Badge></div>
+                    <div>Commands: <Badge variant="outline">{dataQuality.commandsExtracted}</Badge></div>
                   </div>
                 </div>
               </div>
 
               {/* Enhanced Build Orders Display */}
-              {enhanced.enhancedBuildOrders && enhanced.enhancedBuildOrders.length > 0 && (
+              {Object.keys(enhancedData.enhancedBuildOrders).length > 0 && (
                 <div className="space-y-3">
                   <h5 className="font-medium">Enhanced Build Orders</h5>
-                  {enhanced.enhancedBuildOrders.map((buildOrder, index) => (
-                    <Card key={index} className="p-3 bg-white dark:bg-gray-900">
+                  {Object.entries(enhancedData.enhancedBuildOrders).map(([playerId, buildOrder]) => (
+                    <Card key={playerId} className="p-3 bg-white dark:bg-gray-900">
                       <div className="flex justify-between items-start mb-2">
-                        <h6 className="font-medium">Player {index + 1}</h6>
+                        <h6 className="font-medium">Player {parseInt(playerId) + 1}</h6>
                         <div className="flex gap-2">
                           <Badge variant="outline">
-                            {buildOrder.race}
+                            {enhancedData.players[parseInt(playerId)]?.race || 'Unknown'}
                           </Badge>
                           <Badge variant="outline">
-                            {buildOrder.entries.length} entries
+                            {buildOrder.length} entries
                           </Badge>
                         </div>
                       </div>
                       
-                      {buildOrder.entries.length > 0 && (
+                      {buildOrder.length > 0 && (
                         <div className="text-sm space-y-1">
                           <div className="font-medium text-xs mb-1">First Actions:</div>
-                          {buildOrder.entries.slice(0, 5).map((entry, entryIndex) => (
+                          {buildOrder.slice(0, 5).map((entry, entryIndex) => (
                             <div key={entryIndex} className="flex justify-between text-xs">
                               <span>{entry.time}</span>
                               <span>{entry.action}</span>
+                              <span className="text-muted-foreground">{entry.unitName}</span>
                             </div>
                           ))}
                         </div>
@@ -146,71 +140,35 @@ export function ParserValidationDebug({ enhancedData }: ParserValidationDebugPro
             <div>
               <h4 className="font-semibold mb-2">Quality Assessment</h4>
               <div className="space-y-1 text-sm">
-                <div>Command Quality: <Badge variant={debugInfo.qualityCheck.commandValidation.quality === 'realistic' ? 'default' : 'destructive'}>{debugInfo.qualityCheck.commandValidation.quality}</Badge></div>
-                <div>Data Quality: <Badge variant={debugInfo.qualityCheck.dataQuality === 'high' ? 'default' : 'secondary'}>{debugInfo.qualityCheck.dataQuality}</Badge></div>
-                <div>Active Parser: <Badge>{debugInfo.qualityCheck.activeParser}</Badge></div>
+                <div>Data Quality: <Badge variant={dataQuality.reliability === 'high' ? 'default' : 'secondary'}>{dataQuality.reliability}</Badge></div>
+                <div>Source: <Badge>{dataQuality.source}</Badge></div>
+                <div>Commands: <Badge variant="outline">{dataQuality.commandsExtracted}</Badge></div>
               </div>
             </div>
             <div>
               <h4 className="font-semibold mb-2">Extraction Stats</h4>
               <div className="space-y-1 text-sm">
-                <div>Actions Extracted: <Badge variant="outline">{debugInfo.actionsExtracted}</Badge></div>
-                <div>Build Orders: <Badge variant="outline">{debugInfo.buildOrdersGenerated}</Badge></div>
-                <div>Time Taken: <Badge variant="outline">{enhanced.extractionTime}ms</Badge></div>
+                <div>Real Commands: <Badge variant="outline">{enhancedData.realCommands.length}</Badge></div>
+                <div>Build Orders: <Badge variant="outline">{Object.values(enhancedData.enhancedBuildOrders).reduce((sum, bo) => sum + bo.length, 0)}</Badge></div>
+                <div>Players: <Badge variant="outline">{enhancedData.players.length}</Badge></div>
               </div>
             </div>
           </div>
 
-          {/* APM Validation - Fixed for actual structure */}
+          {/* APM Validation */}
           <div>
-            <h4 className="font-semibold mb-2">APM Validation</h4>
+            <h4 className="font-semibold mb-2">APM Analysis</h4>
             <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <div className="font-medium">Remastered APM</div>
-                <div>{debugInfo.qualityCheck.apmValidation.remasteredAPM.join(', ')}</div>
-              </div>
-              <div>
-                <div className="font-medium text-green-600">Chosen APM</div>
-                <div className="font-bold">{debugInfo.qualityCheck.apmValidation.chosenAPM.join(', ')}</div>
-              </div>
-            </div>
-            <div className="mt-2 text-xs text-gray-600">
-              Reason: {debugInfo.qualityCheck.apmValidation.reason}
+              {enhancedData.players.map((player, index) => (
+                <div key={index}>
+                  <div className="font-medium">{player.name}</div>
+                  <div>APM: {enhancedData.realMetrics[index]?.apm || 0}</div>
+                  <div>EAPM: {enhancedData.realMetrics[index]?.eapm || 0}</div>
+                  <div>Real Actions: {enhancedData.realMetrics[index]?.realActions || 0}</div>
+                </div>
+              ))}
             </div>
           </div>
-
-          {/* Error Information - Updated for Remastered parsers */}
-          {(debugInfo.directParserError || debugInfo.remasteredParserError || debugInfo.remasteredActionParserError || debugInfo.screpJsError) && (
-            <div>
-              <h4 className="font-semibold mb-2 text-red-600">Errors</h4>
-              <div className="space-y-2 text-sm">
-                {debugInfo.directParserError && (
-                  <div className="p-2 bg-red-50 rounded border border-red-200">
-                    <div className="font-medium">Direct Parser Error:</div>
-                    <div className="text-red-700">{debugInfo.directParserError}</div>
-                  </div>
-                )}
-                {debugInfo.remasteredParserError && (
-                  <div className="p-2 bg-orange-50 rounded border border-orange-200">
-                    <div className="font-medium">BW Remastered Parser Error:</div>
-                    <div className="text-orange-700">{debugInfo.remasteredParserError}</div>
-                  </div>
-                )}
-                {debugInfo.remasteredActionParserError && (
-                  <div className="p-2 bg-purple-50 rounded border border-purple-200">
-                    <div className="font-medium">Remastered Action Parser Error:</div>
-                    <div className="text-purple-700">{debugInfo.remasteredActionParserError}</div>
-                  </div>
-                )}
-                {debugInfo.screpJsError && (
-                  <div className="p-2 bg-yellow-50 rounded border border-yellow-200">
-                    <div className="font-medium">Screp-js Error:</div>
-                    <div className="text-yellow-700">{debugInfo.screpJsError}</div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
         </CardContent>
       </Card>
     </div>

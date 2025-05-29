@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { useDropzone } from 'react-dropzone';
@@ -5,18 +6,18 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useReplayParser } from '@/hooks/useReplayParser';
+import { useEnhancedReplayParser } from '@/hooks/useEnhancedReplayParser';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { AnalysisResult } from '@/components/AnalysisResult';
-import { EnhancedReplayData } from '@/services/nativeReplayParser/enhancedScrepWrapper';
+import { EnhancedReplayResult } from '@/services/nativeReplayParser/enhancedDataMapper';
 
 const ParserTest: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [parsingStatus, setParsingStatus] = useState<'idle' | 'uploading' | 'parsing' | 'complete' | 'error'>('idle');
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [parsedReplayData, setParsedReplayData] = useState<EnhancedReplayData | null>(null);
-  const { parseFile, error } = useReplayParser();
+  const [parsedReplayData, setParsedReplayData] = useState<EnhancedReplayResult | null>(null);
+  const { parseReplay, error, progress } = useEnhancedReplayParser();
   const { toast } = useToast();
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -47,7 +48,7 @@ const ParserTest: React.FC = () => {
       
       setParsingStatus('parsing');
       
-      const result = await parseFile(selectedFile);
+      const result = await parseReplay(selectedFile);
       
       setParsedReplayData(result);
       setParsingStatus('complete');
@@ -57,7 +58,7 @@ const ParserTest: React.FC = () => {
       const opponent = result.players[1]?.name || 'Unknown';
       
       toast({
-        title: "Replay erfolgreich analysiert",
+        title: "Enhanced Replay erfolgreich analysiert",
         description: `${mainPlayer} vs ${opponent}`,
       });
       
@@ -66,7 +67,7 @@ const ParserTest: React.FC = () => {
       setParsingStatus('error');
       const errorMessage = e instanceof Error ? e.message : 'Unbekannter Fehler';
       toast({
-        title: "Fehler beim Parsen",
+        title: "Fehler beim Enhanced Parsing",
         description: errorMessage,
         variant: "destructive"
       });
@@ -89,14 +90,10 @@ const ParserTest: React.FC = () => {
         return (
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span>Replay wird analysiert...</span>
-              <div className="flex items-center">
-                <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse"></div>
-                <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse ml-1" style={{ animationDelay: '0.2s' }}></div>
-                <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse ml-1" style={{ animationDelay: '0.4s' }}></div>
-              </div>
+              <span>Enhanced Replay wird analysiert...</span>
+              <span>{Math.round(progress)}%</span>
             </div>
-            <Progress value={100} className="h-2 animate-pulse" />
+            <Progress value={progress} className="h-2" />
           </div>
         );
       case 'complete':
@@ -105,7 +102,7 @@ const ParserTest: React.FC = () => {
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
-            Analyse abgeschlossen
+            Enhanced Analyse abgeschlossen
           </div>
         );
       case 'error':
@@ -114,7 +111,7 @@ const ParserTest: React.FC = () => {
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
-            Fehler aufgetreten
+            Enhanced Parse Fehler
           </div>
         );
       default:
@@ -126,12 +123,12 @@ const ParserTest: React.FC = () => {
     <>
       <Navbar />
       <div className="container mx-auto px-4 py-8 mt-16">
-        <h1 className="text-2xl font-bold mb-6">Replay Analyzer</h1>
+        <h1 className="text-2xl font-bold mb-6">Enhanced Replay Analyzer</h1>
         
         {parsedReplayData ? (
           <div className="mb-8">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Analyse Ergebnis</h2>
+              <h2 className="text-xl font-semibold">Enhanced Analyse Ergebnis</h2>
               <Button variant="outline" onClick={() => setParsedReplayData(null)}>
                 Neue Replay hochladen
               </Button>
@@ -142,7 +139,7 @@ const ParserTest: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
               <CardHeader>
-                <CardTitle>Replay hochladen</CardTitle>
+                <CardTitle>Enhanced Replay hochladen</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div 
@@ -152,9 +149,9 @@ const ParserTest: React.FC = () => {
                 >
                   <input {...getInputProps()} />
                   {isDragActive ? (
-                    <p>Replay-Datei hier ablegen...</p>
+                    <p>Enhanced Replay-Datei hier ablegen...</p>
                   ) : (
-                    <p>Replay-Datei hierher ziehen oder klicken zum Auswählen</p>
+                    <p>Enhanced Replay-Datei hierher ziehen oder klicken zum Auswählen</p>
                   )}
                   <p className="text-sm text-gray-500 mt-2">Nur .rep Dateien werden unterstützt</p>
                 </div>
@@ -181,25 +178,26 @@ const ParserTest: React.FC = () => {
             
             <Card>
               <CardHeader>
-                <CardTitle>Über den Analyzer</CardTitle>
+                <CardTitle>Über den Enhanced Analyzer</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  <p>Lade deine StarCraft: Brood War Replay-Datei hoch für eine professionelle Analyse:</p>
+                  <p>Lade deine StarCraft: Remastered Replay-Datei hoch für eine enhanced Analyse:</p>
                   
                   <ul className="list-disc list-inside space-y-2 ml-2">
-                    <li>Detaillierte Build Order Analyse</li>
-                    <li>Stärken und Schwächen deines Spiels</li>
-                    <li>Strategische Empfehlungen</li>
-                    <li>Personalisierter Trainingsplan</li>
-                    <li>Matchup-spezifische Insights</li>
+                    <li>Enhanced Command Extraktion mit Hex-Analyse</li>
+                    <li>Echte APM-Berechnungen aus tatsächlichen Aktionen</li>
+                    <li>Intelligente Build Order Generierung</li>
+                    <li>Gameplay-Pattern Erkennung</li>
+                    <li>Micro vs Macro Analyse</li>
+                    <li>Realistische Performance-Metriken</li>
                   </ul>
                   
                   <div className="bg-primary/10 p-4 rounded-md mt-4">
-                    <h3 className="font-medium mb-2">✅ Vollständig funktional</h3>
-                    <p className="text-sm">Unser Analyzer nutzt die Supabase Edge Function für 
-                    zuverlässige und schnelle Replay-Analyse. Kompatibel mit Classic Brood War 
-                    und StarCraft: Remastered Replays.</p>
+                    <h3 className="font-medium mb-2">✅ Enhanced Data Mapper</h3>
+                    <p className="text-sm">Unser Enhanced Parser kombiniert screp-js mit 
+                    intelligenter Hex-Command-Analyse für echte StarCraft: Remastered 
+                    Action-Daten und realistische Gameplay-Insights.</p>
                   </div>
                 </div>
               </CardContent>

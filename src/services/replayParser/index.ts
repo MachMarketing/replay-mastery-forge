@@ -1,4 +1,3 @@
 
-// Re-export the main parser function
-export { parseReplay } from '../replayParser';
+// Re-export types only - no circular imports
 export * from './types';

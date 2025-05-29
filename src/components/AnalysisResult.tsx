@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -5,11 +6,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
-import { EnhancedReplayData } from '@/services/nativeReplayParser/enhancedScrepWrapper';
+import { EnhancedReplayResult } from '@/services/nativeReplayParser/enhancedDataMapper';
 import { EnhancedBuildOrderDisplay } from './EnhancedBuildOrderDisplay';
 
 interface AnalysisResultProps {
-  replayData: EnhancedReplayData;
+  replayData: EnhancedReplayResult;
   onReset: () => void;
 }
 
@@ -19,41 +20,35 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
   const formatAPM = (apm: number) => `${apm} APM`;
   
   const getDataQuality = () => {
-    if (replayData.enhanced.hasDetailedActions && replayData.enhanced.directParserData?.success) {
-      return 'high';
-    }
-    if (replayData.enhanced.hasDetailedActions) {
-      return 'medium';
-    }
-    return 'basic';
+    return replayData.dataQuality.reliability;
   };
 
   const getQualityColor = (quality: string) => {
     switch (quality) {
       case 'high': return 'text-green-500';
       case 'medium': return 'text-yellow-500';
-      case 'basic': return 'text-blue-500';
+      case 'low': return 'text-blue-500';
       default: return 'text-gray-500';
     }
   };
 
   const getQualityBadge = (quality: string) => {
     switch (quality) {
-      case 'high': return 'Direct Parser - Echte Aktionen';
+      case 'high': return 'Enhanced Parser - Echte Aktionen';
       case 'medium': return 'Standard Analysis';
-      case 'basic': return 'Header-Only Analysis';
+      case 'low': return 'Header-Only Analysis';
       default: return 'Unknown';
     }
   };
 
   const player1 = replayData.players[0];
   const player2 = replayData.players[1];
-  const apm1 = replayData.computed.apm[0] || 0;
-  const apm2 = replayData.computed.apm[1] || 0;
+  const apm1 = replayData.realMetrics[0]?.apm || 0;
+  const apm2 = replayData.realMetrics[1]?.apm || 0;
 
-  // Get real action count from direct parser
-  const realActionsExtracted = replayData.enhanced.directParserData?.commands?.length || 0;
-  const realBuildOrdersCount = replayData.enhanced.enhancedBuildOrders?.reduce((sum, bo) => sum + bo.entries.length, 0) || 0;
+  // Get real action count from enhanced data
+  const realActionsExtracted = replayData.realCommands.length;
+  const realBuildOrdersCount = Object.values(replayData.enhancedBuildOrders).reduce((sum, bo) => sum + bo.length, 0);
 
   return (
     <div className="space-y-6">
@@ -64,7 +59,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
             <CardTitle className="text-2xl font-bold">Enhanced Replay Analysis</CardTitle>
             <div className="flex items-center gap-4 mt-2">
               <Badge variant="outline" className="text-sm">
-                {replayData.enhanced.extractionMethod.toUpperCase()}
+                {replayData.dataQuality.source.toUpperCase()}
               </Badge>
               <Badge variant="outline" className="text-sm">
                 {realActionsExtracted} echte Aktionen
@@ -72,9 +67,6 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
               <Badge variant="outline" className="text-sm">
                 {getQualityBadge(getDataQuality())}
               </Badge>
-              <Button variant="outline" size="sm">
-                Show Debug
-              </Button>
             </div>
           </div>
           <Button variant="outline" onClick={onReset}>
@@ -110,7 +102,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Players:</span>
-                  <span className="font-medium">{replayData.header.playerCount}</span>
+                  <span className="font-medium">{replayData.players.length}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Parser:</span>
@@ -158,27 +150,43 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
         </TabsContent>
 
         <TabsContent value="enhanced-build-orders" className="space-y-6">
-          {replayData.enhanced.enhancedBuildOrders && replayData.enhanced.enhancedBuildOrders.length > 0 ? (
+          {Object.keys(replayData.enhancedBuildOrders).length > 0 ? (
             <div className="space-y-6">
-              {replayData.enhanced.enhancedBuildOrders.map((buildOrder, index) => (
-                <EnhancedBuildOrderDisplay 
-                  key={index}
-                  buildOrder={buildOrder}
-                  playerName={replayData.players[index]?.name || `Player ${index + 1}`}
-                />
+              {Object.entries(replayData.enhancedBuildOrders).map(([playerId, buildOrder]) => (
+                <Card key={playerId}>
+                  <CardHeader>
+                    <CardTitle>
+                      {replayData.players[parseInt(playerId)]?.name || `Player ${parseInt(playerId) + 1}`} Build Order
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {buildOrder.slice(0, 10).map((entry, index) => (
+                        <div key={index} className="flex justify-between items-center py-1 border-b">
+                          <span className="text-sm font-mono">{entry.time}</span>
+                          <span className="text-sm">{entry.action}</span>
+                          <span className="text-sm text-muted-foreground">{entry.unitName}</span>
+                          <Badge variant="outline" className="text-xs">{entry.category}</Badge>
+                        </div>
+                      ))}
+                      {buildOrder.length > 10 && (
+                        <div className="text-sm text-muted-foreground text-center py-2">
+                          ... and {buildOrder.length - 10} more entries
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
               ))}
             </div>
           ) : (
             <Card>
               <CardContent className="p-8 text-center">
                 <div className="text-muted-foreground mb-4">
-                  {replayData.enhanced.hasDetailedActions ? 
-                    'Parsing echte Build Order Daten...' : 
-                    'Keine detaillierten Build Order Daten verfügbar'
-                  }
+                  Keine detaillierten Build Order Daten verfügbar
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  Parser: {replayData.enhanced.extractionMethod} | 
+                  Parser: {replayData.dataQuality.source} | 
                   Aktionen: {realActionsExtracted} | 
                   Build Orders: {realBuildOrdersCount}
                 </div>
@@ -219,7 +227,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
 
               {/* Data Quality & Features */}
               <div>
-                <h3 className="text-lg font-semibold mb-4">Echte Daten Quality & Features</h3>
+                <h3 className="text-lg font-semibold mb-4">Enhanced Data Quality</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-blue-500">
@@ -237,51 +245,76 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
                   
                   <div className="text-center">
                     <div className="text-2xl font-bold text-purple-500">
-                      {replayData.enhanced.extractionTime}ms
+                      {replayData.dataQuality.commandsExtracted}
                     </div>
-                    <div className="text-sm text-muted-foreground">Parse Time</div>
+                    <div className="text-sm text-muted-foreground">Commands</div>
                   </div>
                   
                   <div className="text-center">
                     <div className="text-2xl font-bold text-green-500">
-                      {replayData.enhanced.hasDetailedActions ? '✓' : '❌'}
+                      {replayData.dataQuality.reliability === 'high' ? '✓' : '❌'}
                     </div>
-                    <div className="text-sm text-muted-foreground">Direct Parser</div>
+                    <div className="text-sm text-muted-foreground">High Quality</div>
                   </div>
                 </div>
               </div>
 
-              {/* Real Parser Status */}
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Parser Status</h3>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="text-center p-4 border rounded">
-                    <div className="text-2xl font-bold">
-                      {replayData.enhanced.debugInfo.directParserSuccess ? '✅' : '❌'}
-                    </div>
-                    <div className="text-sm">Direct Parser</div>
-                    <div className="text-xs text-muted-foreground">
-                      {replayData.enhanced.debugInfo.directParserSuccess ? 'Echte Daten' : 'Fehlgeschlagen'}
-                    </div>
-                  </div>
-                  
-                  <div className="text-center p-4 border rounded">
-                    <div className="text-2xl font-bold">
-                      {replayData.enhanced.debugInfo.screpJsSuccess ? '✅' : '❌'}
-                    </div>
-                    <div className="text-sm">Screp-js</div>
-                    <div className="text-xs text-muted-foreground">Header Only</div>
-                  </div>
-                  
-                  <div className="text-center p-4 border rounded">
-                    <div className="text-2xl font-bold text-blue-500">
-                      {replayData.enhanced.debugInfo.qualityCheck.activeParser.toUpperCase()}
-                    </div>
-                    <div className="text-sm">Aktiver Parser</div>
-                    <div className="text-xs text-muted-foreground">Datenquelle</div>
+              {/* Gameplay Analysis */}
+              {Object.keys(replayData.gameplayAnalysis).length > 0 && (
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Gameplay Analysis</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {Object.entries(replayData.gameplayAnalysis).map(([playerId, analysis]) => (
+                      <Card key={playerId}>
+                        <CardHeader>
+                          <CardTitle className="text-base">
+                            {replayData.players[parseInt(playerId)]?.name || `Player ${parseInt(playerId) + 1}`}
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                          <div>
+                            <span className="text-sm font-medium">Playstyle: </span>
+                            <Badge>{analysis.playstyle}</Badge>
+                          </div>
+                          
+                          {analysis.strengths.length > 0 && (
+                            <div>
+                              <span className="text-sm font-medium text-green-600">Strengths:</span>
+                              <ul className="text-sm list-disc list-inside mt-1">
+                                {analysis.strengths.map((strength, i) => (
+                                  <li key={i}>{strength}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          
+                          {analysis.weaknesses.length > 0 && (
+                            <div>
+                              <span className="text-sm font-medium text-red-600">Weaknesses:</span>
+                              <ul className="text-sm list-disc list-inside mt-1">
+                                {analysis.weaknesses.map((weakness, i) => (
+                                  <li key={i}>{weakness}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          
+                          {analysis.recommendations.length > 0 && (
+                            <div>
+                              <span className="text-sm font-medium text-blue-600">Recommendations:</span>
+                              <ul className="text-sm list-disc list-inside mt-1">
+                                {analysis.recommendations.map((rec, i) => (
+                                  <li key={i}>{rec}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
                   </div>
                 </div>
-              </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -289,16 +322,21 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
         <TabsContent value="raw-data" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Raw Debug Data</CardTitle>
+              <CardTitle>Raw Enhanced Data</CardTitle>
             </CardHeader>
             <CardContent>
               <pre className="text-xs bg-muted p-4 rounded-md overflow-auto max-h-96">
                 {JSON.stringify({
-                  extractionMethod: replayData.enhanced.extractionMethod,
-                  hasDetailedActions: replayData.enhanced.hasDetailedActions,
+                  dataQuality: replayData.dataQuality,
                   realActionsExtracted,
                   realBuildOrdersCount,
-                  debugInfo: replayData.enhanced.debugInfo
+                  commandsBreakdown: {
+                    total: replayData.realCommands.length,
+                    byPlayer: Object.keys(replayData.realMetrics).map(playerId => ({
+                      player: parseInt(playerId),
+                      actions: replayData.realMetrics[parseInt(playerId)]?.realActions || 0
+                    }))
+                  }
                 }, null, 2)}
               </pre>
             </CardContent>
