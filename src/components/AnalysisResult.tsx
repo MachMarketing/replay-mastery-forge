@@ -159,10 +159,15 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
 
         <TabsContent value="enhanced-build-orders" className="space-y-6">
           {replayData.enhanced.enhancedBuildOrders && replayData.enhanced.enhancedBuildOrders.length > 0 ? (
-            <EnhancedBuildOrderDisplay 
-              buildOrder={replayData.enhanced.enhancedBuildOrders}
-              players={replayData.players}
-            />
+            <div className="space-y-6">
+              {replayData.enhanced.enhancedBuildOrders.map((buildOrder, index) => (
+                <EnhancedBuildOrderDisplay 
+                  key={index}
+                  buildOrder={buildOrder}
+                  playerName={replayData.players[index]?.name || `Player ${index + 1}`}
+                />
+              ))}
+            </div>
           ) : (
             <Card>
               <CardContent className="p-8 text-center">
