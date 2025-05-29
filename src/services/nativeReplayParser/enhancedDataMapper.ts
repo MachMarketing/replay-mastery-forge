@@ -1,4 +1,3 @@
-
 /**
  * Enhanced Data Mapper - Verbindet screp-js mit SC:R-spezifischer Hex-Command-Analyse
  * DAS ist unser einziger Parser!
@@ -211,25 +210,57 @@ export class EnhancedDataMapper {
     console.log('[EnhancedDataMapper.calculateRealMetrics] Input:', {
       commandsCount: commands.length,
       screpPlayersCount: screpResult.players.length,
-      gameFrames: screpResult.header.frames
+      gameFrames: screpResult.header.frames,
+      screpComputedAvailable: !!screpResult.computed
     });
     
     const gameMinutes = screpResult.header.frames / 23.81 / 60;
     const metrics: Record<number, any> = {};
     
-    // Fallback zu screp-js APM wenn keine Commands
+    // WICHTIG: Verwende IMMER screp-js APM-Daten wenn verfügbar!
+    if (screpResult.computed?.apm && screpResult.computed?.eapm) {
+      console.log('[EnhancedDataMapper.calculateRealMetrics] Using screp-js APM/EAPM data');
+      console.log('[EnhancedDataMapper.calculateRealMetrics] screp-js APM:', screpResult.computed.apm);
+      console.log('[EnhancedDataMapper.calculateRealMetrics] screp-js EAPM:', screpResult.computed.eapm);
+      
+      screpResult.players.forEach((player: any, index: number) => {
+        const apm = screpResult.computed.apm[index] || 0;
+        const eapm = screpResult.computed.eapm[index] || 0;
+        const realActions = Math.round(apm * gameMinutes);
+        
+        metrics[index] = {
+          apm,
+          eapm,
+          realActions,
+          buildOrderTiming: 60, // Default timing
+          microIntensity: Math.round(apm * 0.3) // Schätzung: 30% der Aktionen sind Micro
+        };
+        
+        console.log(`[EnhancedDataMapper.calculateRealMetrics] Player ${index} (${player.name}):`, {
+          apm,
+          eapm,
+          realActions,
+          gameMinutes: gameMinutes.toFixed(1)
+        });
+      });
+      
+      return metrics;
+    }
+    
+    // Fallback wenn keine screp-js APM Daten
+    console.log('[EnhancedDataMapper.calculateRealMetrics] No screp-js APM data, using fallback');
+    
     if (commands.length === 0) {
-      console.log('[EnhancedDataMapper.calculateRealMetrics] No commands, using screp-js fallback');
+      console.log('[EnhancedDataMapper.calculateRealMetrics] No commands, using minimal fallback');
       screpResult.players.forEach((player: any, index: number) => {
         metrics[index] = {
-          apm: screpResult.computed?.apm?.[index] || 0,
-          eapm: screpResult.computed?.eapm?.[index] || 0,
+          apm: 0,
+          eapm: 0,
           realActions: 0,
           buildOrderTiming: 0,
           microIntensity: 0
         };
       });
-      console.log('[EnhancedDataMapper.calculateRealMetrics] Fallback metrics:', metrics);
       return metrics;
     }
     
