@@ -161,18 +161,10 @@ export function ParserValidationDebug({ enhancedData }: ParserValidationDebugPro
             </div>
           </div>
 
-          {/* APM Comparison - Updated for Remastered */}
+          {/* APM Validation - Fixed for actual structure */}
           <div>
             <h4 className="font-semibold mb-2">APM Validation</h4>
-            <div className="grid grid-cols-4 gap-4 text-sm">
-              <div>
-                <div className="font-medium">screp-js APM</div>
-                <div>{debugInfo.qualityCheck.apmValidation.screpJsAPM.join(', ')}</div>
-              </div>
-              <div>
-                <div className="font-medium">Direct APM</div>
-                <div>{debugInfo.qualityCheck.apmValidation.directParserAPM.join(', ')}</div>
-              </div>
+            <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <div className="font-medium">Remastered APM</div>
                 <div>{debugInfo.qualityCheck.apmValidation.remasteredAPM.join(', ')}</div>
@@ -181,6 +173,9 @@ export function ParserValidationDebug({ enhancedData }: ParserValidationDebugPro
                 <div className="font-medium text-green-600">Chosen APM</div>
                 <div className="font-bold">{debugInfo.qualityCheck.apmValidation.chosenAPM.join(', ')}</div>
               </div>
+            </div>
+            <div className="mt-2 text-xs text-gray-600">
+              Reason: {debugInfo.qualityCheck.apmValidation.reason}
             </div>
           </div>
 
