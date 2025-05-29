@@ -1,0 +1,369 @@
+
+/**
+ * Enhanced Command Extractor - Kombiniert screp-js mit Hex-Analyse
+ * für echte SC:R Command-Extraktion
+ */
+
+import { HexAnalyzer } from '../replayParser/hexAnalyzer';
+
+export interface ExtractedCommand {
+  frame: number;
+  playerId: number;
+  commandType: number;
+  commandName: string;
+  x?: number;
+  y?: number;
+  unitType?: number;
+  targetId?: number;
+  rawData: Uint8Array;
+}
+
+export interface GameplayMetrics {
+  apm: number;
+  eapm: number;
+  buildOrderTiming: number;
+  microIntensity: number;
+  macroCycles: number;
+  commandDistribution: Record<string, number>;
+}
+
+export class EnhancedCommandExtractor {
+  private data: Uint8Array;
+  private hexAnalyzer: HexAnalyzer;
+  
+  constructor(arrayBuffer: ArrayBuffer) {
+    this.data = new Uint8Array(arrayBuffer);
+    this.hexAnalyzer = new HexAnalyzer(arrayBuffer);
+  }
+
+  /**
+   * Extrahiere echte Commands mit Hex-Analyse + screp-js Erkenntnissen
+   */
+  extractRealCommands(): ExtractedCommand[] {
+    console.log('[EnhancedCommandExtractor] Starting real command extraction...');
+    
+    // Finde Command-Sektionen mit Hex-Analyse
+    const commandSections = this.findCommandSections();
+    console.log('[EnhancedCommandExtractor] Found command sections:', commandSections.length);
+    
+    const allCommands: ExtractedCommand[] = [];
+    
+    for (const section of commandSections) {
+      const commands = this.parseCommandSection(section);
+      allCommands.push(...commands);
+    }
+    
+    // Sortiere nach Frame-Zeit
+    allCommands.sort((a, b) => a.frame - b.frame);
+    
+    console.log('[EnhancedCommandExtractor] Extracted', allCommands.length, 'real commands');
+    return allCommands;
+  }
+
+  /**
+   * Finde Command-Sektionen durch Signatur-Erkennung
+   */
+  private findCommandSections(): Array<{offset: number, length: number}> {
+    const sections: Array<{offset: number, length: number}> = [];
+    
+    // SC:R Command-Signaturen
+    const commandSignatures = [
+      [0x00], // Frame sync
+      [0x01], // Extended frame sync
+      [0x02], // Large frame sync
+      [0x09], // Select units
+      [0x0A], // Shift select
+      [0x0B], // Deselect
+      [0x0C], // Build
+      [0x14], // Move
+      [0x15], // Attack
+      [0x1A], // Use tech
+      [0x1D], // Train unit
+      [0x2F], // Research
+      [0x31], // Upgrade
+      [0x35]  // Hotkey assignment
+    ];
+    
+    let currentSectionStart = -1;
+    let consecutiveCommands = 0;
+    
+    for (let i = 0; i < this.data.length - 10; i++) {
+      const byte = this.data[i];
+      
+      // Prüfe ob dies ein Command-Byte ist
+      const isCommand = commandSignatures.some(sig => sig[0] === byte);
+      
+      if (isCommand) {
+        if (currentSectionStart === -1) {
+          currentSectionStart = i;
+        }
+        consecutiveCommands++;
+      } else {
+        // Ende einer Command-Sektion?
+        if (currentSectionStart !== -1 && consecutiveCommands > 10) {
+          sections.push({
+            offset: currentSectionStart,
+            length: i - currentSectionStart
+          });
+        }
+        currentSectionStart = -1;
+        consecutiveCommands = 0;
+      }
+    }
+    
+    return sections;
+  }
+
+  /**
+   * Parse eine Command-Sektion
+   */
+  private parseCommandSection(section: {offset: number, length: number}): ExtractedCommand[] {
+    const commands: ExtractedCommand[] = [];
+    let position = section.offset;
+    const endPosition = section.offset + section.length;
+    let currentFrame = 0;
+    
+    while (position < endPosition && position < this.data.length - 1) {
+      const byte = this.data[position];
+      
+      // Frame Synchronisation
+      if (byte === 0x00) {
+        currentFrame++;
+        position++;
+        continue;
+      } else if (byte === 0x01 && position + 1 < this.data.length) {
+        currentFrame += this.data[position + 1];
+        position += 2;
+        continue;
+      } else if (byte === 0x02 && position + 2 < this.data.length) {
+        const frameInc = this.data[position + 1] | (this.data[position + 2] << 8);
+        currentFrame += frameInc;
+        position += 3;
+        continue;
+      }
+      
+      // Parse Command
+      const command = this.parseIndividualCommand(position, currentFrame, endPosition);
+      if (command) {
+        commands.push(command);
+        position += command.rawData.length;
+      } else {
+        position++;
+      }
+    }
+    
+    return commands;
+  }
+
+  /**
+   * Parse einen einzelnen Command
+   */
+  private parseIndividualCommand(position: number, frame: number, maxPosition: number): ExtractedCommand | null {
+    if (position >= maxPosition || position >= this.data.length) return null;
+    
+    const commandType = this.data[position];
+    const commandInfo = this.getCommandInfo(commandType);
+    
+    if (!commandInfo) return null;
+    
+    const commandLength = commandInfo.length;
+    if (position + commandLength > maxPosition || position + commandLength > this.data.length) {
+      return null;
+    }
+    
+    // Extrahiere Player ID (meist 2. Byte)
+    const playerId = position + 1 < this.data.length ? this.data[position + 1] : 0;
+    
+    // Extrahiere zusätzliche Daten basierend auf Command-Typ
+    let x, y, unitType, targetId;
+    
+    if (commandInfo.hasCoordinates && position + 4 < this.data.length) {
+      x = this.data[position + 2] | (this.data[position + 3] << 8);
+      y = this.data[position + 4] | (this.data[position + 5] << 8);
+    }
+    
+    if (commandInfo.hasUnitType && position + commandInfo.unitTypeOffset < this.data.length) {
+      unitType = this.data[position + commandInfo.unitTypeOffset];
+    }
+    
+    return {
+      frame,
+      playerId,
+      commandType,
+      commandName: commandInfo.name,
+      x,
+      y,
+      unitType,
+      targetId,
+      rawData: this.data.slice(position, position + commandLength)
+    };
+  }
+
+  /**
+   * Command-Informationen basierend auf SC:R Spezifikation
+   */
+  private getCommandInfo(commandType: number): {name: string, length: number, hasCoordinates?: boolean, hasUnitType?: boolean, unitTypeOffset?: number} | null {
+    const commandMap: Record<number, any> = {
+      0x09: { name: 'Select Units', length: 2 },
+      0x0A: { name: 'Shift Select', length: 2 },
+      0x0B: { name: 'Deselect', length: 2 },
+      0x0C: { name: 'Build', length: 7, hasCoordinates: true, hasUnitType: true, unitTypeOffset: 6 },
+      0x14: { name: 'Move', length: 4, hasCoordinates: true },
+      0x15: { name: 'Attack', length: 6, hasCoordinates: true },
+      0x1A: { name: 'Use Tech', length: 4 },
+      0x1D: { name: 'Train Unit', length: 2, hasUnitType: true, unitTypeOffset: 1 },
+      0x2F: { name: 'Research Tech', length: 2 },
+      0x31: { name: 'Upgrade', length: 2 },
+      0x35: { name: 'Assign Hotkey', length: 2 }
+    };
+    
+    return commandMap[commandType] || null;
+  }
+
+  /**
+   * Berechne echte Gameplay-Metriken aus Commands
+   */
+  calculateGameplayMetrics(commands: ExtractedCommand[], totalFrames: number): Record<number, GameplayMetrics> {
+    const playerMetrics: Record<number, GameplayMetrics> = {};
+    const gameMinutes = totalFrames / 23.81 / 60;
+    
+    // Gruppiere Commands nach Spieler
+    const playerCommands: Record<number, ExtractedCommand[]> = {};
+    commands.forEach(cmd => {
+      if (!playerCommands[cmd.playerId]) {
+        playerCommands[cmd.playerId] = [];
+      }
+      playerCommands[cmd.playerId].push(cmd);
+    });
+    
+    // Berechne Metriken für jeden Spieler
+    Object.entries(playerCommands).forEach(([playerIdStr, playerCmds]) => {
+      const playerId = parseInt(playerIdStr);
+      
+      // Grundlegende APM/EAPM
+      const totalActions = playerCmds.length;
+      const apm = Math.round(totalActions / gameMinutes);
+      
+      // EAPM (Economic Actions Per Minute) - nur Build/Train/Research
+      const economicActions = playerCmds.filter(cmd => 
+        ['Build', 'Train Unit', 'Research Tech', 'Upgrade'].includes(cmd.commandName)
+      ).length;
+      const eapm = Math.round(economicActions / gameMinutes);
+      
+      // Build Order Timing (Zeit bis erste wichtige Einheit)
+      const firstTrain = playerCmds.find(cmd => cmd.commandName === 'Train Unit');
+      const buildOrderTiming = firstTrain ? firstTrain.frame / 23.81 : 0;
+      
+      // Micro-Intensität (Move/Attack Actions)
+      const microActions = playerCmds.filter(cmd => 
+        ['Move', 'Attack', 'Use Tech'].includes(cmd.commandName)
+      ).length;
+      const microIntensity = Math.round(microActions / gameMinutes);
+      
+      // Makro-Zyklen (Build/Train Frequenz)
+      const macroActions = playerCmds.filter(cmd => 
+        ['Build', 'Train Unit'].includes(cmd.commandName)
+      );
+      const macroCycles = macroActions.length;
+      
+      // Command-Verteilung
+      const commandDistribution: Record<string, number> = {};
+      playerCmds.forEach(cmd => {
+        commandDistribution[cmd.commandName] = (commandDistribution[cmd.commandName] || 0) + 1;
+      });
+      
+      playerMetrics[playerId] = {
+        apm,
+        eapm,
+        buildOrderTiming,
+        microIntensity,
+        macroCycles,
+        commandDistribution
+      };
+    });
+    
+    return playerMetrics;
+  }
+
+  /**
+   * Generiere Gameplay-Analyse aus echten Daten
+   */
+  generateGameplayAnalysis(commands: ExtractedCommand[], metrics: Record<number, GameplayMetrics>): Record<number, {
+    strengths: string[];
+    weaknesses: string[];
+    recommendations: string[];
+    buildOrderQuality: string;
+    playstyle: string;
+  }> {
+    const analysis: Record<number, any> = {};
+    
+    Object.entries(metrics).forEach(([playerIdStr, metric]) => {
+      const playerId = parseInt(playerIdStr);
+      const playerCommands = commands.filter(cmd => cmd.playerId === playerId);
+      
+      const strengths: string[] = [];
+      const weaknesses: string[] = [];
+      const recommendations: string[] = [];
+      
+      // APM Analyse
+      if (metric.apm > 200) {
+        strengths.push('Sehr hohe Aktionsgeschwindigkeit');
+      } else if (metric.apm < 80) {
+        weaknesses.push('Niedrige Aktionsgeschwindigkeit');
+        recommendations.push('Trainiere Hotkeys und schnellere Einheitenproduktion');
+      }
+      
+      // EAPM Analyse
+      if (metric.eapm > 60) {
+        strengths.push('Starke Wirtschaftsführung');
+      } else if (metric.eapm < 30) {
+        weaknesses.push('Schwache Wirtschaftsführung');
+        recommendations.push('Fokussiere auf kontinuierliche Worker- und Gebäudeproduktion');
+      }
+      
+      // Build Order Timing
+      let buildOrderQuality = 'Standard';
+      if (metric.buildOrderTiming < 60) {
+        buildOrderQuality = 'Sehr schnell';
+        strengths.push('Excellente Build Order Ausführung');
+      } else if (metric.buildOrderTiming > 120) {
+        buildOrderQuality = 'Langsam';
+        weaknesses.push('Langsame Build Order');
+        recommendations.push('Übe optimierte Build Orders für deine Rasse');
+      }
+      
+      // Micro vs Makro Balance
+      const microMacroRatio = metric.microIntensity / (metric.macroCycles || 1);
+      let playstyle = 'Ausgewogen';
+      
+      if (microMacroRatio > 3) {
+        playstyle = 'Micro-fokussiert';
+        strengths.push('Starke Einheitenkontrolle');
+        recommendations.push('Achte mehr auf Makro-Management');
+      } else if (microMacroRatio < 0.5) {
+        playstyle = 'Makro-fokussiert';
+        strengths.push('Starkes Wirtschaftsmanagement');
+        recommendations.push('Verbessere Einheitenkontrolle und Positionierung');
+      }
+      
+      // Command-Verteilung Analyse
+      const buildRatio = (metric.commandDistribution['Build'] || 0) / playerCommands.length;
+      if (buildRatio > 0.3) {
+        strengths.push('Aktiver Gebäudebau');
+      } else if (buildRatio < 0.1) {
+        weaknesses.push('Zu wenig Gebäudebau');
+        recommendations.push('Baue mehr Produktionsgebäude für bessere Einheitenproduktion');
+      }
+      
+      analysis[playerId] = {
+        strengths,
+        weaknesses,
+        recommendations,
+        buildOrderQuality,
+        playstyle
+      };
+    });
+    
+    return analysis;
+  }
+}
