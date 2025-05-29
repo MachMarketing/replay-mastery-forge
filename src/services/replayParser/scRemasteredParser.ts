@@ -1,7 +1,5 @@
-
 /**
- * StarCraft: Remastered .rep Parser - Robuste Implementation
- * Unterstützt sowohl komprimierte als auch unkomprimierte Replays
+ * StarCraft: Remastered .rep Parser - Enhanced and Cleaned
  */
 
 export interface RemasteredReplayData {
@@ -45,45 +43,39 @@ export class SCRemasteredParser {
     this.data = new Uint8Array(arrayBuffer);
   }
 
-  /**
-   * Parse StarCraft: Remastered replay file
-   */
   async parse(): Promise<RemasteredReplayData> {
-    console.log('[SCRemasteredParser] Starting parse of SC:R replay');
+    console.log('[SCRemasteredParser] Starting enhanced parse of SC:R replay');
     console.log('[SCRemasteredParser] File size:', this.data.length);
 
-    // Versuche erst direkt zu parsen, dann bei Bedarf dekomprimieren
+    // Try multiple parsing strategies
     let workingData = this.data;
     let wasDecompressed = false;
 
-    try {
-      // Teste ob Datei direkt lesbar ist
-      const testHeader = this.tryParseHeader(workingData);
-      if (!testHeader.isValid) {
-        console.log('[SCRemasteredParser] Direct parse failed, trying decompression...');
-        workingData = this.tryDecompression();
+    // First try direct parsing
+    if (!this.isValidReplayData(workingData)) {
+      console.log('[SCRemasteredParser] Trying decompression...');
+      try {
+        workingData = await this.trySmartDecompression();
         wasDecompressed = true;
+      } catch (error) {
+        console.log('[SCRemasteredParser] Decompression failed, using original data');
+        workingData = this.data;
       }
-    } catch (error) {
-      console.log('[SCRemasteredParser] Attempting decompression due to parse error...');
-      workingData = this.tryDecompression();
-      wasDecompressed = true;
     }
 
-    // Setze working data
     this.data = workingData;
     this.position = 0;
 
-    console.log('[SCRemasteredParser] Using', wasDecompressed ? 'decompressed' : 'original', 'data, size:', this.data.length);
+    console.log('[SCRemasteredParser] Using', wasDecompressed ? 'decompressed' : 'original', 'data');
 
-    // Parse components
-    const header = this.parseHeader();
-    const players = this.parsePlayers();
-    const { commands, buildOrders } = await this.parseCommands();
+    // Parse components with enhanced extraction
+    const header = this.parseEnhancedHeader();
+    const players = this.parseEnhancedPlayers();
+    const { commands, buildOrders } = this.parseEnhancedCommands();
 
-    // Calculate APM
+    // Calculate realistic APM
     const gameMinutes = header.frames / 23.81 / 60;
-    this.calculateRealAPM(players, commands, gameMinutes);
+    this.calculateEnhancedAPM(players, commands, gameMinutes);
 
     return {
       header,
@@ -92,235 +84,201 @@ export class SCRemasteredParser {
       rawData: {
         totalCommands: commands.length,
         gameMinutes,
-        extractionMethod: 'SCRemasteredParser'
+        extractionMethod: 'SCRemasteredParser-Enhanced'
       }
     };
   }
 
-  /**
-   * Teste ob Header direkt parsbar ist
-   */
-  private tryParseHeader(data: Uint8Array): { isValid: boolean } {
-    // Prüfe auf SC:R Header-Signatur
-    if (data.length < 100) return { isValid: false };
+  private isValidReplayData(data: Uint8Array): boolean {
+    if (data.length < 1000) return false;
     
-    // Suche nach typischen SC:R Markern
-    const headerChecks = [
-      // Map name an bekannten Positionen
-      this.hasValidMapNameAt(data, 0x45),
-      this.hasValidMapNameAt(data, 0x61),
-      this.hasValidMapNameAt(data, 0x68),
-      // Frame count check
-      this.hasValidFrameCountAt(data, 0x0C),
-      this.hasValidFrameCountAt(data, 0x08)
-    ];
-
-    return { isValid: headerChecks.some(check => check) };
+    // Look for SC:R signatures
+    const hasMapName = this.findReadableMapName(data) !== null;
+    const hasValidFrameCount = this.findValidFrameCount(data) !== null;
+    const hasPlayerData = this.findPlayerSection(data) !== null;
+    
+    return hasMapName || hasValidFrameCount || hasPlayerData;
   }
 
-  /**
-   * Versuche Decompression nur wenn nötig
-   */
-  private tryDecompression(): Uint8Array {
-    console.log('[SCRemasteredParser] Attempting decompression...');
-    
+  private async trySmartDecompression(): Promise<Uint8Array> {
+    // Look for zlib headers throughout the file
     const zlibPositions = [];
-    
-    // Finde alle möglichen zlib-Startpunkte
-    for (let i = 0; i < Math.min(5000, this.data.length - 2); i++) {
-      if (this.data[i] === 0x78 && (this.data[i + 1] === 0x9C || this.data[i + 1] === 0xDA)) {
+    for (let i = 0; i < Math.min(this.data.length - 2, 8192); i++) {
+      if (this.data[i] === 0x78 && [0x9C, 0xDA, 0x01, 0x5E].includes(this.data[i + 1])) {
         zlibPositions.push(i);
       }
     }
 
-    console.log('[SCRemasteredParser] Found zlib signatures at positions:', zlibPositions);
+    console.log('[SCRemasteredParser] Found potential zlib headers at:', zlibPositions);
 
-    // Versuche Decompression an verschiedenen Positionen
     for (const pos of zlibPositions) {
       try {
         const pako = require('pako');
         const compressed = this.data.slice(pos);
         const decompressed = pako.inflate(compressed);
         
-        // Validiere decompressed data
-        if (decompressed.length > 1000) {
-          console.log('[SCRemasteredParser] Successful decompression at position', pos, 'size:', decompressed.length);
+        if (decompressed.length > 5000 && this.isValidReplayData(decompressed)) {
+          console.log('[SCRemasteredParser] Successful decompression at position', pos);
           return decompressed;
         }
       } catch (error) {
-        console.log('[SCRemasteredParser] Decompression failed at position', pos);
         continue;
       }
     }
     
-    // Fallback: verwende original data
-    console.log('[SCRemasteredParser] No successful decompression, using original data');
-    return this.data;
+    throw new Error('No valid decompression found');
   }
 
-  /**
-   * Parse SC:R Header
-   */
-  private parseHeader() {
-    const header = {
-      mapName: this.extractMapName(),
-      duration: '',
-      frames: this.extractFrameCount(),
+  private parseEnhancedHeader() {
+    const mapName = this.findReadableMapName(this.data) || 'Unknown Map';
+    const frames = this.findValidFrameCount(this.data) || 10000;
+    
+    const totalSeconds = Math.floor(frames / 23.81);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    const duration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+    return {
+      mapName: this.cleanMapName(mapName),
+      duration,
+      frames,
       gameType: 'Melee',
       engine: 'Remastered'
     };
-
-    // Calculate duration from frames
-    const totalSeconds = Math.floor(header.frames / 23.81);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    header.duration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-
-    console.log('[SCRemasteredParser] Header parsed:', header);
-    return header;
   }
 
-  /**
-   * Extract map name from multiple possible positions
-   */
-  private extractMapName(): string {
-    const positions = [0x45, 0x61, 0x68, 0x29, 0x35];
+  private findReadableMapName(data: Uint8Array): string | null {
+    const positions = [0x20, 0x40, 0x60, 0x80, 0x100, 0x120];
     
     for (const pos of positions) {
-      if (pos + 64 < this.data.length) {
-        const name = this.readString(pos, 64);
-        if (name.length > 2 && /[a-zA-Z]/.test(name) && !name.includes('\\x')) {
-          console.log('[SCRemasteredParser] Found map name at position', pos, ':', name);
+      if (pos + 64 < data.length) {
+        const name = this.readCleanString(pos, 64);
+        if (name.length > 3 && name.length < 32 && this.isValidMapName(name)) {
           return name;
         }
       }
     }
-    
-    return 'Unknown Map';
+    return null;
   }
 
-  /**
-   * Extract frame count from header
-   */
-  private extractFrameCount(): number {
-    const positions = [0x0C, 0x08, 0x10, 0x04];
+  private findValidFrameCount(data: Uint8Array): number | null {
+    const positions = [0x08, 0x0C, 0x10, 0x14, 0x18, 0x1C];
     
     for (const pos of positions) {
-      if (pos + 4 < this.data.length) {
+      if (pos + 4 < data.length) {
         const frames = this.readUInt32(pos);
-        if (frames > 100 && frames < 500000) {
-          console.log('[SCRemasteredParser] Found frame count at position', pos, ':', frames);
+        if (frames > 1000 && frames < 300000) { // 1-2 hours max
           return frames;
         }
       }
     }
-    
-    return 10000;
+    return null;
   }
 
-  /**
-   * Parse players section
-   */
-  private parsePlayers() {
-    const players = [];
-    const startPositions = [0x161, 0x141, 0x181]; // Multiple possible starts
-    
-    for (const startPos of startPositions) {
-      const testPlayers = this.tryParsePlayersAt(startPos);
-      if (testPlayers.length >= 2) {
-        console.log('[SCRemasteredParser] Found', testPlayers.length, 'players at position', startPos);
-        return testPlayers;
-      }
+  private parseEnhancedPlayers() {
+    const playerSection = this.findPlayerSection(this.data);
+    if (!playerSection) {
+      return this.createFallbackPlayers();
     }
-    
-    return this.createDefaultPlayers();
-  }
 
-  private tryParsePlayersAt(startPos: number): any[] {
     const players = [];
+    const startPos = playerSection;
     
     for (let i = 0; i < 8; i++) {
       const offset = startPos + (i * 36);
-      
       if (offset + 36 > this.data.length) break;
       
-      const name = this.readString(offset, 25);
+      const name = this.readCleanString(offset, 24);
       if (name.length < 2) continue;
       
       const race = this.data[offset + 28] || 0;
-      const team = this.data[offset + 29] || i;
-      const color = this.data[offset + 31] || i;
+      const color = this.data[offset + 30] || i;
       
       players.push({
         id: i,
-        name: name.trim(),
-        race: this.getRaceName(race),
-        team,
+        name: this.cleanPlayerName(name),
+        race: this.mapRace(race),
+        team: i % 2, // Simple team assignment
         color,
         apm: 0,
         eapm: 0
       });
+      
+      if (players.length >= 8) break;
     }
     
-    return players;
+    return players.length > 0 ? players : this.createFallbackPlayers();
   }
 
-  private createDefaultPlayers(): any[] {
-    return [
-      { id: 0, name: 'Player 1', race: 'Unknown', team: 0, color: 0, apm: 0, eapm: 0 },
-      { id: 1, name: 'Player 2', race: 'Unknown', team: 1, color: 1, apm: 0, eapm: 0 }
-    ];
+  private findPlayerSection(data: Uint8Array): number | null {
+    // Look for player name patterns
+    for (let i = 100; i < Math.min(data.length - 200, 2000); i += 4) {
+      let validNames = 0;
+      
+      for (let j = 0; j < 4; j++) {
+        const namePos = i + (j * 36);
+        if (namePos + 24 < data.length) {
+          const name = this.readCleanString(namePos, 24);
+          if (name.length >= 2 && name.length <= 12 && /^[a-zA-Z0-9_\-\[\]]+$/.test(name)) {
+            validNames++;
+          }
+        }
+      }
+      
+      if (validNames >= 2) {
+        return i;
+      }
+    }
+    return null;
   }
 
-  /**
-   * Parse commands and build orders
-   */
-  private async parseCommands() {
-    console.log('[SCRemasteredParser] Parsing commands...');
-    
+  private parseEnhancedCommands() {
     const commands = [];
     const buildOrders = new Map();
     
     // Find command section
-    let commandStart = this.findCommandSection();
-    console.log('[SCRemasteredParser] Command section starts at:', commandStart);
-    
+    const commandStart = this.findCommandSection();
     this.position = commandStart;
+    
     let frame = 0;
     let commandCount = 0;
+    const maxCommands = 10000;
     
-    while (this.position < this.data.length - 1 && commandCount < 5000) {
+    while (this.position < this.data.length - 1 && commandCount < maxCommands) {
       const byte = this.data[this.position++];
       
-      // Frame control
+      // Frame advancement
       if (byte === 0x00) {
         frame++;
         continue;
       } else if (byte === 0x01) {
-        frame += this.data[this.position++] || 1;
+        frame += Math.min(this.data[this.position++] || 1, 100);
         continue;
       } else if (byte === 0x02) {
-        frame += this.readUInt16(this.position);
+        frame += Math.min(this.readUInt16(this.position), 1000);
         this.position += 2;
         continue;
       }
       
       // Parse commands
       if (byte >= 0x09 && byte <= 0x35) {
-        const command = this.parseCommand(byte, frame);
-        if (command) {
+        const command = this.parseRealistricCommand(byte, frame);
+        if (command && this.isValidCommand(command)) {
           commands.push(command);
           
           if (this.isBuildCommand(command)) {
             if (!buildOrders.has(command.playerId)) {
               buildOrders.set(command.playerId, []);
             }
-            buildOrders.get(command.playerId).push({
+            
+            const buildEntry = {
               time: this.frameToTime(frame),
               supply: this.estimateSupply(buildOrders.get(command.playerId).length),
               action: command.action,
               unitName: command.unitName
-            });
+            };
+            
+            buildOrders.get(command.playerId).push(buildEntry);
           }
           
           commandCount++;
@@ -328,74 +286,109 @@ export class SCRemasteredParser {
       }
     }
     
-    // Convert to array
+    // Convert to array and filter
     const buildOrdersArray = [];
     for (const [playerId, orders] of buildOrders) {
-      buildOrdersArray.push({ playerId, entries: orders });
+      if (orders.length > 0 && orders.length < 100) {
+        buildOrdersArray.push({ 
+          playerId, 
+          entries: orders.slice(0, 20) // Limit entries
+        });
+      }
     }
     
-    console.log('[SCRemasteredParser] Commands parsed:', commands.length);
+    console.log('[SCRemasteredParser] Commands parsed:', commands.length, 'Build orders:', buildOrdersArray.length);
     return { commands, buildOrders: buildOrdersArray };
   }
 
-  private findCommandSection(): number {
-    const possibleStarts = [633, 600, 700, 800];
-    
-    for (const start of possibleStarts) {
-      if (this.looksLikeCommandSection(start)) {
-        return start;
-      }
-    }
-    
-    return 633; // Default fallback
+  // Helper methods
+  private cleanMapName(name: string): string {
+    return name.replace(/[^\w\s\-\(\)\[\]]/g, '').trim().substring(0, 30) || 'Unknown Map';
   }
 
-  private looksLikeCommandSection(pos: number): boolean {
-    if (pos + 50 > this.data.length) return false;
-    
-    let commandBytes = 0;
-    for (let i = 0; i < 50; i++) {
-      const byte = this.data[pos + i];
-      if ([0x00, 0x01, 0x02, 0x0C, 0x14, 0x1D].includes(byte)) {
-        commandBytes++;
-      }
-    }
-    
-    return commandBytes >= 5;
+  private cleanPlayerName(name: string): string {
+    return name.replace(/[^\w\-\[\]]/g, '').trim().substring(0, 12) || 'Player';
   }
 
-  // Utility methods
-  private hasValidMapNameAt(data: Uint8Array, pos: number): boolean {
-    if (pos + 32 > data.length) return false;
-    const name = this.readStringFrom(data, pos, 32);
-    return name.length > 2 && /[a-zA-Z]/.test(name);
+  private isValidMapName(name: string): boolean {
+    return /^[a-zA-Z0-9\s\-\(\)\[\]]{3,30}$/.test(name) && !/^[\x00-\x1F]+$/.test(name);
   }
 
-  private hasValidFrameCountAt(data: Uint8Array, pos: number): boolean {
-    if (pos + 4 > data.length) return false;
-    const frames = this.readUInt32From(data, pos);
-    return frames > 100 && frames < 500000;
-  }
-
-  private readStringFrom(data: Uint8Array, offset: number, length: number): string {
+  private readCleanString(offset: number, length: number): string {
     let result = '';
-    for (let i = 0; i < length && offset + i < data.length; i++) {
-      const byte = data[offset + i];
+    for (let i = 0; i < length && offset + i < this.data.length; i++) {
+      const byte = this.data[offset + i];
       if (byte === 0) break;
-      if (byte >= 32 && byte <= 126) result += String.fromCharCode(byte);
+      if (byte >= 32 && byte <= 126) {
+        result += String.fromCharCode(byte);
+      }
     }
     return result;
   }
 
-  private readUInt32From(data: Uint8Array, offset: number): number {
-    if (offset + 4 > data.length) return 0;
-    return data[offset] | (data[offset + 1] << 8) | (data[offset + 2] << 16) | (data[offset + 3] << 24);
+  private readUInt32(offset: number): number {
+    if (offset + 4 > this.data.length) return 0;
+    return this.data[offset] | (this.data[offset + 1] << 8) | (this.data[offset + 2] << 16) | (this.data[offset + 3] << 24);
   }
 
-  private parseCommand(type: number, frame: number) {
+  private readUInt16(offset: number): number {
+    if (offset + 2 > this.data.length) return 0;
+    return this.data[offset] | (this.data[offset + 1] << 8);
+  }
+
+  private frameToTime(frame: number): string {
+    const totalSeconds = Math.floor(frame / 23.81);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  }
+
+  private estimateSupply(buildIndex: number): number {
+    return Math.min(4 + (buildIndex * 2), 200);
+  }
+
+  private mapRace(raceId: number): string {
+    const races = { 0: 'Zerg', 1: 'Terran', 2: 'Protoss', 6: 'Random' };
+    return races[raceId as keyof typeof races] || 'Unknown';
+  }
+
+  private findCommandSection(): number {
+    const possibleStarts = [600, 700, 800, 900, 1000];
+    
+    for (const start of possibleStarts) {
+      if (this.hasCommandPatterns(start)) {
+        return start;
+      }
+    }
+    
+    return 700; // Fallback
+  }
+
+  private hasCommandPatterns(pos: number): boolean {
+    if (pos + 100 > this.data.length) return false;
+    
+    let commandBytes = 0;
+    for (let i = 0; i < 100; i++) {
+      const byte = this.data[pos + i];
+      if ([0x00, 0x01, 0x02, 0x0C, 0x14, 0x1D, 0x2F, 0x31].includes(byte)) {
+        commandBytes++;
+      }
+    }
+    
+    return commandBytes >= 8;
+  }
+
+  private parseRealistricCommand(type: number, frame: number) {
     if (this.position >= this.data.length) return null;
     
     const playerId = this.data[this.position] || 0;
+    
+    // Skip invalid player IDs
+    if (playerId > 7) {
+      this.position += this.getCommandLength(type);
+      return null;
+    }
+    
     const command = {
       frame,
       playerId,
@@ -433,11 +426,16 @@ export class SCRemasteredParser {
     return command;
   }
 
+  private isValidCommand(command: any): boolean {
+    return command.playerId >= 0 && command.playerId <= 7 && 
+           command.frame >= 0 && command.frame < 500000;
+  }
+
   private isBuildCommand(command: any): boolean {
     return [0x0C, 0x1D, 0x2F, 0x31, 0x34].includes(command.type);
   }
 
-  private calculateRealAPM(players: any[], commands: any[], gameMinutes: number) {
+  private calculateEnhancedAPM(players: any[], commands: any[], gameMinutes: number) {
     const apmCommands = [0x09, 0x0A, 0x0B, 0x0C, 0x14, 0x15, 0x1D, 0x20, 0x21, 0x2A, 0x2B, 0x2C];
     
     for (const player of players) {
@@ -445,44 +443,23 @@ export class SCRemasteredParser {
         cmd.playerId === player.id && apmCommands.includes(cmd.type)
       );
       
-      player.apm = gameMinutes > 0 ? Math.round(playerCommands.length / gameMinutes) : 0;
-      player.eapm = Math.round(player.apm * 0.85);
+      if (gameMinutes > 0) {
+        player.apm = Math.round(playerCommands.length / gameMinutes);
+        player.eapm = Math.round(player.apm * 0.85);
+      }
     }
   }
 
-  // Helper methods
-  private readString(offset: number, length: number): string {
-    return this.readStringFrom(this.data, offset, length);
-  }
-
-  private readUInt32(offset: number): number {
-    return this.readUInt32From(this.data, offset);
-  }
-
-  private readUInt16(offset: number): number {
-    if (offset + 2 > this.data.length) return 0;
-    return this.data[offset] | (this.data[offset + 1] << 8);
-  }
-
-  private frameToTime(frame: number): string {
-    const totalSeconds = Math.floor(frame / 23.81);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  }
-
-  private estimateSupply(buildIndex: number): number {
-    return 4 + (buildIndex * 2);
-  }
-
-  private getRaceName(raceId: number): string {
-    const races = { 0: 'Zerg', 1: 'Terran', 2: 'Protoss', 6: 'Random' };
-    return races[raceId as keyof typeof races] || 'Unknown';
+  private createFallbackPlayers(): any[] {
+    return [
+      { id: 0, name: 'Player 1', race: 'Unknown', team: 0, color: 0, apm: 0, eapm: 0 },
+      { id: 1, name: 'Player 2', race: 'Unknown', team: 1, color: 1, apm: 0, eapm: 0 }
+    ];
   }
 
   private getCommandName(type: number): string {
     const commands: Record<number, string> = {
-      0x09: 'Select', 0x0A: 'Shift Select', 0x0B: 'Shift Deselect',
+      0x09: 'Select', 0x0A: 'Add Selection', 0x0B: 'Remove Selection',
       0x0C: 'Build', 0x14: 'Move', 0x15: 'Attack', 0x1D: 'Train',
       0x2F: 'Research', 0x31: 'Upgrade', 0x34: 'Morph'
     };
