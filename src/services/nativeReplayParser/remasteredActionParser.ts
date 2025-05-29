@@ -1,6 +1,7 @@
+
 /**
  * Native Action Parser for StarCraft: Brood War Remastered
- * OPTIMIZED FOR CORRECT APM AND ACTION COUNTING
+ * FIXED FOR CORRECT FRAME COUNTING AND APM
  */
 
 import * as pako from 'pako';
@@ -37,8 +38,8 @@ export interface RemasteredActionData {
   frameCount: number;
   gameSpeed: number;
   totalActionCount: number;
-  realAPM: number[]; // Neue korrekte APM-Berechnung
-  gameMinutes: number; // Für APM-Berechnung
+  realAPM: number[];
+  gameMinutes: number;
 }
 
 export class RemasteredActionParser {
@@ -102,74 +103,89 @@ export class RemasteredActionParser {
   ];
 
   /**
-   * Parse actions from a Remastered replay file mit korrekter APM
+   * Parse actions from a Remastered replay file mit korrekter Frame-Zählung
    */
   static async parseActions(file: File): Promise<RemasteredActionData> {
-    console.log('[RemasteredActionParser] === STARTING REMASTERED PARSING ===');
+    console.log('[RemasteredActionParser] === STARTING FIXED REMASTERED PARSING ===');
     console.log('[RemasteredActionParser] File:', file.name, 'Size:', file.size);
     
     const buffer = await file.arrayBuffer();
     
-    // Direkt zu Command-Parsing da wir wissen es ist Remastered
-    console.log('[RemasteredActionParser] Extracting raw command data...');
-    const result = this.extractRawCommandData(buffer);
+    // Finde den korrekten Command-Bereich
+    console.log('[RemasteredActionParser] Locating command section...');
+    const result = this.parseCommandSection(buffer);
     
-    console.log('[RemasteredActionParser] === FINAL STATISTICS ===');
+    console.log('[RemasteredActionParser] === FINAL CORRECTED STATISTICS ===');
     console.log('[RemasteredActionParser] Total actions extracted:', result.totalActionCount);
-    console.log('[RemasteredActionParser] Game minutes:', result.gameMinutes.toFixed(2));
-    console.log('[RemasteredActionParser] Real APM:', result.realAPM);
-    console.log('[RemasteredActionParser] Players found:', Object.keys(result.playerActions).length);
+    console.log('[RemasteredActionParser] Corrected game minutes:', result.gameMinutes.toFixed(2));
+    console.log('[RemasteredActionParser] Fixed APM:', result.realAPM);
+    console.log('[RemasteredActionParser] Final frame count:', result.frameCount);
     
     return result;
   }
 
   /**
-   * DIREKTE Rohkommando-Extraktion für Remastered
+   * KORRIGIERTE Command-Section Parsing
    */
-  private static extractRawCommandData(buffer: ArrayBuffer): RemasteredActionData {
-    console.log('[RemasteredActionParser] === RAW COMMAND EXTRACTION ===');
+  private static parseCommandSection(buffer: ArrayBuffer): RemasteredActionData {
+    console.log('[RemasteredActionParser] === PARSING COMMAND SECTION ===');
     const uint8View = new Uint8Array(buffer);
+    
+    // Finde Command-Start durch Suche nach bekannten Patterns
+    const commandStart = this.findCorrectCommandStart(uint8View);
+    console.log('[RemasteredActionParser] Command section starts at:', commandStart);
     
     const actions: RemasteredAction[] = [];
     let currentFrame = 0;
-    let position = 633; // Standard Remastered command offset
+    let position = commandStart;
+    let maxSafeFrame = 50000; // Sicherheitsgrenze für realistische Spiele
     
-    // Erste Durchsuchung für Command-Start
-    const commandStart = this.findCommandStart(uint8View);
-    if (commandStart !== -1) {
-      position = commandStart;
-      console.log('[RemasteredActionParser] Found command start at:', position);
-    }
-    
-    // Parse Commands
-    while (position < uint8View.length - 10) {
+    // Parse Commands mit korrekter Frame-Logik
+    while (position < uint8View.length - 10 && currentFrame < maxSafeFrame) {
       const byte = uint8View[position];
       
-      // Frame-Synchronisation
+      // Frame-Advance Commands (korrekte Logik)
       if (byte === 0x00) {
+        // Frame + 1
         currentFrame++;
         position++;
         continue;
       } else if (byte === 0x01 && position + 1 < uint8View.length) {
-        currentFrame += uint8View[position + 1];
+        // Frame + N (1 Byte)
+        const frameAdd = uint8View[position + 1];
+        currentFrame += frameAdd;
         position += 2;
         continue;
       } else if (byte === 0x02 && position + 2 < uint8View.length) {
+        // Frame + N (2 Bytes)
         const view = new DataView(uint8View.buffer);
-        currentFrame += view.getUint16(position + 1, true);
+        const frameAdd = view.getUint16(position + 1, true);
+        currentFrame += frameAdd;
         position += 3;
+        continue;
+      } else if (byte === 0x03 && position + 4 < uint8View.length) {
+        // Frame + N (4 Bytes) - große Sprünge abfangen
+        const view = new DataView(uint8View.buffer);
+        const frameAdd = view.getUint32(position + 1, true);
+        if (frameAdd > 10000) {
+          // Unglaubwürdig großer Frame-Sprung - stoppe Parsing
+          console.log('[RemasteredActionParser] Unrealistic frame jump detected:', frameAdd, 'at position:', position);
+          break;
+        }
+        currentFrame += frameAdd;
+        position += 5;
         continue;
       }
       
-      // Prüfe ob es ein bekannter Command ist
+      // Prüfe auf bekannte Action Commands
       if (this.ACTION_TYPES[byte]) {
         const commandLength = this.getCommandLength(byte);
         
         if (position + commandLength <= uint8View.length) {
           const playerId = position + 1 < uint8View.length ? uint8View[position + 1] : 0;
           
-          // Nur gültige Player IDs (0-7)
-          if (playerId <= 7) {
+          // Nur gültige Player IDs (0-11 für Remastered)
+          if (playerId <= 11) {
             const data = uint8View.slice(position, position + commandLength);
             
             actions.push({
@@ -190,32 +206,36 @@ export class RemasteredActionParser {
         position++;
       }
       
-      // Performance-Limit
-      if (actions.length > 50000) break;
+      // Performance-Schutz
+      if (actions.length > 20000) {
+        console.log('[RemasteredActionParser] Performance limit reached at', actions.length, 'actions');
+        break;
+      }
     }
     
-    console.log('[RemasteredActionParser] Raw extraction complete:', {
+    console.log('[RemasteredActionParser] Command parsing complete:', {
       totalActions: actions.length,
       finalFrame: currentFrame,
-      commandsFound: Object.keys(this.ACTION_TYPES).filter(id => 
+      uniqueCommands: Object.keys(this.ACTION_TYPES).filter(id => 
         actions.some(a => a.actionId === parseInt(id))
-      ).length
+      ).length,
+      frameRange: `0 - ${currentFrame}`
     });
     
     // Gruppiere nach Spielern
     const playerActions = this.groupActionsByPlayer(actions);
     
-    // Berechne KORREKTE APM
+    // Berechne KORREKTE APM mit realistischem Frame-Count
     const gameMinutes = currentFrame / this.REMASTERED_FPS / 60;
     const realAPM = this.calculateCorrectAPM(playerActions, gameMinutes);
     
     // Generiere Build Orders
     const buildOrders = this.generateBuildOrders(actions, playerActions);
     
-    console.log('[RemasteredActionParser] APM Calculation:', {
+    console.log('[RemasteredActionParser] Corrected APM Calculation:', {
       gameMinutes: gameMinutes.toFixed(2),
-      player0Actions: playerActions[0]?.length || 0,
-      player1Actions: playerActions[1]?.length || 0,
+      frameCount: currentFrame,
+      playerActionCounts: Object.entries(playerActions).map(([id, acts]) => `P${id}: ${acts.length}`),
       calculatedAPM: realAPM
     });
     
@@ -223,7 +243,7 @@ export class RemasteredActionParser {
       actions,
       buildOrders,
       playerActions,
-      frameCount: currentFrame,
+      frameCount: currentFrame, // Korrigierte Frame-Anzahl
       gameSpeed: 1.0,
       totalActionCount: actions.length,
       realAPM,
@@ -232,28 +252,41 @@ export class RemasteredActionParser {
   }
 
   /**
-   * Finde Command-Start im Buffer
+   * Finde den korrekten Command-Start für Remastered
    */
-  private static findCommandStart(data: Uint8Array): number {
-    const possibleOffsets = [633, 640, 650, 700];
+  private static findCorrectCommandStart(data: Uint8Array): number {
+    // Mehrere mögliche Offsets für verschiedene Remastered-Versionen
+    const possibleOffsets = [633, 640, 650, 700, 800, 1000];
     
     for (const offset of possibleOffsets) {
-      if (offset + 50 < data.length) {
-        let commandBytes = 0;
+      if (offset + 100 < data.length) {
+        let commandScore = 0;
+        let frameCommands = 0;
         
-        for (let i = 0; i < 50; i++) {
+        // Teste die ersten 100 Bytes nach diesem Offset
+        for (let i = 0; i < 100; i++) {
           const byte = data[offset + i];
-          if (byte <= 0x02 || this.ACTION_TYPES[byte]) {
-            commandBytes++;
+          
+          // Frame-Advance Commands
+          if (byte <= 0x03) {
+            frameCommands++;
+          }
+          
+          // Bekannte Action Commands
+          if (this.ACTION_TYPES[byte]) {
+            commandScore += 2;
           }
         }
         
-        if (commandBytes >= 10) {
+        // Guter Offset sollte sowohl Frame- als auch Action-Commands haben
+        if (commandScore >= 5 && frameCommands >= 3) {
+          console.log('[RemasteredActionParser] Found promising command start at:', offset, 'score:', commandScore, 'frameCommands:', frameCommands);
           return offset;
         }
       }
     }
     
+    console.log('[RemasteredActionParser] Using fallback command start: 633');
     return 633; // Fallback
   }
 
@@ -275,7 +308,7 @@ export class RemasteredActionParser {
       apm.push(playerAPM);
       
       if (apmActions.length > 0) {
-        console.log(`[RemasteredActionParser] Player ${playerId} APM:`, {
+        console.log(`[RemasteredActionParser] Player ${playerId} corrected APM:`, {
           totalActions: actions.length,
           apmActions: apmActions.length,
           gameMinutes: gameMinutes.toFixed(2),

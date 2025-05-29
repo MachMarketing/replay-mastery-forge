@@ -1,6 +1,6 @@
 
 /**
- * StarCraft: Remastered Enhanced Wrapper - FIXED APM AND ACTION COUNTING
+ * StarCraft: Remastered Enhanced Wrapper - FIXED FRAME COUNTING
  */
 
 import { ScrepJsWrapper } from './screpJsWrapper';
@@ -75,13 +75,12 @@ export class EnhancedScrepWrapper {
   }
 
   /**
-   * REMASTERED-OPTIMIZED parsing mit korrekter APM
+   * REMASTERED-OPTIMIZED parsing mit korrekter Frame-Zählung
    */
   static async parseReplayEnhanced(file: File): Promise<EnhancedReplayData> {
     const startTime = Date.now();
-    console.log('[EnhancedScrepWrapper] ===== REMASTERED PARSER - FIXED VERSION =====');
+    console.log('[EnhancedScrepWrapper] ===== REMASTERED PARSER - FRAME CORRECTED VERSION =====');
     
-    // Verwende AUSSCHLIESSLICH den RemasteredActionParser für echte Daten
     let remasteredActionResult: any = null;
     let screpJsResult: any = null;
     
@@ -94,38 +93,61 @@ export class EnhancedScrepWrapper {
     let realActionsExtracted = 0;
     let realAPM: number[] = [0, 0];
     let gameMinutes = 0;
+    let correctedFrameCount = 0;
 
-    // PRIORITÄT 1: REMASTERED ACTION PARSER (echte Daten)
+    // PRIORITÄT 1: SCREP-JS für korrekte Frame-Zählung und Header
     try {
-      console.log('[EnhancedScrepWrapper] === USING REMASTERED ACTION PARSER ===');
+      console.log('[EnhancedScrepWrapper] === GETTING REFERENCE DATA FROM SCREP-JS ===');
+      const screpJsWrapper = ScrepJsWrapper.getInstance();
+      screpJsResult = await screpJsWrapper.parseReplay(file);
+      screpJsSuccess = true;
+      
+      // Verwende die KORREKTE Frame-Anzahl von screp-js
+      correctedFrameCount = screpJsResult?.header?.frames || 0;
+      console.log('[EnhancedScrepWrapper] Screp-js reference data successful, frames:', correctedFrameCount);
+    } catch (error) {
+      screpJsError = error instanceof Error ? error.message : 'Screp-js failed';
+      console.warn('[EnhancedScrepWrapper] Screp-js failed:', screpJsError);
+    }
+
+    // PRIORITÄT 2: REMASTERED ACTION PARSER mit Frame-Korrektur
+    try {
+      console.log('[EnhancedScrepWrapper] === USING CORRECTED REMASTERED ACTION PARSER ===');
       remasteredActionResult = await RemasteredActionParser.parseActions(file);
       remasteredActionParserSuccess = true;
       
-      // Verwende die KORREKTEN Zahlen
+      // Korrigiere die Frame-Zählung wenn screp-js erfolgreich war
+      if (screpJsSuccess && correctedFrameCount > 0) {
+        console.log('[EnhancedScrepWrapper] Correcting frame count from', remasteredActionResult.frameCount, 'to', correctedFrameCount);
+        
+        // Recalculate with corrected frame count
+        const correctedGameMinutes = correctedFrameCount / 23.81 / 60;
+        const correctedAPM = this.recalculateAPM(remasteredActionResult.playerActions, correctedGameMinutes);
+        
+        remasteredActionResult.frameCount = correctedFrameCount;
+        remasteredActionResult.gameMinutes = correctedGameMinutes;
+        remasteredActionResult.realAPM = correctedAPM;
+        
+        console.log('[EnhancedScrepWrapper] Frame-corrected results:', {
+          originalFrames: remasteredActionResult.frameCount,
+          correctedFrames: correctedFrameCount,
+          correctedMinutes: correctedGameMinutes.toFixed(2),
+          correctedAPM: correctedAPM
+        });
+      }
+      
       realActionsExtracted = remasteredActionResult.totalActionCount;
-      realAPM = remasteredActionResult.realAPM || [0, 0];
-      gameMinutes = remasteredActionResult.gameMinutes || 0;
+      realAPM = remasteredActionResult.realAPM;
+      gameMinutes = remasteredActionResult.gameMinutes;
       
       console.log('[EnhancedScrepWrapper] ✅ REMASTERED ACTION PARSER SUCCESS');
       console.log('[EnhancedScrepWrapper] Real actions extracted:', realActionsExtracted);
-      console.log('[EnhancedScrepWrapper] Real APM calculated:', realAPM);
-      console.log('[EnhancedScrepWrapper] Game minutes:', gameMinutes.toFixed(2));
+      console.log('[EnhancedScrepWrapper] Corrected APM calculated:', realAPM);
+      console.log('[EnhancedScrepWrapper] Corrected game minutes:', gameMinutes.toFixed(2));
       
     } catch (error) {
       remasteredActionParserError = error instanceof Error ? error.message : 'Remastered Action Parser failed';
       console.error('[EnhancedScrepWrapper] RemasteredActionParser failed:', remasteredActionParserError);
-    }
-
-    // FALLBACK: SCREP-JS für Header-Daten
-    try {
-      console.log('[EnhancedScrepWrapper] === GETTING HEADER DATA FROM SCREP-JS ===');
-      const screpJsWrapper = ScrepJsWrapper.getInstance();
-      screpJsResult = await screpJsWrapper.parseReplay(file);
-      screpJsSuccess = true;
-      console.log('[EnhancedScrepWrapper] Screp-js header data successful');
-    } catch (error) {
-      screpJsError = error instanceof Error ? error.message : 'Screp-js failed';
-      console.warn('[EnhancedScrepWrapper] Screp-js failed:', screpJsError);
     }
 
     // BESTIMME EXTRACTION METHOD
@@ -133,7 +155,7 @@ export class EnhancedScrepWrapper {
     
     if (remasteredActionParserSuccess && realActionsExtracted > 0) {
       extractionMethod = 'remastered-action-parser';
-      console.log('[EnhancedScrepWrapper] ✅ USING REMASTERED ACTION PARSER DATA');
+      console.log('[EnhancedScrepWrapper] ✅ USING CORRECTED REMASTERED ACTION PARSER DATA');
     }
 
     // ERSTELLE SPIELER-DATEN
@@ -164,7 +186,7 @@ export class EnhancedScrepWrapper {
 
     const extractionTime = Date.now() - startTime;
 
-    // QUALITY CHECK mit echten Daten
+    // QUALITY CHECK mit korrigierten Daten
     const qualityCheck = this.performRemasteredQualityCheck(
       realActionsExtracted,
       realAPM,
@@ -172,12 +194,15 @@ export class EnhancedScrepWrapper {
       gameMinutes
     );
 
+    // Verwende die korrekte Frame-Anzahl für Header
+    const finalFrameCount = correctedFrameCount || remasteredActionResult?.frameCount || 0;
+
     const result: EnhancedReplayData = {
       header: {
         mapName: screpJsResult?.header?.mapName || 'Unknown Map',
-        duration: this.formatDuration(screpJsResult?.header?.frames || remasteredActionResult?.frameCount || 0),
+        duration: this.formatDuration(finalFrameCount),
         playerCount: players.length,
-        frames: screpJsResult?.header?.frames || remasteredActionResult?.frameCount || 0,
+        frames: finalFrameCount, // Korrekte Frame-Anzahl
         engine: 'Remastered',
         version: screpJsResult?.header?.version || 'Remastered',
         startTime: screpJsResult?.header?.startTime,
@@ -186,8 +211,8 @@ export class EnhancedScrepWrapper {
       players,
       computed: {
         buildOrders: this.generateBasicBuildOrders(remasteredActionResult, players.length),
-        apm: realAPM.slice(0, players.length), // Verwende die ECHTE APM
-        eapm: realAPM.slice(0, players.length) // Für jetzt gleich wie APM
+        apm: realAPM.slice(0, players.length), // Korrigierte APM
+        eapm: realAPM.slice(0, players.length)
       },
       enhanced: {
         hasDetailedActions: realActionsExtracted > 0,
@@ -195,13 +220,13 @@ export class EnhancedScrepWrapper {
         extractionTime,
         enhancedBuildOrders,
         debugInfo: {
-          remasteredParserSuccess: false, // Wir verwenden nur Action Parser
+          remasteredParserSuccess: false,
           remasteredActionParserSuccess,
           directParserSuccess: false,
           screpJsSuccess,
           remasteredActionParserError,
           screpJsError,
-          actionsExtracted: realActionsExtracted, // ECHTE Zahl
+          actionsExtracted: realActionsExtracted,
           buildOrdersGenerated,
           gameMinutes,
           realAPMCalculated: realAPM,
@@ -210,17 +235,46 @@ export class EnhancedScrepWrapper {
       }
     };
 
-    console.log('[EnhancedScrepWrapper] ===== FINAL REMASTERED RESULT =====');
-    console.log('[EnhancedScrepWrapper] Success! Real data extracted:', {
+    console.log('[EnhancedScrepWrapper] ===== FINAL CORRECTED RESULT =====');
+    console.log('[EnhancedScrepWrapper] Success! Corrected data:', {
       extractionMethod,
       realActionsExtracted,
-      realAPM,
-      gameMinutes: gameMinutes.toFixed(2),
+      correctedAPM: realAPM,
+      correctedGameMinutes: gameMinutes.toFixed(2),
+      correctedFrames: finalFrameCount,
       playersFound: players.length,
       mapName: result.header.mapName
     });
 
     return result;
+  }
+
+  /**
+   * Neuberechnung der APM mit korrigierter Spielzeit
+   */
+  private static recalculateAPM(playerActions: Record<number, any[]>, gameMinutes: number): number[] {
+    const apm: number[] = [];
+    
+    // APM-relevante Commands (ohne Sync)
+    const APM_RELEVANT_COMMANDS = [
+      0x09, 0x0A, 0x0B, 0x0C, 0x10, 0x11, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+      0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25,
+      0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x30, 0x31,
+      0x32, 0x33, 0x34, 0x35
+    ];
+    
+    for (let playerId = 0; playerId < 8; playerId++) {
+      const actions = playerActions[playerId] || [];
+      
+      const apmActions = actions.filter(action => 
+        APM_RELEVANT_COMMANDS.includes(action.actionId)
+      );
+      
+      const playerAPM = gameMinutes > 0 ? Math.round(apmActions.length / gameMinutes) : 0;
+      apm.push(playerAPM);
+    }
+    
+    return apm;
   }
 
   private static performRemasteredQualityCheck(
@@ -248,7 +302,7 @@ export class EnhancedScrepWrapper {
       apmValidation: {
         remasteredAPM: apm,
         chosenAPM: apm,
-        reason: `Calculated from ${actionsExtracted} real actions over ${gameMinutes.toFixed(2)} minutes`
+        reason: `Calculated from ${actionsExtracted} real actions over ${gameMinutes.toFixed(2)} minutes with frame correction`
       }
     };
   }
