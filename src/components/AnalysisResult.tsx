@@ -26,8 +26,8 @@ export function AnalysisResult({ replayData, onReset }: AnalysisResultProps) {
   const buildOrder1 = replayData.computed.buildOrders[0] || [];
   const buildOrder2 = replayData.computed.buildOrders[1] || [];
 
-  // Get enhanced build orders if available
-  const enhancedBuildOrders = replayData.computed.enhanced?.enhancedBuildOrders || [];
+  // Get enhanced build orders if available - fix property access
+  const enhancedBuildOrders = replayData.enhanced?.enhancedBuildOrders || [];
 
   const getRaceColor = (race: string) => {
     switch (race?.toLowerCase()) {
