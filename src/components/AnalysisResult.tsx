@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -20,7 +19,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
   const formatAPM = (apm: number) => `${apm} APM`;
   
   const getDataQuality = () => {
-    if (replayData.enhanced.enhancedBuildOrders && replayData.enhanced.enhancedBuildOrders.length > 0) {
+    if (replayData.enhanced.hasDetailedActions && replayData.enhanced.directParserData?.success) {
       return 'high';
     }
     if (replayData.enhanced.hasDetailedActions) {
@@ -40,9 +39,9 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
 
   const getQualityBadge = (quality: string) => {
     switch (quality) {
-      case 'high': return 'Enhanced Analysis Available';
+      case 'high': return 'Direct Parser - Echte Aktionen';
       case 'medium': return 'Standard Analysis';
-      case 'basic': return 'Basic Analysis';
+      case 'basic': return 'Header-Only Analysis';
       default: return 'Unknown';
     }
   };
@@ -51,6 +50,10 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
   const player2 = replayData.players[1];
   const apm1 = replayData.computed.apm[0] || 0;
   const apm2 = replayData.computed.apm[1] || 0;
+
+  // Get real action count from direct parser
+  const realActionsExtracted = replayData.enhanced.directParserData?.commands?.length || 0;
+  const realBuildOrdersCount = replayData.enhanced.enhancedBuildOrders?.reduce((sum, bo) => sum + bo.entries.length, 0) || 0;
 
   return (
     <div className="space-y-6">
@@ -61,13 +64,13 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
             <CardTitle className="text-2xl font-bold">Enhanced Replay Analysis</CardTitle>
             <div className="flex items-center gap-4 mt-2">
               <Badge variant="outline" className="text-sm">
-                SCREP-JS
+                {replayData.enhanced.extractionMethod.toUpperCase()}
               </Badge>
               <Badge variant="outline" className="text-sm">
-                {replayData.enhanced.debugInfo.actionsExtracted} actions
+                {realActionsExtracted} echte Aktionen
               </Badge>
               <Badge variant="outline" className="text-sm">
-                Command ID Mapping ✅
+                {getQualityBadge(getDataQuality())}
               </Badge>
               <Button variant="outline" size="sm">
                 Show Debug
@@ -115,6 +118,10 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
                     {getQualityBadge(getDataQuality())}
                   </Badge>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Echte Aktionen:</span>
+                  <Badge variant="outline">{realActionsExtracted}</Badge>
+                </div>
               </CardContent>
             </Card>
 
@@ -153,20 +160,22 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
         <TabsContent value="enhanced-build-orders" className="space-y-6">
           {replayData.enhanced.enhancedBuildOrders && replayData.enhanced.enhancedBuildOrders.length > 0 ? (
             <EnhancedBuildOrderDisplay 
-              buildOrders={replayData.enhanced.enhancedBuildOrders}
+              buildOrder={replayData.enhanced.enhancedBuildOrders}
               players={replayData.players}
             />
           ) : (
             <Card>
               <CardContent className="p-8 text-center">
-                <div className="text-muted-foreground mb-4">Enhanced build order data available</div>
-                <div className="text-sm text-muted-foreground">
-                  Showing {getDataQuality()} build order analysis...
+                <div className="text-muted-foreground mb-4">
+                  {replayData.enhanced.hasDetailedActions ? 
+                    'Parsing echte Build Order Daten...' : 
+                    'Keine detaillierten Build Order Daten verfügbar'
+                  }
                 </div>
-                <div className="mt-4">
-                  <Badge variant="outline">
-                    {replayData.enhanced.debugInfo.buildOrdersGenerated} build order entries found
-                  </Badge>
+                <div className="text-sm text-muted-foreground">
+                  Parser: {replayData.enhanced.extractionMethod} | 
+                  Aktionen: {realActionsExtracted} | 
+                  Build Orders: {realBuildOrdersCount}
                 </div>
               </CardContent>
             </Card>
@@ -176,7 +185,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
         <TabsContent value="performance" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Performance Analysis</CardTitle>
+              <CardTitle>Performance Analysis (Echte Daten)</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* APM Comparison */}
@@ -205,20 +214,20 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
 
               {/* Data Quality & Features */}
               <div>
-                <h3 className="text-lg font-semibold mb-4">Data Quality & Features</h3>
+                <h3 className="text-lg font-semibold mb-4">Echte Daten Quality & Features</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-blue-500">
-                      {replayData.enhanced.debugInfo.actionsExtracted}
+                      {realActionsExtracted}
                     </div>
-                    <div className="text-sm text-muted-foreground">Actions Extracted</div>
+                    <div className="text-sm text-muted-foreground">Echte Aktionen</div>
                   </div>
                   
                   <div className="text-center">
                     <div className="text-2xl font-bold text-green-500">
-                      {replayData.enhanced.debugInfo.buildOrdersGenerated}
+                      {realBuildOrdersCount}
                     </div>
-                    <div className="text-sm text-muted-foreground">Build Orders</div>
+                    <div className="text-sm text-muted-foreground">Build Order Einträge</div>
                   </div>
                   
                   <div className="text-center">
@@ -229,8 +238,42 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
                   </div>
                   
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-green-500">✓</div>
-                    <div className="text-sm text-muted-foreground">Enhanced Mapping</div>
+                    <div className="text-2xl font-bold text-green-500">
+                      {replayData.enhanced.hasDetailedActions ? '✓' : '❌'}
+                    </div>
+                    <div className="text-sm text-muted-foreground">Direct Parser</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Real Parser Status */}
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Parser Status</h3>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="text-center p-4 border rounded">
+                    <div className="text-2xl font-bold">
+                      {replayData.enhanced.debugInfo.directParserSuccess ? '✅' : '❌'}
+                    </div>
+                    <div className="text-sm">Direct Parser</div>
+                    <div className="text-xs text-muted-foreground">
+                      {replayData.enhanced.debugInfo.directParserSuccess ? 'Echte Daten' : 'Fehlgeschlagen'}
+                    </div>
+                  </div>
+                  
+                  <div className="text-center p-4 border rounded">
+                    <div className="text-2xl font-bold">
+                      {replayData.enhanced.debugInfo.screpJsSuccess ? '✅' : '❌'}
+                    </div>
+                    <div className="text-sm">Screp-js</div>
+                    <div className="text-xs text-muted-foreground">Header Only</div>
+                  </div>
+                  
+                  <div className="text-center p-4 border rounded">
+                    <div className="text-2xl font-bold text-blue-500">
+                      {replayData.enhanced.debugInfo.qualityCheck.activeParser.toUpperCase()}
+                    </div>
+                    <div className="text-sm">Aktiver Parser</div>
+                    <div className="text-xs text-muted-foreground">Datenquelle</div>
                   </div>
                 </div>
               </div>
@@ -245,7 +288,13 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
             </CardHeader>
             <CardContent>
               <pre className="text-xs bg-muted p-4 rounded-md overflow-auto max-h-96">
-                {JSON.stringify(replayData.enhanced.debugInfo, null, 2)}
+                {JSON.stringify({
+                  extractionMethod: replayData.enhanced.extractionMethod,
+                  hasDetailedActions: replayData.enhanced.hasDetailedActions,
+                  realActionsExtracted,
+                  realBuildOrdersCount,
+                  debugInfo: replayData.enhanced.debugInfo
+                }, null, 2)}
               </pre>
             </CardContent>
           </Card>
