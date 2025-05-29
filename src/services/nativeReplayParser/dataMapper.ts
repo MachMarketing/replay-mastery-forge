@@ -1,4 +1,3 @@
-
 /**
  * Enhanced data mapping with improved build order generation and Command ID mapping
  */
@@ -180,7 +179,7 @@ export function mapDirectReplayDataToUI(directData: DirectParserResult): {
     
     const buildActions = actions.filter(a => {
       // Fix: Use correct property names for action commands based on ParsedCommand type
-      const commandType = a.type || a.commandId || 0;
+      const commandType = a.type || a.cmdId || 0; // Use cmdId instead of commandId
       const category = categorizeAction(commandType, a.parameters?.unitTypeId);
       return ['build', 'train', 'tech'].includes(category);
     });

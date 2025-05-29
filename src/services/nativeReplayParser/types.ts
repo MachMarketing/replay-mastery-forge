@@ -1,3 +1,4 @@
+
 /**
  * Types for the native replay parser
  */
@@ -35,7 +36,7 @@ export interface ParsedCommand extends Command {
   timestamp: number;
   timestampString: string;
   category: 'macro' | 'micro' | 'other';
-  cmdId: number;
+  cmdId: number; // Use consistent naming - cmdId instead of commandId
   unitName?: string;
 }
 
