@@ -2,187 +2,84 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { CheckCircle, XCircle, AlertTriangle, Info } from 'lucide-react';
-import { ReplayAnalysisResult } from '@/services/nativeReplayParser/replayAnalyzer';
+import { EnhancedReplayResult } from '@/services/nativeReplayParser/enhancedDataMapper';
 
 interface ReplayAnalysisDisplayProps {
-  analysis: ReplayAnalysisResult;
+  replayData: EnhancedReplayResult;
 }
 
-const ReplayAnalysisDisplay: React.FC<ReplayAnalysisDisplayProps> = ({ analysis }) => {
-  const getStatusIcon = (success: boolean) => {
-    return success ? (
-      <CheckCircle className="h-4 w-4 text-green-500" />
-    ) : (
-      <XCircle className="h-4 w-4 text-red-500" />
-    );
-  };
-
+export function ReplayAnalysisDisplay({ replayData }: ReplayAnalysisDisplayProps) {
   return (
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Info className="h-5 w-5" />
-            Datei-Analyse: {analysis.fileInfo.name}
-          </CardTitle>
+          <CardTitle>Enhanced Gameplay Analysis</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {/* File Info */}
-          <div>
-            <h4 className="font-medium mb-2">Datei-Informationen</h4>
-            <div className="grid grid-cols-3 gap-4 text-sm">
-              <div>
-                <span className="text-muted-foreground">Größe:</span>
-                <p className="font-mono">{(analysis.fileInfo.size / 1024).toFixed(2)} KB</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Typ:</span>
-                <p className="font-mono">{analysis.fileInfo.type}</p>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Magic:</span>
-                <p className="font-mono">{analysis.formatDetection.magic}</p>
-              </div>
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Format Detection */}
-          <div>
-            <h4 className="font-medium mb-2">Format-Erkennung</h4>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Badge variant={analysis.formatDetection.isCompressed ? "destructive" : "default"}>
-                  {analysis.formatDetection.isCompressed ? "Komprimiert" : "Unkomprimiert"}
-                </Badge>
-                <Badge variant="outline">{analysis.formatDetection.detectedFormat}</Badge>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                <strong>Geschätzte Version:</strong> {analysis.formatDetection.estimatedVersion}
-              </p>
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* screp-js Results (Enhanced) */}
-          <div>
-            <h4 className="font-medium mb-2 flex items-center gap-2">
-              {getStatusIcon(analysis.screpJsCompatibility.parseSuccess)}
-              screp-js Analyse-Ergebnisse
-            </h4>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Badge variant={analysis.screpJsCompatibility.available ? "default" : "destructive"}>
-                  {analysis.screpJsCompatibility.available ? "Verfügbar" : "Nicht verfügbar"}
-                </Badge>
-                <Badge variant={analysis.screpJsCompatibility.parseSuccess ? "default" : "destructive"}>
-                  {analysis.screpJsCompatibility.parseSuccess ? "Parse erfolgreich" : "Parse fehlgeschlagen"}
-                </Badge>
-              </div>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {replayData.players.map((player, index) => {
+              const analysis = replayData.gameplayAnalysis[index];
+              const metrics = replayData.realMetrics[index];
               
-              {analysis.screpJsCompatibility.error && (
-                <p className="text-sm text-red-600 bg-red-50 p-2 rounded">
-                  <strong>Fehler:</strong> {analysis.screpJsCompatibility.error}
-                </p>
-              )}
+              if (!analysis || !metrics) return null;
               
-              {analysis.screpJsCompatibility.extractedData && (
-                <div className="grid grid-cols-2 gap-4 text-sm bg-green-50 p-3 rounded">
-                  <div>
-                    <span className="text-muted-foreground">Map:</span>
-                    <p className="font-mono font-semibold">{analysis.screpJsCompatibility.extractedData.mapName}</p>
+              return (
+                <div key={index} className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold">{player.name}</h3>
+                    <Badge variant="outline">{player.race}</Badge>
+                    <Badge variant="secondary">{analysis.playstyle}</Badge>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Spieler:</span>
-                    <p className="font-mono">{analysis.screpJsCompatibility.extractedData.playersFound}</p>
+                  
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <div className="font-medium">APM</div>
+                      <div className="text-lg font-bold text-blue-600">{metrics.apm}</div>
+                    </div>
+                    <div>
+                      <div className="font-medium">EAPM</div>
+                      <div className="text-lg font-bold text-green-600">{metrics.eapm}</div>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Dauer:</span>
-                    <p className="font-mono">{analysis.screpJsCompatibility.extractedData.duration}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Frames:</span>
-                    <p className="font-mono">{analysis.screpJsCompatibility.extractedData.totalFrames}</p>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="text-muted-foreground">Spieler-Namen:</span>
-                    <p className="font-mono text-sm font-semibold text-green-700">
-                      {analysis.screpJsCompatibility.extractedData.playerNames.join(' vs ')}
-                    </p>
-                  </div>
-                  {analysis.screpJsCompatibility.extractedData.apm.length > 0 && (
-                    <div className="col-span-2">
-                      <span className="text-muted-foreground">APM:</span>
-                      <p className="font-mono text-sm">
-                        {analysis.screpJsCompatibility.extractedData.apm.join(' vs ')}
-                      </p>
+                  
+                  {analysis.strengths.length > 0 && (
+                    <div>
+                      <h4 className="font-medium text-green-700 mb-1">Strengths</h4>
+                      <ul className="text-sm text-green-600 list-disc list-inside">
+                        {analysis.strengths.map((strength, i) => (
+                          <li key={i}>{strength}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {analysis.weaknesses.length > 0 && (
+                    <div>
+                      <h4 className="font-medium text-red-700 mb-1">Weaknesses</h4>
+                      <ul className="text-sm text-red-600 list-disc list-inside">
+                        {analysis.weaknesses.map((weakness, i) => (
+                          <li key={i}>{weakness}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {analysis.recommendations.length > 0 && (
+                    <div>
+                      <h4 className="font-medium text-blue-700 mb-1">Recommendations</h4>
+                      <ul className="text-sm text-blue-600 list-disc list-inside">
+                        {analysis.recommendations.map((rec, i) => (
+                          <li key={i}>{rec}</li>
+                        ))}
+                      </ul>
                     </div>
                   )}
                 </div>
-              )}
-              
-              {analysis.screpJsCompatibility.resultKeys && (
-                <p className="text-sm text-muted-foreground">
-                  <strong>Verfügbare Daten:</strong> {analysis.screpJsCompatibility.resultKeys.join(', ')}
-                </p>
-              )}
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Recommendations */}
-          <div>
-            <h4 className="font-medium mb-2 flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-yellow-500" />
-              Analyse-Ergebnis
-            </h4>
-            <ul className="space-y-1 text-sm">
-              {analysis.recommendations.map((rec, index) => (
-                <li key={index} className="flex items-start gap-2">
-                  <span className={rec.startsWith('✅') ? 'text-green-500' : rec.startsWith('❌') ? 'text-red-500' : 'text-yellow-500'}>
-                    {rec.startsWith('✅') ? '✅' : rec.startsWith('❌') ? '❌' : '•'}
-                  </span>
-                  <span className={rec.startsWith('✅') ? 'text-green-700' : rec.startsWith('❌') ? 'text-red-700' : ''}>{rec}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <Separator />
-
-          {/* Hex Dumps */}
-          <div>
-            <h4 className="font-medium mb-2">Raw Hex-Dumps (Debug)</h4>
-            <div className="space-y-3">
-              <div>
-                <h5 className="text-sm font-medium text-muted-foreground mb-1">Datei-Header:</h5>
-                <pre className="text-xs bg-muted p-2 rounded overflow-x-auto">
-                  {analysis.hexDump.first256Bytes}
-                </pre>
-              </div>
-              <div>
-                <h5 className="text-sm font-medium text-muted-foreground mb-1">Spieler-Daten:</h5>
-                <pre className="text-xs bg-muted p-2 rounded overflow-x-auto">
-                  {analysis.hexDump.playerDataSection}
-                </pre>
-              </div>
-              <div>
-                <h5 className="text-sm font-medium text-muted-foreground mb-1">Commands-Bereich:</h5>
-                <pre className="text-xs bg-muted p-2 rounded overflow-x-auto">
-                  {analysis.hexDump.commandsSection}
-                </pre>
-              </div>
-            </div>
+              );
+            })}
           </div>
         </CardContent>
       </Card>
     </div>
   );
-};
-
-export default ReplayAnalysisDisplay;
+}

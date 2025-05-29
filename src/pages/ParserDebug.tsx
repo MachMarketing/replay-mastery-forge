@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { parseReplay } from '@/services/replayParser';
+import { EnhancedDataMapper, EnhancedReplayResult } from '@/services/nativeReplayParser/enhancedDataMapper';
 import PlayerSelector from '@/components/PlayerSelector';
 
 const ParserDebug: React.FC = () => {
@@ -19,46 +18,13 @@ const ParserDebug: React.FC = () => {
   const [rawOutput, setRawOutput] = useState<string>('');
   const [progress, setProgress] = useState(0);
   const [selectedPlayerIndex, setSelectedPlayerIndex] = useState(0);
-  const [parsedData, setParsedData] = useState<any>(null);
+  const [parsedData, setParsedData] = useState<EnhancedReplayResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
-  // Check if screparsed package is available
+  // Check if enhanced parser is available
   useEffect(() => {
-    async function checkParser() {
-      try {
-        // Safe import of the module to prevent runtime errors
-        const importedModule = await import('screparsed').catch(err => {
-          console.error('Error importing screparsed:', err);
-          return null;
-        });
-        
-        if (!importedModule) {
-          setErrorMessage('Failed to load screparsed module');
-          return;
-        }
-        
-        const moduleKeys = Object.keys(importedModule);
-        console.log('Screparsed module loaded with exports:', moduleKeys);
-        
-        // Check module structure without assuming specific properties
-        const hasDefaultExport = !!importedModule.default;
-        const hasReplayParser = !!importedModule.ReplayParser;
-        const hasParsedReplay = !!importedModule.ParsedReplay;
-        
-        if (hasDefaultExport || hasReplayParser || hasParsedReplay) {
-          console.log('Screparsed module appears to have parsing capabilities');
-          setResult('Screparsed module successfully loaded');
-        } else {
-          console.warn('No obvious parsing functionality found in screparsed module');
-          setErrorMessage('No obvious parsing functionality found in screparsed module');
-        }
-      } catch (error) {
-        console.error('Failed to load screparsed module:', error);
-        setErrorMessage(`Failed to load screparsed: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-    
-    checkParser();
+    console.log('Enhanced Data Mapper loaded and ready');
+    setResult('Enhanced Data Mapper successfully loaded');
   }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -88,32 +54,49 @@ const ParserDebug: React.FC = () => {
     }, 100);
     
     try {
-      console.log('Parsing file:', file.name);
-      const result = await parseReplay(file);
+      console.log('Parsing file with Enhanced Data Mapper:', file.name);
+      const result = await EnhancedDataMapper.parseReplay(file);
       
       clearInterval(interval);
       setProgress(100);
       setStatus('success');
       
-      console.log('Parse result:', result);
+      console.log('Enhanced parse result:', result);
       setRawOutput(JSON.stringify(result, null, 2));
       setParsedData(result);
       
-      setResult(`Successfully parsed ${file.name}: ${result.primaryPlayer.name} (${result.primaryPlayer.race}) vs ${result.secondaryPlayer.name} (${result.secondaryPlayer.race})`);
+      const player1 = result.players[0]?.name || 'Unknown';
+      const player2 = result.players[1]?.name || 'Unknown';
+      setResult(`Enhanced parsing successful: ${player1} vs ${player2} | Quality: ${result.dataQuality.reliability}`);
     } catch (error) {
       clearInterval(interval);
       setProgress(0);
       setStatus('error');
       
       const message = error instanceof Error ? error.message : String(error);
-      console.error('Error parsing file:', message);
+      console.error('Enhanced parsing error:', message);
       setErrorMessage(message);
-      setResult(`Failed to parse ${file.name}: ${message}`);
+      setResult(`Enhanced parsing failed for ${file.name}: ${message}`);
     }
   };
 
   const handlePlayerSelect = (index: number) => {
     setSelectedPlayerIndex(index);
+  };
+
+  const renderProgressStatus = () => {
+    if (status === 'parsing') {
+      return (
+        <div className="space-y-2">
+          <div className="flex justify-between">
+            <span>Parsing...</span>
+            <span>{progress}%</span>
+          </div>
+          <Progress value={progress} />
+        </div>
+      );
+    }
+    return null;
   };
   
   return (
@@ -155,15 +138,7 @@ const ParserDebug: React.FC = () => {
                 </Button>
               )}
               
-              {status === 'parsing' && (
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span>Parsing...</span>
-                    <span>{progress}%</span>
-                  </div>
-                  <Progress value={progress} />
-                </div>
-              )}
+              {renderProgressStatus()}
               
               {status === 'success' && (
                 <Alert className="bg-green-50 border-green-200 dark:bg-green-950/20 dark:border-green-800">
@@ -184,14 +159,14 @@ const ParserDebug: React.FC = () => {
                   <h3 className="font-medium mb-2">Player Selection</h3>
                   <PlayerSelector 
                     player1={{
-                      name: parsedData.primaryPlayer.name,
-                      race: parsedData.primaryPlayer.race,
-                      apm: parsedData.primaryPlayer.apm
+                      name: parsedData.players[0]?.name || 'Unknown',
+                      race: parsedData.players[0]?.race || 'Unknown',
+                      apm: parsedData.realMetrics[0]?.apm || 0
                     }}
                     player2={{
-                      name: parsedData.secondaryPlayer.name,
-                      race: parsedData.secondaryPlayer.race,
-                      apm: parsedData.secondaryPlayer.apm
+                      name: parsedData.players[1]?.name || 'Unknown',
+                      race: parsedData.players[1]?.race || 'Unknown',
+                      apm: parsedData.realMetrics[1]?.apm || 0
                     }}
                     selectedPlayerIndex={selectedPlayerIndex}
                     onPlayerSelect={handlePlayerSelect}
@@ -211,23 +186,23 @@ const ParserDebug: React.FC = () => {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <h3 className="font-medium mb-1">Player {selectedPlayerIndex + 1}</h3>
-                      <p>Name: {selectedPlayerIndex === 0 ? parsedData.primaryPlayer.name : parsedData.secondaryPlayer.name}</p>
-                      <p>Race: {selectedPlayerIndex === 0 ? parsedData.primaryPlayer.race : parsedData.secondaryPlayer.race}</p>
-                      <p>APM: {selectedPlayerIndex === 0 ? parsedData.primaryPlayer.apm : parsedData.secondaryPlayer.apm}</p>
+                      <p>Name: {selectedPlayerIndex === 0 ? parsedData.players[0]?.name : parsedData.players[1]?.name}</p>
+                      <p>Race: {selectedPlayerIndex === 0 ? parsedData.players[0]?.race : parsedData.players[1]?.race}</p>
+                      <p>APM: {parsedData.realMetrics[selectedPlayerIndex]?.apm || 0}</p>
                     </div>
                     
                     <div>
                       <h3 className="font-medium mb-1">Game Info</h3>
-                      <p>Map: {parsedData.map}</p>
-                      <p>Matchup: {parsedData.matchup}</p>
-                      <p>Duration: {parsedData.duration}</p>
+                      <p>Map: {parsedData.header.mapName}</p>
+                      <p>Duration: {parsedData.header.duration}</p>
+                      <p>Frames: {parsedData.header.frames}</p>
                     </div>
                   </div>
                   
                   <div>
                     <h3 className="font-medium mb-1">Build Order</h3>
                     <div className="max-h-64 overflow-y-auto border rounded-md p-2 text-sm">
-                      {(selectedPlayerIndex === 0 ? parsedData.primaryPlayer.buildOrder : parsedData.secondaryPlayer.buildOrder)?.map((item: any, index: number) => (
+                      {(parsedData.enhancedBuildOrders[selectedPlayerIndex] || [])?.map((item: any, index: number) => (
                         <div key={index} className="flex justify-between py-1 border-b border-gray-100 dark:border-gray-800 last:border-0">
                           <span>{item.time}</span>
                           <span>Supply: {item.supply}</span>

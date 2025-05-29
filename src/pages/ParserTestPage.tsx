@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { useDropzone } from 'react-dropzone';
@@ -8,14 +9,13 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { AnalysisResult } from '@/components/AnalysisResult';
-import { parseReplay } from '@/services/replayParser';
-import { ParsedReplayData } from '@/services/replayParser/types';
+import { EnhancedDataMapper, EnhancedReplayResult } from '@/services/nativeReplayParser/enhancedDataMapper';
 
 const ParserTestPage: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [parsingStatus, setParsingStatus] = useState<'idle' | 'uploading' | 'parsing' | 'complete' | 'error'>('idle');
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [parsedReplayData, setParsedReplayData] = useState<ParsedReplayData | null>(null);
+  const [parsedReplayData, setParsedReplayData] = useState<EnhancedReplayResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -48,14 +48,18 @@ const ParserTestPage: React.FC = () => {
       
       setParsingStatus('parsing');
       
-      const result = await parseReplay(selectedFile);
+      const result = await EnhancedDataMapper.parseReplay(selectedFile);
       
       setParsedReplayData(result);
       setParsingStatus('complete');
       
+      // Get player names from enhanced data
+      const mainPlayer = result.players[0]?.name || 'Unknown';
+      const opponent = result.players[1]?.name || 'Unknown';
+      
       toast({
-        title: "Replay erfolgreich analysiert",
-        description: `${result.primaryPlayer.name} vs ${result.secondaryPlayer.name}`,
+        title: "Enhanced Replay erfolgreich analysiert",
+        description: `${mainPlayer} vs ${opponent} | Quality: ${result.dataQuality.reliability}`,
       });
       
     } catch (e) {
@@ -63,9 +67,8 @@ const ParserTestPage: React.FC = () => {
       setParsingStatus('error');
       const errorMessage = e instanceof Error ? e.message : 'Unbekannter Fehler';
       setError(errorMessage);
-      
       toast({
-        title: "Fehler beim Parsen",
+        title: "Enhanced Parsing Fehler",
         description: errorMessage,
         variant: "destructive"
       });
