@@ -1,3 +1,4 @@
+
 /**
  * Enhanced wrapper that combines screp-js with native parsing capabilities
  */
@@ -6,8 +7,7 @@ import { ScrepJsWrapper } from './screpJsWrapper';
 import { DirectReplayParser } from './directReplayParser';
 import { mapDirectReplayDataToUI } from './dataMapper';
 import { DirectParserResult } from './types';
-import { EnhancedBuildOrder } from './buildOrderMapper'; // Add this import
-import { RemasteredActionData } from './screpJsWrapper';
+import { EnhancedBuildOrder } from './buildOrderMapper';
 
 export interface EnhancedReplayData {
   header: {
@@ -27,11 +27,10 @@ export interface EnhancedReplayData {
   };
   enhanced: {
     hasDetailedActions: boolean;
-    actionData?: RemasteredActionData;
     directParserData?: DirectParserResult;
     extractionMethod: 'screp-js' | 'native-parser' | 'direct-parser' | 'combined';
     extractionTime: number;
-    enhancedBuildOrders?: EnhancedBuildOrder[]; // Add this property
+    enhancedBuildOrders?: EnhancedBuildOrder[];
     debugInfo: {
       screpJsSuccess: boolean;
       nativeParserSuccess: boolean;
@@ -61,10 +60,30 @@ export interface EnhancedReplayData {
     validationData?: {
       playersWithActions: Record<number, {
         detectedCommands: number;
-        firstCommands: string[];
+        buildOrderItems: number;
         firstUnits: string[];
-        realisticAPM: number;
+        apm: number;
+        eapm: number;
+        quality: string;
+        buildActionsCount: number;
+        race: string;
+        efficiencyGrade: string;
+        benchmarksPassed: number;
       }>;
+      gameMetrics: {
+        duration: string;
+        totalCommands: number;
+        averageAPM: number;
+        commandQuality: string;
+        expectedCommandRange: { min: number; max: number };
+        buildOrdersFound: number;
+      };
+      enhancedFeatures: {
+        commandIdMapping: boolean;
+        raceDetection: string[];
+        buildOrderBenchmarks: number[];
+        efficiencyGrades: string[];
+      };
     };
   };
 }
@@ -79,11 +98,11 @@ export class EnhancedScrepWrapper {
   }
   
   private static performQualityCheck(screpJsResult: any, nativeParserResult: any, directParserResult: DirectParserResult | null): any {
-    const screpJsAPM = screpJsResult?.players?.map((p: any) => p.apm) || [0, 0];
-    const nativeParserAPM = nativeParserResult?.players?.map((p: any) => p.apm) || [0, 0];
+    const screpJsAPM = screpJsResult?.computed?.apm || [0, 0];
+    const nativeParserAPM = nativeParserResult?.computed?.apm || [0, 0];
     const directParserAPM = directParserResult?.apm || [0, 0];
     
-    let chosenAPM = [...screpJsAPM]; // Default to screp-js
+    let chosenAPM = [...screpJsAPM];
     let activeParser = 'screp-js';
     let reason = 'Defaulting to screp-js data';
     
@@ -91,7 +110,7 @@ export class EnhancedScrepWrapper {
       chosenAPM = [...directParserAPM];
       activeParser = 'direct-parser';
       reason = 'Direct parser has valid command data';
-    } else if (screpJsAPM.every(apm => apm === 0) && nativeParserAPM.some(apm => apm > 0)) {
+    } else if (screpJsAPM.every((apm: number) => apm === 0) && nativeParserAPM.some((apm: number) => apm > 0)) {
       chosenAPM = [...nativeParserAPM];
       activeParser = 'native-parser';
       reason = 'Screp-js APM is zero, using native parser data';
@@ -123,7 +142,7 @@ export class EnhancedScrepWrapper {
     const expectedCommandsPerMinute = 40 * playerCount;
     const expectedTotalCommands = expectedCommandsPerMinute * gameDurationMinutes;
     
-    const rangePercentage = 0.2; // 20% range
+    const rangePercentage = 0.2;
     const range = expectedTotalCommands * rangePercentage;
     
     const minCommands = expectedTotalCommands - range;
@@ -161,7 +180,7 @@ export class EnhancedScrepWrapper {
     
     // Try screp-js first
     try {
-      screpJsResult = await ScrepJsWrapper.parseReplay(file);
+      screpJsResult = await ScrepJsWrapper.parseReplayFile(file);
       screpJsSuccess = true;
       console.log('[EnhancedScrepWrapper] Screp-js parsing successful');
     } catch (error) {
@@ -171,7 +190,7 @@ export class EnhancedScrepWrapper {
     
     // Try direct parser
     try {
-      directParserResult = await DirectReplayParser.parseReplay(file);
+      directParserResult = await DirectReplayParser.parseReplayFile(file);
       directParserSuccess = directParserResult.success;
       console.log('[EnhancedScrepWrapper] Direct parser result:', {
         success: directParserSuccess,
@@ -217,7 +236,7 @@ export class EnhancedScrepWrapper {
         hasDetailedActions: directParserSuccess && (directParserResult?.commands?.length || 0) > 0,
         extractionMethod: qualityCheck.activeParser as any,
         extractionTime,
-        enhancedBuildOrders, // Include enhanced build orders here
+        enhancedBuildOrders,
         debugInfo: {
           screpJsSuccess,
           nativeParserSuccess,
