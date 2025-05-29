@@ -8,11 +8,11 @@ import { useEnhancedReplayParser } from '@/hooks/useEnhancedReplayParser';
 import { useToast } from '@/hooks/use-toast';
 import { EnhancedReplayResult } from '@/services/nativeReplayParser/enhancedDataMapper';
 
-interface UploadBoxProps {
+interface EnhancedUploadBoxProps {
   onUploadComplete: (file: File, replayData: EnhancedReplayResult) => void;
 }
 
-const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
+const EnhancedUploadBox: React.FC<EnhancedUploadBoxProps> = ({ onUploadComplete }) => {
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'parsing' | 'complete' | 'error'>('idle');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   
@@ -27,20 +27,21 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
     setUploadStatus('parsing');
 
     try {
+      // Parse mit dem EINZIGEN Parser
       const replayData = await parseReplay(file);
       
       setUploadStatus('complete');
       
       toast({
-        title: "Replay erfolgreich analysiert",
-        description: `${replayData.players[0]?.name || 'Unknown'} vs ${replayData.players[1]?.name || 'Unknown'} | Datenqualität: ${replayData.dataQuality.reliability}`,
+        title: "Replay erfolgreich analysiert!",
+        description: `${replayData.players[0]?.name || 'Unknown'} vs ${replayData.players[1]?.name || 'Unknown'} | Qualität: ${replayData.dataQuality.reliability}`,
       });
 
       onUploadComplete(file, replayData);
       
     } catch (err) {
       setUploadStatus('error');
-      console.error('Upload/parsing error:', err);
+      console.error('Enhanced parsing error:', err);
       
       toast({
         title: "Fehler beim Analysieren",
@@ -75,13 +76,13 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
   const getStatusText = () => {
     switch (uploadStatus) {
       case 'parsing':
-        return 'Enhanced Replay-Analyse läuft...';
+        return 'Replay wird mit Enhanced Parser analysiert...';
       case 'complete':
-        return 'Analyse abgeschlossen!';
+        return 'Enhanced Analyse abgeschlossen!';
       case 'error':
-        return error || 'Fehler beim Verarbeiten der Datei';
+        return error || 'Fehler beim Enhanced Parsing';
       default:
-        return isDragActive ? 'Datei hier ablegen...' : 'StarCraft: Remastered Replay hochladen';
+        return isDragActive ? 'SC:R Replay hier ablegen...' : 'StarCraft: Remastered Replay hochladen';
     }
   };
 
@@ -109,7 +110,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
             
             {uploadStatus === 'idle' && (
               <p className="text-sm text-muted-foreground">
-                Unterstützte Formate: .rep (StarCraft: Remastered mit Enhanced Parser)
+                Enhanced Parser für SC:R Replays mit Hex-Analyse
               </p>
             )}
             
@@ -124,14 +125,14 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
             <div className="w-full max-w-xs">
               <Progress value={progress} className="h-2" />
               <p className="text-xs text-muted-foreground mt-1">
-                Enhanced Parser: {Math.round(progress)}%
+                Enhanced Parsing: {Math.round(progress)}%
               </p>
             </div>
           )}
           
           {uploadStatus === 'idle' && (
             <Button variant="outline" className="mt-4">
-              Datei auswählen
+              SC:R Replay auswählen
             </Button>
           )}
           
@@ -149,16 +150,8 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
           )}
         </div>
       </div>
-      
-      {uploadStatus === 'idle' && (
-        <div className="mt-6 text-center">
-          <p className="text-sm text-muted-foreground">
-            Enhanced Parser kombiniert screp-js mit Hex-Analyse für echte StarCraft: Remastered Command-Daten
-          </p>
-        </div>
-      )}
     </div>
   );
 };
 
-export default UploadBox;
+export default EnhancedUploadBox;
