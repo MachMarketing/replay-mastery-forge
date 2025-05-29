@@ -1,4 +1,3 @@
-
 /**
  * Dekompressor für StarCraft: Remastered Replays
  * Versucht verschiedene Dekompressionsverfahren
@@ -26,16 +25,17 @@ export class SCRemasteredDecompressor {
       try {
         const compressedData = this.data.slice(offset);
         const decompressed = pako.inflate(compressedData);
+        const decompressedBytes = new Uint8Array(decompressed);
         
         // Erste 100 Bytes als Preview
-        const preview = Array.from(decompressed.slice(0, 100))
+        const preview = Array.from(decompressedBytes.slice(0, 100))
           .map(b => (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.')
           .join('');
         
         results.push({
           offset,
           success: true,
-          size: decompressed.length,
+          size: decompressedBytes.length,
           preview
         });
         
@@ -65,15 +65,16 @@ export class SCRemasteredDecompressor {
       try {
         const compressedData = this.data.slice(offset);
         const decompressed = pako.ungzip(compressedData);
+        const decompressedBytes = new Uint8Array(decompressed);
         
-        const preview = Array.from(decompressed.slice(0, 100))
+        const preview = Array.from(decompressedBytes.slice(0, 100))
           .map(b => (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.')
           .join('');
         
         results.push({
           offset,
           success: true,
-          size: decompressed.length,
+          size: decompressedBytes.length,
           preview
         });
         
