@@ -39,7 +39,7 @@ export class SCRemasteredDecompressor {
           preview
         });
         
-      } catch (error) {
+      } catch (error: any) {
         results.push({
           offset,
           success: false,
@@ -77,7 +77,7 @@ export class SCRemasteredDecompressor {
           preview
         });
         
-      } catch (error) {
+      } catch (error: any) {
         results.push({
           offset,
           success: false,
@@ -125,7 +125,7 @@ export class SCRemasteredDecompressor {
         const byte = this.data[i + j];
         if (byte === 0) break;
         if (byte >= 32 && byte <= 126) {
-          playerName += String.fromCharChar(byte);
+          playerName += String.fromCharCode(byte);
         } else {
           break;
         }
