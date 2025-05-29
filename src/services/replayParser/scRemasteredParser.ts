@@ -1,7 +1,7 @@
 
 /**
- * StarCraft: Remastered .rep Parser - Clean Implementation
- * Based on actual Remastered replay format (2017+)
+ * StarCraft: Remastered .rep Parser - Proper Implementation
+ * Based on actual SC:R replay format specifications
  */
 
 export interface RemasteredReplayData {
