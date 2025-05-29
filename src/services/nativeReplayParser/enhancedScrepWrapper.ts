@@ -1,11 +1,13 @@
 
 /**
- * Enhanced wrapper that combines screp-js with native parsing capabilities
+ * StarCraft: Remastered Enhanced Wrapper - OPTIMIZED FOR REMASTERED ONLY
+ * This parser is specifically designed for StarCraft: Remastered replays
  */
 
 import { ScrepJsWrapper } from './screpJsWrapper';
+import { BWRemasteredParser } from './bwRemastered/parser';
+import { RemasteredActionParser } from './remasteredActionParser';
 import { DirectReplayParser } from './directReplayParser';
-import { mapDirectReplayDataToUI } from './dataMapper';
 import { DirectParserResult } from './types';
 import { EnhancedBuildOrder, BuildOrderMapper } from './buildOrderMapper';
 import { EnhancedPlayerInfo } from './types';
@@ -30,16 +32,18 @@ export interface EnhancedReplayData {
   enhanced: {
     hasDetailedActions: boolean;
     directParserData?: DirectParserResult;
-    extractionMethod: 'screp-js' | 'native-parser' | 'direct-parser' | 'combined';
+    extractionMethod: 'remastered-parser' | 'remastered-action-parser' | 'direct-parser' | 'screp-js-fallback';
     extractionTime: number;
     enhancedBuildOrders?: EnhancedBuildOrder[];
     debugInfo: {
-      screpJsSuccess: boolean;
-      nativeParserSuccess: boolean;
+      remasteredParserSuccess: boolean;
+      remasteredActionParserSuccess: boolean;
       directParserSuccess: boolean;
-      screpJsError?: string;
-      nativeParserError?: string;
+      screpJsSuccess: boolean;
+      remasteredParserError?: string;
+      remasteredActionParserError?: string;
       directParserError?: string;
+      screpJsError?: string;
       actionsExtracted: number;
       buildOrdersGenerated: number;
       qualityCheck: {
@@ -51,40 +55,12 @@ export interface EnhancedReplayData {
           quality: 'realistic' | 'suspicious' | 'insufficient';
         };
         apmValidation: {
-          screpJsAPM: number[];
-          nativeParserAPM: number[];
+          remasteredAPM: number[];
           directParserAPM: number[];
+          screpJsAPM: number[];
           chosenAPM: number[];
           reason: string;
         };
-      };
-    };
-    validationData?: {
-      playersWithActions: Record<number, {
-        detectedCommands: number;
-        buildOrderItems: number;
-        firstUnits: string[];
-        apm: number;
-        eapm: number;
-        quality: string;
-        buildActionsCount: number;
-        race: string;
-        efficiencyGrade: string;
-        benchmarksPassed: number;
-      }>;
-      gameMetrics: {
-        duration: string;
-        totalCommands: number;
-        averageAPM: number;
-        commandQuality: string;
-        expectedCommandRange: { min: number; max: number };
-        buildOrdersFound: number;
-      };
-      enhancedFeatures: {
-        commandIdMapping: boolean;
-        raceDetection: string[];
-        buildOrderBenchmarks: number[];
-        efficiencyGrades: string[];
       };
     };
   };
@@ -93,223 +69,383 @@ export interface EnhancedReplayData {
 export class EnhancedScrepWrapper {
   
   private static formatDuration(frames: number): string {
+    // Remastered runs at ~23.81 FPS
     const totalSeconds = Math.floor(frames / 23.81);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
-  
-  private static performQualityCheck(screpJsResult: any, nativeParserResult: any, directParserResult: DirectParserResult | null): any {
-    const screpJsAPM = screpJsResult?.computed?.apm || [0, 0];
-    const nativeParserAPM = nativeParserResult?.computed?.apm || [0, 0];
-    const directParserAPM = directParserResult?.apm || [0, 0];
-    
-    let chosenAPM = [...screpJsAPM];
-    let activeParser = 'screp-js';
-    let reason = 'Defaulting to screp-js data';
-    
-    // PRIORITIZE DIRECT PARSER if it has real data
-    if (directParserResult?.success && directParserResult?.commands?.length > 100) {
-      chosenAPM = [...directParserAPM];
-      activeParser = 'direct-parser';
-      reason = 'Direct parser has valid command data with real actions';
-      console.log('[EnhancedScrepWrapper] Using DIRECT PARSER with', directParserResult.commands.length, 'real actions');
-    } else if (screpJsAPM.every((apm: number) => apm === 0) && nativeParserAPM.some((apm: number) => apm > 0)) {
-      chosenAPM = [...nativeParserAPM];
-      activeParser = 'native-parser';
-      reason = 'Screp-js APM is zero, using native parser data';
-    }
-    
-    const totalCommands = directParserResult?.commands?.length || 0;
-    const gameDurationMinutes = (directParserResult?.totalFrames || 0) / 23.81 / 60;
-    
-    const commandValidation = this.validateCommandCount(totalCommands, gameDurationMinutes, chosenAPM.length);
-    
-    return {
-      activeParser,
-      dataQuality: commandValidation.quality === 'realistic' && totalCommands > 100 ? 'high' : 'medium',
-      commandValidation,
-      apmValidation: {
-        screpJsAPM,
-        nativeParserAPM,
-        directParserAPM,
-        chosenAPM,
-        reason
-      }
-    };
-  }
-  
-  static validateCommandCount(totalCommands: number, gameDurationMinutes: number, playerCount: number): {
-    expectedRange: { min: number; max: number };
-    quality: 'realistic' | 'suspicious' | 'insufficient';
-  } {
-    const expectedCommandsPerMinute = 40 * playerCount;
-    const expectedTotalCommands = expectedCommandsPerMinute * gameDurationMinutes;
-    
-    const rangePercentage = 0.2;
-    const range = expectedTotalCommands * rangePercentage;
-    
-    const minCommands = expectedTotalCommands - range;
-    const maxCommands = expectedTotalCommands + range;
-    
-    let quality: 'realistic' | 'suspicious' | 'insufficient' = 'realistic';
-    
-    if (totalCommands < minCommands * 0.7 || totalCommands > maxCommands * 1.3) {
-      quality = 'insufficient';
-    } else if (totalCommands < minCommands || totalCommands > maxCommands) {
-      quality = 'suspicious';
-    }
-    
-    return {
-      expectedRange: { min: Math.round(minCommands), max: Math.round(maxCommands) },
-      quality
-    };
-  }
 
+  /**
+   * REMASTERED-SPECIFIC parsing with prioritized real data extraction
+   */
   static async parseReplayEnhanced(file: File): Promise<EnhancedReplayData> {
     const startTime = Date.now();
-    console.log('[EnhancedScrepWrapper] Starting enhanced replay parsing - PRIORITIZING REAL DATA...');
+    console.log('[EnhancedScrepWrapper] ===== STARCRAFT REMASTERED PARSER =====');
+    console.log('[EnhancedScrepWrapper] Starting Remastered-optimized parsing...');
     
-    let screpJsResult: any = null;
-    let nativeParserResult: any = null;
+    let remasteredParserResult: any = null;
+    let remasteredActionResult: any = null;
     let directParserResult: DirectParserResult | null = null;
+    let screpJsResult: any = null;
     
-    let screpJsSuccess = false;
-    let nativeParserSuccess = false;
+    let remasteredParserSuccess = false;
+    let remasteredActionParserSuccess = false;
     let directParserSuccess = false;
+    let screpJsSuccess = false;
     
-    let screpJsError: string | undefined;
-    let nativeParserError: string | undefined;
+    let remasteredParserError: string | undefined;
+    let remasteredActionParserError: string | undefined;
     let directParserError: string | undefined;
+    let screpJsError: string | undefined;
     
-    // STEP 1: Try direct parser FIRST - this gives us REAL data
+    let actionsExtracted = 0;
+    let buildOrdersGenerated = 0;
+    let enhancedBuildOrders: EnhancedBuildOrder[] | undefined;
+
+    // PRIORITY 1: REMASTERED ACTION PARSER (for real actions)
     try {
-      console.log('[EnhancedScrepWrapper] === TRYING DIRECT PARSER FOR REAL DATA ===');
+      console.log('[EnhancedScrepWrapper] === TRYING REMASTERED ACTION PARSER ===');
+      remasteredActionResult = await RemasteredActionParser.parseActions(file);
+      remasteredActionParserSuccess = true;
+      actionsExtracted = remasteredActionResult.actions?.length || 0;
+      
+      console.log('[EnhancedScrepWrapper] RemasteredActionParser result:', {
+        success: remasteredActionParserSuccess,
+        actionsFound: actionsExtracted,
+        buildOrders: remasteredActionResult.buildOrders?.length || 0,
+        frameCount: remasteredActionResult.frameCount
+      });
+      
+      if (actionsExtracted > 100) {
+        console.log('[EnhancedScrepWrapper] ✅ REMASTERED ACTION PARSER SUCCESS - REAL DATA!');
+      }
+    } catch (error) {
+      remasteredActionParserError = error instanceof Error ? error.message : 'Remastered Action Parser failed';
+      console.warn('[EnhancedScrepWrapper] RemasteredActionParser failed:', remasteredActionParserError);
+    }
+
+    // PRIORITY 2: ENHANCED BW REMASTERED PARSER
+    try {
+      console.log('[EnhancedScrepWrapper] === TRYING BW REMASTERED PARSER ===');
+      const arrayBuffer = await file.arrayBuffer();
+      const remasteredParser = new BWRemasteredParser(arrayBuffer);
+      remasteredParserResult = await remasteredParser.parseReplay();
+      remasteredParserSuccess = true;
+      
+      console.log('[EnhancedScrepWrapper] BWRemasteredParser result:', {
+        success: remasteredParserSuccess,
+        commands: remasteredParserResult.commands?.length || 0,
+        players: remasteredParserResult.players?.length || 0,
+        mapName: remasteredParserResult.mapName
+      });
+      
+      if (remasteredParserResult.commands && remasteredParserResult.commands.length > actionsExtracted) {
+        actionsExtracted = remasteredParserResult.commands.length;
+        console.log('[EnhancedScrepWrapper] ✅ BW REMASTERED PARSER HAS MORE ACTIONS!');
+      }
+    } catch (error) {
+      remasteredParserError = error instanceof Error ? error.message : 'BW Remastered Parser failed';
+      console.warn('[EnhancedScrepWrapper] BWRemasteredParser failed:', remasteredParserError);
+    }
+
+    // PRIORITY 3: DIRECT PARSER (as backup)
+    try {
+      console.log('[EnhancedScrepWrapper] === TRYING DIRECT PARSER ===');
       const arrayBuffer = await file.arrayBuffer();
       const directParser = new DirectReplayParser(arrayBuffer);
       directParserResult = directParser.parseReplay();
       directParserSuccess = directParserResult.success;
       
-      console.log('[EnhancedScrepWrapper] Direct parser result:', {
+      console.log('[EnhancedScrepWrapper] DirectParser result:', {
         success: directParserSuccess,
-        realCommands: directParserResult.commands?.length || 0,
-        players: Object.keys(directParserResult.playerActions || {}).length,
-        realAPM: directParserResult.apm
+        commands: directParserResult.commands?.length || 0,
+        playerActions: Object.keys(directParserResult.playerActions || {}).length
       });
       
-      if (directParserSuccess && directParserResult.commands && directParserResult.commands.length > 100) {
-        console.log('[EnhancedScrepWrapper] ✅ DIRECT PARSER SUCCESS - GOT REAL DATA!');
-        console.log('[EnhancedScrepWrapper] Real actions extracted:', directParserResult.commands.length);
+      if (directParserSuccess && directParserResult.commands && directParserResult.commands.length > actionsExtracted) {
+        actionsExtracted = directParserResult.commands.length;
+        console.log('[EnhancedScrepWrapper] ✅ DIRECT PARSER HAS MORE ACTIONS!');
       }
     } catch (error) {
-      directParserError = error instanceof Error ? error.message : 'Unknown direct parser error';
-      console.warn('[EnhancedScrepWrapper] Direct parser failed:', directParserError);
+      directParserError = error instanceof Error ? error.message : 'Direct Parser failed';
+      console.warn('[EnhancedScrepWrapper] DirectParser failed:', directParserError);
     }
-    
-    // STEP 2: Try screp-js for header data
+
+    // FALLBACK: SCREP-JS (header data only)
     try {
       console.log('[EnhancedScrepWrapper] === TRYING SCREP-JS FOR HEADER DATA ===');
       const screpJsWrapper = ScrepJsWrapper.getInstance();
       screpJsResult = await screpJsWrapper.parseReplay(file);
       screpJsSuccess = true;
-      console.log('[EnhancedScrepWrapper] Screp-js parsing successful');
+      console.log('[EnhancedScrepWrapper] Screp-js successful for header data');
     } catch (error) {
-      screpJsError = error instanceof Error ? error.message : 'Unknown screp-js error';
-      console.warn('[EnhancedScrepWrapper] Screp-js parsing failed:', screpJsError);
-    }
-    
-    // STEP 3: Quality check and choose best data source
-    const qualityCheck = this.performQualityCheck(screpJsResult, nativeParserResult, directParserResult);
-    
-    // STEP 4: Build the enhanced result using REAL DATA when available
-    const extractionTime = Date.now() - startTime;
-    
-    let enhancedBuildOrders: EnhancedBuildOrder[] | undefined;
-    let mappedData: any = null;
-    let actionsExtracted = 0;
-    let buildOrdersGenerated = 0;
-    
-    // PRIORITIZE REAL DATA from direct parser
-    if (directParserResult && directParserSuccess && directParserResult.commands && directParserResult.commands.length > 0) {
-      console.log('[EnhancedScrepWrapper] === USING REAL DATA FROM DIRECT PARSER ===');
-      mappedData = mapDirectReplayDataToUI(directParserResult);
-      enhancedBuildOrders = mappedData.enhanced.enhancedBuildOrders;
-      actionsExtracted = directParserResult.commands.length;
-      buildOrdersGenerated = mappedData.enhanced.buildOrdersGenerated || 0;
-      
-      console.log('[EnhancedScrepWrapper] REAL DATA EXTRACTED:', {
-        realActions: actionsExtracted,
-        realBuildOrders: buildOrdersGenerated,
-        hasEnhancedBuildOrders: !!enhancedBuildOrders,
-        buildOrderCount: enhancedBuildOrders?.length || 0
-      });
+      screpJsError = error instanceof Error ? error.message : 'Screp-js failed';
+      console.warn('[EnhancedScrepWrapper] Screp-js failed:', screpJsError);
     }
 
-    // Create default players if screp-js failed
+    // DETERMINE BEST DATA SOURCE AND BUILD ORDERS
+    let extractionMethod: 'remastered-parser' | 'remastered-action-parser' | 'direct-parser' | 'screp-js-fallback' = 'screp-js-fallback';
+    let chosenAPM: number[] = [0, 0];
+    let primaryResult: any = null;
+
+    if (remasteredActionParserSuccess && actionsExtracted > 0) {
+      extractionMethod = 'remastered-action-parser';
+      primaryResult = remasteredActionResult;
+      chosenAPM = this.calculateAPMFromActions(remasteredActionResult.actions, 2);
+      
+      // Generate enhanced build orders from Remastered actions
+      enhancedBuildOrders = this.generateEnhancedBuildOrdersFromRemastered(remasteredActionResult);
+      buildOrdersGenerated = enhancedBuildOrders.reduce((sum, bo) => sum + bo.entries.length, 0);
+      
+      console.log('[EnhancedScrepWrapper] USING REMASTERED ACTION PARSER DATA');
+    } else if (remasteredParserSuccess && remasteredParserResult.commands && remasteredParserResult.commands.length > 0) {
+      extractionMethod = 'remastered-parser';
+      primaryResult = remasteredParserResult;
+      chosenAPM = this.calculateAPMFromCommands(remasteredParserResult.commands, 2);
+      
+      // Generate enhanced build orders from BW commands
+      enhancedBuildOrders = this.generateEnhancedBuildOrdersFromBWCommands(remasteredParserResult.commands);
+      buildOrdersGenerated = enhancedBuildOrders.reduce((sum, bo) => sum + bo.entries.length, 0);
+      
+      console.log('[EnhancedScrepWrapper] USING BW REMASTERED PARSER DATA');
+    } else if (directParserSuccess && directParserResult && directParserResult.commands && directParserResult.commands.length > 0) {
+      extractionMethod = 'direct-parser';
+      primaryResult = directParserResult;
+      chosenAPM = directParserResult.apm || [0, 0];
+      
+      console.log('[EnhancedScrepWrapper] USING DIRECT PARSER DATA');
+    }
+
+    console.log('[EnhancedScrepWrapper] FINAL EXTRACTION STATS:', {
+      method: extractionMethod,
+      realActionsExtracted: actionsExtracted,
+      enhancedBuildOrdersGenerated: buildOrdersGenerated,
+      chosenAPM
+    });
+
+    // CREATE DEFAULT PLAYERS IF NEEDED
     const defaultPlayers: EnhancedPlayerInfo[] = [
       { id: 0, name: 'Player 1', race: 'Unknown', team: 0, color: 0 },
       { id: 1, name: 'Player 2', race: 'Unknown', team: 1, color: 1 }
     ];
-    
-    // Get players from screp-js if available
-    const players = screpJsResult?.players?.map((p: any, index: number) => ({
-      id: index,
-      name: p.name || `Player ${index + 1}`,
-      race: p.race || 'Unknown',
-      team: p.team || index,
-      color: p.color || index
-    })) || defaultPlayers;
 
-    // NO FALLBACK MOCK DATA - only use what we actually have
+    // GET PLAYERS FROM BEST SOURCE
+    let players = defaultPlayers;
+    if (screpJsResult?.players) {
+      players = screpJsResult.players.map((p: any, index: number) => ({
+        id: index,
+        name: p.name || `Player ${index + 1}`,
+        race: p.race || 'Unknown',
+        team: p.team || index,
+        color: p.color || index
+      }));
+    } else if (remasteredParserResult?.players) {
+      players = remasteredParserResult.players.map((p: any, index: number) => ({
+        id: index,
+        name: p.name || `Player ${index + 1}`,
+        race: p.race || 'Unknown',
+        team: p.team || index,
+        color: p.color || index
+      }));
+    }
+
+    const extractionTime = Date.now() - startTime;
+
+    // QUALITY CHECK
+    const qualityCheck = this.performRemasteredQualityCheck(
+      actionsExtracted,
+      chosenAPM,
+      extractionMethod
+    );
+
     const result: EnhancedReplayData = {
       header: {
-        mapName: screpJsResult?.header?.mapName || 'Unknown Map',
-        duration: this.formatDuration(screpJsResult?.header?.frames || directParserResult?.totalFrames || 0),
+        mapName: screpJsResult?.header?.mapName || remasteredParserResult?.mapName || 'Unknown Map',
+        duration: this.formatDuration(screpJsResult?.header?.frames || remasteredParserResult?.totalFrames || remasteredActionResult?.frameCount || 0),
         playerCount: screpJsResult?.header?.playerCount || 2,
-        frames: screpJsResult?.header?.frames || directParserResult?.totalFrames || 0,
-        engine: screpJsResult?.header?.engine,
-        version: screpJsResult?.header?.version,
+        frames: screpJsResult?.header?.frames || remasteredParserResult?.totalFrames || remasteredActionResult?.frameCount || 0,
+        engine: 'Remastered',
+        version: screpJsResult?.header?.version || 'Remastered',
         startTime: screpJsResult?.header?.startTime,
         gameType: screpJsResult?.header?.gameType
       },
       players,
       computed: {
-        buildOrders: mappedData?.buildOrders || [[], []],
-        apm: qualityCheck.apmValidation.chosenAPM,
-        eapm: directParserResult?.eapm || [0, 0]
+        buildOrders: this.generateBasicBuildOrders(primaryResult, players.length),
+        apm: chosenAPM,
+        eapm: chosenAPM // For now, use same as APM
       },
       enhanced: {
-        hasDetailedActions: directParserSuccess && (directParserResult?.commands?.length || 0) > 0,
+        hasDetailedActions: actionsExtracted > 0,
         directParserData: directParserResult || undefined,
-        extractionMethod: qualityCheck.activeParser as any,
+        extractionMethod,
         extractionTime,
         enhancedBuildOrders,
         debugInfo: {
-          screpJsSuccess,
-          nativeParserSuccess,
+          remasteredParserSuccess,
+          remasteredActionParserSuccess,
           directParserSuccess,
-          screpJsError,
-          nativeParserError,
+          screpJsSuccess,
+          remasteredParserError,
+          remasteredActionParserError,
           directParserError,
+          screpJsError,
           actionsExtracted,
           buildOrdersGenerated,
           qualityCheck
-        },
-        validationData: mappedData?.enhanced?.validationData
+        }
       }
     };
-    
-    console.log('[EnhancedScrepWrapper] === FINAL RESULT ===');
-    console.log('[EnhancedScrepWrapper] Enhanced parsing completed:', {
-      extractionTime,
-      hasRealDetailedActions: result.enhanced.hasDetailedActions,
-      realActionsExtracted: actionsExtracted,
-      enhancedBuildOrdersCount: enhancedBuildOrders?.length || 0,
-      activeParser: qualityCheck.activeParser,
+
+    console.log('[EnhancedScrepWrapper] ===== REMASTERED PARSING COMPLETE =====');
+    console.log('[EnhancedScrepWrapper] Final result:', {
+      extractionMethod,
+      hasRealActions: result.enhanced.hasDetailedActions,
+      actionsExtracted,
       buildOrdersGenerated,
-      usingRealData: directParserSuccess && actionsExtracted > 0
+      extractionTime
     });
-    
+
     return result;
+  }
+
+  private static performRemasteredQualityCheck(actionsExtracted: number, apm: number[], method: string): any {
+    let dataQuality: 'high' | 'medium' | 'low' = 'low';
+    
+    if (actionsExtracted > 1000 && method === 'remastered-action-parser') {
+      dataQuality = 'high';
+    } else if (actionsExtracted > 100) {
+      dataQuality = 'medium';
+    }
+
+    return {
+      activeParser: method,
+      dataQuality,
+      commandValidation: {
+        totalCommands: actionsExtracted,
+        expectedRange: { min: 500, max: 15000 },
+        quality: actionsExtracted > 500 ? 'realistic' : 'insufficient'
+      },
+      apmValidation: {
+        remasteredAPM: apm,
+        directParserAPM: apm,
+        screpJsAPM: [0, 0],
+        chosenAPM: apm,
+        reason: `Using ${method} APM data`
+      }
+    };
+  }
+
+  private static calculateAPMFromActions(actions: any[], playerCount: number): number[] {
+    if (!actions || actions.length === 0) return Array(playerCount).fill(0);
+    
+    const playerActions: Record<number, number> = {};
+    const maxFrame = Math.max(...actions.map((a: any) => a.frame));
+    const gameMinutes = maxFrame / 23.81 / 60;
+    
+    for (const action of actions) {
+      playerActions[action.playerId] = (playerActions[action.playerId] || 0) + 1;
+    }
+    
+    return Array.from({ length: playerCount }, (_, i) => 
+      gameMinutes > 0 ? Math.round((playerActions[i] || 0) / gameMinutes) : 0
+    );
+  }
+
+  private static calculateAPMFromCommands(commands: any[], playerCount: number): number[] {
+    if (!commands || commands.length === 0) return Array(playerCount).fill(0);
+    
+    const playerCommands: Record<number, number> = {};
+    const maxFrame = Math.max(...commands.map((c: any) => c.frame));
+    const gameMinutes = maxFrame / 23.81 / 60;
+    
+    for (const command of commands) {
+      playerCommands[command.userId] = (playerCommands[command.userId] || 0) + 1;
+    }
+    
+    return Array.from({ length: playerCount }, (_, i) => 
+      gameMinutes > 0 ? Math.round((playerCommands[i] || 0) / gameMinutes) : 0
+    );
+  }
+
+  private static generateEnhancedBuildOrdersFromRemastered(remasteredResult: any): EnhancedBuildOrder[] {
+    if (!remasteredResult?.buildOrders) return [];
+    
+    return remasteredResult.buildOrders.map((buildOrder: any[], playerIndex: number) => ({
+      playerId: playerIndex,
+      entries: buildOrder.map((entry: any) => ({
+        frame: entry.frame,
+        timestamp: entry.timestamp,
+        action: entry.action,
+        supply: entry.supply || 0,
+        category: 'build'
+      })),
+      totalEntries: buildOrder.length,
+      race: 'Unknown'
+    }));
+  }
+
+  private static generateEnhancedBuildOrdersFromBWCommands(commands: any[]): EnhancedBuildOrder[] {
+    const playerBuildOrders: Record<number, any[]> = {};
+    
+    for (const command of commands) {
+      if (this.isBuildCommand(command)) {
+        if (!playerBuildOrders[command.userId]) {
+          playerBuildOrders[command.userId] = [];
+        }
+        
+        playerBuildOrders[command.userId].push({
+          frame: command.frame,
+          timestamp: this.frameToTimestamp(command.frame),
+          action: command.typeString || 'Build Action',
+          supply: 0,
+          category: 'build'
+        });
+      }
+    }
+    
+    return Object.entries(playerBuildOrders).map(([playerId, buildOrder]) => ({
+      playerId: parseInt(playerId),
+      entries: buildOrder,
+      totalEntries: buildOrder.length,
+      race: 'Unknown'
+    }));
+  }
+
+  private static isBuildCommand(command: any): boolean {
+    const buildCommandTypes = [0x0C, 0x14, 0x1D, 0x20, 0x21, 0x2F, 0x31, 0x34];
+    return buildCommandTypes.includes(command.type);
+  }
+
+  private static frameToTimestamp(frame: number): string {
+    const seconds = frame / 23.81;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  }
+
+  private static generateBasicBuildOrders(primaryResult: any, playerCount: number): Array<Array<any>> {
+    const buildOrders = Array.from({ length: playerCount }, () => []);
+    
+    if (primaryResult?.buildOrders) {
+      return primaryResult.buildOrders;
+    }
+    
+    if (primaryResult?.commands) {
+      // Convert commands to build order format
+      for (const command of primaryResult.commands) {
+        if (command.userId < playerCount && this.isBuildCommand(command)) {
+          buildOrders[command.userId].push({
+            frame: command.frame,
+            timestamp: this.frameToTimestamp(command.frame),
+            action: command.typeString || 'Build Action',
+            supply: 0
+          });
+        }
+      }
+    }
+    
+    return buildOrders;
   }
 }
