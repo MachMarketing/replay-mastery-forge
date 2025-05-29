@@ -28,6 +28,8 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
     if (acceptedFiles.length === 0) return;
 
     const file = acceptedFiles[0];
+    console.log('[ReplayUpload] Processing file:', file.name, file.size, 'bytes');
+    
     setSelectedFile(file);
     setUploadStatus('parsing');
     setProgress(0);
@@ -53,6 +55,7 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
       
     } catch (err) {
       setUploadStatus('error');
+      console.error('[ReplayUpload] Parse error:', err);
       toast({
         title: "Parse-Fehler",
         description: err instanceof Error ? err.message : 'Unbekannter Fehler',

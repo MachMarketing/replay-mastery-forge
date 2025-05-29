@@ -1,6 +1,6 @@
 
 /**
- * Main upload page - clean and focused
+ * Main upload page - clean and focused on SC:R parser
  */
 
 import React, { useState } from 'react';
@@ -12,6 +12,7 @@ const Upload: React.FC = () => {
   const [replayData, setReplayData] = useState<RemasteredReplayData | null>(null);
 
   const handleParseComplete = (data: RemasteredReplayData) => {
+    console.log('[Upload] Received SC:R replay data:', data);
     setReplayData(data);
   };
 

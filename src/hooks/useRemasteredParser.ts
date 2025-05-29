@@ -20,25 +20,30 @@ export function useRemasteredParser(): UseRemasteredParserReturn {
     setIsLoading(true);
     setError(null);
     
-    console.log('[useRemasteredParser] Parsing file:', file.name, 'Size:', file.size);
+    console.log('[useRemasteredParser] Starting parse for:', file.name, 'Size:', file.size);
     
     try {
       const arrayBuffer = await file.arrayBuffer();
+      console.log('[useRemasteredParser] File loaded, creating parser...');
+      
       const parser = new SCRemasteredParser(arrayBuffer);
       const result = await parser.parse();
       
-      console.log('[useRemasteredParser] Parse successful:', {
+      console.log('[useRemasteredParser] Parse completed successfully:', {
         mapName: result.header.mapName,
         duration: result.header.duration,
-        players: result.players.length,
-        buildOrders: result.buildOrders.length,
-        totalCommands: result.rawData.totalCommands
+        frames: result.header.frames,
+        playersCount: result.players.length,
+        buildOrdersCount: result.buildOrders.length,
+        totalCommands: result.rawData.totalCommands,
+        gameMinutes: result.rawData.gameMinutes,
+        extractionMethod: result.rawData.extractionMethod
       });
       
       return result;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Parse error';
-      console.error('[useRemasteredParser] Parse failed:', errorMessage);
+      console.error('[useRemasteredParser] Parse failed:', errorMessage, err);
       setError(errorMessage);
       throw err;
     } finally {

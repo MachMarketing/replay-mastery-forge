@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from "./components/theme-provider";
@@ -7,6 +8,7 @@ import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import PricingPage from './pages/PricingPage';
 import FeaturesPage from './pages/FeaturesPage';
+import Upload from './pages/Upload';
 import UploadPage from './pages/UploadPage';
 import ReplaysPage from './pages/ReplaysPage';
 import NotFound from './pages/NotFound';
@@ -26,7 +28,11 @@ function App() {
         <Route path="/parser-test" element={<ParserTest />} />
         <Route path="/parser-debug" element={<ParserDebug />} />
         
-        <Route path="/upload" element={
+        {/* SC:R Parser Route */}
+        <Route path="/upload" element={<Upload />} />
+        
+        {/* Old Upload Route */}
+        <Route path="/upload-old" element={
           <ProtectedRouteWrapper>
             <UploadPage />
           </ProtectedRouteWrapper>
