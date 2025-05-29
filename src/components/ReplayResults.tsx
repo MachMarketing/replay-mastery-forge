@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EnhancedReplayResult } from '@/services/nativeReplayParser/enhancedDataMapper';
-import { Clock, Users, Zap, Target, TrendingUp, Swords, Building, Cpu } from 'lucide-react';
+import { Clock, Users, Zap, Target, TrendingUp, Swords, Building, Cpu, Activity } from 'lucide-react';
 
 interface ReplayResultsProps {
   data: EnhancedReplayResult;
@@ -20,20 +20,9 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
     return player && player.name && player.name.trim().length > 0;
   });
 
-  // Ensure enhanced build orders exist
-  const enhancedBuildOrders = data.enhancedBuildOrders || {};
+  // Calculate real action counts from APM and game duration
+  const gameMinutes = data.header?.frames ? (data.header.frames / 23.81 / 60) : 0;
   
-  // Get build orders for valid players
-  const playerBuildOrders = validPlayers.map(player => {
-    const playerIndex = validPlayers.findIndex(p => p.name === player.name);
-    const buildOrder = enhancedBuildOrders[playerIndex] || [];
-    return {
-      playerId: playerIndex,
-      player,
-      entries: buildOrder.slice(0, 20) // Show more entries
-    };
-  }).filter(bo => bo.entries.length > 0);
-
   // Get real commands for display
   const realCommands = data.realCommands || [];
   const commandsByPlayer = validPlayers.map(player => {
@@ -44,7 +33,7 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
       player,
       commands: playerCommands.slice(0, 30) // Show first 30 commands
     };
-  }).filter(pc => pc.commands.length > 0);
+  });
 
   function formatDuration(frames: number): string {
     const seconds = Math.floor(frames / 23.81);
@@ -53,9 +42,20 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   }
 
-  function getPlayerMetric(playerIndex: number, metric: string): number {
-    const playerMetrics = data.realMetrics?.[playerIndex];
-    return playerMetrics?.[metric] || 0;
+  function getPlayerAPM(playerIndex: number): number {
+    return data.realMetrics?.[playerIndex]?.apm || 0;
+  }
+
+  function getPlayerEAPM(playerIndex: number): number {
+    return data.realMetrics?.[playerIndex]?.eapm || 0;
+  }
+
+  function getPlayerRealActions(playerIndex: number): number {
+    return data.realMetrics?.[playerIndex]?.realActions || 0;
+  }
+
+  function calculateActionsFromAPM(apm: number): number {
+    return Math.round(apm * gameMinutes);
   }
 
   function formatTime(frame: number): string {
@@ -82,7 +82,7 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="text-center">
               <Clock className="h-6 w-6 mx-auto mb-1 text-muted-foreground" />
-              <div className="text-sm text-muted-foreground">Dauer</div>
+              <div className="text-sm text-muted-foreground">Spieldauer</div>
               <div className="font-bold">{data.header?.duration || formatDuration(data.header?.frames || 0)}</div>
             </div>
             <div className="text-center">
@@ -91,9 +91,11 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
               <div className="font-bold">{validPlayers.length}</div>
             </div>
             <div className="text-center">
-              <Zap className="h-6 w-6 mx-auto mb-1 text-muted-foreground" />
-              <div className="text-sm text-muted-foreground">Echte Kommandos</div>
-              <div className="font-bold">{realCommands.length}</div>
+              <Activity className="h-6 w-6 mx-auto mb-1 text-muted-foreground" />
+              <div className="text-sm text-muted-foreground">Gesamtaktionen</div>
+              <div className="font-bold">
+                {validPlayers.reduce((total, _, index) => total + getPlayerRealActions(index), 0).toLocaleString()}
+              </div>
             </div>
             <div className="text-center">
               <TrendingUp className="h-6 w-6 mx-auto mb-1 text-muted-foreground" />
@@ -104,52 +106,95 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
         </CardContent>
       </Card>
 
-      {/* Players Overview */}
+      {/* Players Detailed Stats */}
       {validPlayers.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Spieler Übersicht</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Cpu className="h-5 w-5" />
+              Spieler Performance
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {validPlayers.map((player, index) => (
-                <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                  <div>
-                    <div className="font-semibold">{player.name}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {player.race} • Team {player.team || index + 1}
+            <div className="space-y-4">
+              {validPlayers.map((player, index) => {
+                const apm = getPlayerAPM(index);
+                const eapm = getPlayerEAPM(index);
+                const realActions = getPlayerRealActions(index);
+                const calculatedActions = calculateActionsFromAPM(apm);
+
+                return (
+                  <div key={index} className="p-4 bg-muted/50 rounded-lg">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <div className="font-semibold text-lg">{player.name}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {player.race} • Team {player.team || index + 1}
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="text-lg px-3 py-1">
+                        {apm} APM
+                      </Badge>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div className="text-center">
+                        <div className="font-medium text-blue-600">APM</div>
+                        <div className="text-xl font-bold">{apm}</div>
+                        <div className="text-xs text-muted-foreground">Aktionen/Min</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="font-medium text-green-600">EAPM</div>
+                        <div className="text-xl font-bold">{eapm}</div>
+                        <div className="text-xs text-muted-foreground">Effektiv/Min</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="font-medium text-purple-600">Gesamtaktionen</div>
+                        <div className="text-xl font-bold">{realActions > 0 ? realActions.toLocaleString() : calculatedActions.toLocaleString()}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {realActions > 0 ? 'Extrahiert' : 'Berechnet'}
+                        </div>
+                      </div>
+                      <div className="text-center">
+                        <div className="font-medium text-orange-600">Effizienz</div>
+                        <div className="text-xl font-bold">{apm > 0 ? Math.round((eapm / apm) * 100) : 0}%</div>
+                        <div className="text-xs text-muted-foreground">EAPM/APM</div>
+                      </div>
+                    </div>
+
+                    {/* Action Breakdown */}
+                    <div className="mt-3 pt-3 border-t">
+                      <div className="text-xs text-muted-foreground">
+                        <strong>Aktions-Breakdown:</strong> {apm} APM × {gameMinutes.toFixed(1)} Min = ~{calculatedActions} Aktionen
+                      </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-lg font-bold text-primary">{getPlayerMetric(index, 'apm')}</div>
-                    <div className="text-xs text-muted-foreground">APM</div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Real Commands - DAS SIND DIE ECHTEN AKTIONSDATEN! */}
-      {commandsByPlayer.length > 0 && (
+      {/* Real Commands Section - only if we have extracted commands */}
+      {commandsByPlayer.length > 0 && commandsByPlayer.some(p => p.commands.length > 0) && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Swords className="h-5 w-5" />
-              Echte Spieler-Aktionen (Hex-extrahiert)
+              Extrahierte Aktionen (Live-Daten)
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
-              {commandsByPlayer.map((playerData) => (
+              {commandsByPlayer.filter(p => p.commands.length > 0).map((playerData) => (
                 <div key={playerData.playerId}>
                   <h4 className="font-semibold mb-3 flex items-center gap-2">
-                    <Cpu className="h-4 w-4" />
-                    {playerData.player.name} - Echte Kommandos
+                    <Activity className="h-4 w-4" />
+                    {playerData.player.name}
                     <Badge variant="outline">{playerData.player.race}</Badge>
                     <span className="text-sm text-muted-foreground">
-                      ({playerData.commands.length} Aktionen gezeigt)
+                      ({playerData.commands.length} von {getPlayerRealActions(playerData.playerId)} Aktionen)
                     </span>
                   </h4>
                   
@@ -199,62 +244,69 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
       )}
 
       {/* Enhanced Build Orders */}
-      {playerBuildOrders.length > 0 && (
+      {data.enhancedBuildOrders && Object.keys(data.enhancedBuildOrders).length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Building className="h-5 w-5" />
-              Intelligente Build Orders
+              Build Orders (Intelligente Rekonstruktion)
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
-              {playerBuildOrders.map((buildOrder) => (
-                <div key={buildOrder.playerId}>
-                  <h4 className="font-semibold mb-3 flex items-center gap-2">
-                    {buildOrder.player.name}
-                    <Badge variant="outline">{buildOrder.player.race}</Badge>
-                    <span className="text-sm text-muted-foreground">
-                      ({buildOrder.entries.length} Build-Aktionen)
-                    </span>
-                  </h4>
-                  
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-20">Zeit</TableHead>
-                        <TableHead className="w-20">Supply</TableHead>
-                        <TableHead>Aktion</TableHead>
-                        <TableHead>Einheit</TableHead>
-                        <TableHead>Kategorie</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {buildOrder.entries.map((entry, index) => (
-                        <TableRow key={index}>
-                          <TableCell className="font-mono text-xs">
-                            {entry.time}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {entry.supply}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            {entry.action}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {entry.unitName || '-'}
-                          </TableCell>
-                          <TableCell className="text-sm">
-                            <Badge variant="secondary" className="text-xs">
-                              {entry.category}
-                            </Badge>
-                          </TableCell>
+              {Object.entries(data.enhancedBuildOrders).map(([playerIdStr, buildOrder]) => {
+                const playerId = parseInt(playerIdStr);
+                const player = validPlayers[playerId];
+                
+                if (!player || !buildOrder || buildOrder.length === 0) return null;
+                
+                return (
+                  <div key={playerId}>
+                    <h4 className="font-semibold mb-3 flex items-center gap-2">
+                      {player.name}
+                      <Badge variant="outline">{player.race}</Badge>
+                      <span className="text-sm text-muted-foreground">
+                        ({buildOrder.length} Build-Aktionen)
+                      </span>
+                    </h4>
+                    
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-20">Zeit</TableHead>
+                          <TableHead className="w-20">Supply</TableHead>
+                          <TableHead>Aktion</TableHead>
+                          <TableHead>Einheit</TableHead>
+                          <TableHead>Kategorie</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ))}
+                      </TableHeader>
+                      <TableBody>
+                        {buildOrder.slice(0, 20).map((entry: any, index: number) => (
+                          <TableRow key={index}>
+                            <TableCell className="font-mono text-xs">
+                              {entry.time}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {entry.supply}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              {entry.action}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {entry.unitName || '-'}
+                            </TableCell>
+                            <TableCell className="text-sm">
+                              <Badge variant="secondary" className="text-xs">
+                                {entry.category}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -264,7 +316,7 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
       {data.gameplayAnalysis && Object.keys(data.gameplayAnalysis).length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Enhanced Gameplay Analyse</CardTitle>
+            <CardTitle>Performance Analyse</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -282,32 +334,11 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
                       <Badge variant="secondary">{analysis.playstyle}</Badge>
                     </div>
                     
-                    {metrics && (
-                      <div className="grid grid-cols-2 gap-4 text-sm">
-                        <div>
-                          <div className="font-medium">Echte APM</div>
-                          <div className="text-lg font-bold text-blue-600">{metrics.apm}</div>
-                        </div>
-                        <div>
-                          <div className="font-medium">Echte EAPM</div>
-                          <div className="text-lg font-bold text-green-600">{metrics.eapm}</div>
-                        </div>
-                        <div>
-                          <div className="font-medium">Micro-Intensität</div>
-                          <div className="text-lg font-bold text-purple-600">{metrics.microIntensity}</div>
-                        </div>
-                        <div>
-                          <div className="font-medium">Echte Aktionen</div>
-                          <div className="text-lg font-bold text-orange-600">{metrics.realActions}</div>
-                        </div>
-                      </div>
-                    )}
-                    
                     {analysis.strengths?.length > 0 && (
                       <div>
                         <h4 className="font-medium text-green-700 mb-1">Stärken</h4>
                         <ul className="text-sm text-green-600 list-disc list-inside">
-                          {analysis.strengths.map((strength, i) => (
+                          {analysis.strengths.map((strength: string, i: number) => (
                             <li key={i}>{strength}</li>
                           ))}
                         </ul>
@@ -318,7 +349,7 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
                       <div>
                         <h4 className="font-medium text-red-700 mb-1">Schwächen</h4>
                         <ul className="text-sm text-red-600 list-disc list-inside">
-                          {analysis.weaknesses.map((weakness, i) => (
+                          {analysis.weaknesses.map((weakness: string, i: number) => (
                             <li key={i}>{weakness}</li>
                           ))}
                         </ul>
@@ -329,7 +360,7 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
                       <div>
                         <h4 className="font-medium text-blue-700 mb-1">Empfehlungen</h4>
                         <ul className="text-sm text-blue-600 list-disc list-inside">
-                          {analysis.recommendations.map((rec, i) => (
+                          {analysis.recommendations.map((rec: string, i: number) => (
                             <li key={i}>{rec}</li>
                           ))}
                         </ul>
@@ -343,10 +374,10 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
         </Card>
       )}
 
-      {/* Enhanced Debug Info */}
+      {/* Debug Info */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Enhanced Debug Information</CardTitle>
+          <CardTitle className="text-sm">Debug Information</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
@@ -355,15 +386,15 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
               <div className="font-mono">{(data.header?.frames || 0).toLocaleString()}</div>
             </div>
             <div>
+              <div className="text-muted-foreground">Spielminuten</div>
+              <div className="font-mono">{gameMinutes.toFixed(1)}</div>
+            </div>
+            <div>
               <div className="text-muted-foreground">Datenquelle</div>
               <div className="font-mono">{data.dataQuality?.source || 'unknown'}</div>
             </div>
             <div>
-              <div className="text-muted-foreground">Parser</div>
-              <div className="font-mono">Enhanced Data Mapper</div>
-            </div>
-            <div>
-              <div className="text-muted-foreground">Hex Commands</div>
+              <div className="text-muted-foreground">Extrahierte Commands</div>
               <div className="font-mono">{realCommands.length}</div>
             </div>
           </div>
