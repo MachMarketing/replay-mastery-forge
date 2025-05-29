@@ -1,4 +1,3 @@
-
 /**
  * Enhanced Command Extractor - Kombiniert screp-js mit Hex-Analyse
  * für echte SC:R Command-Extraktion
@@ -16,6 +15,7 @@ export interface ExtractedCommand {
   unitType?: number;
   targetId?: number;
   rawData: Uint8Array;
+  parameters?: Record<string, any>;
 }
 
 export interface GameplayMetrics {
@@ -34,6 +34,8 @@ export class EnhancedCommandExtractor {
   constructor(arrayBuffer: ArrayBuffer) {
     this.data = new Uint8Array(arrayBuffer);
     this.hexAnalyzer = new HexAnalyzer(arrayBuffer);
+    
+    console.log('[EnhancedCommandExtractor] Initialized with', arrayBuffer.byteLength, 'bytes');
   }
 
   /**
@@ -41,23 +43,140 @@ export class EnhancedCommandExtractor {
    */
   extractRealCommands(): ExtractedCommand[] {
     console.log('[EnhancedCommandExtractor] Starting real command extraction...');
+    console.log('[EnhancedCommandExtractor] Data buffer size:', this.data.length);
     
     // Finde Command-Sektionen mit Hex-Analyse
     const commandSections = this.findCommandSections();
     console.log('[EnhancedCommandExtractor] Found command sections:', commandSections.length);
     
+    if (commandSections.length === 0) {
+      console.log('[EnhancedCommandExtractor] No command sections found, trying fallback method');
+      return this.extractCommandsFallback();
+    }
+    
     const allCommands: ExtractedCommand[] = [];
     
     for (const section of commandSections) {
+      console.log(`[EnhancedCommandExtractor] Parsing section at offset ${section.offset}, length ${section.length}`);
       const commands = this.parseCommandSection(section);
+      console.log(`[EnhancedCommandExtractor] Extracted ${commands.length} commands from section`);
       allCommands.push(...commands);
     }
     
     // Sortiere nach Frame-Zeit
     allCommands.sort((a, b) => a.frame - b.frame);
     
-    console.log('[EnhancedCommandExtractor] Extracted', allCommands.length, 'real commands');
+    console.log('[EnhancedCommandExtractor] Total extracted commands:', allCommands.length);
+    if (allCommands.length > 0) {
+      console.log('[EnhancedCommandExtractor] Sample commands:', allCommands.slice(0, 5).map(cmd => ({
+        frame: cmd.frame,
+        playerId: cmd.playerId,
+        commandName: cmd.commandName
+      })));
+    }
+    
     return allCommands;
+  }
+
+  /**
+   * Fallback-Methode für Command-Extraktion
+   */
+  private extractCommandsFallback(): ExtractedCommand[] {
+    console.log('[EnhancedCommandExtractor] Using fallback extraction method');
+    
+    // Suche nach typischen SC:R Command-Patterns
+    const commands: ExtractedCommand[] = [];
+    let currentFrame = 0;
+    
+    // Bekannte SC:R Signaturen
+    const patterns = [
+      { signature: [0x0C], name: 'Build', length: 7 },
+      { signature: [0x14], name: 'Move', length: 4 },
+      { signature: [0x15], name: 'Attack', length: 6 },
+      { signature: [0x1D], name: 'Train Unit', length: 2 },
+      { signature: [0x2F], name: 'Research Tech', length: 2 },
+      { signature: [0x31], name: 'Upgrade', length: 2 }
+    ];
+    
+    for (let i = 0; i < this.data.length - 10; i++) {
+      // Frame sync detection
+      if (this.data[i] === 0x00) {
+        currentFrame++;
+        continue;
+      } else if (this.data[i] === 0x01 && i + 1 < this.data.length) {
+        currentFrame += this.data[i + 1];
+        i++;
+        continue;
+      }
+      
+      // Pattern matching
+      for (const pattern of patterns) {
+        if (this.matchesPattern(i, pattern.signature)) {
+          const command = this.createFallbackCommand(i, currentFrame, pattern);
+          if (command) {
+            commands.push(command);
+            i += pattern.length - 1; // Skip ahead
+            break;
+          }
+        }
+      }
+    }
+    
+    console.log('[EnhancedCommandExtractor] Fallback extraction found', commands.length, 'commands');
+    return commands;
+  }
+
+  /**
+   * Prüfe ob Pattern an Position übereinstimmt
+   */
+  private matchesPattern(position: number, signature: number[]): boolean {
+    if (position + signature.length > this.data.length) return false;
+    
+    for (let i = 0; i < signature.length; i++) {
+      if (this.data[position + i] !== signature[i]) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Erstelle Command aus Fallback-Pattern
+   */
+  private createFallbackCommand(position: number, frame: number, pattern: any): ExtractedCommand | null {
+    if (position + pattern.length > this.data.length) return null;
+    
+    const playerId = position + 1 < this.data.length ? this.data[position + 1] % 8 : 0; // Player ID modulo 8
+    
+    return {
+      frame,
+      playerId,
+      commandType: this.data[position],
+      commandName: pattern.name,
+      rawData: this.data.slice(position, position + pattern.length),
+      parameters: this.extractParameters(position, pattern)
+    };
+  }
+
+  /**
+   * Extrahiere Parameter aus Command
+   */
+  private extractParameters(position: number, pattern: any): Record<string, any> {
+    const params: Record<string, any> = {};
+    
+    try {
+      if (pattern.name === 'Build' && position + 6 < this.data.length) {
+        params.x = this.data[position + 2] | (this.data[position + 3] << 8);
+        params.y = this.data[position + 4] | (this.data[position + 5] << 8);
+        params.unitType = this.data[position + 6];
+      } else if (pattern.name === 'Move' && position + 3 < this.data.length) {
+        params.x = this.data[position + 2] | (this.data[position + 3] << 8);
+      } else if (pattern.name === 'Train Unit' && position + 1 < this.data.length) {
+        params.unitType = this.data[position + 1];
+      }
+    } catch (error) {
+      console.log('[EnhancedCommandExtractor] Error extracting parameters:', error);
+    }
+    
+    return params;
   }
 
   /**
@@ -105,10 +224,19 @@ export class EnhancedCommandExtractor {
             offset: currentSectionStart,
             length: i - currentSectionStart
           });
+          console.log(`[EnhancedCommandExtractor] Found command section: offset ${currentSectionStart}, length ${i - currentSectionStart}`);
         }
         currentSectionStart = -1;
         consecutiveCommands = 0;
       }
+    }
+    
+    // Handle final section
+    if (currentSectionStart !== -1 && consecutiveCommands > 10) {
+      sections.push({
+        offset: currentSectionStart,
+        length: this.data.length - currentSectionStart
+      });
     }
     
     return sections;
@@ -172,18 +300,22 @@ export class EnhancedCommandExtractor {
     }
     
     // Extrahiere Player ID (meist 2. Byte)
-    const playerId = position + 1 < this.data.length ? this.data[position + 1] : 0;
+    const playerId = position + 1 < this.data.length ? this.data[position + 1] % 8 : 0;
     
     // Extrahiere zusätzliche Daten basierend auf Command-Typ
     let x, y, unitType, targetId;
+    const parameters: Record<string, any> = {};
     
     if (commandInfo.hasCoordinates && position + 4 < this.data.length) {
       x = this.data[position + 2] | (this.data[position + 3] << 8);
       y = this.data[position + 4] | (this.data[position + 5] << 8);
+      parameters.x = x;
+      parameters.y = y;
     }
     
     if (commandInfo.hasUnitType && position + commandInfo.unitTypeOffset < this.data.length) {
       unitType = this.data[position + commandInfo.unitTypeOffset];
+      parameters.unitType = unitType;
     }
     
     return {
@@ -195,7 +327,8 @@ export class EnhancedCommandExtractor {
       y,
       unitType,
       targetId,
-      rawData: this.data.slice(position, position + commandLength)
+      rawData: this.data.slice(position, position + commandLength),
+      parameters
     };
   }
 

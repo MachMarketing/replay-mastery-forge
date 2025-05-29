@@ -1,4 +1,3 @@
-
 /**
  * Enhanced Data Mapper - Verbindet screp-js mit Hex-Command-Analyse
  * DAS ist unser einziger Parser!
@@ -63,6 +62,8 @@ export class EnhancedDataMapper {
    */
   static async parseReplay(file: File): Promise<EnhancedReplayResult> {
     console.log('[EnhancedDataMapper] === STARTING UNIFIED PARSING ===');
+    console.log('[EnhancedDataMapper] File size:', file.size, 'bytes');
+    console.log('[EnhancedDataMapper] File name:', file.name);
     
     // 1. screp-js für Basis-Daten (immer zuerst!)
     const screpWrapper = ScrepJsWrapper.getInstance();
@@ -71,8 +72,12 @@ export class EnhancedDataMapper {
     console.log('[EnhancedDataMapper] screp-js completed:', {
       map: screpResult.header.mapName,
       players: screpResult.players.length,
-      duration: screpResult.header.duration
+      duration: screpResult.header.duration,
+      frames: screpResult.header.frames
     });
+    
+    console.log('[EnhancedDataMapper] screp-js players:', screpResult.players.map(p => `${p.name} (${p.race})`));
+    console.log('[EnhancedDataMapper] screp-js computed data available:', Object.keys(screpResult.computed || {}));
     
     let realCommands: any[] = [];
     let dataQuality: any = {
@@ -83,9 +88,21 @@ export class EnhancedDataMapper {
     
     // 2. Versuche Hex-Command-Extraktion
     try {
+      console.log('[EnhancedDataMapper] Starting Hex extraction...');
       const arrayBuffer = await file.arrayBuffer();
+      console.log('[EnhancedDataMapper] ArrayBuffer size:', arrayBuffer.byteLength);
+      
       const commandExtractor = new EnhancedCommandExtractor(arrayBuffer);
       realCommands = commandExtractor.extractRealCommands();
+      
+      console.log('[EnhancedDataMapper] Hex extraction result:', {
+        commandsFound: realCommands.length,
+        sampleCommands: realCommands.slice(0, 5).map(cmd => ({
+          frame: cmd.frame,
+          playerId: cmd.playerId,
+          commandName: cmd.commandName
+        }))
+      });
       
       if (realCommands.length > 50) {
         dataQuality = {
@@ -94,25 +111,30 @@ export class EnhancedDataMapper {
           reliability: realCommands.length > 200 ? 'high' : 'medium'
         };
         console.log('[EnhancedDataMapper] ✅ Hex extraction successful:', realCommands.length, 'commands');
+      } else {
+        console.log('[EnhancedDataMapper] ⚠️ Low command count from Hex extraction:', realCommands.length);
       }
     } catch (error) {
-      console.log('[EnhancedDataMapper] Hex extraction failed, using screp-js only');
+      console.error('[EnhancedDataMapper] ❌ Hex extraction failed:', error);
+      console.log('[EnhancedDataMapper] Using screp-js only mode');
     }
     
     // 3. Berechne echte Metriken
+    console.log('[EnhancedDataMapper] Calculating real metrics...');
     const realMetrics = this.calculateRealMetrics(realCommands, screpResult);
+    console.log('[EnhancedDataMapper] Real metrics calculated:', Object.keys(realMetrics).length, 'players');
     
     // 4. Generiere intelligente Build Orders
+    console.log('[EnhancedDataMapper] Generating enhanced build orders...');
     const enhancedBuildOrders = this.generateEnhancedBuildOrders(realCommands, screpResult);
+    console.log('[EnhancedDataMapper] Enhanced build orders generated:', Object.keys(enhancedBuildOrders).length, 'players');
     
     // 5. Erstelle Gameplay-Analyse
+    console.log('[EnhancedDataMapper] Generating gameplay analysis...');
     const gameplayAnalysis = this.generateGameplayAnalysis(realCommands, realMetrics, screpResult);
+    console.log('[EnhancedDataMapper] Gameplay analysis generated:', Object.keys(gameplayAnalysis).length, 'players');
     
-    console.log('[EnhancedDataMapper] === PARSING COMPLETE ===');
-    console.log('[EnhancedDataMapper] Quality:', dataQuality.reliability);
-    console.log('[EnhancedDataMapper] Real commands:', dataQuality.commandsExtracted);
-    
-    return {
+    const finalResult = {
       header: {
         mapName: screpResult.header.mapName,
         duration: screpResult.header.duration,
@@ -132,26 +154,46 @@ export class EnhancedDataMapper {
       gameplayAnalysis,
       dataQuality
     };
+    
+    console.log('[EnhancedDataMapper] === PARSING COMPLETE ===');
+    console.log('[EnhancedDataMapper] Final result summary:', {
+      players: finalResult.players.length,
+      realCommands: finalResult.realCommands.length,
+      realMetrics: Object.keys(finalResult.realMetrics).length,
+      enhancedBuildOrders: Object.keys(finalResult.enhancedBuildOrders).length,
+      gameplayAnalysis: Object.keys(finalResult.gameplayAnalysis).length,
+      quality: finalResult.dataQuality.reliability
+    });
+    
+    return finalResult;
   }
 
   /**
    * Berechne echte Metriken aus Commands + screp-js Daten
    */
   private static calculateRealMetrics(commands: any[], screpResult: any): Record<number, any> {
+    console.log('[EnhancedDataMapper.calculateRealMetrics] Input:', {
+      commandsCount: commands.length,
+      screpPlayersCount: screpResult.players.length,
+      gameFrames: screpResult.header.frames
+    });
+    
     const gameMinutes = screpResult.header.frames / 23.81 / 60;
     const metrics: Record<number, any> = {};
     
     // Fallback zu screp-js APM wenn keine Commands
     if (commands.length === 0) {
+      console.log('[EnhancedDataMapper.calculateRealMetrics] No commands, using screp-js fallback');
       screpResult.players.forEach((player: any, index: number) => {
         metrics[index] = {
-          apm: screpResult.computed.apm[index] || 0,
-          eapm: screpResult.computed.eapm[index] || 0,
+          apm: screpResult.computed?.apm?.[index] || 0,
+          eapm: screpResult.computed?.eapm?.[index] || 0,
           realActions: 0,
           buildOrderTiming: 0,
           microIntensity: 0
         };
       });
+      console.log('[EnhancedDataMapper.calculateRealMetrics] Fallback metrics:', metrics);
       return metrics;
     }
     
@@ -163,6 +205,10 @@ export class EnhancedDataMapper {
       }
       playerCommands[cmd.playerId].push(cmd);
     });
+    
+    console.log('[EnhancedDataMapper.calculateRealMetrics] Player command distribution:', 
+      Object.entries(playerCommands).map(([id, cmds]) => `Player ${id}: ${cmds.length} commands`)
+    );
     
     Object.entries(playerCommands).forEach(([playerIdStr, playerCmds]) => {
       const playerId = parseInt(playerIdStr);
@@ -193,6 +239,8 @@ export class EnhancedDataMapper {
         buildOrderTiming,
         microIntensity
       };
+      
+      console.log(`[EnhancedDataMapper.calculateRealMetrics] Player ${playerId} metrics:`, metrics[playerId]);
     });
     
     return metrics;
@@ -202,19 +250,28 @@ export class EnhancedDataMapper {
    * Generiere intelligente Build Orders
    */
   private static generateEnhancedBuildOrders(commands: any[], screpResult: any): Record<number, any[]> {
+    console.log('[EnhancedDataMapper.generateEnhancedBuildOrders] Input:', {
+      commandsCount: commands.length,
+      screpBuildOrdersAvailable: !!screpResult.computed?.buildOrders
+    });
+    
     const buildOrders: Record<number, any[]> = {};
     
     // Fallback zu screp-js Build Orders
     if (commands.length === 0) {
-      screpResult.computed.buildOrders.forEach((bo: any[], index: number) => {
-        buildOrders[index] = bo.map((item: any) => ({
-          time: item.timestamp,
-          action: item.action,
-          supply: item.supply || 0,
-          unitName: 'Unknown',
-          category: 'build'
-        }));
-      });
+      console.log('[EnhancedDataMapper.generateEnhancedBuildOrders] Using screp-js fallback');
+      if (screpResult.computed?.buildOrders) {
+        screpResult.computed.buildOrders.forEach((bo: any[], index: number) => {
+          buildOrders[index] = bo.map((item: any) => ({
+            time: item.timestamp || '0:00',
+            action: item.action || 'Unknown',
+            supply: item.supply || 0,
+            unitName: 'Unknown',
+            category: 'build'
+          }));
+        });
+      }
+      console.log('[EnhancedDataMapper.generateEnhancedBuildOrders] Fallback build orders:', Object.keys(buildOrders).length, 'players');
       return buildOrders;
     }
     
@@ -228,6 +285,10 @@ export class EnhancedDataMapper {
         playerCommands[cmd.playerId].push(cmd);
       }
     });
+    
+    console.log('[EnhancedDataMapper.generateEnhancedBuildOrders] Build commands per player:', 
+      Object.entries(playerCommands).map(([id, cmds]) => `Player ${id}: ${cmds.length} build commands`)
+    );
     
     Object.entries(playerCommands).forEach(([playerIdStr, playerCmds]) => {
       const playerId = parseInt(playerIdStr);
@@ -249,6 +310,10 @@ export class EnhancedDataMapper {
         });
     });
     
+    console.log('[EnhancedDataMapper.generateEnhancedBuildOrders] Generated build orders:', 
+      Object.entries(buildOrders).map(([id, bo]) => `Player ${id}: ${bo.length} entries`)
+    );
+    
     return buildOrders;
   }
 
@@ -256,6 +321,11 @@ export class EnhancedDataMapper {
    * Generiere Gameplay-Analyse
    */
   private static generateGameplayAnalysis(commands: any[], metrics: Record<number, any>, screpResult: any): Record<number, any> {
+    console.log('[EnhancedDataMapper.generateGameplayAnalysis] Input:', {
+      commandsCount: commands.length,
+      metricsPlayers: Object.keys(metrics).length
+    });
+    
     const analysis: Record<number, any> = {};
     
     Object.entries(metrics).forEach(([playerIdStr, metric]) => {
@@ -307,6 +377,12 @@ export class EnhancedDataMapper {
         weaknesses,
         recommendations
       };
+      
+      console.log(`[EnhancedDataMapper.generateGameplayAnalysis] Player ${playerId} analysis:`, {
+        playstyle: analysis[playerId].playstyle,
+        strengthsCount: analysis[playerId].strengths.length,
+        weaknessesCount: analysis[playerId].weaknesses.length
+      });
     });
     
     return analysis;
