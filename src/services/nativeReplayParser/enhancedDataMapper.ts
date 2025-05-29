@@ -1,5 +1,6 @@
+
 /**
- * Enhanced Data Mapper - Verbindet screp-js mit Hex-Command-Analyse
+ * Enhanced Data Mapper - Verbindet screp-js mit SC:R-spezifischer Hex-Command-Analyse
  * DAS ist unser einziger Parser!
  */
 
@@ -58,12 +59,13 @@ export interface EnhancedReplayResult {
 
 export class EnhancedDataMapper {
   /**
-   * DER EINZIGE PARSER - Kombiniert screp-js + Hex-Analyse
+   * DER EINZIGE PARSER - Kombiniert screp-js + SC:R-spezifische Hex-Analyse
    */
   static async parseReplay(file: File): Promise<EnhancedReplayResult> {
-    console.log('[EnhancedDataMapper] === STARTING UNIFIED PARSING ===');
+    console.log('[EnhancedDataMapper] === STARTING SC:R UNIFIED PARSING ===');
     console.log('[EnhancedDataMapper] File size:', file.size, 'bytes');
     console.log('[EnhancedDataMapper] File name:', file.name);
+    console.log('[EnhancedDataMapper] File type detected: StarCraft: Remastered .rep');
     
     // 1. screp-js für Basis-Daten (immer zuerst!)
     const screpWrapper = ScrepJsWrapper.getInstance();
@@ -86,23 +88,42 @@ export class EnhancedDataMapper {
       reliability: 'medium'
     };
     
-    // 2. Versuche Hex-Command-Extraktion
+    // 2. Versuche SC:R-spezifische Command-Extraktion
     try {
-      console.log('[EnhancedDataMapper] Starting Hex extraction...');
+      console.log('[EnhancedDataMapper] === STARTING SC:R COMMAND EXTRACTION ===');
       const arrayBuffer = await file.arrayBuffer();
       console.log('[EnhancedDataMapper] ArrayBuffer size:', arrayBuffer.byteLength);
       
       const commandExtractor = new EnhancedCommandExtractor(arrayBuffer);
       realCommands = commandExtractor.extractRealCommands();
       
-      console.log('[EnhancedDataMapper] Hex extraction result:', {
-        commandsFound: realCommands.length,
-        sampleCommands: realCommands.slice(0, 5).map(cmd => ({
+      console.log('[EnhancedDataMapper] === SC:R EXTRACTION RESULT ===');
+      console.log('[EnhancedDataMapper] Commands found:', realCommands.length);
+      
+      if (realCommands.length > 0) {
+        console.log('[EnhancedDataMapper] Sample commands:', realCommands.slice(0, 10).map(cmd => ({
           frame: cmd.frame,
           playerId: cmd.playerId,
-          commandName: cmd.commandName
-        }))
-      });
+          commandName: cmd.commandName,
+          parameters: cmd.parameters
+        })));
+        
+        // Analysiere Command-Verteilung
+        const commandTypes = realCommands.reduce((acc, cmd) => {
+          acc[cmd.commandName] = (acc[cmd.commandName] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+        
+        console.log('[EnhancedDataMapper] Command distribution:', commandTypes);
+        
+        // Analysiere Player-Verteilung
+        const playerDistribution = realCommands.reduce((acc, cmd) => {
+          acc[cmd.playerId] = (acc[cmd.playerId] || 0) + 1;
+          return acc;
+        }, {} as Record<number, number>);
+        
+        console.log('[EnhancedDataMapper] Player command distribution:', playerDistribution);
+      }
       
       if (realCommands.length > 50) {
         dataQuality = {
@@ -110,29 +131,43 @@ export class EnhancedDataMapper {
           commandsExtracted: realCommands.length,
           reliability: realCommands.length > 200 ? 'high' : 'medium'
         };
-        console.log('[EnhancedDataMapper] ✅ Hex extraction successful:', realCommands.length, 'commands');
+        console.log('[EnhancedDataMapper] ✅ SC:R extraction successful:', realCommands.length, 'commands');
       } else {
-        console.log('[EnhancedDataMapper] ⚠️ Low command count from Hex extraction:', realCommands.length);
+        console.log('[EnhancedDataMapper] ⚠️ Low command count from SC:R extraction:', realCommands.length);
+        console.log('[EnhancedDataMapper] This might indicate a parsing issue or unusual replay format');
       }
     } catch (error) {
-      console.error('[EnhancedDataMapper] ❌ Hex extraction failed:', error);
+      console.error('[EnhancedDataMapper] ❌ SC:R extraction failed:', error);
+      console.log('[EnhancedDataMapper] Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : 'No stack trace'
+      });
       console.log('[EnhancedDataMapper] Using screp-js only mode');
     }
     
     // 3. Berechne echte Metriken
-    console.log('[EnhancedDataMapper] Calculating real metrics...');
+    console.log('[EnhancedDataMapper] === CALCULATING METRICS ===');
     const realMetrics = this.calculateRealMetrics(realCommands, screpResult);
-    console.log('[EnhancedDataMapper] Real metrics calculated:', Object.keys(realMetrics).length, 'players');
+    console.log('[EnhancedDataMapper] Real metrics calculated for', Object.keys(realMetrics).length, 'players');
+    console.log('[EnhancedDataMapper] Sample metrics:', Object.entries(realMetrics).slice(0, 2).map(([id, metrics]) => ({
+      playerId: id,
+      apm: (metrics as any).apm,
+      eapm: (metrics as any).eapm
+    })));
     
     // 4. Generiere intelligente Build Orders
-    console.log('[EnhancedDataMapper] Generating enhanced build orders...');
+    console.log('[EnhancedDataMapper] === GENERATING BUILD ORDERS ===');
     const enhancedBuildOrders = this.generateEnhancedBuildOrders(realCommands, screpResult);
-    console.log('[EnhancedDataMapper] Enhanced build orders generated:', Object.keys(enhancedBuildOrders).length, 'players');
+    console.log('[EnhancedDataMapper] Enhanced build orders generated for', Object.keys(enhancedBuildOrders).length, 'players');
+    console.log('[EnhancedDataMapper] Build order samples:', Object.entries(enhancedBuildOrders).map(([id, bo]) => ({
+      playerId: id,
+      entries: (bo as any[]).length
+    })));
     
     // 5. Erstelle Gameplay-Analyse
-    console.log('[EnhancedDataMapper] Generating gameplay analysis...');
+    console.log('[EnhancedDataMapper] === GENERATING ANALYSIS ===');
     const gameplayAnalysis = this.generateGameplayAnalysis(realCommands, realMetrics, screpResult);
-    console.log('[EnhancedDataMapper] Gameplay analysis generated:', Object.keys(gameplayAnalysis).length, 'players');
+    console.log('[EnhancedDataMapper] Gameplay analysis generated for', Object.keys(gameplayAnalysis).length, 'players');
     
     const finalResult = {
       header: {
@@ -155,14 +190,15 @@ export class EnhancedDataMapper {
       dataQuality
     };
     
-    console.log('[EnhancedDataMapper] === PARSING COMPLETE ===');
+    console.log('[EnhancedDataMapper] === SC:R PARSING COMPLETE ===');
     console.log('[EnhancedDataMapper] Final result summary:', {
       players: finalResult.players.length,
       realCommands: finalResult.realCommands.length,
       realMetrics: Object.keys(finalResult.realMetrics).length,
       enhancedBuildOrders: Object.keys(finalResult.enhancedBuildOrders).length,
       gameplayAnalysis: Object.keys(finalResult.gameplayAnalysis).length,
-      quality: finalResult.dataQuality.reliability
+      quality: finalResult.dataQuality.reliability,
+      dataSource: finalResult.dataQuality.source
     });
     
     return finalResult;

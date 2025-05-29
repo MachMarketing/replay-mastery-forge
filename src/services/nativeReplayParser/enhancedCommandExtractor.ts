@@ -1,9 +1,10 @@
+
 /**
- * Enhanced Command Extractor - Kombiniert screp-js mit Hex-Analyse
- * für echte SC:R Command-Extraktion
+ * Enhanced Command Extractor - Kombiniert screp-js mit SC:R spezifischer Hex-Analyse
  */
 
 import { HexAnalyzer } from '../replayParser/hexAnalyzer';
+import { RemasteredFormatParser, SCRCommand } from './scRemastered/remasteredFormatParser';
 
 export interface ExtractedCommand {
   frame: number;
@@ -39,42 +40,111 @@ export class EnhancedCommandExtractor {
   }
 
   /**
-   * Extrahiere echte Commands mit Hex-Analyse + screp-js Erkenntnissen
+   * Extrahiere echte Commands mit SC:R spezifischer Analyse
    */
   extractRealCommands(): ExtractedCommand[] {
-    console.log('[EnhancedCommandExtractor] Starting real command extraction...');
+    console.log('[EnhancedCommandExtractor] Starting SC:R command extraction...');
     console.log('[EnhancedCommandExtractor] Data buffer size:', this.data.length);
     
-    // Finde Command-Sektionen mit Hex-Analyse
+    // Verwende den neuen SC:R Parser
+    const scrResult = RemasteredFormatParser.parseReplay(this.data.buffer);
+    console.log('[EnhancedCommandExtractor] SC:R Parser result:', {
+      commands: scrResult.commands.length,
+      confidence: scrResult.confidence,
+      method: scrResult.method
+    });
+    
+    if (scrResult.commands.length > 50) {
+      console.log('[EnhancedCommandExtractor] SC:R Parser successful, converting commands...');
+      const commands = this.convertSCRCommands(scrResult.commands);
+      console.log('[EnhancedCommandExtractor] Converted', commands.length, 'SC:R commands');
+      return commands;
+    }
+    
+    console.log('[EnhancedCommandExtractor] SC:R Parser insufficient, trying legacy methods...');
+    return this.extractCommandsLegacy();
+  }
+
+  /**
+   * Convert SC:R commands to ExtractedCommand format
+   */
+  private convertSCRCommands(scrCommands: SCRCommand[]): ExtractedCommand[] {
+    console.log('[EnhancedCommandExtractor] Converting', scrCommands.length, 'SC:R commands');
+    
+    const commands: ExtractedCommand[] = [];
+    
+    for (const scrCmd of scrCommands) {
+      const command: ExtractedCommand = {
+        frame: scrCmd.frame,
+        playerId: scrCmd.playerId,
+        commandType: scrCmd.commandId,
+        commandName: scrCmd.commandName,
+        rawData: scrCmd.rawData,
+        parameters: scrCmd.parameters || {}
+      };
+      
+      // Extract coordinates if available
+      if (scrCmd.parameters?.x !== undefined) {
+        command.x = scrCmd.parameters.x;
+      }
+      if (scrCmd.parameters?.y !== undefined) {
+        command.y = scrCmd.parameters.y;
+      }
+      
+      // Extract unit/structure type
+      if (scrCmd.parameters?.unitType !== undefined) {
+        command.unitType = scrCmd.parameters.unitType;
+      } else if (scrCmd.parameters?.structureType !== undefined) {
+        command.unitType = scrCmd.parameters.structureType;
+      }
+      
+      // Extract target ID
+      if (scrCmd.parameters?.targetId !== undefined) {
+        command.targetId = scrCmd.parameters.targetId;
+      }
+      
+      commands.push(command);
+    }
+    
+    console.log('[EnhancedCommandExtractor] Sample converted commands:', 
+      commands.slice(0, 5).map(cmd => ({
+        frame: cmd.frame,
+        player: cmd.playerId,
+        command: cmd.commandName
+      }))
+    );
+    
+    return commands;
+  }
+
+  /**
+   * Legacy extraction methods as fallback
+   */
+  private extractCommandsLegacy(): ExtractedCommand[] {
+    console.log('[EnhancedCommandExtractor] Using legacy extraction methods');
+    
+    // Verwende die ursprünglichen Methoden als Fallback
     const commandSections = this.findCommandSections();
-    console.log('[EnhancedCommandExtractor] Found command sections:', commandSections.length);
+    console.log('[EnhancedCommandExtractor] Legacy: Found command sections:', commandSections.length);
     
     if (commandSections.length === 0) {
-      console.log('[EnhancedCommandExtractor] No command sections found, trying fallback method');
+      console.log('[EnhancedCommandExtractor] Legacy: No sections found, trying fallback');
       return this.extractCommandsFallback();
     }
     
     const allCommands: ExtractedCommand[] = [];
     
     for (const section of commandSections) {
-      console.log(`[EnhancedCommandExtractor] Parsing section at offset ${section.offset}, length ${section.length}`);
+      console.log(`[EnhancedCommandExtractor] Legacy: Parsing section at offset ${section.offset}, length ${section.length}`);
       const commands = this.parseCommandSection(section);
-      console.log(`[EnhancedCommandExtractor] Extracted ${commands.length} commands from section`);
+      console.log(`[EnhancedCommandExtractor] Legacy: Extracted ${commands.length} commands from section`);
       allCommands.push(...commands);
     }
     
     // Sortiere nach Frame-Zeit
     allCommands.sort((a, b) => a.frame - b.frame);
     
-    console.log('[EnhancedCommandExtractor] Total extracted commands:', allCommands.length);
-    if (allCommands.length > 0) {
-      console.log('[EnhancedCommandExtractor] Sample commands:', allCommands.slice(0, 5).map(cmd => ({
-        frame: cmd.frame,
-        playerId: cmd.playerId,
-        commandName: cmd.commandName
-      })));
-    }
-    
+    console.log('[EnhancedCommandExtractor] Legacy: Total extracted commands:', allCommands.length);
     return allCommands;
   }
 
