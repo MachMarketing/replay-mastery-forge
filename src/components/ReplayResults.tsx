@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EnhancedReplayResult } from '@/services/nativeReplayParser/enhancedDataMapper';
-import { Clock, Users, Zap, Target, TrendingUp } from 'lucide-react';
+import { Clock, Users, Zap, Target, TrendingUp, Swords, Building, Cpu } from 'lucide-react';
 
 interface ReplayResultsProps {
   data: EnhancedReplayResult;
@@ -30,9 +30,21 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
     return {
       playerId: playerIndex,
       player,
-      entries: buildOrder.slice(0, 15) // Limit to first 15 entries
+      entries: buildOrder.slice(0, 20) // Show more entries
     };
   }).filter(bo => bo.entries.length > 0);
+
+  // Get real commands for display
+  const realCommands = data.realCommands || [];
+  const commandsByPlayer = validPlayers.map(player => {
+    const playerIndex = validPlayers.findIndex(p => p.name === player.name);
+    const playerCommands = realCommands.filter(cmd => cmd.playerId === playerIndex);
+    return {
+      playerId: playerIndex,
+      player,
+      commands: playerCommands.slice(0, 30) // Show first 30 commands
+    };
+  }).filter(pc => pc.commands.length > 0);
 
   function formatDuration(frames: number): string {
     const seconds = Math.floor(frames / 23.81);
@@ -44,6 +56,13 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
   function getPlayerMetric(playerIndex: number, metric: string): number {
     const playerMetrics = data.realMetrics?.[playerIndex];
     return playerMetrics?.[metric] || 0;
+  }
+
+  function formatTime(frame: number): string {
+    const seconds = Math.floor(frame / 23.81);
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   }
 
   return (
@@ -73,12 +92,12 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
             </div>
             <div className="text-center">
               <Zap className="h-6 w-6 mx-auto mb-1 text-muted-foreground" />
-              <div className="text-sm text-muted-foreground">Kommandos</div>
-              <div className="font-bold">{data.dataQuality?.commandsExtracted || 0}</div>
+              <div className="text-sm text-muted-foreground">Echte Kommandos</div>
+              <div className="font-bold">{realCommands.length}</div>
             </div>
             <div className="text-center">
               <TrendingUp className="h-6 w-6 mx-auto mb-1 text-muted-foreground" />
-              <div className="text-sm text-muted-foreground">Qualität</div>
+              <div className="text-sm text-muted-foreground">Datenqualität</div>
               <div className="font-bold capitalize">{data.dataQuality?.reliability || 'Unknown'}</div>
             </div>
           </div>
@@ -89,7 +108,7 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
       {validPlayers.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Spieler</CardTitle>
+            <CardTitle>Spieler Übersicht</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -112,11 +131,81 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
         </Card>
       )}
 
+      {/* Real Commands - DAS SIND DIE ECHTEN AKTIONSDATEN! */}
+      {commandsByPlayer.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Swords className="h-5 w-5" />
+              Echte Spieler-Aktionen (Hex-extrahiert)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              {commandsByPlayer.map((playerData) => (
+                <div key={playerData.playerId}>
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <Cpu className="h-4 w-4" />
+                    {playerData.player.name} - Echte Kommandos
+                    <Badge variant="outline">{playerData.player.race}</Badge>
+                    <span className="text-sm text-muted-foreground">
+                      ({playerData.commands.length} Aktionen gezeigt)
+                    </span>
+                  </h4>
+                  
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-20">Zeit</TableHead>
+                        <TableHead>Aktion</TableHead>
+                        <TableHead>Parameter</TableHead>
+                        <TableHead>Typ</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {playerData.commands.map((command, index) => (
+                        <TableRow key={index}>
+                          <TableCell className="font-mono text-xs">
+                            {formatTime(command.frame)}
+                          </TableCell>
+                          <TableCell className="text-sm font-medium">
+                            {command.commandName || `CMD_${command.commandId}`}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {command.parameters ? (
+                              <div className="space-y-1">
+                                {Object.entries(command.parameters).map(([key, value]) => (
+                                  <div key={key}>
+                                    <span className="font-medium">{key}:</span> {String(value)}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : '-'}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            <Badge variant="secondary" className="text-xs">
+                              ID: {command.commandId}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Enhanced Build Orders */}
       {playerBuildOrders.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Enhanced Build Orders</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Building className="h-5 w-5" />
+              Intelligente Build Orders
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
@@ -126,7 +215,7 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
                     {buildOrder.player.name}
                     <Badge variant="outline">{buildOrder.player.race}</Badge>
                     <span className="text-sm text-muted-foreground">
-                      ({buildOrder.entries.length} Aktionen)
+                      ({buildOrder.entries.length} Build-Aktionen)
                     </span>
                   </h4>
                   
@@ -196,12 +285,20 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
                     {metrics && (
                       <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
-                          <div className="font-medium">APM</div>
+                          <div className="font-medium">Echte APM</div>
                           <div className="text-lg font-bold text-blue-600">{metrics.apm}</div>
                         </div>
                         <div>
-                          <div className="font-medium">EAPM</div>
+                          <div className="font-medium">Echte EAPM</div>
                           <div className="text-lg font-bold text-green-600">{metrics.eapm}</div>
+                        </div>
+                        <div>
+                          <div className="font-medium">Micro-Intensität</div>
+                          <div className="text-lg font-bold text-purple-600">{metrics.microIntensity}</div>
+                        </div>
+                        <div>
+                          <div className="font-medium">Echte Aktionen</div>
+                          <div className="text-lg font-bold text-orange-600">{metrics.realActions}</div>
                         </div>
                       </div>
                     )}
@@ -246,7 +343,7 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
         </Card>
       )}
 
-      {/* Debug Info */}
+      {/* Enhanced Debug Info */}
       <Card>
         <CardHeader>
           <CardTitle className="text-sm">Enhanced Debug Information</CardTitle>
@@ -266,8 +363,8 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
               <div className="font-mono">Enhanced Data Mapper</div>
             </div>
             <div>
-              <div className="text-muted-foreground">Zuverlässigkeit</div>
-              <div className="font-mono capitalize">{data.dataQuality?.reliability || 'unknown'}</div>
+              <div className="text-muted-foreground">Hex Commands</div>
+              <div className="font-mono">{realCommands.length}</div>
             </div>
           </div>
         </CardContent>
