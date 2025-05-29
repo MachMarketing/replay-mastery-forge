@@ -180,9 +180,9 @@ export class EnhancedScrepWrapper {
     let nativeParserError: string | undefined;
     let directParserError: string | undefined;
     
-    // Try screp-js first - using the correct method name
+    // Try screp-js first - using the singleton pattern
     try {
-      const screpJsWrapper = new ScrepJsWrapper();
+      const screpJsWrapper = ScrepJsWrapper.getInstance();
       screpJsResult = await screpJsWrapper.parseReplay(file);
       screpJsSuccess = true;
       console.log('[EnhancedScrepWrapper] Screp-js parsing successful');
@@ -191,9 +191,11 @@ export class EnhancedScrepWrapper {
       console.warn('[EnhancedScrepWrapper] Screp-js parsing failed:', screpJsError);
     }
     
-    // Try direct parser - using the correct method name
+    // Try direct parser - using instance method
     try {
-      directParserResult = await DirectReplayParser.parseReplay(file);
+      const arrayBuffer = await file.arrayBuffer();
+      const directParser = new DirectReplayParser(arrayBuffer);
+      directParserResult = directParser.parseReplay();
       directParserSuccess = directParserResult.success;
       console.log('[EnhancedScrepWrapper] Direct parser result:', {
         success: directParserSuccess,
