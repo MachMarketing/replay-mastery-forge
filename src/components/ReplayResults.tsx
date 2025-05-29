@@ -1,69 +1,49 @@
 
 /**
- * Enhanced results display with data cleaning for SC:R replays
+ * Enhanced results display for SC:R replays using EnhancedReplayResult
  */
 
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { RemasteredReplayData } from '@/services/replayParser/scRemasteredParser';
+import { EnhancedReplayResult } from '@/services/nativeReplayParser/enhancedDataMapper';
 import { Clock, Users, Zap, Target, TrendingUp } from 'lucide-react';
 
 interface ReplayResultsProps {
-  data: RemasteredReplayData;
+  data: EnhancedReplayResult;
 }
 
 const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
-  // Clean player names and filter valid players
-  const validPlayers = data.players.filter(player => {
-    const cleanName = cleanPlayerName(player.name);
-    return cleanName.length >= 2 && cleanName.length <= 12 && /^[a-zA-Z0-9_\-\[\]]+$/.test(cleanName);
-  }).map(player => ({
-    ...player,
-    name: cleanPlayerName(player.name),
-    race: player.race === 'Unknown' ? guessRaceFromBuildOrder(player.id, data.buildOrders) : player.race
-  }));
+  // Ensure players array exists and is valid
+  const validPlayers = (data.players || []).filter(player => {
+    return player && player.name && player.name.trim().length > 0;
+  });
 
-  // Filter realistic build orders
-  const cleanBuildOrders = data.buildOrders.filter(bo => {
-    const validPlayer = validPlayers.find(p => p.id === bo.playerId);
-    return validPlayer && bo.entries.length > 0 && bo.entries.length < 50;
-  }).map(bo => ({
-    ...bo,
-    entries: bo.entries.filter(entry => {
-      const timeInSeconds = parseTimeToSeconds(entry.time);
-      return timeInSeconds >= 0 && timeInSeconds < 3600; // Max 1 hour
-    }).slice(0, 15) // Limit to first 15 entries
-  }));
+  // Ensure enhanced build orders exist
+  const enhancedBuildOrders = data.enhancedBuildOrders || {};
+  
+  // Get build orders for valid players
+  const playerBuildOrders = validPlayers.map(player => {
+    const playerIndex = validPlayers.findIndex(p => p.name === player.name);
+    const buildOrder = enhancedBuildOrders[playerIndex] || [];
+    return {
+      playerId: playerIndex,
+      player,
+      entries: buildOrder.slice(0, 15) // Limit to first 15 entries
+    };
+  }).filter(bo => bo.entries.length > 0);
 
-  function cleanPlayerName(name: string): string {
-    return name.replace(/[^\w\-\[\]]/g, '').trim().substring(0, 12);
-  }
-
-  function guessRaceFromBuildOrder(playerId: number, buildOrders: any[]): string {
-    const playerBO = buildOrders.find(bo => bo.playerId === playerId);
-    if (!playerBO) return 'Unknown';
-    
-    const actions = playerBO.entries.map(e => e.action.toLowerCase()).join(' ');
-    if (actions.includes('probe') || actions.includes('zealot') || actions.includes('pylon')) return 'Protoss';
-    if (actions.includes('scv') || actions.includes('marine') || actions.includes('depot')) return 'Terran';
-    if (actions.includes('drone') || actions.includes('zergling') || actions.includes('hatchery')) return 'Zerg';
-    return 'Unknown';
-  }
-
-  function parseTimeToSeconds(timeStr: string): number {
-    const parts = timeStr.split(':');
-    if (parts.length !== 2) return 0;
-    const minutes = parseInt(parts[0]);
-    const seconds = parseInt(parts[1]);
-    return minutes * 60 + seconds;
-  }
-
-  function formatDuration(seconds: number): string {
+  function formatDuration(frames: number): string {
+    const seconds = Math.floor(frames / 23.81);
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  function getPlayerMetric(playerIndex: number, metric: string): number {
+    const playerMetrics = data.realMetrics?.[playerIndex];
+    return playerMetrics?.[metric] || 0;
   }
 
   return (
@@ -73,9 +53,9 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Target className="h-5 w-5" />
-            {data.header.mapName || 'Unbekannte Map'}
+            {data.header?.mapName || 'Unbekannte Map'}
             <Badge variant="outline" className="ml-auto">
-              {data.header.duration}
+              {data.header?.duration || 'Unbekannte Dauer'}
             </Badge>
           </CardTitle>
         </CardHeader>
@@ -84,7 +64,7 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
             <div className="text-center">
               <Clock className="h-6 w-6 mx-auto mb-1 text-muted-foreground" />
               <div className="text-sm text-muted-foreground">Dauer</div>
-              <div className="font-bold">{formatDuration(Math.floor(data.header.frames / 23.81))}</div>
+              <div className="font-bold">{data.header?.duration || formatDuration(data.header?.frames || 0)}</div>
             </div>
             <div className="text-center">
               <Users className="h-6 w-6 mx-auto mb-1 text-muted-foreground" />
@@ -94,12 +74,12 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
             <div className="text-center">
               <Zap className="h-6 w-6 mx-auto mb-1 text-muted-foreground" />
               <div className="text-sm text-muted-foreground">Kommandos</div>
-              <div className="font-bold">{data.rawData.totalCommands}</div>
+              <div className="font-bold">{data.dataQuality?.commandsExtracted || 0}</div>
             </div>
             <div className="text-center">
               <TrendingUp className="h-6 w-6 mx-auto mb-1 text-muted-foreground" />
-              <div className="text-sm text-muted-foreground">Engine</div>
-              <div className="font-bold">{data.header.engine}</div>
+              <div className="text-sm text-muted-foreground">Qualität</div>
+              <div className="font-bold capitalize">{data.dataQuality?.reliability || 'Unknown'}</div>
             </div>
           </div>
         </CardContent>
@@ -113,16 +93,16 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {validPlayers.map((player) => (
-                <div key={player.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              {validPlayers.map((player, index) => (
+                <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                   <div>
                     <div className="font-semibold">{player.name}</div>
                     <div className="text-sm text-muted-foreground">
-                      {player.race} • Team {player.team}
+                      {player.race} • Team {player.team || index + 1}
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-lg font-bold text-primary">{player.apm}</div>
+                    <div className="text-lg font-bold text-primary">{getPlayerMetric(index, 'apm')}</div>
                     <div className="text-xs text-muted-foreground">APM</div>
                   </div>
                 </div>
@@ -132,56 +112,132 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
         </Card>
       )}
 
-      {/* Build Orders */}
-      {cleanBuildOrders.length > 0 && (
+      {/* Enhanced Build Orders */}
+      {playerBuildOrders.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Build Orders</CardTitle>
+            <CardTitle>Enhanced Build Orders</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
-              {cleanBuildOrders.map((buildOrder) => {
-                const player = validPlayers.find(p => p.id === buildOrder.playerId);
-                if (!player) return null;
+              {playerBuildOrders.map((buildOrder) => (
+                <div key={buildOrder.playerId}>
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    {buildOrder.player.name}
+                    <Badge variant="outline">{buildOrder.player.race}</Badge>
+                    <span className="text-sm text-muted-foreground">
+                      ({buildOrder.entries.length} Aktionen)
+                    </span>
+                  </h4>
+                  
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-20">Zeit</TableHead>
+                        <TableHead className="w-20">Supply</TableHead>
+                        <TableHead>Aktion</TableHead>
+                        <TableHead>Einheit</TableHead>
+                        <TableHead>Kategorie</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {buildOrder.entries.map((entry, index) => (
+                        <TableRow key={index}>
+                          <TableCell className="font-mono text-xs">
+                            {entry.time}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {entry.supply}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {entry.action}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {entry.unitName || '-'}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            <Badge variant="secondary" className="text-xs">
+                              {entry.category}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Enhanced Analysis */}
+      {data.gameplayAnalysis && Object.keys(data.gameplayAnalysis).length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Enhanced Gameplay Analyse</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {validPlayers.map((player, index) => {
+                const analysis = data.gameplayAnalysis[index];
+                const metrics = data.realMetrics?.[index];
+                
+                if (!analysis) return null;
                 
                 return (
-                  <div key={buildOrder.playerId}>
-                    <h4 className="font-semibold mb-3 flex items-center gap-2">
-                      {player.name}
+                  <div key={index} className="space-y-4">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold">{player.name}</h3>
                       <Badge variant="outline">{player.race}</Badge>
-                      <span className="text-sm text-muted-foreground">
-                        ({buildOrder.entries.length} Aktionen)
-                      </span>
-                    </h4>
+                      <Badge variant="secondary">{analysis.playstyle}</Badge>
+                    </div>
                     
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-20">Zeit</TableHead>
-                          <TableHead className="w-20">Supply</TableHead>
-                          <TableHead>Aktion</TableHead>
-                          <TableHead>Einheit</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {buildOrder.entries.map((entry, index) => (
-                          <TableRow key={index}>
-                            <TableCell className="font-mono text-xs">
-                              {entry.time}
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              {entry.supply}
-                            </TableCell>
-                            <TableCell className="text-sm">
-                              {entry.action}
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              {entry.unitName || '-'}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                    {metrics && (
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <div className="font-medium">APM</div>
+                          <div className="text-lg font-bold text-blue-600">{metrics.apm}</div>
+                        </div>
+                        <div>
+                          <div className="font-medium">EAPM</div>
+                          <div className="text-lg font-bold text-green-600">{metrics.eapm}</div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {analysis.strengths?.length > 0 && (
+                      <div>
+                        <h4 className="font-medium text-green-700 mb-1">Stärken</h4>
+                        <ul className="text-sm text-green-600 list-disc list-inside">
+                          {analysis.strengths.map((strength, i) => (
+                            <li key={i}>{strength}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {analysis.weaknesses?.length > 0 && (
+                      <div>
+                        <h4 className="font-medium text-red-700 mb-1">Schwächen</h4>
+                        <ul className="text-sm text-red-600 list-disc list-inside">
+                          {analysis.weaknesses.map((weakness, i) => (
+                            <li key={i}>{weakness}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {analysis.recommendations?.length > 0 && (
+                      <div>
+                        <h4 className="font-medium text-blue-700 mb-1">Empfehlungen</h4>
+                        <ul className="text-sm text-blue-600 list-disc list-inside">
+                          {analysis.recommendations.map((rec, i) => (
+                            <li key={i}>{rec}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -193,25 +249,25 @@ const ReplayResults: React.FC<ReplayResultsProps> = ({ data }) => {
       {/* Debug Info */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">Debug Information</CardTitle>
+          <CardTitle className="text-sm">Enhanced Debug Information</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
             <div>
               <div className="text-muted-foreground">Frames</div>
-              <div className="font-mono">{data.header.frames.toLocaleString()}</div>
+              <div className="font-mono">{(data.header?.frames || 0).toLocaleString()}</div>
             </div>
             <div>
-              <div className="text-muted-foreground">Spielzeit</div>
-              <div className="font-mono">{data.rawData.gameMinutes.toFixed(1)} min</div>
+              <div className="text-muted-foreground">Datenquelle</div>
+              <div className="font-mono">{data.dataQuality?.source || 'unknown'}</div>
             </div>
             <div>
               <div className="text-muted-foreground">Parser</div>
-              <div className="font-mono">{data.rawData.extractionMethod}</div>
+              <div className="font-mono">Enhanced Data Mapper</div>
             </div>
             <div>
-              <div className="text-muted-foreground">Build Orders</div>
-              <div className="font-mono">{cleanBuildOrders.length} gefiltert</div>
+              <div className="text-muted-foreground">Zuverlässigkeit</div>
+              <div className="font-mono capitalize">{data.dataQuality?.reliability || 'unknown'}</div>
             </div>
           </div>
         </CardContent>
