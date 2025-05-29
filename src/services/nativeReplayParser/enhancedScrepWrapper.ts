@@ -107,17 +107,21 @@ export class EnhancedScrepWrapper {
       console.log('[EnhancedScrepWrapper] === TRYING REMASTERED ACTION PARSER ===');
       remasteredActionResult = await RemasteredActionParser.parseActions(file);
       remasteredActionParserSuccess = true;
-      actionsExtracted = remasteredActionResult.actions?.length || 0;
+      
+      // USE CORRECT TOTAL ACTION COUNT
+      actionsExtracted = remasteredActionResult.totalActionCount || remasteredActionResult.actions?.length || 0;
       
       console.log('[EnhancedScrepWrapper] RemasteredActionParser result:', {
         success: remasteredActionParserSuccess,
+        totalActionCount: remasteredActionResult.totalActionCount,
         actionsFound: actionsExtracted,
         buildOrders: remasteredActionResult.buildOrders?.length || 0,
         frameCount: remasteredActionResult.frameCount
       });
       
-      if (actionsExtracted > 100) {
+      if (actionsExtracted > 50) {
         console.log('[EnhancedScrepWrapper] ✅ REMASTERED ACTION PARSER SUCCESS - REAL DATA!');
+        console.log('[EnhancedScrepWrapper] EXTRACTED ACTIONS:', actionsExtracted);
       }
     } catch (error) {
       remasteredActionParserError = error instanceof Error ? error.message : 'Remastered Action Parser failed';
@@ -140,8 +144,8 @@ export class EnhancedScrepWrapper {
       });
       
       if (remasteredParserResult.commands && remasteredParserResult.commands.length > actionsExtracted) {
-        actionsExtracted = remasteredParserResult.commands.length;
-        console.log('[EnhancedScrepWrapper] ✅ BW REMASTERED PARSER HAS MORE ACTIONS!');
+        console.log('[EnhancedScrepWrapper] BW REMASTERED has more commands, but keeping Remastered Action count as primary');
+        // Don't override actionsExtracted from RemasteredActionParser
       }
     } catch (error) {
       remasteredParserError = error instanceof Error ? error.message : 'BW Remastered Parser failed';
@@ -162,9 +166,10 @@ export class EnhancedScrepWrapper {
         playerActions: Object.keys(directParserResult.playerActions || {}).length
       });
       
-      if (directParserSuccess && directParserResult.commands && directParserResult.commands.length > actionsExtracted) {
+      // Only use direct parser if no better data available
+      if (directParserSuccess && directParserResult.commands && actionsExtracted === 0) {
         actionsExtracted = directParserResult.commands.length;
-        console.log('[EnhancedScrepWrapper] ✅ DIRECT PARSER HAS MORE ACTIONS!');
+        console.log('[EnhancedScrepWrapper] Using direct parser action count:', actionsExtracted);
       }
     } catch (error) {
       directParserError = error instanceof Error ? error.message : 'Direct Parser failed';
@@ -191,7 +196,29 @@ export class EnhancedScrepWrapper {
     if (remasteredActionParserSuccess && actionsExtracted > 0) {
       extractionMethod = 'remastered-action-parser';
       primaryResult = remasteredActionResult;
-      chosenAPM = this.calculateAPMFromActions(remasteredActionResult.actions, 2);
+      
+      // Calculate APM based on actual action count and game duration
+      const frameCount = remasteredActionResult.frameCount || 0;
+      const gameMinutes = frameCount > 0 ? frameCount / 23.81 / 60 : 1;
+      
+      // Calculate realistic APM from actions
+      const playerActionsCount = Object.entries(remasteredActionResult.playerActions || {});
+      chosenAPM = playerActionsCount.map(([playerId, actions]) => {
+        const actionCount = Array.isArray(actions) ? actions.length : 0;
+        return gameMinutes > 0 ? Math.round(actionCount / gameMinutes) : 0;
+      });
+      
+      // Ensure we have at least 2 players
+      while (chosenAPM.length < 2) {
+        chosenAPM.push(0);
+      }
+      
+      console.log('[EnhancedScrepWrapper] Calculated realistic APM from actions:', {
+        totalActions: actionsExtracted,
+        gameMinutes: gameMinutes.toFixed(2),
+        playerActions: playerActionsCount.map(([id, acts]) => `P${id}: ${Array.isArray(acts) ? acts.length : 0}`),
+        calculatedAPM: chosenAPM
+      });
       
       // Generate enhanced build orders from Remastered actions
       enhancedBuildOrders = this.generateEnhancedBuildOrdersFromRemastered(remasteredActionResult);
@@ -290,7 +317,7 @@ export class EnhancedScrepWrapper {
           remasteredActionParserError,
           directParserError,
           screpJsError,
-          actionsExtracted,
+          actionsExtracted, // This should now be correct
           buildOrdersGenerated,
           qualityCheck
         }
@@ -301,9 +328,10 @@ export class EnhancedScrepWrapper {
     console.log('[EnhancedScrepWrapper] Final result:', {
       extractionMethod,
       hasRealActions: result.enhanced.hasDetailedActions,
-      actionsExtracted,
+      actionsExtracted: result.enhanced.debugInfo.actionsExtracted, // Should match actionsExtracted
       buildOrdersGenerated,
-      extractionTime
+      extractionTime,
+      finalAPM: result.computed.apm
     });
 
     return result;
@@ -375,15 +403,15 @@ export class EnhancedScrepWrapper {
       playerId: playerIndex,
       entries: buildOrder.map((entry: any) => ({
         frame: entry.frame,
-        timestamp: entry.timestamp,
+        time: entry.timestamp,
         action: entry.action,
         supply: entry.supply || 0,
         category: 'build'
       })),
       totalEntries: buildOrder.length,
       race: 'Unknown',
-      benchmarks: [], // Add empty benchmarks array
-      efficiency: {   // Add default efficiency object
+      benchmarks: [],
+      efficiency: {
         economyScore: 0,
         techScore: 0,
         timingScore: 0,
@@ -403,7 +431,7 @@ export class EnhancedScrepWrapper {
         
         playerBuildOrders[command.userId].push({
           frame: command.frame,
-          timestamp: this.frameToTimestamp(command.frame),
+          time: this.frameToTimestamp(command.frame),
           action: command.typeString || 'Build Action',
           supply: 0,
           category: 'build'
@@ -416,8 +444,8 @@ export class EnhancedScrepWrapper {
       entries: buildOrder,
       totalEntries: buildOrder.length,
       race: 'Unknown',
-      benchmarks: [], // Add empty benchmarks array
-      efficiency: {   // Add default efficiency object
+      benchmarks: [],
+      efficiency: {
         economyScore: 0,
         techScore: 0,
         timingScore: 0,

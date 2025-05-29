@@ -36,6 +36,7 @@ export interface RemasteredActionData {
   playerActions: Record<number, RemasteredAction[]>;
   frameCount: number;
   gameSpeed: number;
+  totalActionCount: number; // Add explicit total count
 }
 
 export class RemasteredActionParser {
@@ -103,7 +104,14 @@ export class RemasteredActionParser {
     
     // Extract action data from the decompressed buffer
     try {
-      return this.extractActionData(decompressedBuffer);
+      const result = this.extractActionData(decompressedBuffer);
+      console.log('[RemasteredActionParser] FINAL RESULT:', {
+        totalActions: result.totalActionCount,
+        actionsArray: result.actions.length,
+        buildOrders: result.buildOrders.map(bo => bo.length),
+        frameCount: result.frameCount
+      });
+      return result;
     } catch (error) {
       console.error('[RemasteredActionParser] Action extraction failed:', error);
       return this.analyzeRawBuffer(buffer);
@@ -120,7 +128,8 @@ export class RemasteredActionParser {
       buildOrders: [[], []],
       playerActions: {},
       frameCount: 0,
-      gameSpeed: 1.0
+      gameSpeed: 1.0,
+      totalActionCount: 0
     };
   }
 
@@ -219,7 +228,8 @@ export class RemasteredActionParser {
       buildOrders,
       playerActions,
       frameCount: currentFrame,
-      gameSpeed: 1.0
+      gameSpeed: 1.0,
+      totalActionCount: actions.length
     };
   }
 
@@ -265,13 +275,15 @@ export class RemasteredActionParser {
     const gameSpeed = this.calculateGameSpeed(actions);
     
     console.log('[RemasteredActionParser] Final stats: Frame count:', frameCount, 'Game speed:', gameSpeed);
+    console.log('[RemasteredActionParser] TOTAL ACTION COUNT:', actions.length);
     
     return {
       actions,
       buildOrders,
       playerActions,
       frameCount,
-      gameSpeed
+      gameSpeed,
+      totalActionCount: actions.length
     };
   }
 
