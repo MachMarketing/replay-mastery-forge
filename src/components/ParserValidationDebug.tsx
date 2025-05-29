@@ -10,22 +10,22 @@ interface ParserValidationDebugProps {
 
 export function ParserValidationDebug({ enhancedData }: ParserValidationDebugProps) {
   const { enhanced } = enhancedData;
-  const { debugInfo, validationData } = enhanced;
+  const { debugInfo } = enhanced;
 
   return (
     <div className="space-y-4">
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            🔍 Enhanced Parser Validation Debug
+            🔍 Enhanced Remastered Parser Debug
             <Badge variant={enhanced.hasDetailedActions ? "default" : "destructive"}>
               {debugInfo.qualityCheck.activeParser.toUpperCase()}
             </Badge>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Parser Status */}
-          <div className="grid grid-cols-3 gap-4">
+          {/* Parser Status - Updated for Remastered parsers */}
+          <div className="grid grid-cols-4 gap-4">
             <div className="text-center">
               <div className="text-2xl font-bold text-blue-600">
                 {debugInfo.screpJsSuccess ? '✅' : '❌'}
@@ -40,9 +40,15 @@ export function ParserValidationDebug({ enhancedData }: ParserValidationDebugPro
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-purple-600">
-                {debugInfo.nativeParserSuccess ? '✅' : '❌'}
+                {debugInfo.remasteredParserSuccess ? '✅' : '❌'}
               </div>
-              <div className="text-sm">Native Parser</div>
+              <div className="text-sm">BW Remastered</div>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl font-bold text-orange-600">
+                {debugInfo.remasteredActionParserSuccess ? '✅' : '❌'}
+              </div>
+              <div className="text-sm">Remastered Actions</div>
             </div>
           </div>
 
@@ -52,7 +58,7 @@ export function ParserValidationDebug({ enhancedData }: ParserValidationDebugPro
               <div className="text-2xl font-bold text-blue-600">
                 {debugInfo.actionsExtracted}
               </div>
-              <div className="text-sm">Commands Extracted</div>
+              <div className="text-sm">Actions Extracted</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-green-600">
@@ -68,90 +74,70 @@ export function ParserValidationDebug({ enhancedData }: ParserValidationDebugPro
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-orange-600">
-                {debugInfo.qualityCheck.activeParser === 'direct-parser' ? '🎯' : '⚠️'}
+                {debugInfo.qualityCheck.activeParser === 'remastered-action-parser' ? '🎯' : '⚠️'}
               </div>
-              <div className="text-sm">Direct Parser</div>
+              <div className="text-sm">Remastered Parser</div>
             </div>
           </div>
 
-          {/* Enhanced Debug Information from Direct Parser */}
-          {debugInfo.qualityCheck.activeParser === 'direct-parser' && (
-            <div className="border rounded-lg p-4 bg-blue-50 dark:bg-blue-950/20">
-              <h4 className="font-semibold mb-3 text-blue-800 dark:text-blue-200">🎯 Direct Parser Debug (Enhanced)</h4>
+          {/* Enhanced Debug Information for Remastered Action Parser */}
+          {debugInfo.qualityCheck.activeParser === 'remastered-action-parser' && (
+            <div className="border rounded-lg p-4 bg-green-50 dark:bg-green-950/20">
+              <h4 className="font-semibold mb-3 text-green-800 dark:text-green-200">🎯 Remastered Action Parser (Enhanced)</h4>
               
-              {/* Commands Overview */}
+              {/* Actions Overview */}
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
-                  <h5 className="font-medium mb-2">Command Detection</h5>
+                  <h5 className="font-medium mb-2">Action Detection</h5>
                   <div className="space-y-1 text-sm">
-                    <div>Total Commands: <Badge variant="outline">{debugInfo.actionsExtracted}</Badge></div>
-                    <div>Build Orders Generated: <Badge variant="outline">{debugInfo.buildOrdersGenerated}</Badge></div>
-                    <div>Frames Detected: <Badge variant="outline">{Math.round(debugInfo.actionsExtracted / 20)}</Badge></div>
+                    <div>Real Actions: <Badge variant="outline">{debugInfo.actionsExtracted}</Badge></div>
+                    <div>Build Orders: <Badge variant="outline">{debugInfo.buildOrdersGenerated}</Badge></div>
+                    <div>Frame Count: <Badge variant="outline">{enhancedData.header.frames}</Badge></div>
                   </div>
                 </div>
                 <div>
                   <h5 className="font-medium mb-2">Parse Quality</h5>
                   <div className="space-y-1 text-sm">
                     <div>Quality: <Badge variant={debugInfo.qualityCheck.commandValidation.quality === 'realistic' ? 'default' : 'destructive'}>{debugInfo.qualityCheck.commandValidation.quality}</Badge></div>
-                    <div>Zlib Decompression: ✅</div>
-                    <div>FrameSync Pattern: ✅</div>
+                    <div>Remastered Format: ✅</div>
+                    <div>Real Actions: ✅</div>
                   </div>
                 </div>
               </div>
 
-              {/* Player Command Analysis */}
-              <div className="space-y-3">
-                <h5 className="font-medium">Player Command Analysis</h5>
-                {validationData?.playersWithActions && Object.entries(validationData.playersWithActions).map(([playerId, data]: [string, any]) => (
-                  <Card key={playerId} className="p-3 bg-white dark:bg-gray-900">
-                    <div className="flex justify-between items-start mb-2">
-                      <h6 className="font-medium">Player {playerId}</h6>
-                      <div className="flex gap-2">
-                        <Badge variant={data.apm >= 50 ? "default" : "destructive"}>
-                          APM: {data.apm}
-                        </Badge>
-                        <Badge variant="outline">
-                          {data.detectedCommands} cmds
-                        </Badge>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-3 gap-4 text-sm">
-                      <div>
-                        <div className="font-medium text-xs mb-1">Race & Grade</div>
-                        <div className="space-y-1">
-                          <Badge variant="secondary" className="text-xs">
-                            {data.race}
+              {/* Enhanced Build Orders Display */}
+              {enhanced.enhancedBuildOrders && enhanced.enhancedBuildOrders.length > 0 && (
+                <div className="space-y-3">
+                  <h5 className="font-medium">Enhanced Build Orders</h5>
+                  {enhanced.enhancedBuildOrders.map((buildOrder, index) => (
+                    <Card key={index} className="p-3 bg-white dark:bg-gray-900">
+                      <div className="flex justify-between items-start mb-2">
+                        <h6 className="font-medium">Player {buildOrder.playerId + 1}</h6>
+                        <div className="flex gap-2">
+                          <Badge variant="outline">
+                            {buildOrder.race}
                           </Badge>
-                          <Badge variant="outline" className="text-xs">
-                            Grade {data.efficiencyGrade}
+                          <Badge variant="outline">
+                            {buildOrder.totalEntries} entries
                           </Badge>
                         </div>
                       </div>
                       
-                      <div>
-                        <div className="font-medium text-xs mb-1">First Units</div>
-                        <div className="space-y-1">
-                          {(data.firstUnits || []).slice(0, 3).map((unit: string, idx: number) => (
-                            <Badge key={idx} variant="secondary" className="text-xs block w-fit">
-                              {unit}
-                            </Badge>
+                      {buildOrder.entries.length > 0 && (
+                        <div className="text-sm space-y-1">
+                          <div className="font-medium text-xs mb-1">First Actions:</div>
+                          {buildOrder.entries.slice(0, 5).map((entry, entryIndex) => (
+                            <div key={entryIndex} className="flex justify-between text-xs">
+                              <span>{entry.timestamp}</span>
+                              <span>{entry.action}</span>
+                            </div>
                           ))}
                         </div>
-                      </div>
-                      
-                      <div>
-                        <div className="font-medium text-xs mb-1">Metrics</div>
-                        <div className="space-y-1 text-xs">
-                          <div>Build Actions: {data.buildActionsCount}</div>
-                          <div>Benchmarks: {data.benchmarksPassed}</div>
-                          <div>Quality: {data.quality}</div>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
+                      )}
+                    </Card>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -175,7 +161,7 @@ export function ParserValidationDebug({ enhancedData }: ParserValidationDebugPro
             </div>
           </div>
 
-          {/* APM Comparison */}
+          {/* APM Comparison - Updated for Remastered */}
           <div>
             <h4 className="font-semibold mb-2">APM Validation</h4>
             <div className="grid grid-cols-4 gap-4 text-sm">
@@ -188,8 +174,8 @@ export function ParserValidationDebug({ enhancedData }: ParserValidationDebugPro
                 <div>{debugInfo.qualityCheck.apmValidation.directParserAPM.join(', ')}</div>
               </div>
               <div>
-                <div className="font-medium">Native APM</div>
-                <div>{debugInfo.qualityCheck.apmValidation.nativeParserAPM.join(', ')}</div>
+                <div className="font-medium">Remastered APM</div>
+                <div>{debugInfo.qualityCheck.apmValidation.remasteredAPM.join(', ')}</div>
               </div>
               <div>
                 <div className="font-medium text-green-600">Chosen APM</div>
@@ -198,8 +184,8 @@ export function ParserValidationDebug({ enhancedData }: ParserValidationDebugPro
             </div>
           </div>
 
-          {/* Error Information */}
-          {(debugInfo.directParserError || debugInfo.nativeParserError || debugInfo.screpJsError) && (
+          {/* Error Information - Updated for Remastered parsers */}
+          {(debugInfo.directParserError || debugInfo.remasteredParserError || debugInfo.remasteredActionParserError || debugInfo.screpJsError) && (
             <div>
               <h4 className="font-semibold mb-2 text-red-600">Errors</h4>
               <div className="space-y-2 text-sm">
@@ -209,10 +195,16 @@ export function ParserValidationDebug({ enhancedData }: ParserValidationDebugPro
                     <div className="text-red-700">{debugInfo.directParserError}</div>
                   </div>
                 )}
-                {debugInfo.nativeParserError && (
+                {debugInfo.remasteredParserError && (
                   <div className="p-2 bg-orange-50 rounded border border-orange-200">
-                    <div className="font-medium">Native Parser Error:</div>
-                    <div className="text-orange-700">{debugInfo.nativeParserError}</div>
+                    <div className="font-medium">BW Remastered Parser Error:</div>
+                    <div className="text-orange-700">{debugInfo.remasteredParserError}</div>
+                  </div>
+                )}
+                {debugInfo.remasteredActionParserError && (
+                  <div className="p-2 bg-purple-50 rounded border border-purple-200">
+                    <div className="font-medium">Remastered Action Parser Error:</div>
+                    <div className="text-purple-700">{debugInfo.remasteredActionParserError}</div>
                   </div>
                 )}
                 {debugInfo.screpJsError && (

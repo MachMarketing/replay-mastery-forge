@@ -1,4 +1,3 @@
-
 /**
  * StarCraft: Remastered Enhanced Wrapper - OPTIMIZED FOR REMASTERED ONLY
  * This parser is specifically designed for StarCraft: Remastered replays
@@ -382,7 +381,14 @@ export class EnhancedScrepWrapper {
         category: 'build'
       })),
       totalEntries: buildOrder.length,
-      race: 'Unknown'
+      race: 'Unknown',
+      benchmarks: [], // Add empty benchmarks array
+      efficiency: {   // Add default efficiency object
+        economyScore: 0,
+        techScore: 0,
+        timingScore: 0,
+        overallGrade: 'F' as const
+      }
     }));
   }
 
@@ -409,7 +415,14 @@ export class EnhancedScrepWrapper {
       playerId: parseInt(playerId),
       entries: buildOrder,
       totalEntries: buildOrder.length,
-      race: 'Unknown'
+      race: 'Unknown',
+      benchmarks: [], // Add empty benchmarks array
+      efficiency: {   // Add default efficiency object
+        economyScore: 0,
+        techScore: 0,
+        timingScore: 0,
+        overallGrade: 'F' as const
+      }
     }));
   }
 
