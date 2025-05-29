@@ -157,8 +157,8 @@ export class ReplayAnalyzer {
         hasDetailedActions: result.enhanced.hasDetailedActions,
         extractionMethod: result.enhanced.extractionMethod,
         extractionTime: result.enhanced.extractionTime,
-        actionCount: result.enhanced.actionData?.actions.length || 0,
-        buildOrderPlayers: Object.keys(result.enhanced.actionData?.playerActions || {}).length
+        actionCount: result.enhanced.directParserData?.commands.length || 0,
+        buildOrderPlayers: Object.keys(result.enhanced.directParserData?.playerActions || {}).length
       });
       
       return {

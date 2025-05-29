@@ -12,6 +12,8 @@ export interface ReplayHeader {
   players: PlayerInfo[];
   gameType: number;
   gameSubType: number;
+  engine?: string;
+  startTime?: Date;
 }
 
 export interface PlayerInfo {
@@ -146,4 +148,13 @@ export interface DirectParserResult {
     apmBreakdown: Record<number, { build: number, train: number, select: number, move: number }>;
   };
   error?: string;
+}
+
+// Enhanced player info with additional fields
+export interface EnhancedPlayerInfo {
+  id: number;
+  name: string;
+  race: string;
+  team: number;
+  color: number;
 }

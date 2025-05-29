@@ -8,18 +8,20 @@ import { DirectReplayParser } from './directReplayParser';
 import { mapDirectReplayDataToUI } from './dataMapper';
 import { DirectParserResult } from './types';
 import { EnhancedBuildOrder } from './buildOrderMapper';
+import { EnhancedPlayerInfo } from './types';
 
 export interface EnhancedReplayData {
   header: {
     mapName: string;
     duration: string;
     playerCount: number;
+    frames: number;
+    engine?: string;
+    version?: string;
+    startTime?: Date;
+    gameType?: number;
   };
-  players: Array<{
-    id: number;
-    name: string;
-    race: string;
-  }>;
+  players: EnhancedPlayerInfo[];
   computed: {
     buildOrders: Array<Array<{ frame: number; timestamp: string; action: string; supply: number; unitName?: string; category?: string }>>;
     apm: number[];
@@ -180,7 +182,7 @@ export class EnhancedScrepWrapper {
     
     // Try screp-js first
     try {
-      screpJsResult = await ScrepJsWrapper.parseReplayFile(file);
+      screpJsResult = await ScrepJsWrapper.parseReplay(file);
       screpJsSuccess = true;
       console.log('[EnhancedScrepWrapper] Screp-js parsing successful');
     } catch (error) {
@@ -190,7 +192,7 @@ export class EnhancedScrepWrapper {
     
     // Try direct parser
     try {
-      directParserResult = await DirectReplayParser.parseReplayFile(file);
+      directParserResult = await DirectReplayParser.parseReplay(file);
       directParserSuccess = directParserResult.success;
       console.log('[EnhancedScrepWrapper] Direct parser result:', {
         success: directParserSuccess,
@@ -216,17 +218,31 @@ export class EnhancedScrepWrapper {
       mappedData = mapDirectReplayDataToUI(directParserResult);
       enhancedBuildOrders = mappedData.enhanced.enhancedBuildOrders;
     }
+
+    // Create default players if screp-js failed
+    const defaultPlayers: EnhancedPlayerInfo[] = [
+      { id: 0, name: 'Player 1', race: 'Unknown', team: 0, color: 0 },
+      { id: 1, name: 'Player 2', race: 'Unknown', team: 1, color: 1 }
+    ];
     
     const result: EnhancedReplayData = {
       header: {
         mapName: screpJsResult?.header?.mapName || 'Unknown Map',
-        duration: this.formatDuration(screpJsResult?.header?.frames || 0),
-        playerCount: screpJsResult?.header?.playerCount || 2
+        duration: this.formatDuration(screpJsResult?.header?.frames || directParserResult?.totalFrames || 0),
+        playerCount: screpJsResult?.header?.playerCount || 2,
+        frames: screpJsResult?.header?.frames || directParserResult?.totalFrames || 0,
+        engine: screpJsResult?.header?.engine,
+        version: screpJsResult?.header?.version,
+        startTime: screpJsResult?.header?.startTime,
+        gameType: screpJsResult?.header?.gameType
       },
-      players: screpJsResult?.players || [
-        { id: 0, name: 'Player 1', race: 'Unknown' },
-        { id: 1, name: 'Player 2', race: 'Unknown' }
-      ],
+      players: screpJsResult?.players?.map((p: any, index: number) => ({
+        id: index,
+        name: p.name || `Player ${index + 1}`,
+        race: p.race || 'Unknown',
+        team: p.team || index,
+        color: p.color || index
+      })) || defaultPlayers,
       computed: {
         buildOrders: mappedData?.buildOrders || [[], []],
         apm: qualityCheck.apmValidation.chosenAPM,
@@ -234,6 +250,7 @@ export class EnhancedScrepWrapper {
       },
       enhanced: {
         hasDetailedActions: directParserSuccess && (directParserResult?.commands?.length || 0) > 0,
+        directParserData: directParserResult || undefined,
         extractionMethod: qualityCheck.activeParser as any,
         extractionTime,
         enhancedBuildOrders,

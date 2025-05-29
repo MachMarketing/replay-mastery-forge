@@ -1,3 +1,4 @@
+
 /**
  * ENHANCED screp-js parser with native action parsing
  */
@@ -81,7 +82,7 @@ export class ScrepParser {
       throw new Error('screp-js: Spiel-Dauer nicht verfügbar');
     }
     
-    if (result.header.frames <= 0) {
+    if ((result.header.frames || 0) <= 0) {
       throw new Error('screp-js: Ungültige Frame-Anzahl');
     }
     
@@ -94,8 +95,8 @@ export class ScrepParser {
         name: player.name,
         race: player.race,
         raceId: this.getRaceId(player.race),
-        team: player.team,
-        color: player.color,
+        team: player.team || 0,
+        color: player.color || 0,
         slotId: index
       };
     });
@@ -115,19 +116,19 @@ export class ScrepParser {
 
     return {
       header: {
-        engine: result.header.engine,
-        version: result.header.version,
-        frames: result.header.frames,
-        startTime: result.header.startTime,
+        engine: result.header.engine || 'Remastered',
+        version: result.header.version || '1.0',
+        frames: result.header.frames || 0,
+        startTime: result.header.startTime || new Date(),
         title: '',
         mapName: result.header.mapName,
         mapWidth: 0,
         mapHeight: 0,
-        gameType: result.header.gameType,
+        gameType: result.header.gameType?.toString() || 'Melee',
         gameSubType: 0,
         host: '',
         duration: result.header.duration,
-        durationMs: Math.floor(result.header.frames * 1000 / 24)
+        durationMs: Math.floor((result.header.frames || 0) * 1000 / 24)
       },
       players,
       computed: {
