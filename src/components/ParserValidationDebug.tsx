@@ -112,13 +112,13 @@ export function ParserValidationDebug({ enhancedData }: ParserValidationDebugPro
                   {enhanced.enhancedBuildOrders.map((buildOrder, index) => (
                     <Card key={index} className="p-3 bg-white dark:bg-gray-900">
                       <div className="flex justify-between items-start mb-2">
-                        <h6 className="font-medium">Player {buildOrder.playerId + 1}</h6>
+                        <h6 className="font-medium">Player {index + 1}</h6>
                         <div className="flex gap-2">
                           <Badge variant="outline">
                             {buildOrder.race}
                           </Badge>
                           <Badge variant="outline">
-                            {buildOrder.totalEntries} entries
+                            {buildOrder.entries.length} entries
                           </Badge>
                         </div>
                       </div>
@@ -128,7 +128,7 @@ export function ParserValidationDebug({ enhancedData }: ParserValidationDebugPro
                           <div className="font-medium text-xs mb-1">First Actions:</div>
                           {buildOrder.entries.slice(0, 5).map((entry, entryIndex) => (
                             <div key={entryIndex} className="flex justify-between text-xs">
-                              <span>{entry.timestamp}</span>
+                              <span>{entry.time}</span>
                               <span>{entry.action}</span>
                             </div>
                           ))}
