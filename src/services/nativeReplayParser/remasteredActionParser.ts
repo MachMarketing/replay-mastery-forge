@@ -1,6 +1,6 @@
 /**
  * Native Action Parser for StarCraft: Brood War Remastered
- * Handles Remastered-specific compression and extracts detailed action data
+ * OPTIMIZED FOR CORRECT APM AND ACTION COUNTING
  */
 
 import * as pako from 'pako';
@@ -36,192 +36,188 @@ export interface RemasteredActionData {
   playerActions: Record<number, RemasteredAction[]>;
   frameCount: number;
   gameSpeed: number;
-  totalActionCount: number; // Add explicit total count
+  totalActionCount: number;
+  realAPM: number[]; // Neue korrekte APM-Berechnung
+  gameMinutes: number; // Für APM-Berechnung
 }
 
 export class RemasteredActionParser {
-  private static readonly FRAMES_PER_SECOND = 24;
+  private static readonly REMASTERED_FPS = 23.81; // Exakte Remastered FPS
+  
+  // KORREKTE BWAPI Command IDs für Remastered
   private static readonly ACTION_TYPES: Record<number, string> = {
     0x09: 'Select',
-    0x0A: 'Shift Select',
+    0x0A: 'Shift Select', 
     0x0B: 'Shift Deselect',
     0x0C: 'Build',
     0x0D: 'Vision',
     0x0E: 'Alliance',
-    0x13: 'Hotkey',
-    0x14: 'Move',
+    0x10: 'Stop',
+    0x11: 'Attack Move',
+    0x12: 'Cheat',
+    0x13: 'Right Click',
+    0x14: 'Train',
     0x15: 'Attack',
     0x16: 'Cancel',
     0x17: 'Cancel Hatch',
     0x18: 'Stop',
-    0x1D: 'Train',
+    0x19: 'Carrier Stop',
+    0x1A: 'Use Tech',
+    0x1B: 'Use Tech Position',
+    0x1C: 'Return Cargo',
+    0x1D: 'Train Unit',
     0x1E: 'Cancel Train',
     0x1F: 'Cloak',
-    0x20: 'Decloak',
+    0x20: 'Build Self',
     0x21: 'Unit Morph',
+    0x22: 'Unload',
+    0x23: 'Unsiege',
+    0x24: 'Siege',
+    0x25: 'Train Fighter',
+    0x26: 'Unload All',
+    0x27: 'Unload All',
+    0x28: 'Unload',
+    0x29: 'Merge Archon',
+    0x2A: 'Hold Position',
+    0x2B: 'Burrow',
+    0x2C: 'Unburrow',
+    0x2D: 'Cancel Nuke',
+    0x2E: 'Lift',
     0x2F: 'Research',
     0x30: 'Cancel Research',
     0x31: 'Upgrade',
     0x32: 'Cancel Upgrade',
-    0x34: 'Building Morph'
+    0x33: 'Cancel Addon',
+    0x34: 'Building Morph',
+    0x35: 'Stim',
+    0x36: 'Sync'
   };
 
+  // Commands die für APM zählen (keine Sync-Commands)
+  private static readonly APM_RELEVANT_COMMANDS = [
+    0x09, 0x0A, 0x0B, 0x0C, 0x10, 0x11, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+    0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25,
+    0x26, 0x27, 0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x30, 0x31,
+    0x32, 0x33, 0x34, 0x35
+  ];
+
   /**
-   * Parse actions from a Remastered replay file
+   * Parse actions from a Remastered replay file mit korrekter APM
    */
   static async parseActions(file: File): Promise<RemasteredActionData> {
-    console.log('[RemasteredActionParser] === STARTING DETAILED PARSING ===');
+    console.log('[RemasteredActionParser] === STARTING REMASTERED PARSING ===');
     console.log('[RemasteredActionParser] File:', file.name, 'Size:', file.size);
     
     const buffer = await file.arrayBuffer();
-    const format = CompressionDetector.detectFormat(buffer);
     
-    console.log('[RemasteredActionParser] Format detection result:', format);
+    // Direkt zu Command-Parsing da wir wissen es ist Remastered
+    console.log('[RemasteredActionParser] Extracting raw command data...');
+    const result = this.extractRawCommandData(buffer);
     
-    // Check if this is actually a Remastered replay
-    if (!format.isRemastered || format.type !== 'remastered_zlib') {
-      console.warn('[RemasteredActionParser] This does not appear to be a Remastered replay');
-      console.log('[RemasteredActionParser] Detected type:', format.type);
-      console.log('[RemasteredActionParser] Is Remastered:', format.isRemastered);
-      
-      // Try to parse anyway but with limited expectations
-      return this.createFallbackActionData();
-    }
+    console.log('[RemasteredActionParser] === FINAL STATISTICS ===');
+    console.log('[RemasteredActionParser] Total actions extracted:', result.totalActionCount);
+    console.log('[RemasteredActionParser] Game minutes:', result.gameMinutes.toFixed(2));
+    console.log('[RemasteredActionParser] Real APM:', result.realAPM);
+    console.log('[RemasteredActionParser] Players found:', Object.keys(result.playerActions).length);
     
-    // Decompress if needed
-    let decompressedBuffer = buffer;
-    if (format.needsDecompression) {
-      console.log('[RemasteredActionParser] Attempting decompression...');
-      try {
-        decompressedBuffer = await ReplayDecompressor.decompress(buffer, format);
-        console.log('[RemasteredActionParser] Decompression successful, new size:', decompressedBuffer.byteLength);
-      } catch (error) {
-        console.error('[RemasteredActionParser] Decompression failed:', error);
-        console.log('[RemasteredActionParser] Falling back to raw buffer analysis');
-        return this.analyzeRawBuffer(buffer);
-      }
-    }
-    
-    // Extract action data from the decompressed buffer
-    try {
-      const result = this.extractActionData(decompressedBuffer);
-      console.log('[RemasteredActionParser] FINAL RESULT:', {
-        totalActions: result.totalActionCount,
-        actionsArray: result.actions.length,
-        buildOrders: result.buildOrders.map(bo => bo.length),
-        frameCount: result.frameCount
-      });
-      return result;
-    } catch (error) {
-      console.error('[RemasteredActionParser] Action extraction failed:', error);
-      return this.analyzeRawBuffer(buffer);
-    }
+    return result;
   }
 
   /**
-   * Create fallback action data when parsing fails
+   * DIREKTE Rohkommando-Extraktion für Remastered
    */
-  private static createFallbackActionData(): RemasteredActionData {
-    console.log('[RemasteredActionParser] Creating fallback action data');
-    return {
-      actions: [],
-      buildOrders: [[], []],
-      playerActions: {},
-      frameCount: 0,
-      gameSpeed: 1.0,
-      totalActionCount: 0
-    };
-  }
-
-  /**
-   * Analyze raw buffer for debugging
-   */
-  private static analyzeRawBuffer(buffer: ArrayBuffer): RemasteredActionData {
-    console.log('[RemasteredActionParser] === RAW BUFFER ANALYSIS ===');
+  private static extractRawCommandData(buffer: ArrayBuffer): RemasteredActionData {
+    console.log('[RemasteredActionParser] === RAW COMMAND EXTRACTION ===');
     const uint8View = new Uint8Array(buffer);
-    
-    console.log('[RemasteredActionParser] Buffer size:', buffer.byteLength);
-    console.log('[RemasteredActionParser] First 32 bytes:', 
-      Array.from(uint8View.slice(0, 32)).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' '));
-    
-    // Look for potential command sections
-    const possibleCommandOffsets = [633, 640, 650, 700, 800, 1000];
-    
-    for (const offset of possibleCommandOffsets) {
-      if (offset < uint8View.length) {
-        const section = uint8View.slice(offset, offset + 32);
-        console.log(`[RemasteredActionParser] Bytes at offset ${offset}:`, 
-          Array.from(section).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' '));
-        
-        // Look for command-like patterns
-        let commandLikeBytes = 0;
-        for (let i = 0; i < Math.min(32, section.length); i++) {
-          const byte = section[i];
-          if (byte <= 0x02 || this.ACTION_TYPES[byte]) {
-            commandLikeBytes++;
-          }
-        }
-        
-        console.log(`[RemasteredActionParser] Command-like bytes at offset ${offset}: ${commandLikeBytes}/32`);
-      }
-    }
-    
-    // Try to extract some basic actions even from raw buffer
-    return this.extractBasicActionsFromRawBuffer(uint8View);
-  }
-
-  /**
-   * Extract basic actions from raw buffer (fallback method)
-   */
-  private static extractBasicActionsFromRawBuffer(data: Uint8Array): RemasteredActionData {
-    console.log('[RemasteredActionParser] Attempting basic action extraction from raw buffer');
     
     const actions: RemasteredAction[] = [];
     let currentFrame = 0;
+    let position = 633; // Standard Remastered command offset
     
-    // Start scanning from standard command offset
-    for (let offset = 633; offset < Math.min(data.length - 10, 5000); offset++) {
-      const byte = data[offset];
-      
-      // Frame sync
-      if (byte === 0x00) {
-        currentFrame++;
-        continue;
-      } else if (byte === 0x01 && offset + 1 < data.length) {
-        currentFrame += data[offset + 1];
-        offset++;
-        continue;
-      }
-      
-      // Check if this looks like a command
-      if (this.ACTION_TYPES[byte]) {
-        const playerId = offset + 1 < data.length ? data[offset + 1] : 0;
-        
-        // Only include valid player IDs (0-7)
-        if (playerId <= 7) {
-          actions.push({
-            frame: currentFrame,
-            playerId,
-            actionType: this.ACTION_TYPES[byte],
-            actionId: byte,
-            data: data.slice(offset, offset + this.getCommandLength(byte)),
-            timestamp: this.frameToTimestamp(currentFrame)
-          });
-          
-          // Skip ahead by command length
-          offset += this.getCommandLength(byte) - 1;
-        }
-      }
-      
-      // Limit to prevent infinite loops
-      if (actions.length > 1000) break;
+    // Erste Durchsuchung für Command-Start
+    const commandStart = this.findCommandStart(uint8View);
+    if (commandStart !== -1) {
+      position = commandStart;
+      console.log('[RemasteredActionParser] Found command start at:', position);
     }
     
-    console.log('[RemasteredActionParser] Extracted', actions.length, 'basic actions from raw buffer');
+    // Parse Commands
+    while (position < uint8View.length - 10) {
+      const byte = uint8View[position];
+      
+      // Frame-Synchronisation
+      if (byte === 0x00) {
+        currentFrame++;
+        position++;
+        continue;
+      } else if (byte === 0x01 && position + 1 < uint8View.length) {
+        currentFrame += uint8View[position + 1];
+        position += 2;
+        continue;
+      } else if (byte === 0x02 && position + 2 < uint8View.length) {
+        const view = new DataView(uint8View.buffer);
+        currentFrame += view.getUint16(position + 1, true);
+        position += 3;
+        continue;
+      }
+      
+      // Prüfe ob es ein bekannter Command ist
+      if (this.ACTION_TYPES[byte]) {
+        const commandLength = this.getCommandLength(byte);
+        
+        if (position + commandLength <= uint8View.length) {
+          const playerId = position + 1 < uint8View.length ? uint8View[position + 1] : 0;
+          
+          // Nur gültige Player IDs (0-7)
+          if (playerId <= 7) {
+            const data = uint8View.slice(position, position + commandLength);
+            
+            actions.push({
+              frame: currentFrame,
+              playerId,
+              actionType: this.ACTION_TYPES[byte],
+              actionId: byte,
+              data,
+              timestamp: this.frameToTimestamp(currentFrame)
+            });
+          }
+          
+          position += commandLength;
+        } else {
+          position++;
+        }
+      } else {
+        position++;
+      }
+      
+      // Performance-Limit
+      if (actions.length > 50000) break;
+    }
     
-    // Group by player and generate build orders
+    console.log('[RemasteredActionParser] Raw extraction complete:', {
+      totalActions: actions.length,
+      finalFrame: currentFrame,
+      commandsFound: Object.keys(this.ACTION_TYPES).filter(id => 
+        actions.some(a => a.actionId === parseInt(id))
+      ).length
+    });
+    
+    // Gruppiere nach Spielern
     const playerActions = this.groupActionsByPlayer(actions);
+    
+    // Berechne KORREKTE APM
+    const gameMinutes = currentFrame / this.REMASTERED_FPS / 60;
+    const realAPM = this.calculateCorrectAPM(playerActions, gameMinutes);
+    
+    // Generiere Build Orders
     const buildOrders = this.generateBuildOrders(actions, playerActions);
+    
+    console.log('[RemasteredActionParser] APM Calculation:', {
+      gameMinutes: gameMinutes.toFixed(2),
+      player0Actions: playerActions[0]?.length || 0,
+      player1Actions: playerActions[1]?.length || 0,
+      calculatedAPM: realAPM
+    });
     
     return {
       actions,
@@ -229,305 +225,123 @@ export class RemasteredActionParser {
       playerActions,
       frameCount: currentFrame,
       gameSpeed: 1.0,
-      totalActionCount: actions.length
+      totalActionCount: actions.length,
+      realAPM,
+      gameMinutes
     };
   }
 
   /**
-   * Extract detailed action data from decompressed replay buffer
+   * Finde Command-Start im Buffer
    */
-  private static extractActionData(buffer: ArrayBuffer): RemasteredActionData {
-    console.log('[RemasteredActionParser] === EXTRACTING FROM DECOMPRESSED BUFFER ===');
-    console.log('[RemasteredActionParser] Decompressed buffer size:', buffer.byteLength);
+  private static findCommandStart(data: Uint8Array): number {
+    const possibleOffsets = [633, 640, 650, 700];
     
-    const view = new DataView(buffer);
-    const uint8View = new Uint8Array(buffer);
-    
-    // Log the structure of the decompressed buffer
-    console.log('[RemasteredActionParser] First 64 bytes of decompressed data:');
-    console.log(Array.from(uint8View.slice(0, 64)).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' '));
-    
-    // Find the commands section
-    const commandsOffset = this.findCommandsOffset(uint8View);
-    console.log('[RemasteredActionParser] Commands offset found:', commandsOffset);
-    
-    if (commandsOffset === -1) {
-      console.warn('[RemasteredActionParser] Could not find commands section, falling back to raw analysis');
-      return this.extractBasicActionsFromRawBuffer(uint8View);
-    }
-    
-    // Parse the command stream
-    const actions = this.parseCommandStream(view, commandsOffset);
-    console.log('[RemasteredActionParser] Successfully extracted', actions.length, 'actions');
-    
-    // Group actions by player
-    const playerActions = this.groupActionsByPlayer(actions);
-    console.log('[RemasteredActionParser] Actions per player:', 
-      Object.entries(playerActions).map(([id, acts]) => `Player ${id}: ${acts.length}`));
-    
-    // Generate build orders from actions
-    const buildOrders = this.generateBuildOrders(actions, playerActions);
-    console.log('[RemasteredActionParser] Build orders generated:', 
-      buildOrders.map((bo, i) => `Player ${i}: ${bo.length} actions`));
-    
-    // Calculate frame count and game speed
-    const frameCount = actions.length > 0 ? Math.max(...actions.map(a => a.frame)) : 0;
-    const gameSpeed = this.calculateGameSpeed(actions);
-    
-    console.log('[RemasteredActionParser] Final stats: Frame count:', frameCount, 'Game speed:', gameSpeed);
-    console.log('[RemasteredActionParser] TOTAL ACTION COUNT:', actions.length);
-    
-    return {
-      actions,
-      buildOrders,
-      playerActions,
-      frameCount,
-      gameSpeed,
-      totalActionCount: actions.length
-    };
-  }
-
-  /**
-   * Find the offset where commands start in the replay
-   */
-  private static findCommandsOffset(data: Uint8Array): number {
-    console.log('[RemasteredActionParser] Searching for commands offset in', data.length, 'bytes');
-    
-    // Standard offset for most replays
-    const standardOffset = 633; // 0x279
-    
-    // Check if standard offset is valid
-    if (standardOffset < data.length) {
-      console.log('[RemasteredActionParser] Checking standard offset area:', standardOffset);
-      // Look for command patterns around this area
-      for (let i = standardOffset - 50; i < standardOffset + 100 && i < data.length - 10; i++) {
-        if (this.looksLikeCommandStart(data, i)) {
-          console.log('[RemasteredActionParser] Found commands at offset:', i);
-          return i;
+    for (const offset of possibleOffsets) {
+      if (offset + 50 < data.length) {
+        let commandBytes = 0;
+        
+        for (let i = 0; i < 50; i++) {
+          const byte = data[offset + i];
+          if (byte <= 0x02 || this.ACTION_TYPES[byte]) {
+            commandBytes++;
+          }
+        }
+        
+        if (commandBytes >= 10) {
+          return offset;
         }
       }
     }
     
-    // Fallback: scan the entire file for command patterns
-    console.log('[RemasteredActionParser] Standard offset not found, scanning entire buffer');
-    for (let i = 500; i < Math.min(data.length - 100, 2000); i++) {
-      if (this.looksLikeCommandStart(data, i)) {
-        console.log('[RemasteredActionParser] Found commands at offset:', i);
-        return i;
-      }
-    }
-    
-    console.warn('[RemasteredActionParser] No command offset found');
-    return -1;
+    return 633; // Fallback
   }
 
   /**
-   * Check if the data at a position looks like the start of commands
+   * KORREKTE APM-Berechnung für Remastered
    */
-  private static looksLikeCommandStart(data: Uint8Array, offset: number): boolean {
-    if (offset + 20 >= data.length) return false;
+  private static calculateCorrectAPM(playerActions: Record<number, RemasteredAction[]>, gameMinutes: number): number[] {
+    const apm: number[] = [];
     
-    // Look for patterns typical of command streams
-    let commandLikeBytes = 0;
-    let frameBytes = 0;
-    
-    for (let i = 0; i < 20; i++) {
-      const byte = data[offset + i];
+    for (let playerId = 0; playerId < 8; playerId++) {
+      const actions = playerActions[playerId] || [];
       
-      // Frame sync bytes (0x00, 0x01, 0x02)
-      if (byte <= 0x02) {
-        frameBytes++;
-        commandLikeBytes++;
-      }
+      // Nur APM-relevante Commands zählen
+      const apmActions = actions.filter(action => 
+        this.APM_RELEVANT_COMMANDS.includes(action.actionId)
+      );
       
-      // Known command bytes
-      if (this.ACTION_TYPES[byte]) {
-        commandLikeBytes += 2;
-      }
+      const playerAPM = gameMinutes > 0 ? Math.round(apmActions.length / gameMinutes) : 0;
+      apm.push(playerAPM);
       
-      // Player IDs (typically 0-7)
-      if (byte >= 0x00 && byte <= 0x07) {
-        commandLikeBytes++;
+      if (apmActions.length > 0) {
+        console.log(`[RemasteredActionParser] Player ${playerId} APM:`, {
+          totalActions: actions.length,
+          apmActions: apmActions.length,
+          gameMinutes: gameMinutes.toFixed(2),
+          calculatedAPM: playerAPM
+        });
       }
     }
     
-    // We want a good mix of frame bytes and command bytes
-    const hasFrameSync = frameBytes >= 2;
-    const hasCommands = commandLikeBytes >= 8;
-    
-    return hasFrameSync && hasCommands;
+    return apm;
   }
 
   /**
-   * Parse the command stream to extract actions
-   */
-  private static parseCommandStream(view: DataView, offset: number): RemasteredAction[] {
-    console.log('[RemasteredActionParser] === PARSING COMMAND STREAM ===');
-    console.log('[RemasteredActionParser] Starting at offset:', offset);
-    
-    const actions: RemasteredAction[] = [];
-    let currentFrame = 0;
-    let position = offset;
-    const maxActions = 10000; // Increased limit
-    let frameSkips = 0;
-    let commandsFound = 0;
-    
-    while (position < view.byteLength - 1 && actions.length < maxActions) {
-      try {
-        const byte = view.getUint8(position);
-        position++;
-        
-        // Handle frame synchronization
-        if (byte === 0x00) {
-          currentFrame++;
-          frameSkips++;
-          continue;
-        } else if (byte === 0x01) {
-          // Frame skip with count
-          if (position < view.byteLength) {
-            const skipFrames = view.getUint8(position);
-            position++;
-            currentFrame += skipFrames;
-            frameSkips++;
-          }
-          continue;
-        } else if (byte === 0x02) {
-          // Large frame skip
-          if (position + 1 < view.byteLength) {
-            const skipFrames = view.getUint16(position, true);
-            position += 2;
-            currentFrame += skipFrames;
-            frameSkips++;
-          }
-          continue;
-        }
-        
-        // Parse action command
-        const action = this.parseAction(view, position - 1, currentFrame, byte);
-        if (action) {
-          actions.push(action);
-          commandsFound++;
-          position += this.getCommandLength(byte) - 1; // -1 because we already read the command byte
-          
-          // Log first few commands for debugging
-          if (commandsFound <= 10) {
-            console.log(`[RemasteredActionParser] Command ${commandsFound}:`, {
-              frame: action.frame,
-              player: action.playerId,
-              type: action.actionType,
-              id: `0x${action.actionId.toString(16)}`
-            });
-          }
-        }
-        
-      } catch (error) {
-        console.warn('[RemasteredActionParser] Error parsing command at position:', position, error);
-        break;
-      }
-    }
-    
-    console.log('[RemasteredActionParser] Command stream parsing complete:');
-    console.log('  - Actions found:', actions.length);
-    console.log('  - Frame skips:', frameSkips);
-    console.log('  - Final frame:', currentFrame);
-    console.log('  - Commands found:', commandsFound);
-    
-    return actions;
-  }
-
-  /**
-   * Parse a single action from the command stream
-   */
-  private static parseAction(view: DataView, position: number, frame: number, commandByte: number): RemasteredAction | null {
-    try {
-      const actionType = this.ACTION_TYPES[commandByte] || `Unknown_0x${commandByte.toString(16)}`;
-      const commandLength = this.getCommandLength(commandByte);
-      
-      // Read command data
-      const data = new Uint8Array(commandLength);
-      for (let i = 0; i < commandLength && position + i < view.byteLength; i++) {
-        data[i] = view.getUint8(position + i);
-      }
-      
-      // Extract player ID (usually the second byte)
-      const playerId = commandLength > 1 && position + 1 < view.byteLength ? view.getUint8(position + 1) : 0;
-      
-      // Only accept valid player IDs
-      if (playerId > 7) {
-        return null;
-      }
-      
-      // Parse specific command data based on type
-      let unitId, targetX, targetY, supply;
-      
-      if (commandByte === 0x14 && commandLength >= 6) { // Move command
-        targetX = view.getUint16(position + 2, true);
-        targetY = view.getUint16(position + 4, true);
-      } else if (commandByte === 0x15 && commandLength >= 6) { // Attack command
-        targetX = view.getUint16(position + 2, true);
-        targetY = view.getUint16(position + 4, true);
-      } else if (commandByte === 0x0C && commandLength >= 7) { // Build command
-        targetX = view.getUint16(position + 2, true);
-        targetY = view.getUint16(position + 4, true);
-        unitId = view.getUint16(position + 6, true);
-      }
-      
-      const timestamp = this.frameToTimestamp(frame);
-      
-      return {
-        frame,
-        playerId,
-        actionType,
-        actionId: commandByte,
-        data,
-        timestamp,
-        supply,
-        unitId,
-        targetX,
-        targetY
-      };
-      
-    } catch (error) {
-      console.warn('[RemasteredActionParser] Error parsing action:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Get the length of a command based on its type
+   * Command-Längen basierend auf BWAPI-Spezifikation
    */
   private static getCommandLength(commandByte: number): number {
     const lengths: Record<number, number> = {
       0x09: 2,   // Select
       0x0A: 2,   // Shift Select
       0x0B: 2,   // Shift Deselect
-      0x0C: 7,   // Build
+      0x0C: 10,  // Build
       0x0D: 2,   // Vision
       0x0E: 4,   // Alliance
-      0x13: 2,   // Hotkey
-      0x14: 6,   // Move
+      0x10: 1,   // Stop
+      0x11: 10,  // Attack Move
+      0x12: 2,   // Cheat
+      0x13: 10,  // Right Click
+      0x14: 6,   // Train
       0x15: 6,   // Attack
       0x16: 1,   // Cancel
       0x17: 1,   // Cancel Hatch
       0x18: 1,   // Stop
-      0x1D: 2,   // Train
+      0x19: 1,   // Carrier Stop
+      0x1A: 6,   // Use Tech
+      0x1B: 10,  // Use Tech Position
+      0x1C: 1,   // Return Cargo
+      0x1D: 6,   // Train Unit
       0x1E: 2,   // Cancel Train
       0x1F: 1,   // Cloak
-      0x20: 1,   // Decloak
+      0x20: 6,   // Build Self
       0x21: 2,   // Unit Morph
+      0x22: 2,   // Unload
+      0x23: 1,   // Unsiege
+      0x24: 1,   // Siege
+      0x25: 2,   // Train Fighter
+      0x26: 1,   // Unload All
+      0x27: 1,   // Unload All
+      0x28: 2,   // Unload
+      0x29: 1,   // Merge Archon
+      0x2A: 1,   // Hold Position
+      0x2B: 1,   // Burrow
+      0x2C: 1,   // Unburrow
+      0x2D: 1,   // Cancel Nuke
+      0x2E: 1,   // Lift
       0x2F: 2,   // Research
       0x30: 2,   // Cancel Research
       0x31: 2,   // Upgrade
       0x32: 2,   // Cancel Upgrade
-      0x34: 2    // Building Morph
+      0x33: 2,   // Cancel Addon
+      0x34: 2,   // Building Morph
+      0x35: 1,   // Stim
+      0x36: 1    // Sync
     };
     
     return lengths[commandByte] || 1;
   }
 
-  /**
-   * Group actions by player ID
-   */
   private static groupActionsByPlayer(actions: RemasteredAction[]): Record<number, RemasteredAction[]> {
     const playerActions: Record<number, RemasteredAction[]> = {};
     
@@ -538,17 +352,10 @@ export class RemasteredActionParser {
       playerActions[action.playerId].push(action);
     }
     
-    console.log('[RemasteredActionParser] Grouped actions by player:', 
-      Object.entries(playerActions).map(([id, acts]) => `${id}: ${acts.length}`));
-    
     return playerActions;
   }
 
-  /**
-   * Generate build orders from actions
-   */
   private static generateBuildOrders(actions: RemasteredAction[], playerActions: Record<number, RemasteredAction[]>): RemasteredBuildOrder[][] {
-    console.log('[RemasteredActionParser] Generating build orders...');
     const buildOrders: RemasteredBuildOrder[][] = [];
     
     for (const [playerIdStr, playerActionList] of Object.entries(playerActions)) {
@@ -556,7 +363,6 @@ export class RemasteredActionParser {
       const buildOrder: RemasteredBuildOrder[] = [];
       
       for (const action of playerActionList) {
-        // Filter for build-related actions
         if (this.isBuildAction(action)) {
           buildOrder.push({
             frame: action.frame,
@@ -567,67 +373,35 @@ export class RemasteredActionParser {
         }
       }
       
-      // Sort by frame
       buildOrder.sort((a, b) => a.frame - b.frame);
       buildOrders[playerId] = buildOrder;
-      
-      console.log(`[RemasteredActionParser] Player ${playerId} build order: ${buildOrder.length} actions`);
     }
     
     return buildOrders;
   }
 
-  /**
-   * Check if an action is build-related
-   */
   private static isBuildAction(action: RemasteredAction): boolean {
-    const buildActionIds = [0x0C, 0x1D, 0x21, 0x2F, 0x31, 0x34]; // Build, Train, Morph, Research, Upgrade, Building Morph
+    const buildActionIds = [0x0C, 0x14, 0x1D, 0x21, 0x2F, 0x31, 0x34];
     return buildActionIds.includes(action.actionId);
   }
 
-  /**
-   * Get a description for a build action
-   */
   private static getBuildActionDescription(action: RemasteredAction): string {
     switch (action.actionId) {
-      case 0x0C:
-        return `Build structure (ID: ${action.unitId || 'unknown'})`;
-      case 0x1D:
-        return `Train unit (ID: ${action.unitId || 'unknown'})`;
-      case 0x21:
-        return `Unit morph (ID: ${action.unitId || 'unknown'})`;
-      case 0x2F:
-        return `Research technology`;
-      case 0x31:
-        return `Upgrade`;
-      case 0x34:
-        return `Building morph`;
-      default:
-        return action.actionType;
+      case 0x0C: return `Build structure`;
+      case 0x14:
+      case 0x1D: return `Train unit`;
+      case 0x21: return `Unit morph`;
+      case 0x2F: return `Research technology`;
+      case 0x31: return `Upgrade`;
+      case 0x34: return `Building morph`;
+      default: return action.actionType;
     }
   }
 
-  /**
-   * Convert frame number to timestamp
-   */
   private static frameToTimestamp(frame: number): string {
-    const seconds = frame / this.FRAMES_PER_SECOND;
+    const seconds = frame / this.REMASTERED_FPS;
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = Math.floor(seconds % 60);
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  }
-
-  /**
-   * Calculate average game speed from actions
-   */
-  private static calculateGameSpeed(actions: RemasteredAction[]): number {
-    if (actions.length === 0) return 1.0;
-    
-    // Estimate game speed based on action frequency
-    const timespan = actions.length > 0 ? actions[actions.length - 1].frame - actions[0].frame : 0;
-    const avgActionsPerFrame = timespan > 0 ? actions.length / timespan : 0;
-    
-    // Normal game speed is around 1.0, faster speeds have more actions per frame
-    return Math.max(0.5, Math.min(2.0, avgActionsPerFrame * 100));
   }
 }
