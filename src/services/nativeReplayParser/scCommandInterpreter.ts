@@ -1,8 +1,9 @@
+
 /**
  * SC Command Interpreter - Interprets raw commands into human-readable actions
  */
 
-import { framesToTimeString } from './bwRemastered/enhancedConstants';
+import { framesToTimeString } from './repcore/constants';
 
 export interface InterpretedCommand {
   frame: number;

@@ -96,16 +96,16 @@ export enum CommandType {
   HoldPosition = 0x2A,
   Patrol = 0x17,
   
-  // 1.21+ commands
-  RightClick121 = 0x15,
-  TargetedOrder121 = 0x16,
-  Select121 = 0x0A,
-  SelectAdd121 = 0x0B,
-  SelectRemove121 = 0x0C,
-  Unload121 = 0x29,
+  // 1.21+ commands with different IDs
+  RightClick121 = 0x25,
+  TargetedOrder121 = 0x26,
+  Select121 = 0x27,
+  SelectAdd121 = 0x28,
+  SelectRemove121 = 0x29,
+  Unload121 = 0x2A,
   
   // Network commands
-  Chat = 0x09,
+  Chat = 0x5C,
   KeepAlive = 0x00,
   Sync = 0x36,
   LeaveGame = 0x37,
