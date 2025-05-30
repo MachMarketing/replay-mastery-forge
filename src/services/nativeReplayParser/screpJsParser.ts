@@ -151,12 +151,17 @@ export class ScrepJsParser {
     
     console.log('[ScrepJsParser] Starte intelligente Build Order Extraktion');
     
-    // Extrahiere Commands für jeden Spieler
-    if (screpResult.rawCommands && screpResult.rawCommands.length > 0) {
-      console.log('[ScrepJsParser] Analysiere', screpResult.rawCommands.length, 'raw commands');
+    // Extrahiere Commands für jeden Spieler - verwende das Commands Array
+    const commands = (screpResult as any).Commands || [];
+    console.log('[ScrepJsParser] Analysiere', commands.length, 'commands aus ScrepJsResult');
+    
+    if (commands && commands.length > 0) {
+      console.log('[ScrepJsParser] Commands verfügbar:', commands.length);
       
       players.forEach((player, index) => {
-        const playerCommands = screpResult.rawCommands.filter((cmd: any) => cmd.playerID === index);
+        const playerCommands = commands.filter((cmd: any) => 
+          (cmd.PlayerID === index || cmd.Player === index)
+        );
         console.log(`[ScrepJsParser] Player ${index} (${player.name}): ${playerCommands.length} commands`);
         
         if (playerCommands.length > 0) {
@@ -216,7 +221,7 @@ export class ScrepJsParser {
         }
       });
     } else {
-      console.warn('[ScrepJsParser] Keine rawCommands verfügbar für Build Order Analyse');
+      console.warn('[ScrepJsParser] Keine Commands verfügbar für Build Order Analyse');
       
       // Fallback für alle Spieler
       players.forEach((player, index) => {
