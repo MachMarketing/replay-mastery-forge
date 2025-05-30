@@ -70,19 +70,30 @@ export class ScrepCore {
   }
 
   /**
-   * Header parsing - EXAKT nach screp/rep/repdecoder.go
+   * Header parsing - EXAKT nach screp/rep/repdecoder.go parseHeader()
    */
   private parseHeader(): ReplayHeader {
     console.log('[ScrepCore] Parsing header exactly like screp repo...');
     
     this.reader.setPosition(0);
     
-    // Nach screp/rep/repdecoder.go Zeile 45-65
-    // Lese ReplayID (4 bytes) - MUSS 'reRS' oder 'seRS' sein
+    // Nach screp/rep/repdecoder.go parseHeader() - EXAKTE Reihenfolge!
+    // Offset 0x00: gameID (4 bytes)
+    const gameID = this.reader.readUInt32LE();
+    console.log('[ScrepCore] Game ID:', '0x' + gameID.toString(16));
+    
+    // Offset 0x04: unknown1 (4 bytes)
+    const unknown1 = this.reader.readUInt32LE();
+    console.log('[ScrepCore] Unknown1:', '0x' + unknown1.toString(16));
+    
+    // Offset 0x08: frames (4 bytes) - HIER sind die Frames!
+    const frames = this.reader.readUInt32LE();
+    console.log('[ScrepCore] Frames at 0x08:', frames);
+    
+    // Offset 0x0C: ReplayID (4 bytes) - 'reRS' oder 'seRS'
     const replayIdBytes = this.reader.readBytes(4);
     const replayID = new TextDecoder('latin1').decode(replayIdBytes);
-    
-    console.log('[ScrepCore] Replay ID:', replayID);
+    console.log('[ScrepCore] Replay ID at 0x0C:', replayID);
     console.log('[ScrepCore] Replay ID bytes:', Array.from(replayIdBytes).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
     
     // Validiere nach screp repo
@@ -90,24 +101,14 @@ export class ScrepCore {
       throw new Error(`Invalid StarCraft replay. Expected 'reRS' or 'seRS', got: '${replayID}'`);
     }
     
-    // Nach screp/rep/repdecoder.go parseHeader()
-    // Offset 0x04: Unknown (4 bytes)
-    const unknown1 = this.reader.readUInt32LE();
-    
-    // Offset 0x08: Frames (4 bytes) - KORREKTE Position!
-    const frames = this.reader.readUInt32LE();
-    console.log('[ScrepCore] Frames at correct offset 0x08:', frames);
-    
-    // Offset 0x0C: Unknown (4 bytes) 
-    const unknown2 = this.reader.readUInt32LE();
+    console.log('[ScrepCore] Valid replay ID found:', replayID);
     
     // Nach screp repo: weitere Header-Daten
     this.reader.setPosition(0x18);
     const gameType = this.reader.readUInt16LE();
     
     console.log('[ScrepCore] Game type:', gameType);
-    console.log('[ScrepCore] Unknown1:', unknown1);
-    console.log('[ScrepCore] Unknown2:', unknown2);
+    console.log('[ScrepCore] Engine:', unknown1);
     
     // Map name nach screp repo - verschiedene mögliche Offsets
     let mapName = 'Unknown Map';
@@ -131,7 +132,7 @@ export class ScrepCore {
 
     return {
       replayID,
-      engine: unknown1, // Engine wird oft in unknown1 gespeichert
+      engine: unknown1,
       frames,
       startTime: new Date(),
       mapName,
