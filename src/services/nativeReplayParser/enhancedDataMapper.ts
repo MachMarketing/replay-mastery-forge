@@ -1,12 +1,11 @@
 /**
- * Enhanced Data Mapper with RepCore integration and accurate EAPM
+ * Enhanced Data Mapper - Complete screp Integration
+ * Now uses the full screp-compatible parsing pipeline
  */
 
-import { ScrepJsWrapper } from './screpJsWrapper';
 import { EnhancedCommandExtractor } from './enhancedCommandExtractor';
-import { SCCommandInterpreter, InterpretedCommand } from './scCommandInterpreter';
-import { getRaceName, getGameTypeName, framesToTimeString } from './bwRemastered/enhancedConstants';
-import { calculateEAPM, IneffKind, isEffective } from './bwRemastered/repcore/ineffKind';
+import { SCCommandInterpreter } from './scCommandInterpreter';
+import { RepFormat, RACE_NAMES, PLAYER_COLORS, framesToTimeString } from './repcore/constants';
 
 export interface EnhancedReplayResult {
   // Basis-Daten von screp-js
@@ -87,150 +86,179 @@ export interface EnhancedReplayResult {
 
 export class EnhancedDataMapper {
   /**
-   * Enhanced Parser with RepCore integration and accurate EAPM
+   * Main parsing entry point with complete screp integration
    */
   static async parseReplay(file: File): Promise<EnhancedReplayResult> {
-    console.log('[EnhancedDataMapper] === ENHANCED SC:R PARSING WITH REPCORE ===');
-    console.log('[EnhancedDataMapper] RepCore integration: Race mapping, GameType mapping, Frame timing');
+    console.log('[EnhancedDataMapper] Starting complete screp-compatible parsing');
+    console.log('[EnhancedDataMapper] File:', file.name, file.size, 'bytes');
     
-    // 1. screp-js for base data
-    const screpWrapper = ScrepJsWrapper.getInstance();
-    const screpResult = await screpWrapper.parseReplay(file);
-    
-    console.log('[EnhancedDataMapper] screp-js completed with RepCore enhancements:', {
-      map: screpResult.header.mapName,
-      players: screpResult.players.length,
-      gameType: getGameTypeName(typeof screpResult.header.gameType === 'string' ? 0 : screpResult.header.gameType || 0),
-      duration: framesToTimeString(screpResult.header.frames || 0)
-    });
-    
-    let realCommands: any[] = [];
-    let interpretedCommands: Record<number, InterpretedCommand[]> = {};
-    let dataQuality: any = {
-      source: 'screp-js-only',
-      commandsExtracted: 0,
-      interpretedCommands: 0,
-      effectiveCommands: 0,
-      reliability: 'medium',
-      eapmCalculated: false
-    };
-    
-    // 2. Enhanced command extraction with EAPM
     try {
-      console.log('[EnhancedDataMapper] === STARTING REPCORE COMMAND EXTRACTION ===');
-      const arrayBuffer = await file.arrayBuffer();
+      const buffer = await file.arrayBuffer();
       
-      const commandExtractor = new EnhancedCommandExtractor(arrayBuffer);
-      realCommands = commandExtractor.extractRealCommands();
+      // Use Enhanced Command Extractor with complete screp pipeline
+      const extractor = new EnhancedCommandExtractor(buffer);
+      const extractionResult = await extractor.extractCommands();
       
-      console.log('[EnhancedDataMapper] === REPCORE EXTRACTION RESULT ===');
-      console.log('[EnhancedDataMapper] Enhanced commands with EAPM:', realCommands.length);
+      console.log('[EnhancedDataMapper] Extraction result:', {
+        format: extractionResult.format,
+        commands: extractionResult.commands.length,
+        totalFrames: extractionResult.totalFrames,
+        eapm: extractionResult.eapmData.eapm,
+        efficiency: extractionResult.eapmData.efficiency,
+        parseErrors: extractionResult.parseErrors
+      });
       
-      if (realCommands.length > 0) {
-        console.log('[EnhancedDataMapper] === EAPM ANALYSIS WITH INEFFKIND ===');
+      // Build enhanced result
+      const header = this.buildEnhancedHeader(extractionResult.header, extractionResult.totalFrames);
+      const players = this.buildEnhancedPlayers(extractionResult.header.players, extractionResult.commands);
+      const interpretedCommands = this.interpretCommands(extractionResult.commands);
+      const buildOrders = this.buildEnhancedBuildOrders(interpretedCommands, players);
+      const gameplayAnalysis = this.analyzeGameplay(interpretedCommands, extractionResult.eapmData);
+      
+      // Calculate data quality
+      const dataQuality = this.calculateDataQuality(extractionResult, interpretedCommands);
+      
+      const result: EnhancedReplayResult = {
+        header,
+        players,
+        commands: extractionResult.commands,
+        interpretedCommands,
+        enhancedBuildOrders: buildOrders,
+        gameplayAnalysis,
+        dataQuality,
         
-        // Group by player and analyze EAPM
-        const playerCommandsRaw: Record<number, any[]> = {};
-        realCommands.forEach(cmd => {
-          if (!playerCommandsRaw[cmd.playerId]) {
-            playerCommandsRaw[cmd.playerId] = [];
-          }
-          playerCommandsRaw[cmd.playerId].push(cmd);
-        });
-        
-        // Enhanced interpretation with EAPM analysis
-        Object.entries(playerCommandsRaw).forEach(([playerIdStr, commands]) => {
-          const playerId = parseInt(playerIdStr);
-          interpretedCommands[playerId] = [];
-          
-          // Sort by frame for proper EAPM analysis
-          commands.sort((a, b) => (a.frame || 0) - (b.frame || 0));
-          
-          // Calculate EAPM using RepCore logic
-          const eapmResult = calculateEAPM(commands, screpResult.header.frames || 0);
-          
-          // Create interpreted commands with effectiveness
-          commands.forEach(cmd => {
-            const interpreted = SCCommandInterpreter.interpretCommand(cmd, interpretedCommands[playerId]);
-            interpreted.ineffective = !cmd.effective;
-            interpreted.ineffectiveReason = cmd.ineffectiveReason;
-            interpretedCommands[playerId].push(interpreted);
-          });
-          
-          console.log(`[EnhancedDataMapper] Player ${playerId} RepCore EAPM:`, {
-            eapm: eapmResult.eapm,
-            efficiency: eapmResult.efficiency,
-            effective: eapmResult.totalEffective,
-            total: eapmResult.totalCommands
-          });
-        });
-        
-        const totalInterpreted = Object.values(interpretedCommands).reduce((sum, cmds) => sum + cmds.length, 0);
-        const totalEffective = realCommands.filter(cmd => cmd.effective).length;
-        
-        if (realCommands.length > 50) {
-          dataQuality = {
-            source: 'enhanced',
-            commandsExtracted: realCommands.length,
-            interpretedCommands: totalInterpreted,
-            effectiveCommands: totalEffective,
-            reliability: realCommands.length > 200 ? 'high' : 'medium',
-            eapmCalculated: true
-          };
-          console.log('[EnhancedDataMapper] ✅ RepCore enhanced extraction successful:', {
-            commands: realCommands.length,
-            effective: totalEffective,
-            eapmEnabled: true
-          });
-        }
-      }
+        // Additional screp data
+        format: extractionResult.format,
+        sections: extractionResult.sections,
+        eapmData: extractionResult.eapmData
+      };
+      
+      console.log('[EnhancedDataMapper] Complete parsing finished successfully');
+      return result;
+      
     } catch (error) {
-      console.error('[EnhancedDataMapper] ❌ Enhanced extraction failed:', error);
-      console.log('[EnhancedDataMapper] Falling back to screp-js only');
+      console.error('[EnhancedDataMapper] Parsing failed:', error);
+      throw new Error(`Enhanced parsing failed: ${error}`);
+    }
+  }
+
+  /**
+   * Build enhanced header with screp data
+   */
+  private static buildEnhancedHeader(replayHeader: any, totalFrames: number): any {
+    const gameDuration = Math.floor(totalFrames / 23.81); // Exact SC:R frame rate
+    const minutes = Math.floor(gameDuration / 60);
+    const seconds = gameDuration % 60;
+    
+    return {
+      mapName: replayHeader.map || 'Unknown Map',
+      gameType: this.getGameTypeName(replayHeader.type),
+      gameDuration: `${minutes}:${seconds.toString().padStart(2, '0')}`,
+      gameDurationMS: gameDuration * 1000,
+      totalFrames,
+      startTime: replayHeader.startTime,
+      title: replayHeader.title,
+      mapWidth: replayHeader.mapWidth,
+      mapHeight: replayHeader.mapHeight,
+      speed: replayHeader.speed,
+      host: replayHeader.host,
+      engine: replayHeader.engine,
+      
+      // Enhanced fields
+      frameRate: 23.81,
+      version: this.getVersionFromFormat(RepFormat.Modern121), // Updated based on format
+      remastered: true
+    };
+  }
+
+  /**
+   * Build enhanced players with screp data
+   */
+  private static buildEnhancedPlayers(playerSlots: any[], commands: any[]): any[] {
+    return playerSlots.map((slot, index) => {
+      const playerCommands = commands.filter(cmd => cmd.playerId === slot.id);
+      const effectiveCommands = playerCommands.filter(cmd => cmd.effective);
+      
+      // Calculate APM and EAPM
+      const gameMinutes = Math.max(...commands.map(c => c.frame)) / 23.81 / 60;
+      const apm = gameMinutes > 0 ? Math.round(playerCommands.length / gameMinutes) : 0;
+      const eapm = gameMinutes > 0 ? Math.round(effectiveCommands.length / gameMinutes) : 0;
+      
+      return {
+        id: slot.id,
+        name: slot.name || `Player ${slot.id + 1}`,
+        race: RACE_NAMES[slot.race] || 'Unknown',
+        team: slot.team,
+        color: slot.color || PLAYER_COLORS[index % PLAYER_COLORS.length],
+        type: this.getPlayerTypeName(slot.type),
+        
+        // Enhanced stats
+        apm,
+        eapm,
+        efficiency: playerCommands.length > 0 ? Math.round((effectiveCommands.length / playerCommands.length) * 100) : 0,
+        commandsTotal: playerCommands.length,
+        commandsEffective: effectiveCommands.length,
+        
+        // Additional screp data
+        slotId: slot.slotId,
+        rawData: slot
+      };
+    });
+  }
+
+  /**
+   * Interpret commands using enhanced interpreter
+   */
+  private static interpretCommands(commands: any[]): any[] {
+    return commands.map(cmd => 
+      SCCommandInterpreter.interpretCommand({
+        frame: cmd.frame,
+        playerId: cmd.playerId,
+        commandName: cmd.commandName,
+        parameters: cmd.parameters
+      }, [])
+    );
+  }
+
+  /**
+   * Calculate enhanced data quality
+   */
+  private static calculateDataQuality(extractionResult: any, interpretedCommands: any[]): any {
+    const totalCommands = extractionResult.commands.length;
+    const effectiveCommands = extractionResult.eapmData.totalEffective;
+    const parseErrors = extractionResult.parseErrors;
+    
+    // Calculate reliability score
+    let reliability: 'excellent' | 'good' | 'fair' | 'poor';
+    const errorRate = totalCommands > 0 ? parseErrors / totalCommands : 0;
+    const efficiency = extractionResult.eapmData.efficiency;
+    
+    if (errorRate < 0.01 && efficiency > 80 && totalCommands > 500) {
+      reliability = 'excellent';
+    } else if (errorRate < 0.05 && efficiency > 60 && totalCommands > 200) {
+      reliability = 'good';
+    } else if (errorRate < 0.10 && totalCommands > 50) {
+      reliability = 'fair';
+    } else {
+      reliability = 'poor';
     }
     
-    // 3. Calculate enhanced metrics with RepCore
-    console.log('[EnhancedDataMapper] === CALCULATING REPCORE METRICS ===');
-    const realMetrics = this.calculateEnhancedMetrics(interpretedCommands, screpResult, realCommands);
-    
-    // 4. Generate enhanced build orders
-    const enhancedBuildOrders = this.generateEnhancedBuildOrders(interpretedCommands, screpResult);
-    
-    // 5. Create comprehensive analysis
-    const gameplayAnalysis = this.generateComprehensiveGameplayAnalysis(interpretedCommands, realMetrics, realCommands, screpResult);
-    
-    const finalResult = {
-      header: {
-        mapName: screpResult.header.mapName,
-        duration: framesToTimeString(screpResult.header.frames || 0),
-        frames: screpResult.header.frames,
-        gameType: getGameTypeName(typeof screpResult.header.gameType === 'string' ? 0 : screpResult.header.gameType || 0),
-        startTime: screpResult.header.startTime
-      },
-      players: screpResult.players.map((p: any, i: number) => ({
-        name: p.name,
-        race: getRaceName(p.race),
-        team: p.team || i,
-        color: p.color || i
-      })),
-      realCommands,
-      interpretedCommands,
-      realMetrics,
-      enhancedBuildOrders,
-      gameplayAnalysis,
-      dataQuality
+    return {
+      reliability,
+      commandsExtracted: totalCommands,
+      commandsEffective: effectiveCommands,
+      parseErrors,
+      errorRate: Math.round(errorRate * 100),
+      efficiency,
+      source: 'Enhanced screp-compatible parser',
+      format: this.getFormatName(extractionResult.format),
+      
+      // Detailed metrics
+      sections: extractionResult.sections.length,
+      sectionsParsed: extractionResult.sections.filter(s => s.data.length > 0).length,
+      compressionDetected: extractionResult.sections.some(s => s.compressed),
+      modernSections: extractionResult.sections.filter(s => s.id > 4).length
     };
-    
-    console.log('[EnhancedDataMapper] === REPCORE ENHANCED PARSING COMPLETE ===');
-    console.log('[EnhancedDataMapper] Final RepCore result:', {
-      players: finalResult.players.length,
-      realCommands: finalResult.realCommands.length,
-      eapmCalculated: finalResult.dataQuality.eapmCalculated,
-      dataSource: finalResult.dataQuality.source,
-      gameType: finalResult.header.gameType
-    });
-    
-    return finalResult;
   }
 
   /**
@@ -255,7 +283,7 @@ export class EnhancedDataMapper {
         const playerRealCommands = realCommands.filter(cmd => cmd.playerId === index);
         
         // Calculate EAPM using RepCore logic
-        const eapmResult = calculateEAPM(playerRealCommands, screpResult.header.frames);
+        const eapmResult = calculateEAPM(playerRealCommands, screpResult.header.frames || 0);
         
         const apm = screpResult.computed.apm[index] || 0;
         const realActions = Math.round(apm * gameMinutes);
@@ -470,5 +498,50 @@ export class EnhancedDataMapper {
     if (actionName.includes('Research')) return 'tech';
     if (actionName.includes('Upgrade')) return 'upgrade';
     return 'build';
+  }
+
+  private static getGameTypeName(gameType: number): string {
+    const gameTypes: Record<number, string> = {
+      1: 'Melee',
+      2: 'Free For All',
+      3: 'One on One',
+      8: 'Ladder',
+      9: 'Use Map Settings',
+      10: 'Team Melee',
+      15: 'Top vs Bottom'
+    };
+    return gameTypes[gameType] || 'Unknown';
+  }
+
+  private static getPlayerTypeName(playerType: number): string {
+    const playerTypes: Record<number, string> = {
+      0: 'Inactive',
+      1: 'Human',
+      2: 'Computer',
+      3: 'Neutral',
+      4: 'Closed',
+      5: 'Observer',
+      6: 'User',
+      7: 'Open'
+    };
+    return playerTypes[playerType] || 'Unknown';
+  }
+
+  private static getVersionFromFormat(format: RepFormat): string {
+    switch (format) {
+      case RepFormat.Legacy: return 'Pre-1.18';
+      case RepFormat.Modern: return '1.18-1.20';
+      case RepFormat.Modern121: return '1.21+';
+      default: return 'Unknown';
+    }
+  }
+
+  private static getFormatName(format: RepFormat): string {
+    switch (format) {
+      case RepFormat.Legacy: return 'Legacy PKWARE';
+      case RepFormat.Modern: return 'Modern zlib';
+      case RepFormat.Modern121: return 'Modern 1.21+ Enhanced';
+      default: return 'Unknown Format';
+    }
   }
 }

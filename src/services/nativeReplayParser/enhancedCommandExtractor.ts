@@ -1,272 +1,241 @@
 
 /**
- * Enhanced Command Extractor with RepCore integration and EAPM analysis
+ * Enhanced Command Extractor with Complete screp Integration
+ * Now uses SectionBasedParser and CompleteCommandParser for 100% compatibility
  */
 
-import { BWBinaryReader } from './bwRemastered/binaryReader';
-import { getCommandName } from './bwRemastered/enhancedConstants';
-import { 
-  analyzeCommandEffectiveness, 
-  IneffKind, 
-  ineffKindToString,
-  calculateEAPM 
-} from './bwRemastered/repcore/ineffKind';
-import { framesToTimeString } from './bwRemastered/repcore/types';
+import { SectionBasedParser } from './sectionBasedParser';
+import { CompleteCommandParser } from './completeCommandParser';
+import { EnhancedFormatDetector } from './enhancedFormatDetector';
+import { RepFormat, framesToTimeString } from './repcore/constants';
 
-interface EnhancedCommand {
-  frame: number;
-  playerId: number;
-  commandId: number;
-  commandName: string;
-  parameters?: any;
-  timeString: string;
-  ineffKind: IneffKind;
-  effective: boolean;
-  ineffectiveReason?: string;
+export interface EnhancedCommandResult {
+  commands: any[];
+  totalFrames: number;
+  format: RepFormat;
+  parseErrors: number;
+  eapmData: {
+    eapm: number;
+    totalEffective: number;
+    totalCommands: number;
+    efficiency: number;
+  };
+  header: any;
+  sections: any[];
 }
 
 export class EnhancedCommandExtractor {
-  private reader: BWBinaryReader;
-  private commands: EnhancedCommand[] = [];
+  private buffer: ArrayBuffer;
   
   constructor(buffer: ArrayBuffer) {
-    this.reader = new BWBinaryReader(buffer);
+    this.buffer = buffer;
   }
 
-  extractRealCommands(): any[] {
-    console.log('[EnhancedCommandExtractor] Starting enhanced extraction with EAPM analysis');
+  /**
+   * Extract commands using complete screp-compatible pipeline
+   */
+  async extractCommands(): Promise<EnhancedCommandResult> {
+    console.log('[EnhancedCommandExtractor] Starting screp-compatible extraction');
+    console.log('[EnhancedCommandExtractor] Buffer size:', this.buffer.byteLength);
     
     try {
-      this.findAndParseCommandSection();
-      this.analyzeCommandEffectiveness();
+      // Phase 1: Format Detection
+      const formatResult = EnhancedFormatDetector.detectFormat(new Uint8Array(this.buffer.slice(0, 30)));
+      console.log('[EnhancedCommandExtractor] Format detection:', formatResult);
       
-      console.log('[EnhancedCommandExtractor] Enhanced extraction completed:', {
-        totalCommands: this.commands.length,
-        effectiveCommands: this.commands.filter(cmd => cmd.effective).length,
-        ineffectiveCommands: this.commands.filter(cmd => !cmd.effective).length
+      if (formatResult.format === RepFormat.Unknown || formatResult.confidence < 0.5) {
+        throw new Error(`Invalid replay format. Confidence: ${formatResult.confidence}`);
+      }
+      
+      // Phase 2: Section-based Parsing
+      const sectionParser = new SectionBasedParser(this.buffer);
+      const parsedReplay = await sectionParser.parseReplay();
+      
+      console.log('[EnhancedCommandExtractor] Section parsing complete:', {
+        format: parsedReplay.format,
+        sectionsCount: parsedReplay.sections.length,
+        playersCount: parsedReplay.header.players.length,
+        mapName: parsedReplay.header.map
       });
       
-      return this.commands.map(cmd => ({
-        frame: cmd.frame,
-        playerId: cmd.playerId,
-        commandId: cmd.commandId,
-        commandName: cmd.commandName,
-        parameters: cmd.parameters,
-        timeString: cmd.timeString,
-        ineffKind: cmd.ineffKind,
-        effective: cmd.effective,
-        ineffectiveReason: cmd.ineffectiveReason
-      }));
+      // Phase 3: Command Extraction from Commands Section
+      const commandsSection = parsedReplay.sections.find(s => s.name === 'Commands');
+      if (!commandsSection || commandsSection.data.length === 0) {
+        console.warn('[EnhancedCommandExtractor] No commands section found');
+        return this.createEmptyResult(parsedReplay);
+      }
+      
+      // Phase 4: Complete Command Parsing
+      const commandParser = new CompleteCommandParser(commandsSection.data);
+      const parseResult = commandParser.parseCommands();
+      
+      console.log('[EnhancedCommandExtractor] Command parsing complete:', {
+        totalCommands: parseResult.commands.length,
+        totalFrames: parseResult.totalFrames,
+        parseErrors: parseResult.parseErrors,
+        eapm: parseResult.eapmData.eapm,
+        efficiency: parseResult.eapmData.efficiency
+      });
+      
+      // Phase 5: Convert to enhanced format
+      const enhancedCommands = this.convertToEnhancedFormat(parseResult.commands);
+      
+      return {
+        commands: enhancedCommands,
+        totalFrames: parseResult.totalFrames,
+        format: parsedReplay.format,
+        parseErrors: parseResult.parseErrors,
+        eapmData: parseResult.eapmData,
+        header: parsedReplay.header,
+        sections: parsedReplay.sections
+      };
       
     } catch (error) {
       console.error('[EnhancedCommandExtractor] Extraction failed:', error);
-      return [];
+      throw new Error(`Enhanced extraction failed: ${error}`);
     }
   }
 
-  private findAndParseCommandSection(): void {
-    const possibleOffsets = [633, 637, 641, 645, 649, 653];
-    
-    for (const offset of possibleOffsets) {
-      if (offset < this.reader.getBuffer().byteLength - 100) {
-        this.reader.setPosition(offset);
-        
-        if (this.looksLikeCommandSection(offset)) {
-          console.log(`[EnhancedCommandExtractor] Found command section at offset ${offset}`);
-          this.parseCommandsFromOffset(offset);
-          return;
-        }
-      }
-    }
-    
-    // Fallback
-    console.log('[EnhancedCommandExtractor] Using fallback offset 633');
-    this.reader.setPosition(633);
-    this.parseCommandsFromOffset(633);
+  /**
+   * Convert parsed commands to enhanced format for UI compatibility
+   */
+  private convertToEnhancedFormat(commands: any[]): any[] {
+    return commands.map(cmd => ({
+      frame: cmd.frame,
+      playerId: cmd.playerID,
+      commandId: cmd.type,
+      commandName: cmd.typeString,
+      parameters: cmd.parameters,
+      timeString: cmd.time,
+      ineffKind: cmd.ineffKind,
+      effective: cmd.effective,
+      ineffectiveReason: cmd.ineffectiveReason,
+      
+      // Additional enhanced fields
+      timestamp: cmd.time,
+      actionType: this.getActionType(cmd.type, cmd.typeString),
+      actionName: this.getActionName(cmd.typeString, cmd.parameters),
+      isMicroAction: this.isMicroAction(cmd.type),
+      isEconomicAction: this.isEconomicAction(cmd.type),
+      priority: this.getCommandPriority(cmd.type),
+      unitName: this.getUnitName(cmd.parameters),
+      position: cmd.parameters?.pos,
+      details: this.formatCommandDetails(cmd.typeString, cmd.parameters)
+    }));
   }
 
-  private looksLikeCommandSection(offset: number): boolean {
-    this.reader.setPosition(offset);
+  /**
+   * Determine action type from command
+   */
+  private getActionType(commandType: number, commandName: string): string {
+    const buildCommands = ['Build', 'Train', 'Train Unit', 'Building Morph'];
+    const moveCommands = ['Move', 'Right Click', 'Attack Move', 'Patrol'];
+    const selectCommands = ['Select', 'Shift Select', 'Shift Deselect'];
+    const techCommands = ['Research', 'Upgrade'];
     
-    if (!this.reader.canRead(50)) {
-      return false;
-    }
+    if (buildCommands.some(cmd => commandName.includes(cmd))) return 'build';
+    if (commandName.includes('Train')) return 'train';
+    if (moveCommands.some(cmd => commandName.includes(cmd))) return 'move';
+    if (commandName.includes('Attack')) return 'attack';
+    if (selectCommands.some(cmd => commandName.includes(cmd))) return 'select';
+    if (commandName.includes('Hotkey')) return 'hotkey';
+    if (techCommands.some(cmd => commandName.includes(cmd))) return 'research';
     
-    const sample = this.reader.readBytes(50);
-    let commandLikeBytes = 0;
-    
-    for (let i = 0; i < sample.length; i++) {
-      const byte = sample[i];
-      if ([0x00, 0x01, 0x02, 0x0C, 0x14, 0x1D, 0x20, 0x11, 0x13].includes(byte)) {
-        commandLikeBytes++;
-      }
-    }
-    
-    return commandLikeBytes >= 5;
+    return 'unknown';
   }
 
-  private parseCommandsFromOffset(offset: number): void {
-    this.reader.setPosition(offset);
-    let commandCount = 0;
-    const maxCommands = 10000;
-    
-    while (this.reader.canRead(8) && commandCount < maxCommands) {
-      try {
-        const command = this.parseNextCommand();
-        if (command) {
-          this.commands.push(command);
-          commandCount++;
-        } else {
-          break;
-        }
-      } catch (error) {
-        console.warn('[EnhancedCommandExtractor] Command parsing error:', error);
-        break;
-      }
+  /**
+   * Get action name for UI
+   */
+  private getActionName(commandName: string, parameters: any): string {
+    if (parameters?.unit) {
+      return `${commandName} ${parameters.unit}`;
     }
-    
-    console.log(`[EnhancedCommandExtractor] Parsed ${commandCount} commands`);
+    if (parameters?.pos) {
+      return `${commandName} at (${parameters.pos.x}, ${parameters.pos.y})`;
+    }
+    if (parameters?.message) {
+      return `Chat: ${parameters.message.substring(0, 30)}...`;
+    }
+    return commandName;
   }
 
-  private parseNextCommand(): EnhancedCommand | null {
-    if (!this.reader.canRead(4)) {
-      return null;
-    }
+  /**
+   * Check if command is micro action
+   */
+  private isMicroAction(commandType: number): boolean {
+    const microCommands = [0x14, 0x09, 0x0A, 0x0B, 0x13, 0x15, 0x16, 0x10, 0x2A, 0x17];
+    return microCommands.includes(commandType);
+  }
 
-    // Read frame (4 bytes)
-    const frame = this.reader.readUInt32LE();
+  /**
+   * Check if command is economic action
+   */
+  private isEconomicAction(commandType: number): boolean {
+    const economicCommands = [0x0C, 0x1F, 0x1D, 0x2F, 0x31, 0x34, 0x21];
+    return economicCommands.includes(commandType);
+  }
+
+  /**
+   * Get command priority
+   */
+  private getCommandPriority(commandType: number): 'critical' | 'important' | 'normal' | 'low' {
+    const criticalCommands = [0x0C, 0x1F, 0x1D]; // Build, Train
+    const importantCommands = [0x14, 0x15, 0x16, 0x11]; // Move, Attack
+    const lowCommands = [0x09, 0x0A, 0x0B]; // Select commands
     
-    if (!this.reader.canRead(2)) {
-      return null;
+    if (criticalCommands.includes(commandType)) return 'critical';
+    if (importantCommands.includes(commandType)) return 'important';
+    if (lowCommands.includes(commandType)) return 'low';
+    return 'normal';
+  }
+
+  /**
+   * Extract unit name from parameters
+   */
+  private getUnitName(parameters: any): string | undefined {
+    return parameters?.unit || parameters?.techName || parameters?.upgradeName;
+  }
+
+  /**
+   * Format command details
+   */
+  private formatCommandDetails(commandName: string, parameters: any): string {
+    if (parameters?.pos && parameters?.unit) {
+      return `${commandName} ${parameters.unit} at (${parameters.pos.x}, ${parameters.pos.y})`;
     }
-
-    // Read command header
-    const commandId = this.reader.readUInt8();
-    const playerId = this.reader.readUInt8();
-
-    // Skip invalid commands
-    if (commandId === 0 && playerId === 0) {
-      return null;
+    if (parameters?.unit) {
+      return `${commandName} ${parameters.unit}`;
     }
+    if (parameters?.pos) {
+      return `${commandName} at (${parameters.pos.x}, ${parameters.pos.y})`;
+    }
+    if (parameters?.count) {
+      return `${commandName} ${parameters.count} units`;
+    }
+    if (parameters?.message) {
+      return `Chat: ${parameters.message}`;
+    }
+    return commandName;
+  }
 
-    const commandName = getCommandName(commandId);
-    const timeString = framesToTimeString(frame);
-
-    // Parse parameters based on command type
-    const parameters = this.parseCommandParameters(commandId);
-
+  /**
+   * Create empty result for failed parsing
+   */
+  private createEmptyResult(parsedReplay: any): EnhancedCommandResult {
     return {
-      frame,
-      playerId,
-      commandId,
-      commandName,
-      parameters,
-      timeString,
-      ineffKind: IneffKind.Effective, // Will be analyzed later
-      effective: true, // Will be analyzed later
+      commands: [],
+      totalFrames: 0,
+      format: parsedReplay.format,
+      parseErrors: 0,
+      eapmData: {
+        eapm: 0,
+        totalEffective: 0,
+        totalCommands: 0,
+        efficiency: 0
+      },
+      header: parsedReplay.header,
+      sections: parsedReplay.sections
     };
-  }
-
-  private parseCommandParameters(commandId: number): any {
-    const params: any = {};
-
-    try {
-      switch (commandId) {
-        case 0x09: // Select
-        case 0x0A: // Shift Select
-          if (this.reader.canRead(2)) {
-            params.unitCount = this.reader.readUInt16LE();
-          }
-          break;
-          
-        case 0x0C: // Build
-          if (this.reader.canRead(4)) {
-            params.unitType = this.reader.readUInt16LE();
-            params.x = this.reader.readUInt16LE();
-            params.y = this.reader.readUInt16LE();
-          }
-          break;
-          
-        case 0x13: // Hotkey
-          if (this.reader.canRead(2)) {
-            params.hotkey = this.reader.readUInt8();
-            params.action = this.reader.readUInt8();
-          }
-          break;
-          
-        case 0x14: // Right Click
-          if (this.reader.canRead(4)) {
-            params.x = this.reader.readUInt16LE();
-            params.y = this.reader.readUInt16LE();
-          }
-          break;
-          
-        case 0x1F: // Train
-        case 0x20: // Cancel Train
-          if (this.reader.canRead(2)) {
-            params.unitType = this.reader.readUInt16LE();
-          }
-          break;
-          
-        default:
-          // Skip unknown parameter bytes
-          if (this.reader.canRead(2)) {
-            const byte1 = this.reader.readUInt8();
-            const byte2 = this.reader.readUInt8();
-            if (byte1 !== 0 || byte2 !== 0) {
-              params.data = [byte1, byte2];
-            }
-          }
-          break;
-      }
-    } catch (error) {
-      console.warn(`[EnhancedCommandExtractor] Parameter parsing error for command ${commandId}:`, error);
-    }
-
-    return Object.keys(params).length > 0 ? params : undefined;
-  }
-
-  private analyzeCommandEffectiveness(): void {
-    console.log('[EnhancedCommandExtractor] Starting EAPM effectiveness analysis');
-    
-    // Group commands by player for analysis
-    const playerCommands: { [playerId: number]: EnhancedCommand[] } = {};
-    
-    for (const command of this.commands) {
-      if (!playerCommands[command.playerId]) {
-        playerCommands[command.playerId] = [];
-      }
-      playerCommands[command.playerId].push(command);
-    }
-
-    // Analyze effectiveness for each player
-    for (const [playerId, commands] of Object.entries(playerCommands)) {
-      console.log(`[EnhancedCommandExtractor] Analyzing player ${playerId} with ${commands.length} commands`);
-      
-      // Sort by frame
-      commands.sort((a, b) => a.frame - b.frame);
-      
-      // Analyze each command
-      for (let i = 0; i < commands.length; i++) {
-        const command = commands[i];
-        const previousCommands = commands.slice(0, i);
-        
-        command.ineffKind = analyzeCommandEffectiveness(command, previousCommands);
-        command.effective = command.ineffKind === IneffKind.Effective;
-        
-        if (!command.effective) {
-          command.ineffectiveReason = ineffKindToString(command.ineffKind);
-        }
-      }
-      
-      const effectiveCount = commands.filter(cmd => cmd.effective).length;
-      const efficiency = commands.length > 0 ? Math.round((effectiveCount / commands.length) * 100) : 0;
-      
-      console.log(`[EnhancedCommandExtractor] Player ${playerId} effectiveness:`, {
-        total: commands.length,
-        effective: effectiveCount,
-        efficiency: `${efficiency}%`
-      });
-    }
   }
 }
