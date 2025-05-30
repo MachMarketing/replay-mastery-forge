@@ -1,3 +1,4 @@
+
 /**
  * screp Core Parser - Vollständige Implementation basierend auf GitHub Repo
  * Ersetzt screp-js komplett für bessere Command-Extraktion
@@ -246,7 +247,7 @@ export class ScrepCore {
     const commandSection = this.findCommandSection();
     if (!commandSection) {
       console.warn('[ScrepCore] Command section not found, trying fallback');
-      return this.tryFallbackCommandParsing();
+      return await this.tryFallbackCommandParsing();
     }
     
     console.log('[ScrepCore] Command section found at offset:', commandSection.offset);
@@ -260,7 +261,7 @@ export class ScrepCore {
   /**
    * Fallback command parsing wenn normale Methode fehlschlägt
    */
-  private tryFallbackCommandParsing(): Command[] {
+  private async tryFallbackCommandParsing(): Promise<Command[]> {
     console.log('[ScrepCore] Trying fallback command parsing...');
     
     // Suche in der zweiten Hälfte der Datei nach command-ähnlichen Patterns
@@ -284,7 +285,7 @@ export class ScrepCore {
           console.log('[ScrepCore] Potential command section found at', offset);
           this.reader.setPosition(offset);
           const commandParser = new CommandParser(this.reader);
-          const commands = commandParser.parseAllCommands();
+          const commands = await commandParser.parseAllCommands();
           
           if (commands.length > 10) {
             console.log('[ScrepCore] Fallback parsing successful:', commands.length, 'commands');
