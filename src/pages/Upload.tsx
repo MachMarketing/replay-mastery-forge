@@ -1,15 +1,15 @@
 
 import React, { useState } from 'react';
-import { FinalReplayResult } from '@/services/nativeReplayParser/screpJsParser';
+import { NewFinalReplayResult } from '@/services/nativeReplayParser/newScrepParser';
 import ReplayUpload from '@/components/ReplayUpload';
 import { ReplayAnalysisDisplay } from '@/components/ReplayAnalysisDisplay';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const Upload: React.FC = () => {
-  const [replayData, setReplayData] = useState<FinalReplayResult | null>(null);
+  const [replayData, setReplayData] = useState<NewFinalReplayResult | null>(null);
 
-  const handleParseComplete = (data: FinalReplayResult) => {
-    console.log('[Upload] Parse complete received:', data);
+  const handleParseComplete = (data: NewFinalReplayResult) => {
+    console.log('[Upload] screp-core parse complete received:', data);
     setReplayData(data);
   };
 
@@ -20,7 +20,7 @@ const Upload: React.FC = () => {
           StarCraft: Remastered Replay Analyzer
         </h1>
         <p className="text-lg text-muted-foreground">
-          Präzise Analyse mit screp-js • Echte EAPM-Berechnung • Detaillierte Gameplay-Insights
+          Vollständige screp-core Implementation • Command-Extraktion • Build Order Analyse
         </p>
       </div>
 
@@ -29,7 +29,7 @@ const Upload: React.FC = () => {
       ) : (
         <Tabs defaultValue="analysis" className="w-full">
           <TabsList className="grid w-full grid-cols-1">
-            <TabsTrigger value="analysis">Replay Analyse</TabsTrigger>
+            <TabsTrigger value="analysis">screp-core Replay Analyse</TabsTrigger>
           </TabsList>
           
           <TabsContent value="analysis">

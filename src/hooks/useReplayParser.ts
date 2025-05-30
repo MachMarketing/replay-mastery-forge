@@ -1,13 +1,13 @@
 
 /**
- * Vereinfachter Hook - verwendet nur noch screp-js
+ * Updated Hook - verwendet jetzt screp-core Parser
  */
 
 import { useState } from 'react';
-import { ScrepJsParser, FinalReplayResult } from '@/services/nativeReplayParser/screpJsParser';
+import { NewScrepParser, NewFinalReplayResult } from '@/services/nativeReplayParser/newScrepParser';
 
 export interface UseReplayParserReturn {
-  parseReplay: (file: File) => Promise<FinalReplayResult>;
+  parseReplay: (file: File) => Promise<NewFinalReplayResult>;
   isLoading: boolean;
   error: string | null;
   progress: number;
@@ -17,36 +17,37 @@ export function useReplayParser(): UseReplayParserReturn {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
-  const [parser] = useState(() => new ScrepJsParser());
+  const [parser] = useState(() => new NewScrepParser());
 
-  const parseReplay = async (file: File): Promise<FinalReplayResult> => {
+  const parseReplay = async (file: File): Promise<NewFinalReplayResult> => {
     setIsLoading(true);
     setError(null);
     setProgress(0);
     
-    console.log('[useReplayParser] Starting screp-js only parsing for:', file.name);
+    console.log('[useReplayParser] Starting screp-core parsing for:', file.name);
     
     try {
       // Progress simulation
       const progressInterval = setInterval(() => {
-        setProgress(prev => Math.min(prev + 20, 90));
-      }, 300);
+        setProgress(prev => Math.min(prev + 15, 90));
+      }, 200);
 
       const result = await parser.parseReplay(file);
       
       clearInterval(progressInterval);
       setProgress(100);
       
-      console.log('[useReplayParser] Parsing erfolgreich:', {
+      console.log('[useReplayParser] screp-core parsing successful:', {
         map: result.header.mapName,
         players: result.players.map(p => `${p.name} (${p.race}) APM:${p.apm} EAPM:${p.eapm}`),
+        commands: result.dataQuality.commandsFound,
         quality: result.dataQuality.reliability
       });
       
       return result;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Fehler beim Parsen der Replay';
-      console.error('[useReplayParser] Parsing failed:', errorMessage);
+      const errorMessage = err instanceof Error ? err.message : 'screp-core parsing failed';
+      console.error('[useReplayParser] screp-core parsing failed:', errorMessage);
       setError(errorMessage);
       throw err;
     } finally {

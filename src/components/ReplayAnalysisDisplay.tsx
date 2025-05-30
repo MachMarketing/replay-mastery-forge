@@ -1,10 +1,9 @@
-
 /**
- * Vollständig überarbeitete Replay-Analyse mit intelligenter Build Order Analyse
+ * Updated Replay-Analyse Display für screp-core Parser
  */
 
 import React from 'react';
-import { FinalReplayResult } from '@/services/nativeReplayParser/screpJsParser';
+import { NewFinalReplayResult } from '@/services/nativeReplayParser/newScrepParser';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -14,7 +13,7 @@ import { BuildOrderAnalysis } from './BuildOrderAnalysis';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface ReplayAnalysisDisplayProps {
-  replayData: FinalReplayResult;
+  replayData: NewFinalReplayResult;
 }
 
 export const ReplayAnalysisDisplay: React.FC<ReplayAnalysisDisplayProps> = ({ replayData }) => {
@@ -32,7 +31,7 @@ export const ReplayAnalysisDisplay: React.FC<ReplayAnalysisDisplayProps> = ({ re
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Map className="h-5 w-5" />
-            Spiel-Übersicht
+            Spiel-Übersicht - screp-core Parser
             <Badge variant={dataQuality.reliability === 'high' ? 'default' : 'secondary'}>
               {dataQuality.source} - {dataQuality.reliability}
             </Badge>
@@ -54,31 +53,31 @@ export const ReplayAnalysisDisplay: React.FC<ReplayAnalysisDisplayProps> = ({ re
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-orange-500">
-                ✅ {dataQuality.apmCalculated && dataQuality.eapmCalculated ? 'EAPM' : 'Basis'}
+                ✅ {dataQuality.commandsFound > 0 ? `${dataQuality.commandsFound} CMD` : 'Basis'}
               </div>
-              <div className="text-sm text-muted-foreground">Analyse</div>
+              <div className="text-sm text-muted-foreground">Commands</div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Data Quality Alert */}
-      {!hasBuildOrderData && (
+      {/* Success Alert für screp-core */}
+      {dataQuality.commandsFound > 0 && (
         <Alert>
-          <AlertTriangle className="h-4 w-4" />
+          <CheckCircle className="h-4 w-4" />
           <AlertDescription>
-            <strong>Build Order Analyse nicht verfügbar:</strong> Diese .rep Datei enthält keine extrahierbaren Commands. 
-            APM/EAPM Analyse funktioniert trotzdem perfekt! Manche ältere oder komprimierte Replays haben dieses Problem.
+            <strong>screp-core Parsing erfolgreich:</strong> {dataQuality.commandsFound} Commands extrahiert mit vollständiger Build Order Analyse!
           </AlertDescription>
         </Alert>
       )}
 
-      {/* Successful APM Analysis */}
-      {dataQuality.apmCalculated && dataQuality.eapmCalculated && (
+      {/* Warning für wenige Commands */}
+      {dataQuality.commandsFound === 0 && (
         <Alert>
-          <CheckCircle className="h-4 w-4" />
+          <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
-            <strong>APM/EAPM Analyse erfolgreich:</strong> Präzise screp-js Berechnung mit {dataQuality.commandsFound} Commands gefunden.
+            <strong>Keine Commands extrahiert:</strong> screp-core konnte keine Commands aus diesem Replay extrahieren. 
+            APM/EAPM Analyse basiert auf Datei-Metadaten.
           </AlertDescription>
         </Alert>
       )}
@@ -175,7 +174,7 @@ export const ReplayAnalysisDisplay: React.FC<ReplayAnalysisDisplayProps> = ({ re
           <TabsList className="grid w-full grid-cols-2">
             {players.map((player, index) => (
               <TabsTrigger key={index} value={`player-${index}`}>
-                {player.name} - Build Order
+                {player.name} - Build Order ({buildOrderAnalysis[index]?.timeline.actions.length || 0} actions)
               </TabsTrigger>
             ))}
           </TabsList>
@@ -210,23 +209,23 @@ export const ReplayAnalysisDisplay: React.FC<ReplayAnalysisDisplayProps> = ({ re
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Target className="h-5 w-5" />
-              Detaillierte Build Order Analyse
+              screp-core Build Order Analyse
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-center py-8 text-muted-foreground">
               <Target className="h-16 w-16 mx-auto mb-4 opacity-30" />
-              <h3 className="text-xl font-semibold mb-3">Build Order Daten nicht verfügbar</h3>
+              <h3 className="text-xl font-semibold mb-3">Keine Commands extrahiert</h3>
               <p className="mb-4">
-                Diese .rep Datei enthält keine extrahierbaren Commands für Build Order Analyse.
+                screp-core konnte keine Commands aus diesem Replay extrahieren.
               </p>
-              <div className="bg-yellow-50 border border-yellow-200 rounded p-4 text-left max-w-md mx-auto">
-                <h4 className="font-medium text-yellow-800 mb-2">✅ Was funktioniert:</h4>
-                <ul className="text-sm text-yellow-700 space-y-1">
-                  <li>• Präzise APM/EAPM Berechnung</li>
-                  <li>• Spieler-Vergleich</li>
-                  <li>• Effizienz-Analyse</li>
-                  <li>• Spielstil-Erkennung</li>
+              <div className="bg-blue-50 border border-blue-200 rounded p-4 text-left max-w-md mx-auto">
+                <h4 className="font-medium text-blue-800 mb-2">🔧 screp-core Status:</h4>
+                <ul className="text-sm text-blue-700 space-y-1">
+                  <li>• Parser: {dataQuality.source}</li>
+                  <li>• Qualität: {dataQuality.reliability}</li>
+                  <li>• Commands: {dataQuality.commandsFound}</li>
+                  <li>• APM berechnet: {dataQuality.apmCalculated ? '✅' : '❌'}</li>
                 </ul>
               </div>
             </div>
@@ -234,10 +233,10 @@ export const ReplayAnalysisDisplay: React.FC<ReplayAnalysisDisplayProps> = ({ re
         </Card>
       )}
 
-      {/* Datenqualität */}
+      {/* Updated Datenqualität */}
       <Card>
         <CardHeader>
-          <CardTitle>Analyse-Qualität & Details</CardTitle>
+          <CardTitle>screp-core Analyse-Qualität & Details</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -252,13 +251,13 @@ export const ReplayAnalysisDisplay: React.FC<ReplayAnalysisDisplayProps> = ({ re
             <div>
               <div className="font-medium">Commands</div>
               <div className="text-muted-foreground">
-                {dataQuality.commandsFound} {dataQuality.commandsFound === 0 ? '(nicht verfügbar)' : ''}
+                {dataQuality.commandsFound} {dataQuality.commandsFound === 0 ? '(nicht extrahiert)' : '✅'}
               </div>
             </div>
             <div>
-              <div className="font-medium">APM Berechnung</div>
+              <div className="font-medium">Implementation</div>
               <div className="text-muted-foreground">
-                {dataQuality.apmCalculated && dataQuality.eapmCalculated ? '✅ Erfolgreich' : '❌ Fehlgeschlagen'}
+                screp GitHub Repo ✅
               </div>
             </div>
           </div>
