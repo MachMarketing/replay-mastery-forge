@@ -1,3 +1,4 @@
+
 /**
  * RepCore Constants - Direct port from official screp repository
  * Complete unit, command, race, and other game constants
@@ -353,7 +354,7 @@ export const UNIT_NAMES: Record<number, string> = {
   [UnitID.Defilerpen]: 'Defiler Mound'
 };
 
-// Command name mappings - cleaned up without duplicates
+// Command name mappings - fixed duplicates
 export const COMMAND_NAMES: Record<number, string> = {
   [CommandType.RightClick]: 'Right Click',
   [CommandType.Select]: 'Select',
