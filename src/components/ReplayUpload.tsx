@@ -4,12 +4,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { useReplayParser } from '@/hooks/useReplayParser';
-import { FinalReplayResult } from '@/services/nativeReplayParser/screpJsParser';
+import { NewFinalReplayResult } from '@/services/nativeReplayParser/newScrepParser';
 import { Upload, FileText, AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface ReplayUploadProps {
-  onParseComplete: (data: FinalReplayResult) => void;
+  onParseComplete: (data: NewFinalReplayResult) => void;
 }
 
 const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
@@ -26,7 +26,7 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
     }
 
     try {
-      console.log('[ReplayUpload] Starting parsing with screp-js only:', file.name);
+      console.log('[ReplayUpload] Starting parsing with screp-core:', file.name);
       const result = await parseReplay(file);
       onParseComplete(result);
       console.log('[ReplayUpload] Parse complete, calling onParseComplete');
@@ -48,7 +48,7 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
         <Upload className="mx-auto h-16 w-16 text-blue-500 mb-4" />
         <h2 className="text-2xl font-bold mb-2">StarCraft: Remastered Replay Upload</h2>
         <p className="text-muted-foreground">
-          Powered by screp-js für präzise Analyse aller .rep Files
+          Powered by screp-core für vollständige Command-Extraktion aller .rep Files
         </p>
       </div>
 
@@ -64,10 +64,10 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
         
         {isLoading ? (
           <div className="space-y-4">
-            <div className="text-lg font-medium">Parsing mit screp-js...</div>
+            <div className="text-lg font-medium">Parsing mit screp-core...</div>
             <Progress value={progress} className="w-full" />
             <div className="text-sm text-muted-foreground">
-              Analysiere Replay-Daten ({progress}%)
+              Analysiere Replay-Daten mit vollständiger Command-Extraktion ({progress}%)
             </div>
           </div>
         ) : (
@@ -95,8 +95,8 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
 
       <div className="mt-6 text-sm text-muted-foreground text-center">
         <p>✅ Unterstützt alle StarCraft: Remastered .rep Dateien</p>
-        <p>✅ Präzise APM/EAPM Berechnung mit screp-js</p>
-        <p>✅ Detaillierte Build Order Analyse</p>
+        <p>✅ Vollständige Command-Extraktion mit screp-core</p>
+        <p>✅ Präzise APM/EAPM & Build Order Analyse</p>
       </div>
     </div>
   );

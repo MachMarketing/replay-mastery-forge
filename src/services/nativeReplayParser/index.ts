@@ -13,6 +13,6 @@ export const parseReplay = async (file: File) => {
 
 export { NewScrepParser, type NewFinalReplayResult };
 
-// Legacy exports für Kompatibilität
+// Updated legacy exports für Kompatibilität - verwende jetzt screp-core types
 export type FinalReplayResult = NewFinalReplayResult;
 export { NewScrepParser as ScrepJsParser };
