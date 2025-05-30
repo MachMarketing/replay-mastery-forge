@@ -1,3 +1,4 @@
+
 /**
  * RepCore Constants - Direct port from official screp repository
  * Complete unit, command, race, and other game constants
@@ -90,25 +91,25 @@ export enum CommandType {
   // Unit actions
   Burrow = 0x2B,
   Unburrow = 0x2C,
-  Cloak = 0x1F,
-  Decloak = 0x20,
+  CloakUnit = 0x1F,  // Renamed to avoid conflict
+  DecloakUnit = 0x20, // Renamed to avoid conflict  
   HoldPosition = 0x2A,
   Patrol = 0x17,
   
   // 1.21+ commands with unique IDs
-  RightClick121 = 0x39,
-  TargetedOrder121 = 0x3A,
-  Select121 = 0x3B,
-  SelectAdd121 = 0x3C,
-  SelectRemove121 = 0x3D,
-  Unload121 = 0x3E,
+  RightClick121 = 0x60,
+  TargetedOrder121 = 0x61,
+  Select121 = 0x63,
+  SelectAdd121 = 0x64,
+  SelectRemove121 = 0x65,
+  Unload121 = 0x62,
   
   // Network commands
   Chat = 0x5C,
   KeepAlive = 0x00,
   Sync = 0x37,
-  LeaveGame = 0x38,
-  MinimapPing = 0x3F,
+  LeaveGame = 0x57,
+  MinimapPing = 0x58,
   
   // Frame sync
   FrameSync = 0x00,
@@ -377,8 +378,8 @@ export const COMMAND_NAMES: Record<number, string> = {
   [CommandType.Land]: 'Land',
   [CommandType.Burrow]: 'Burrow',
   [CommandType.Unburrow]: 'Unburrow',
-  [CommandType.Cloak]: 'Cloak',
-  [CommandType.Decloak]: 'Decloak',
+  [CommandType.CloakUnit]: 'Cloak',
+  [CommandType.DecloakUnit]: 'Decloak',
   [CommandType.HoldPosition]: 'Hold Position',
   [CommandType.Patrol]: 'Patrol',
   
