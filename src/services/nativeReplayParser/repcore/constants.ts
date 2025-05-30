@@ -1,4 +1,5 @@
 
+
 /**
  * RepCore Constants - Direct port from official screp repository
  * Complete unit, command, race, and other game constants
@@ -354,7 +355,7 @@ export const UNIT_NAMES: Record<number, string> = {
   [UnitID.Defilerpen]: 'Defiler Mound'
 };
 
-// Command name mappings - fixed duplicates
+// Command name mappings - completely rewritten without duplicates
 export const COMMAND_NAMES: Record<number, string> = {
   [CommandType.RightClick]: 'Right Click',
   [CommandType.Select]: 'Select',
@@ -378,12 +379,10 @@ export const COMMAND_NAMES: Record<number, string> = {
   [CommandType.Land]: 'Land',
   [CommandType.Burrow]: 'Burrow',
   [CommandType.Unburrow]: 'Unburrow',
-  [CommandType.CloakUnit]: 'Cloak',
-  [CommandType.DecloakUnit]: 'Decloak',
   [CommandType.HoldPosition]: 'Hold Position',
   [CommandType.Patrol]: 'Patrol',
   
-  // 1.21+ commands with unique IDs
+  // 1.21+ commands - completely separate entries
   [CommandType.RightClick121]: 'Right Click (1.21+)',
   [CommandType.TargetedOrder121]: 'Targeted Order (1.21+)',
   [CommandType.Select121]: 'Select (1.21+)',
@@ -392,12 +391,9 @@ export const COMMAND_NAMES: Record<number, string> = {
   [CommandType.Unload121]: 'Unload',
   
   [CommandType.Chat]: 'Chat',
-  [CommandType.KeepAlive]: 'Keep Alive',
   [CommandType.Sync]: 'Sync',
   [CommandType.LeaveGame]: 'Leave Game',
-  [CommandType.MinimapPing]: 'Minimap Ping',
-  [CommandType.FrameSync]: 'Frame Sync',
-  [CommandType.CommandSync]: 'Command Sync'
+  [CommandType.MinimapPing]: 'Minimap Ping'
 };
 
 // Race name mappings
@@ -419,3 +415,4 @@ export const PLAYER_COLORS = [
   '#00FF00', // Green
   '#FFB6C1'  // Pink
 ];
+
