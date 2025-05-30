@@ -100,7 +100,7 @@ export class EnhancedDataMapper {
     console.log('[EnhancedDataMapper] screp-js completed with RepCore enhancements:', {
       map: screpResult.header.mapName,
       players: screpResult.players.length,
-      gameType: getGameTypeName(screpResult.header.gameType || 0),
+      gameType: getGameTypeName(typeof screpResult.header.gameType === 'string' ? 0 : screpResult.header.gameType || 0),
       duration: framesToTimeString(screpResult.header.frames || 0)
     });
     
@@ -154,7 +154,6 @@ export class EnhancedDataMapper {
             const interpreted = SCCommandInterpreter.interpretCommand(cmd, interpretedCommands[playerId]);
             interpreted.ineffective = !cmd.effective;
             interpreted.ineffectiveReason = cmd.ineffectiveReason;
-            interpreted.eapmAnalyzed = true;
             interpretedCommands[playerId].push(interpreted);
           });
           
@@ -205,7 +204,7 @@ export class EnhancedDataMapper {
         mapName: screpResult.header.mapName,
         duration: framesToTimeString(screpResult.header.frames || 0),
         frames: screpResult.header.frames,
-        gameType: getGameTypeName(screpResult.header.gameType || 0),
+        gameType: getGameTypeName(typeof screpResult.header.gameType === 'string' ? 0 : screpResult.header.gameType || 0),
         startTime: screpResult.header.startTime
       },
       players: screpResult.players.map((p: any, i: number) => ({

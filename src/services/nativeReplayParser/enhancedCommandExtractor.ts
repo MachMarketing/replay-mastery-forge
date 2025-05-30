@@ -68,7 +68,7 @@ export class EnhancedCommandExtractor {
     const possibleOffsets = [633, 637, 641, 645, 649, 653];
     
     for (const offset of possibleOffsets) {
-      if (offset < this.reader.buffer.byteLength - 100) {
+      if (offset < this.reader.getBuffer().byteLength - 100) {
         this.reader.setPosition(offset);
         
         if (this.looksLikeCommandSection(offset)) {
@@ -134,15 +134,15 @@ export class EnhancedCommandExtractor {
     }
 
     // Read frame (4 bytes)
-    const frame = this.reader.readUint32LE();
+    const frame = this.reader.readUInt32LE();
     
     if (!this.reader.canRead(2)) {
       return null;
     }
 
     // Read command header
-    const commandId = this.reader.readUint8();
-    const playerId = this.reader.readUint8();
+    const commandId = this.reader.readUInt8();
+    const playerId = this.reader.readUInt8();
 
     // Skip invalid commands
     if (commandId === 0 && playerId === 0) {
@@ -175,44 +175,44 @@ export class EnhancedCommandExtractor {
         case 0x09: // Select
         case 0x0A: // Shift Select
           if (this.reader.canRead(2)) {
-            params.unitCount = this.reader.readUint16LE();
+            params.unitCount = this.reader.readUInt16LE();
           }
           break;
           
         case 0x0C: // Build
           if (this.reader.canRead(4)) {
-            params.unitType = this.reader.readUint16LE();
-            params.x = this.reader.readUint16LE();
-            params.y = this.reader.readUint16LE();
+            params.unitType = this.reader.readUInt16LE();
+            params.x = this.reader.readUInt16LE();
+            params.y = this.reader.readUInt16LE();
           }
           break;
           
         case 0x13: // Hotkey
           if (this.reader.canRead(2)) {
-            params.hotkey = this.reader.readUint8();
-            params.action = this.reader.readUint8();
+            params.hotkey = this.reader.readUInt8();
+            params.action = this.reader.readUInt8();
           }
           break;
           
         case 0x14: // Right Click
           if (this.reader.canRead(4)) {
-            params.x = this.reader.readUint16LE();
-            params.y = this.reader.readUint16LE();
+            params.x = this.reader.readUInt16LE();
+            params.y = this.reader.readUInt16LE();
           }
           break;
           
         case 0x1F: // Train
         case 0x20: // Cancel Train
           if (this.reader.canRead(2)) {
-            params.unitType = this.reader.readUint16LE();
+            params.unitType = this.reader.readUInt16LE();
           }
           break;
           
         default:
           // Skip unknown parameter bytes
           if (this.reader.canRead(2)) {
-            const byte1 = this.reader.readUint8();
-            const byte2 = this.reader.readUint8();
+            const byte1 = this.reader.readUInt8();
+            const byte2 = this.reader.readUInt8();
             if (byte1 !== 0 || byte2 !== 0) {
               params.data = [byte1, byte2];
             }
