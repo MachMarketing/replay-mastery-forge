@@ -1,6 +1,6 @@
 /**
  * Enhanced Data Mapper - Verbindet screp-js mit SC:R-spezifischer Hex-Command-Analyse
- * DAS ist unser einziger Parser!
+ * Now with EAPM and enhanced command classification
  */
 
 import { ScrepJsWrapper } from './screpJsWrapper';
@@ -30,8 +30,11 @@ export interface EnhancedReplayResult {
     apm: number;
     eapm: number;
     realActions: number;
+    effectiveActions: number;
     buildOrderTiming: number;
     microIntensity: number;
+    spamPercentage: number;
+    efficiency: number;
   }>;
   
   // Intelligente Build Orders
@@ -42,9 +45,10 @@ export interface EnhancedReplayResult {
     unitName: string;
     category: 'build' | 'train' | 'tech' | 'upgrade';
     cost?: { minerals: number; gas: number };
+    effective: boolean;
   }>>;
   
-  // Gameplay-Analyse
+  // Gameplay-Analyse mit EAPM
   gameplayAnalysis: Record<number, {
     playstyle: 'aggressive' | 'defensive' | 'economic' | 'tech-focused';
     apmBreakdown: {
@@ -52,6 +56,7 @@ export interface EnhancedReplayResult {
       micro: number;
       selection: number;
       spam: number;
+      effective: number;
     };
     microEvents: Array<{
       time: string;
@@ -59,6 +64,11 @@ export interface EnhancedReplayResult {
       intensity: number;
     }>;
     economicEfficiency: number;
+    commandCoverage: {
+      recognized: number;
+      total: number;
+      coverage: number;
+    };
     strengths: string[];
     weaknesses: string[];
     recommendations: string[];
@@ -68,19 +78,20 @@ export interface EnhancedReplayResult {
     source: 'enhanced' | 'screp-js-only';
     commandsExtracted: number;
     interpretedCommands: number;
+    effectiveCommands: number;
     reliability: 'high' | 'medium' | 'low';
+    eapmCalculated: boolean;
   };
 }
 
 export class EnhancedDataMapper {
   /**
-   * DER EINZIGE PARSER - Kombiniert screp-js + SC:R-spezifische Hex-Analyse
+   * DER EINZIGE PARSER - Kombiniert screp-js + SC:R-spezifische Hex-Analyse mit EAPM
    */
   static async parseReplay(file: File): Promise<EnhancedReplayResult> {
-    console.log('[EnhancedDataMapper] === STARTING SC:R UNIFIED PARSING ===');
+    console.log('[EnhancedDataMapper] === STARTING ENHANCED SC:R PARSING ===');
     console.log('[EnhancedDataMapper] File size:', file.size, 'bytes');
-    console.log('[EnhancedDataMapper] File name:', file.name);
-    console.log('[EnhancedDataMapper] File type detected: StarCraft: Remastered .rep');
+    console.log('[EnhancedDataMapper] Enhanced features: EAPM, Command Coverage, Build Order Analysis');
     
     // 1. screp-js für Basis-Daten (immer zuerst!)
     const screpWrapper = ScrepJsWrapper.getInstance();
@@ -93,34 +104,32 @@ export class EnhancedDataMapper {
       frames: screpResult.header.frames
     });
     
-    console.log('[EnhancedDataMapper] screp-js players:', screpResult.players.map(p => `${p.name} (${p.race})`));
-    console.log('[EnhancedDataMapper] screp-js computed data available:', Object.keys(screpResult.computed || {}));
-    
     let realCommands: any[] = [];
     let interpretedCommands: Record<number, InterpretedCommand[]> = {};
     let dataQuality: any = {
       source: 'screp-js-only',
       commandsExtracted: 0,
       interpretedCommands: 0,
-      reliability: 'medium'
+      effectiveCommands: 0,
+      reliability: 'medium',
+      eapmCalculated: false
     };
     
     // 2. Versuche SC:R-spezifische Command-Extraktion
     try {
-      console.log('[EnhancedDataMapper] === STARTING SC:R COMMAND EXTRACTION ===');
+      console.log('[EnhancedDataMapper] === STARTING ENHANCED COMMAND EXTRACTION ===');
       const arrayBuffer = await file.arrayBuffer();
-      console.log('[EnhancedDataMapper] ArrayBuffer size:', arrayBuffer.byteLength);
       
       const commandExtractor = new EnhancedCommandExtractor(arrayBuffer);
       realCommands = commandExtractor.extractRealCommands();
       
-      console.log('[EnhancedDataMapper] === SC:R EXTRACTION RESULT ===');
+      console.log('[EnhancedDataMapper] === ENHANCED EXTRACTION RESULT ===');
       console.log('[EnhancedDataMapper] Commands found:', realCommands.length);
       
       if (realCommands.length > 0) {
-        console.log('[EnhancedDataMapper] === INTERPRETING COMMANDS ===');
+        console.log('[EnhancedDataMapper] === INTERPRETING WITH EAPM ANALYSIS ===');
         
-        // Interpretiere Commands zu verständlichen Aktionen
+        // Interpretiere Commands zu verständlichen Aktionen mit EAPM
         const playerCommandsRaw: Record<number, any[]> = {};
         realCommands.forEach(cmd => {
           if (!playerCommandsRaw[cmd.playerId]) {
@@ -129,61 +138,79 @@ export class EnhancedDataMapper {
           playerCommandsRaw[cmd.playerId].push(cmd);
         });
         
-        // Interpretiere Commands für jeden Spieler
+        // Sortiere Commands nach Frame für EAPM-Analyse
+        Object.values(playerCommandsRaw).forEach(commands => {
+          commands.sort((a, b) => (a.frame || 0) - (b.frame || 0));
+        });
+        
+        // Interpretiere Commands für jeden Spieler mit EAPM
         Object.entries(playerCommandsRaw).forEach(([playerIdStr, commands]) => {
           const playerId = parseInt(playerIdStr);
-          interpretedCommands[playerId] = commands.map(cmd => 
-            SCCommandInterpreter.interpretCommand(cmd)
-          );
+          interpretedCommands[playerId] = [];
           
-          console.log(`[EnhancedDataMapper] Player ${playerId}: ${commands.length} commands -> ${interpretedCommands[playerId].length} interpreted`);
+          // Sequenzielle Interpretation für EAPM-Berechnung
+          commands.forEach(cmd => {
+            const interpreted = SCCommandInterpreter.interpretCommand(
+              cmd, 
+              interpretedCommands[playerId]
+            );
+            interpretedCommands[playerId].push(interpreted);
+          });
           
-          // Zeige Sample der interpretierten Commands
-          const economicActions = interpretedCommands[playerId].filter(cmd => cmd.isEconomicAction);
-          const microActions = interpretedCommands[playerId].filter(cmd => cmd.isMicroAction);
+          const totalCommands = interpretedCommands[playerId].length;
+          const effectiveCommands = interpretedCommands[playerId].filter(cmd => !cmd.ineffective).length;
           
-          console.log(`[EnhancedDataMapper] Player ${playerId} breakdown:`, {
-            total: interpretedCommands[playerId].length,
-            economic: economicActions.length,
-            micro: microActions.length,
-            sampleEconomic: economicActions.slice(0, 3).map(cmd => cmd.actionName),
-            sampleMicro: microActions.slice(0, 3).map(cmd => cmd.actionName)
+          console.log(`[EnhancedDataMapper] Player ${playerId} EAPM Analysis:`, {
+            total: totalCommands,
+            effective: effectiveCommands,
+            effectiveness: totalCommands > 0 ? Math.round((effectiveCommands / totalCommands) * 100) : 0,
+            sampleIneffective: interpretedCommands[playerId]
+              .filter(cmd => cmd.ineffective)
+              .slice(0, 3)
+              .map(cmd => `${cmd.actionName} (${cmd.ineffectiveReason})`)
           });
         });
         
         const totalInterpreted = Object.values(interpretedCommands).reduce((sum, cmds) => sum + cmds.length, 0);
+        const totalEffective = Object.values(interpretedCommands).reduce(
+          (sum, cmds) => sum + cmds.filter(cmd => !cmd.ineffective).length, 0
+        );
         
         if (realCommands.length > 50) {
           dataQuality = {
             source: 'enhanced',
             commandsExtracted: realCommands.length,
             interpretedCommands: totalInterpreted,
-            reliability: realCommands.length > 200 ? 'high' : 'medium'
+            effectiveCommands: totalEffective,
+            reliability: realCommands.length > 200 ? 'high' : 'medium',
+            eapmCalculated: true
           };
-          console.log('[EnhancedDataMapper] ✅ SC:R extraction and interpretation successful:', realCommands.length, 'commands');
-        } else {
-          console.log('[EnhancedDataMapper] ⚠️ Low command count from SC:R extraction:', realCommands.length);
+          console.log('[EnhancedDataMapper] ✅ Enhanced extraction with EAPM successful:', {
+            commands: realCommands.length,
+            effective: totalEffective,
+            effectiveness: totalInterpreted > 0 ? Math.round((totalEffective / totalInterpreted) * 100) : 0
+          });
         }
       }
     } catch (error) {
-      console.error('[EnhancedDataMapper] ❌ SC:R extraction failed:', error);
+      console.error('[EnhancedDataMapper] ❌ Enhanced extraction failed:', error);
       console.log('[EnhancedDataMapper] Using screp-js only mode');
     }
     
-    // 3. Berechne echte Metriken
-    console.log('[EnhancedDataMapper] === CALCULATING METRICS ===');
-    const realMetrics = this.calculateRealMetrics(realCommands, screpResult);
-    console.log('[EnhancedDataMapper] Real metrics calculated for', Object.keys(realMetrics).length, 'players');
+    // 3. Berechne erweiterte Metriken mit EAPM
+    console.log('[EnhancedDataMapper] === CALCULATING ENHANCED METRICS ===');
+    const realMetrics = this.calculateEnhancedMetrics(interpretedCommands, screpResult);
+    console.log('[EnhancedDataMapper] Enhanced metrics calculated for', Object.keys(realMetrics).length, 'players');
     
-    // 4. Generiere intelligente Build Orders mit Command-Interpretation
-    console.log('[EnhancedDataMapper] === GENERATING BUILD ORDERS ===');
+    // 4. Generiere intelligente Build Orders mit Effectiveness
+    console.log('[EnhancedDataMapper] === GENERATING ENHANCED BUILD ORDERS ===');
     const enhancedBuildOrders = this.generateEnhancedBuildOrders(interpretedCommands, screpResult);
     console.log('[EnhancedDataMapper] Enhanced build orders generated for', Object.keys(enhancedBuildOrders).length, 'players');
     
-    // 5. Erstelle erweiterte Gameplay-Analyse
-    console.log('[EnhancedDataMapper] === GENERATING ENHANCED ANALYSIS ===');
-    const gameplayAnalysis = this.generateEnhancedGameplayAnalysis(interpretedCommands, realMetrics, screpResult);
-    console.log('[EnhancedDataMapper] Enhanced gameplay analysis generated for', Object.keys(gameplayAnalysis).length, 'players');
+    // 5. Erstelle erweiterte Gameplay-Analyse mit Command Coverage
+    console.log('[EnhancedDataMapper] === GENERATING COMPREHENSIVE ANALYSIS ===');
+    const gameplayAnalysis = this.generateComprehensiveGameplayAnalysis(interpretedCommands, realMetrics, realCommands, screpResult);
+    console.log('[EnhancedDataMapper] Comprehensive analysis generated for', Object.keys(gameplayAnalysis).length, 'players');
     
     const finalResult = {
       header: {
@@ -207,12 +234,13 @@ export class EnhancedDataMapper {
       dataQuality
     };
     
-    console.log('[EnhancedDataMapper] === SC:R PARSING COMPLETE ===');
-    console.log('[EnhancedDataMapper] Final result summary:', {
+    console.log('[EnhancedDataMapper] === ENHANCED SC:R PARSING COMPLETE ===');
+    console.log('[EnhancedDataMapper] Final enhanced result:', {
       players: finalResult.players.length,
       realCommands: finalResult.realCommands.length,
       interpretedCommands: Object.keys(finalResult.interpretedCommands).length,
       quality: finalResult.dataQuality.reliability,
+      eapmEnabled: finalResult.dataQuality.eapmCalculated,
       dataSource: finalResult.dataQuality.source
     });
     
@@ -220,133 +248,116 @@ export class EnhancedDataMapper {
   }
 
   /**
-   * Berechne echte Metriken aus Commands + screp-js Daten
+   * Berechne erweiterte Metriken mit EAPM und Effectiveness
    */
-  private static calculateRealMetrics(commands: any[], screpResult: any): Record<number, any> {
-    console.log('[EnhancedDataMapper.calculateRealMetrics] Input:', {
-      commandsCount: commands.length,
-      screpPlayersCount: screpResult.players.length,
-      gameFrames: screpResult.header.frames,
-      screpComputedAvailable: !!screpResult.computed
-    });
+  private static calculateEnhancedMetrics(
+    interpretedCommands: Record<number, InterpretedCommand[]>, 
+    screpResult: any
+  ): Record<number, any> {
+    console.log('[EnhancedDataMapper.calculateEnhancedMetrics] Enhanced calculation with EAPM');
     
     const gameMinutes = screpResult.header.frames / 23.81 / 60;
     const metrics: Record<number, any> = {};
     
     // WICHTIG: Verwende IMMER screp-js APM-Daten wenn verfügbar!
     if (screpResult.computed?.apm && screpResult.computed?.eapm) {
-      console.log('[EnhancedDataMapper.calculateRealMetrics] Using screp-js APM/EAPM data');
-      console.log('[EnhancedDataMapper.calculateRealMetrics] screp-js APM:', screpResult.computed.apm);
-      console.log('[EnhancedDataMapper.calculateRealMetrics] screp-js EAPM:', screpResult.computed.eapm);
+      console.log('[EnhancedDataMapper.calculateEnhancedMetrics] Using screp-js APM with enhanced analysis');
       
       screpResult.players.forEach((player: any, index: number) => {
+        const playerCommands = interpretedCommands[index] || [];
+        const effectiveCommands = playerCommands.filter(cmd => !cmd.ineffective);
+        const spamCommands = playerCommands.filter(cmd => cmd.priority === 'spam');
+        
         const apm = screpResult.computed.apm[index] || 0;
-        const eapm = screpResult.computed.eapm[index] || 0;
         const realActions = Math.round(apm * gameMinutes);
+        
+        // Enhanced EAPM von eigener Analyse
+        const enhancedEapm = playerCommands.length > 0 ? 
+          Math.round(effectiveCommands.length / gameMinutes) : 0;
         
         metrics[index] = {
           apm,
-          eapm,
+          eapm: enhancedEapm, // Verwende unsere EAPM-Berechnung
           realActions,
-          buildOrderTiming: 60, // Default timing
-          microIntensity: Math.round(apm * 0.3) // Schätzung: 30% der Aktionen sind Micro
+          effectiveActions: effectiveCommands.length,
+          buildOrderTiming: this.calculateBuildOrderTiming(playerCommands),
+          microIntensity: this.calculateMicroIntensity(playerCommands, gameMinutes),
+          spamPercentage: playerCommands.length > 0 ? 
+            Math.round((spamCommands.length / playerCommands.length) * 100) : 0,
+          efficiency: playerCommands.length > 0 ? 
+            Math.round((effectiveCommands.length / playerCommands.length) * 100) : 0
         };
         
-        console.log(`[EnhancedDataMapper.calculateRealMetrics] Player ${index} (${player.name}):`, {
-          apm,
-          eapm,
-          realActions,
-          gameMinutes: gameMinutes.toFixed(1)
+        console.log(`[EnhancedDataMapper.calculateEnhancedMetrics] Enhanced Player ${index}:`, {
+          apm: metrics[index].apm,
+          eapm: metrics[index].eapm,
+          efficiency: metrics[index].efficiency,
+          spamPercentage: metrics[index].spamPercentage
         });
       });
       
       return metrics;
     }
     
-    // Fallback wenn keine screp-js APM Daten
-    console.log('[EnhancedDataMapper.calculateRealMetrics] No screp-js APM data, using fallback');
+    // Fallback zu eigener Berechnung
+    console.log('[EnhancedDataMapper.calculateEnhancedMetrics] Using enhanced fallback calculation');
     
-    if (commands.length === 0) {
-      console.log('[EnhancedDataMapper.calculateRealMetrics] No commands, using minimal fallback');
-      screpResult.players.forEach((player: any, index: number) => {
-        metrics[index] = {
-          apm: 0,
-          eapm: 0,
-          realActions: 0,
-          buildOrderTiming: 0,
-          microIntensity: 0
-        };
-      });
-      return metrics;
-    }
-    
-    // Echte Berechnung aus Commands
-    const playerCommands: Record<number, any[]> = {};
-    commands.forEach(cmd => {
-      if (!playerCommands[cmd.playerId]) {
-        playerCommands[cmd.playerId] = [];
-      }
-      playerCommands[cmd.playerId].push(cmd);
-    });
-    
-    console.log('[EnhancedDataMapper.calculateRealMetrics] Player command distribution:', 
-      Object.entries(playerCommands).map(([id, cmds]) => `Player ${id}: ${cmds.length} commands`)
-    );
-    
-    Object.entries(playerCommands).forEach(([playerIdStr, playerCmds]) => {
+    Object.entries(interpretedCommands).forEach(([playerIdStr, playerCommands]) => {
       const playerId = parseInt(playerIdStr);
+      const effectiveCommands = playerCommands.filter(cmd => !cmd.ineffective);
+      const spamCommands = playerCommands.filter(cmd => cmd.priority === 'spam');
       
-      const realActions = playerCmds.length;
+      const realActions = playerCommands.length;
       const apm = Math.round(realActions / gameMinutes);
-      
-      // EAPM (nur Build/Train/Research)
-      const economicActions = playerCmds.filter(cmd => 
-        ['Build', 'Train Unit', 'Research Tech', 'Upgrade'].includes(cmd.commandName)
-      );
-      const eapm = Math.round(economicActions.length / gameMinutes);
-      
-      // Build Order Timing
-      const firstTrain = playerCmds.find(cmd => cmd.commandName === 'Train Unit');
-      const buildOrderTiming = firstTrain ? firstTrain.frame / 23.81 : 0;
-      
-      // Micro-Intensität
-      const microActions = playerCmds.filter(cmd => 
-        ['Move', 'Attack', 'Use Tech'].includes(cmd.commandName)
-      );
-      const microIntensity = Math.round(microActions.length / gameMinutes);
+      const eapm = Math.round(effectiveCommands.length / gameMinutes);
       
       metrics[playerId] = {
         apm,
         eapm,
         realActions,
-        buildOrderTiming,
-        microIntensity
+        effectiveActions: effectiveCommands.length,
+        buildOrderTiming: this.calculateBuildOrderTiming(playerCommands),
+        microIntensity: this.calculateMicroIntensity(playerCommands, gameMinutes),
+        spamPercentage: realActions > 0 ? Math.round((spamCommands.length / realActions) * 100) : 0,
+        efficiency: realActions > 0 ? Math.round((effectiveCommands.length / realActions) * 100) : 0
       };
-      
-      console.log(`[EnhancedDataMapper.calculateRealMetrics] Player ${playerId} metrics:`, metrics[playerId]);
     });
     
     return metrics;
   }
 
   /**
-   * Generiere intelligente Build Orders aus interpretierten Commands
+   * Berechne Build Order Timing
+   */
+  private static calculateBuildOrderTiming(playerCommands: InterpretedCommand[]): number {
+    const firstTrain = playerCommands.find(cmd => 
+      cmd.actionType === 'train' && !cmd.ineffective
+    );
+    return firstTrain ? firstTrain.frame / 23.81 : 0;
+  }
+
+  /**
+   * Berechne Micro-Intensität
+   */
+  private static calculateMicroIntensity(playerCommands: InterpretedCommand[], gameMinutes: number): number {
+    const microActions = playerCommands.filter(cmd => 
+      cmd.isMicroAction && !cmd.ineffective
+    );
+    return Math.round(microActions.length / gameMinutes);
+  }
+
+  /**
+   * Generiere erweiterte Build Orders mit Effectiveness
    */
   private static generateEnhancedBuildOrders(
     interpretedCommands: Record<number, InterpretedCommand[]>, 
     screpResult: any
   ): Record<number, any[]> {
-    console.log('[EnhancedDataMapper.generateEnhancedBuildOrders] Input:', {
-      interpretedPlayers: Object.keys(interpretedCommands).length,
-      screpBuildOrdersAvailable: !!screpResult.computed?.buildOrders
-    });
+    console.log('[EnhancedDataMapper.generateEnhancedBuildOrders] Enhanced with effectiveness analysis');
     
     const buildOrders: Record<number, any[]> = {};
     
-    // Wenn wir interpretierte Commands haben, nutze diese!
     if (Object.keys(interpretedCommands).length > 0) {
-      console.log('[EnhancedDataMapper.generateEnhancedBuildOrders] Using interpreted commands');
-      
       Object.entries(interpretedCommands).forEach(([playerIdStr, commands]) => {
         const playerId = parseInt(playerIdStr);
         
@@ -359,17 +370,17 @@ export class EnhancedDataMapper {
           supply: entry.supply,
           unitName: entry.unit,
           category: this.categorizeBuildAction(entry.action),
-          cost: entry.cost
+          cost: entry.cost,
+          effective: true // Alle Build Order Entries sind per Definition effektiv
         }));
         
-        console.log(`[EnhancedDataMapper.generateEnhancedBuildOrders] Player ${playerId}: ${buildOrders[playerId].length} build entries from interpreted commands`);
+        console.log(`[EnhancedDataMapper.generateEnhancedBuildOrders] Player ${playerId}: ${buildOrders[playerId].length} enhanced build entries`);
       });
       
       return buildOrders;
     }
     
     // Fallback zu screp-js Build Orders
-    console.log('[EnhancedDataMapper.generateEnhancedBuildOrders] Using screp-js fallback');
     if (screpResult.computed?.buildOrders) {
       screpResult.computed.buildOrders.forEach((bo: any[], index: number) => {
         buildOrders[index] = bo.map((item: any) => ({
@@ -377,7 +388,8 @@ export class EnhancedDataMapper {
           action: item.action || 'Unknown',
           supply: item.supply || 0,
           unitName: 'Unknown',
-          category: 'build'
+          category: 'build',
+          effective: true
         }));
       });
     }
@@ -386,17 +398,15 @@ export class EnhancedDataMapper {
   }
 
   /**
-   * Generiere erweiterte Gameplay-Analyse mit Command-Interpretation
+   * Generiere umfassende Gameplay-Analyse mit Command Coverage
    */
-  private static generateEnhancedGameplayAnalysis(
+  private static generateComprehensiveGameplayAnalysis(
     interpretedCommands: Record<number, InterpretedCommand[]>,
     metrics: Record<number, any>,
+    realCommands: any[],
     screpResult: any
   ): Record<number, any> {
-    console.log('[EnhancedDataMapper.generateEnhancedGameplayAnalysis] Input:', {
-      interpretedPlayers: Object.keys(interpretedCommands).length,
-      metricsPlayers: Object.keys(metrics).length
-    });
+    console.log('[EnhancedDataMapper.generateComprehensiveGameplayAnalysis] Comprehensive analysis with coverage');
     
     const analysis: Record<number, any> = {};
     
@@ -405,29 +415,54 @@ export class EnhancedDataMapper {
       const playerCommands = interpretedCommands[playerId] || [];
       
       let gameplayAnalysis: any = {};
-      let apmBreakdown = { economic: 0, micro: 0, selection: 0, spam: 0 };
+      let apmBreakdown = { economic: 0, micro: 0, selection: 0, spam: 0, effective: 0 };
       let microEvents: any[] = [];
       let economicEfficiency = 0;
       let playstyle: string = 'balanced';
       
-      // Wenn wir interpretierte Commands haben, nutze diese für detaillierte Analyse
+      // Enhanced Analyse wenn Commands verfügbar
       if (playerCommands.length > 0) {
         gameplayAnalysis = SCCommandInterpreter.analyzeGameplay(playerCommands);
         apmBreakdown = gameplayAnalysis.apmBreakdown;
         microEvents = gameplayAnalysis.microEvents;
         economicEfficiency = gameplayAnalysis.economicEfficiency;
         playstyle = gameplayAnalysis.playstyle;
-        
-        console.log(`[EnhancedDataMapper.generateEnhancedGameplayAnalysis] Player ${playerId} enhanced analysis:`, {
-          playstyle: gameplayAnalysis.playstyle,
-          economicEfficiency: gameplayAnalysis.economicEfficiency,
-          microEventsCount: gameplayAnalysis.microEvents.length
-        });
       }
       
+      // Command Coverage Analysis
+      const playerRealCommands = realCommands.filter(cmd => cmd.playerId === playerId);
+      const recognizedCommands = playerCommands.length;
+      const commandCoverage = {
+        recognized: recognizedCommands,
+        total: playerRealCommands.length,
+        coverage: playerRealCommands.length > 0 ? 
+          Math.round((recognizedCommands / playerRealCommands.length) * 100) : 0
+      };
+      
+      // Enhanced Strengths/Weaknesses/Recommendations
       const strengths: string[] = [];
       const weaknesses: string[] = [];
       const recommendations: string[] = [];
+      
+      // EAPM-basierte Analyse
+      if (metric.eapm > 80) {
+        strengths.push('Hohe effektive APM (EAPM)');
+      } else if (metric.eapm < 40) {
+        weaknesses.push('Niedrige effektive APM');
+        recommendations.push('Reduziere Spam-Aktionen, fokussiere auf sinnvolle Commands');
+      }
+      
+      if (metric.efficiency > 80) {
+        strengths.push('Sehr effiziente Command-Nutzung');
+      } else if (metric.efficiency < 60) {
+        weaknesses.push('Viele ineffektive Commands');
+        recommendations.push('Vermeide zu schnelle Wiederholungen und überflüssige Selektionen');
+      }
+      
+      if (metric.spamPercentage > 30) {
+        weaknesses.push('Hoher Spam-Anteil');
+        recommendations.push('Reduziere Network-Commands und überflüssige Selektionen');
+      }
       
       // APM Analyse
       if (metric.apm > 150) {
@@ -437,16 +472,9 @@ export class EnhancedDataMapper {
         recommendations.push('Übe Build Orders und Hotkey-Nutzung');
       }
       
-      // Effizienz-Analyse basierend auf APM Breakdown
-      if (apmBreakdown.economic > 40) {
-        strengths.push('Fokus auf wirtschaftliche Entwicklung');
-      }
-      if (apmBreakdown.micro > 30) {
-        strengths.push('Aktive Einheitenkontrolle');
-      }
-      if (apmBreakdown.spam > 30) {
-        weaknesses.push('Viele unnötige Aktionen');
-        recommendations.push('Reduziere überflüssige Klicks');
+      // Coverage Analyse
+      if (commandCoverage.coverage < 70) {
+        weaknesses.push('Geringe Command-Erkennungsrate');
       }
       
       // Playstyle-spezifische Empfehlungen
@@ -461,6 +489,7 @@ export class EnhancedDataMapper {
         apmBreakdown,
         microEvents,
         economicEfficiency,
+        commandCoverage,
         strengths,
         weaknesses,
         recommendations
