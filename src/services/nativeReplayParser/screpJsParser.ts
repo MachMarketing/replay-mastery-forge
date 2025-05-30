@@ -1,10 +1,11 @@
-
 /**
  * Einziger Replay Parser - verwendet ausschließlich screp-js
- * Alle anderen Parser sind deaktiviert
+ * Jetzt mit intelligenter Build Order Analyse
  */
 
 import { ScrepJsWrapper, ScrepJsResult } from './screpJsWrapper';
+import { BuildOrderExtractor, BuildOrderTimeline } from '../buildOrderAnalysis/buildOrderExtractor';
+import { StrategicAnalyzer, StrategicInsight } from '../buildOrderAnalysis/strategicAnalyzer';
 
 export interface FinalReplayResult {
   // Basis-Header
@@ -29,6 +30,12 @@ export interface FinalReplayResult {
     efficiency: number;
   }>;
   
+  // Intelligente Build Order Analyse
+  buildOrderAnalysis: Record<number, {
+    timeline: BuildOrderTimeline;
+    insights: StrategicInsight[];
+  }>;
+  
   // Erweiterte Metriken
   gameplayAnalysis: Record<number, {
     playstyle: string;
@@ -50,7 +57,7 @@ export interface FinalReplayResult {
     recommendations: string[];
   }>;
   
-  // Build Orders von screp-js
+  // Build Orders (legacy - wird durch buildOrderAnalysis ersetzt)
   buildOrders: Record<number, Array<{
     time: string;
     action: string;
@@ -97,6 +104,7 @@ export class ScrepJsParser {
       console.log('[ScrepJsParser] Finales Ergebnis:', {
         map: finalResult.header.mapName,
         players: finalResult.players.map(p => `${p.name} (${p.race}) - APM: ${p.apm}, EAPM: ${p.eapm}`),
+        buildOrderAnalysis: Object.keys(finalResult.buildOrderAnalysis).length,
         quality: finalResult.dataQuality.reliability
       });
 
@@ -109,7 +117,7 @@ export class ScrepJsParser {
   }
 
   private convertScrepResult(screpResult: ScrepJsResult): FinalReplayResult {
-    console.log('[ScrepJsParser] Konvertiere screp-js Ergebnis zu FinalReplayResult');
+    console.log('[ScrepJsParser] Konvertiere screp-js Ergebnis zu FinalReplayResult mit intelligenter Build Order Analyse');
     
     // Header konvertieren
     const header = {
@@ -137,6 +145,100 @@ export class ScrepJsParser {
         efficiency: apm > 0 ? Math.round((eapm / apm) * 100) : 0
       };
     });
+
+    // Intelligente Build Order Analyse
+    const buildOrderAnalysis: Record<number, { timeline: BuildOrderTimeline; insights: StrategicInsight[] }> = {};
+    
+    console.log('[ScrepJsParser] Starte intelligente Build Order Extraktion');
+    
+    // Extrahiere Commands für jeden Spieler
+    if (screpResult.rawCommands && screpResult.rawCommands.length > 0) {
+      console.log('[ScrepJsParser] Analysiere', screpResult.rawCommands.length, 'raw commands');
+      
+      players.forEach((player, index) => {
+        const playerCommands = screpResult.rawCommands.filter((cmd: any) => cmd.playerID === index);
+        console.log(`[ScrepJsParser] Player ${index} (${player.name}): ${playerCommands.length} commands`);
+        
+        if (playerCommands.length > 0) {
+          try {
+            const timeline = BuildOrderExtractor.extractFromCommands(
+              playerCommands,
+              player,
+              header.frames
+            );
+            
+            const insights = StrategicAnalyzer.analyzePlayer(timeline);
+            
+            buildOrderAnalysis[index] = { timeline, insights };
+            
+            console.log(`[ScrepJsParser] Player ${index} Build Order: ${timeline.actions.length} actions, ${insights.length} insights`);
+          } catch (error) {
+            console.error(`[ScrepJsParser] Build Order Analyse für Player ${index} fehlgeschlagen:`, error);
+            
+            // Fallback: Leere Timeline
+            buildOrderAnalysis[index] = {
+              timeline: {
+                playerName: player.name,
+                race: player.race,
+                actions: [],
+                analysis: {
+                  strategy: 'unknown',
+                  economicTiming: 0,
+                  militaryTiming: 0,
+                  techTiming: 0,
+                  errors: ['Commands konnten nicht analysiert werden'],
+                  suggestions: ['Parser-Verbesserungen erforderlich'],
+                  efficiency: 0
+                }
+              },
+              insights: []
+            };
+          }
+        } else {
+          console.log(`[ScrepJsParser] Keine Commands für Player ${index} verfügbar`);
+          buildOrderAnalysis[index] = {
+            timeline: {
+              playerName: player.name,
+              race: player.race,
+              actions: [],
+              analysis: {
+                strategy: 'no data',
+                economicTiming: 0,
+                militaryTiming: 0,
+                techTiming: 0,
+                errors: ['Keine Commands verfügbar'],
+                suggestions: ['Replay könnte beschädigt sein'],
+                efficiency: 0
+              }
+            },
+            insights: []
+          };
+        }
+      });
+    } else {
+      console.warn('[ScrepJsParser] Keine rawCommands verfügbar für Build Order Analyse');
+      
+      // Fallback für alle Spieler
+      players.forEach((player, index) => {
+        buildOrderAnalysis[index] = {
+          timeline: {
+            playerName: player.name,
+            race: player.race,
+            actions: [],
+            analysis: {
+              strategy: 'no commands',
+              economicTiming: 0,
+              militaryTiming: 0,
+              techTiming: 0,
+              errors: ['Commands nicht von screp-js extrahiert'],
+              suggestions: ['Parser-Update erforderlich'],
+              efficiency: 0
+            }
+          },
+          insights: []
+        };
+      });
+    }
 
     // Gameplay-Analyse basierend auf APM/EAPM
     const gameplayAnalysis: Record<number, any> = {};
@@ -173,7 +275,7 @@ export class ScrepJsParser {
       };
     });
 
-    // Build Orders von screp-js übernehmen
+    // Build Orders von screp-js übernehmen (legacy)
     const buildOrders: Record<number, any[]> = {};
     screpResult.computed.buildOrders.forEach((buildOrder, playerIndex) => {
       buildOrders[playerIndex] = buildOrder.map(order => ({
@@ -198,6 +300,7 @@ export class ScrepJsParser {
     return {
       header,
       players,
+      buildOrderAnalysis,
       gameplayAnalysis,
       buildOrders,
       dataQuality
