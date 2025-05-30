@@ -7,19 +7,23 @@ import { framesToTimeString } from './bwRemastered/enhancedConstants';
 export interface InterpretedCommand {
   frame: number;
   time: string;
+  timestamp: string; // Add for UI compatibility
   playerIndex: number;
   commandType: string;
   actionType: 'build' | 'train' | 'move' | 'attack' | 'select' | 'hotkey' | 'research' | 'upgrade' | 'unknown';
+  actionName: string; // Add for UI compatibility
   details: string;
   position?: { x: number; y: number };
   targetUnit?: string;
   buildingType?: string;
   unitType?: string;
+  unitName?: string; // Add for UI compatibility
   isMicroAction: boolean;
   isEconomicAction: boolean;
   estimatedSupply: number;
   ineffective?: boolean;
   ineffectiveReason?: string;
+  priority?: 'critical' | 'important' | 'normal' | 'low'; // Add for UI compatibility
 }
 
 export class SCCommandInterpreter {
@@ -32,31 +36,39 @@ export class SCCommandInterpreter {
     let isEconomicAction = false;
     let buildingType: string | undefined;
     let unitType: string | undefined;
+    let unitName: string | undefined;
+    let priority: 'critical' | 'important' | 'normal' | 'low' = 'normal';
 
     switch (commandName) {
       case 'Right Click':
         actionType = 'attack';
         isMicroAction = true;
+        priority = 'important';
         details = `Attack at x=${parameters?.x}, y=${parameters?.y}`;
         break;
 
       case 'Move':
         actionType = 'move';
         isMicroAction = true;
+        priority = 'important';
         details = `Move to x=${parameters?.x}, y=${parameters?.y}`;
         break;
 
       case 'Build':
         actionType = 'build';
         isEconomicAction = true;
+        priority = 'critical';
         buildingType = this.getBuildingName(parameters?.unitType);
+        unitName = buildingType;
         details = `Build ${buildingType} at x=${parameters?.x}, y=${parameters?.y}`;
         break;
 
       case 'Train':
         actionType = 'train';
         isEconomicAction = true;
+        priority = 'critical';
         unitType = this.getUnitName(parameters?.unitType);
+        unitName = unitType;
         details = `Train ${unitType}`;
         break;
 
@@ -64,16 +76,19 @@ export class SCCommandInterpreter {
       case 'Shift Select':
         actionType = 'select';
         isMicroAction = true;
+        priority = 'low';
         details = `Select ${parameters?.unitCount} units`;
         break;
 
       case 'Hotkey':
         actionType = 'hotkey';
         isMicroAction = true;
+        priority = 'normal';
         details = `Hotkey ${parameters?.hotkey} action ${parameters?.action}`;
         break;
 
       default:
+        priority = 'low';
         break;
     }
 
@@ -82,16 +97,20 @@ export class SCCommandInterpreter {
     return {
       frame,
       time,
+      timestamp: time, // UI compatibility
       playerIndex: playerId,
       commandType: commandName,
       actionType,
+      actionName: details, // UI compatibility
       details,
       position: parameters ? { x: parameters.x || 0, y: parameters.y || 0 } : undefined,
       buildingType,
       unitType,
+      unitName, // UI compatibility
       isMicroAction,
       isEconomicAction,
-      estimatedSupply
+      estimatedSupply,
+      priority // UI compatibility
     };
   }
 
