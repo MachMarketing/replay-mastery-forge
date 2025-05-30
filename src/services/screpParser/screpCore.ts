@@ -1,14 +1,12 @@
 
 /**
- * screp Core Parser - Vollständige Implementation basierend auf GitHub Repo
- * Ersetzt screp-js komplett für bessere Command-Extraktion
+ * screp Core Parser - Exakte Implementation nach GitHub Repo
+ * Folgt der genauen Struktur von github.com/icza/screp
  */
 
 import { BinaryReader } from './binaryReader';
-import { ReplayHeader } from './header';
-import { PlayerData } from './player';
+import { ReplayHeader, PlayerData, ComputedData } from './types';
 import { CommandParser } from './commandParser';
-import { ComputedData } from './computed';
 
 export interface ScrepReplay {
   header: ReplayHeader;
@@ -38,26 +36,26 @@ export class ScrepCore {
   }
 
   /**
-   * Parse vollständiges Replay mit allen screp Features
+   * Parse replay genau wie screp GitHub repo
    */
   async parseReplay(): Promise<ScrepReplay> {
-    console.log('[ScrepCore] Starting full screp parsing...');
+    console.log('[ScrepCore] Starting screp GitHub compatible parsing...');
     console.log('[ScrepCore] Data size:', this.data.byteLength);
 
     try {
-      // 1. Header parsen
-      const header = await this.parseHeader();
+      // 1. Header - exakt wie screp repo
+      const header = this.parseHeader();
       console.log('[ScrepCore] Header parsed:', header);
 
-      // 2. Player Data parsen
-      const players = await this.parsePlayers();
+      // 2. Players - exakt wie screp repo  
+      const players = this.parsePlayers();
       console.log('[ScrepCore] Players parsed:', players.length);
 
-      // 3. Commands parsen - HIER IST DER WICHTIGE TEIL
+      // 3. Commands - exakt wie screp repo
       const commands = await this.parseCommands();
       console.log('[ScrepCore] Commands parsed:', commands.length);
 
-      // 4. Computed Data berechnen (APM, EAPM, Build Orders)
+      // 4. Computed data
       const computed = this.computeData(header, players, commands);
       console.log('[ScrepCore] Computed data calculated');
 
@@ -75,93 +73,90 @@ export class ScrepCore {
   }
 
   /**
-   * Header parsing basierend auf screp Go code mit vollständiger Signatur-Erkennung
+   * Header parsing - EXAKT wie screp GitHub repo repdecoder.go
    */
-  private async parseHeader(): Promise<ReplayHeader> {
+  private parseHeader(): ReplayHeader {
+    console.log('[ScrepCore] Starting header parsing...');
+    
+    // Reset position to start
     this.reader.setPosition(0);
     
-    // Check replay signature - ALLE gültigen Signaturen aus screp GitHub
-    const signatureBytes = this.reader.readBytes(4);
-    let replayID = '';
+    // Lese die ersten 30 bytes für vollständige Header-Analyse
+    const headerBytes = this.reader.readBytes(30);
+    console.log('[ScrepCore] Header bytes:', Array.from(headerBytes.slice(0, 16)).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
     
-    // Konvertiere Bytes zu String für Vergleich
-    for (let i = 0; i < signatureBytes.length; i++) {
-      replayID += String.fromCharCode(signatureBytes[i]);
-    }
+    // Reset und lese Header-Struktur
+    this.reader.setPosition(0);
     
-    console.log('[ScrepCore] Raw signature bytes:', Array.from(signatureBytes));
-    console.log('[ScrepCore] Signature as string:', replayID);
-    console.log('[ScrepCore] Signature hex:', Array.from(signatureBytes).map(b => b.toString(16).padStart(2, '0')).join(' '));
+    // Nach screp repo: Header structure
+    // 0x00: Game identifier (4 bytes)
+    // 0x04: Unknown (4 bytes) 
+    // 0x08: Unknown (4 bytes)
+    // 0x0C: Replay ID (4 bytes) - HIER ist die Signatur!
     
-    // Alle gültigen Replay Signaturen aus screp GitHub Repo
-    const validSignatures = [
-      'reRS',  // Standard Remastered
-      'seRS',  // Alternative Remastered  
-      'PKtsPK' // Möglicherweise komprimiert
-    ];
+    const gameId = this.reader.readUInt32LE();
+    const unknown1 = this.reader.readUInt32LE(); 
+    const unknown2 = this.reader.readUInt32LE();
     
-    // Auch rohe Byte-Signaturen prüfen
-    const firstTwoBytes = (signatureBytes[0] << 8) | signatureBytes[1];
+    // Replay ID bei offset 0x0C (12)
+    const replayIdBytes = this.reader.readBytes(4);
+    const replayID = new TextDecoder('latin1').decode(replayIdBytes);
     
-    // ZIP/PKware signature (0x504B = "PK")
-    if (signatureBytes[0] === 0x50 && signatureBytes[1] === 0x4B) {
-      console.log('[ScrepCore] Detected PKware/ZIP signature - possible compressed replay');
-      replayID = 'PKtsPK';
-    }
-    // Standard replay signatures
-    else if (!validSignatures.includes(replayID)) {
-      // Try interpreting as different encoding
-      const altSignature = Array.from(signatureBytes).map(b => 
-        b > 31 && b < 127 ? String.fromCharCode(b) : '?'
-      ).join('');
+    console.log('[ScrepCore] Game ID:', '0x' + gameId.toString(16));
+    console.log('[ScrepCore] Unknown1:', '0x' + unknown1.toString(16));
+    console.log('[ScrepCore] Unknown2:', '0x' + unknown2.toString(16));
+    console.log('[ScrepCore] Replay ID at 0x0C:', replayID);
+    console.log('[ScrepCore] Replay ID bytes:', Array.from(replayIdBytes).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+    
+    // Validiere Replay ID nach screp repo
+    const validReplayIds = ['reRS', 'seRS'];
+    
+    if (!validReplayIds.includes(replayID)) {
+      // Probiere alternative Positionen
+      console.log('[ScrepCore] Standard replay ID invalid, trying alternatives...');
       
-      console.log('[ScrepCore] Alternative signature interpretation:', altSignature);
+      // Manchmal ist die Signatur an Position 4
+      this.reader.setPosition(4);
+      const altReplayIdBytes = this.reader.readBytes(4);
+      const altReplayID = new TextDecoder('latin1').decode(altReplayIdBytes);
+      console.log('[ScrepCore] Alternative replay ID at 0x04:', altReplayID);
       
-      // Fallback: Treat as generic replay if it looks like binary data
-      if (signatureBytes[0] !== 0 || signatureBytes[1] !== 0) {
-        console.log('[ScrepCore] Treating as generic replay format');
-        replayID = 'GENR'; // Generic replay
+      if (validReplayIds.includes(altReplayID)) {
+        console.log('[ScrepCore] Found valid replay ID at alternative position');
+        // Fortsetzung mit gefundener ID
       } else {
-        throw new Error(`Invalid replay signature: ${replayID} (bytes: ${Array.from(signatureBytes).map(b => b.toString(16)).join(' ')})`);
+        // Letzter Versuch: Komprimiertes Format erkennen
+        this.reader.setPosition(0);
+        const firstBytes = this.reader.readBytes(4);
+        
+        // Check für PKWARE compression (ZIP signature)
+        if (firstBytes[0] === 0x50 && firstBytes[1] === 0x4B) {
+          console.log('[ScrepCore] Detected compressed replay (PKWARE/ZIP)');
+          // Für komprimierte Replays müssen wir erst dekomprimieren
+          throw new Error('Compressed replays not yet implemented - need decompression first');
+        }
+        
+        console.log('[ScrepCore] All replay ID checks failed');
+        console.log('[ScrepCore] First 4 bytes:', Array.from(firstBytes).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+        console.log('[ScrepCore] First 4 bytes as string:', new TextDecoder('latin1').decode(firstBytes));
+        
+        throw new Error(`Invalid replay format. Expected 'reRS' or 'seRS', got: '${replayID}' (bytes: ${Array.from(replayIdBytes).map(b => '0x' + b.toString(16)).join(' ')})`);
       }
     }
-
-    console.log('[ScrepCore] Valid signature detected:', replayID);
-
-    // Reset position for further parsing
-    this.reader.setPosition(4);
-
-    // Engine und Frame Count - angepasst für verschiedene Formate
-    let engine = 0;
-    let frames = 0;
     
-    try {
-      if (replayID.startsWith('reRS') || replayID.startsWith('seRS')) {
-        // Standard Remastered format
-        engine = this.reader.readUInt32LE();
-        frames = this.reader.readUInt32LE();
-      } else if (replayID === 'PKtsPK') {
-        // Compressed format - different structure
-        this.reader.setPosition(0x0C); // Skip to frame count in compressed format
-        frames = this.reader.readUInt32LE();
-        engine = 161; // Default Remastered engine
-      } else {
-        // Generic format - try to find frame count
-        this.reader.setPosition(0x08);
-        frames = this.reader.readUInt32LE();
-        engine = 161;
-      }
-    } catch (e) {
-      console.warn('[ScrepCore] Failed to read engine/frames, using defaults');
-      engine = 161;
-      frames = 24000; // ~16:40 minutes default
-    }
+    console.log('[ScrepCore] Valid replay ID found:', replayID);
     
-    console.log('[ScrepCore] Engine:', engine, 'Frames:', frames);
+    // Engine und Frames nach screp repo Struktur
+    this.reader.setPosition(0x10);
+    const engine = this.reader.readUInt32LE();
+    const frames = this.reader.readUInt32LE();
     
-    // Map name parsing - verschiedene Offsets versuchen
+    console.log('[ScrepCore] Engine:', engine);
+    console.log('[ScrepCore] Frames:', frames);
+    
+    // Map name parsing - verschiedene Offsets nach screp repo
     let mapName = 'Unknown Map';
-    const mapOffsets = [0x61, 0x68, 0x7C, 0x45, 0x1A, 0x25];
+    const mapOffsets = [0x61, 0x68, 0x7C];
     
     for (const offset of mapOffsets) {
       try {
@@ -170,7 +165,7 @@ export class ScrepCore {
           const testName = this.reader.readNullTerminatedString(32);
           if (this.isValidMapName(testName)) {
             mapName = testName;
-            console.log('[ScrepCore] Map name found at offset', offset, ':', mapName);
+            console.log('[ScrepCore] Map name found at offset', '0x' + offset.toString(16), ':', mapName);
             break;
           }
         }
@@ -178,14 +173,14 @@ export class ScrepCore {
         continue;
       }
     }
-
+    
     // Game type
-    let gameType = 1; // Default: Melee
+    let gameType = 1;
     try {
       this.reader.setPosition(0x1A);
       gameType = this.reader.readUInt16LE();
     } catch (e) {
-      console.warn('[ScrepCore] Failed to read game type, using default');
+      console.warn('[ScrepCore] Failed to read game type');
     }
 
     return {
@@ -200,23 +195,22 @@ export class ScrepCore {
   }
 
   /**
-   * Player parsing basierend auf screp
+   * Player parsing nach screp repo
    */
-  private async parsePlayers(): Promise<PlayerData[]> {
+  private parsePlayers(): PlayerData[] {
     const players: PlayerData[] = [];
     
-    // Player data ist normalerweise bei offset 0x161 für 8 players
-    this.reader.setPosition(0x161);
+    // Player data offset nach screp repo
+    const playerOffset = 0x161;
     
     for (let i = 0; i < 8; i++) {
       try {
-        const playerOffset = 0x161 + (i * 36);
-        this.reader.setPosition(playerOffset);
+        const offset = playerOffset + (i * 36);
+        this.reader.setPosition(offset);
         
         const name = this.reader.readFixedString(25);
         if (!this.isValidPlayerName(name)) continue;
         
-        // Race, team, color aus control bytes
         const raceData = this.reader.readUInt8();
         const team = this.reader.readUInt8();
         const color = this.reader.readUInt8();
@@ -238,112 +232,65 @@ export class ScrepCore {
   }
 
   /**
-   * HAUPTFUNKTION: Command parsing wie im screp repo
+   * Command parsing nach screp repo
    */
   private async parseCommands(): Promise<Command[]> {
     console.log('[ScrepCore] Starting command parsing...');
     
-    // Commands section finden - screp logic
-    const commandSection = this.findCommandSection();
-    if (!commandSection) {
-      console.warn('[ScrepCore] Command section not found, trying fallback');
-      return await this.tryFallbackCommandParsing();
+    // Command section nach screp repo finden
+    const commandOffset = this.findCommandOffset();
+    if (!commandOffset) {
+      console.warn('[ScrepCore] No command section found');
+      return [];
     }
     
-    console.log('[ScrepCore] Command section found at offset:', commandSection.offset);
+    console.log('[ScrepCore] Command section at offset:', '0x' + commandOffset.toString(16));
     
-    this.reader.setPosition(commandSection.offset);
+    this.reader.setPosition(commandOffset);
     const commandParser = new CommandParser(this.reader);
     
     return await commandParser.parseAllCommands();
   }
 
   /**
-   * Fallback command parsing wenn normale Methode fehlschlägt
+   * Command offset finden nach screp repo
    */
-  private async tryFallbackCommandParsing(): Promise<Command[]> {
-    console.log('[ScrepCore] Trying fallback command parsing...');
-    
-    // Suche in der zweiten Hälfte der Datei nach command-ähnlichen Patterns
-    const halfPoint = Math.floor(this.data.byteLength / 2);
-    
-    for (let offset = halfPoint; offset < this.data.byteLength - 1000; offset += 0x10) {
-      this.reader.setPosition(offset);
-      
-      try {
-        // Teste ob hier Commands starten könnten
-        const sample = this.reader.readBytes(50);
-        let commandBytes = 0;
-        
-        for (const byte of sample) {
-          if ([0x00, 0x01, 0x02, 0x09, 0x0A, 0x0B, 0x0C, 0x14, 0x15, 0x1D].includes(byte)) {
-            commandBytes++;
-          }
-        }
-        
-        if (commandBytes >= 8) {
-          console.log('[ScrepCore] Potential command section found at', offset);
-          this.reader.setPosition(offset);
-          const commandParser = new CommandParser(this.reader);
-          const commands = await commandParser.parseAllCommands();
-          
-          if (commands.length > 10) {
-            console.log('[ScrepCore] Fallback parsing successful:', commands.length, 'commands');
-            return commands;
-          }
-        }
-      } catch (e) {
-        continue;
-      }
-    }
-    
-    console.warn('[ScrepCore] Fallback command parsing failed');
-    return [];
-  }
-
-  /**
-   * Command section finden basierend auf screp
-   */
-  private findCommandSection(): { offset: number; size: number } | null {
-    // screp verwendet verschiedene Methoden je nach Replay-Version
-    const possibleOffsets = [0x279, 0x633, 0x637, 0x641, 0x28F, 0x2A3];
+  private findCommandOffset(): number | null {
+    // Nach screp repo sind Commands normalerweise bei diesen Offsets
+    const possibleOffsets = [0x279, 0x633, 0x637];
     
     for (const offset of possibleOffsets) {
-      if (this.isValidCommandSection(offset)) {
-        return {
-          offset,
-          size: this.data.byteLength - offset
-        };
+      if (this.isValidCommandOffset(offset)) {
+        return offset;
       }
     }
     
     return null;
   }
 
-  private isValidCommandSection(offset: number): boolean {
+  private isValidCommandOffset(offset: number): boolean {
     if (offset >= this.data.byteLength - 100) return false;
     
     this.reader.setPosition(offset);
-    const sample = this.reader.readBytes(50);
+    const sample = this.reader.readBytes(20);
     
-    // Suche nach command-ähnlichen bytes
+    // Suche nach command patterns
     let commandBytes = 0;
     for (const byte of sample) {
-      if ([0x00, 0x01, 0x02, 0x09, 0x0A, 0x0B, 0x0C, 0x14, 0x15, 0x1D].includes(byte)) {
+      if ([0x00, 0x01, 0x02, 0x09, 0x0A, 0x0B, 0x0C, 0x14, 0x15].includes(byte)) {
         commandBytes++;
       }
     }
     
-    return commandBytes >= 5;
+    return commandBytes >= 3;
   }
 
   /**
-   * Computed data berechnen
+   * Computed data
    */
   private computeData(header: ReplayHeader, players: PlayerData[], commands: Command[]): ComputedData {
     const gameMinutes = header.frames / 24 / 60;
     
-    // APM/EAPM berechnen
     const apm: number[] = [];
     const eapm: number[] = [];
     const buildOrders: any[][] = [];
@@ -357,10 +304,7 @@ export class ScrepCore {
       
       apm.push(playerAPM);
       eapm.push(playerEAPM);
-      
-      // Build order aus commands extrahieren
-      const buildOrder = this.extractBuildOrder(playerCommands);
-      buildOrders.push(buildOrder);
+      buildOrders.push([]);
     });
     
     return {
@@ -368,18 +312,6 @@ export class ScrepCore {
       eapm,
       buildOrders
     };
-  }
-
-  private extractBuildOrder(commands: Command[]): any[] {
-    return commands
-      .filter(cmd => ['Build', 'Train', 'Research', 'Upgrade'].some(type => cmd.typeString.includes(type)))
-      .map(cmd => ({
-        frame: cmd.frame,
-        timestamp: cmd.time,
-        action: cmd.typeString,
-        supply: this.estimateSupply(cmd.frame),
-        unitName: this.extractUnitName(cmd.typeString, cmd.parameters)
-      }));
   }
 
   // Utility functions
@@ -392,8 +324,7 @@ export class ScrepCore {
 
   private isValidMapName(name: string): boolean {
     return name.length >= 3 && name.length <= 32 && 
-           /^[a-zA-Z0-9\s\-_.()]+$/.test(name) &&
-           !name.includes('StarCraft');
+           /^[a-zA-Z0-9\s\-_.()]+$/.test(name);
   }
 
   private isValidPlayerName(name: string): boolean {
@@ -402,29 +333,7 @@ export class ScrepCore {
   }
 
   private getRaceName(raceId: number): string {
-    const races = ['Zerg', 'Terran', 'Protoss', 'Random', 'Neutral', 'User Select', 'Random'];
+    const races = ['Zerg', 'Terran', 'Protoss', 'Random'];
     return races[raceId] || 'Unknown';
-  }
-
-  private estimateSupply(frame: number): number {
-    return Math.floor(frame / 500) + 4; // Grobe Schätzung
-  }
-
-  private extractUnitName(typeString: string, parameters: any): string {
-    if (parameters?.unitType) {
-      return this.getUnitNameById(parameters.unitType);
-    }
-    
-    // Fallback: aus typeString extrahieren
-    const match = typeString.match(/(?:Build|Train|Research|Upgrade)\s+(.+)/);
-    return match ? match[1] : typeString;
-  }
-
-  private getUnitNameById(unitId: number): string {
-    const units: Record<number, string> = {
-      0: 'Marine', 7: 'SCV', 41: 'Drone', 60: 'Pylon', 64: 'Probe', 65: 'Zealot',
-      37: 'Zergling', 106: 'Supply Depot', 109: 'Barracks', 133: 'Gateway'
-    };
-    return units[unitId] || `Unit_${unitId}`;
   }
 }

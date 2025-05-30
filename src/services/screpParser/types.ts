@@ -1,6 +1,6 @@
 
 /**
- * Types für screp parser
+ * Types basierend auf screp GitHub repo
  */
 
 export interface ReplayHeader {

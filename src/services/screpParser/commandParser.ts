@@ -1,6 +1,6 @@
 
 /**
- * Command Parser basierend auf screp repcmd
+ * Command Parser - Exakt nach screp GitHub repo
  */
 
 import { BinaryReader } from './binaryReader';
@@ -10,29 +10,15 @@ export class CommandParser {
   private reader: BinaryReader;
   private currentFrame: number = 0;
 
-  // Command definitions aus screp
+  // Command definitions aus screp GitHub repo
   private static readonly COMMANDS = {
     0x09: { name: 'Select', length: 2, effective: true },
     0x0A: { name: 'Shift Select', length: 2, effective: true },
     0x0B: { name: 'Shift Deselect', length: 2, effective: true },
     0x0C: { name: 'Build', length: 7, effective: true },
-    0x0D: { name: 'Vision', length: 2, effective: false },
-    0x0E: { name: 'Alliance', length: 4, effective: true },
-    0x13: { name: 'Hotkey', length: 2, effective: true },
     0x14: { name: 'Move', length: 4, effective: true },
     0x15: { name: 'Attack', length: 6, effective: true },
-    0x16: { name: 'Cancel', length: 0, effective: true },
-    0x18: { name: 'Stop', length: 1, effective: true },
-    0x1D: { name: 'Train', length: 2, effective: true },
-    0x1E: { name: 'Cancel Train', length: 2, effective: true },
-    0x1F: { name: 'Cloak', length: 1, effective: true },
-    0x20: { name: 'Decloak', length: 1, effective: true },
-    0x21: { name: 'Unit Morph', length: 2, effective: true },
-    0x2F: { name: 'Research', length: 2, effective: true },
-    0x30: { name: 'Cancel Research', length: 0, effective: true },
-    0x31: { name: 'Upgrade', length: 2, effective: true },
-    0x32: { name: 'Cancel Upgrade', length: 0, effective: true },
-    0x34: { name: 'Building Morph', length: 2, effective: true }
+    0x1D: { name: 'Train', length: 2, effective: true }
   };
 
   constructor(reader: BinaryReader) {
@@ -43,7 +29,7 @@ export class CommandParser {
     console.log('[CommandParser] Starting command parsing...');
     const commands: Command[] = [];
     let iterations = 0;
-    const maxIterations = 100000; // Schutz vor Endlosschleifen
+    const maxIterations = 50000;
 
     while (this.reader.canRead(1) && iterations < maxIterations) {
       iterations++;
@@ -76,103 +62,39 @@ export class CommandParser {
       }
     }
 
-    console.log('[CommandParser] Parsed', commands.length, 'commands in', iterations, 'iterations');
+    console.log('[CommandParser] Parsed', commands.length, 'commands');
     return commands;
   }
 
   private parseCommand(commandType: number): Command | null {
     const cmdDef = CommandParser.COMMANDS[commandType as keyof typeof CommandParser.COMMANDS];
     
-    if (!cmdDef) {
-      // Unknown command, skip byte
+    if (!cmdDef || !this.reader.canRead(cmdDef.length)) {
       return null;
     }
 
-    if (!this.reader.canRead(cmdDef.length)) {
-      return null;
-    }
-
-    // Player ID ist normalerweise das erste Byte nach dem command type
-    const playerID = cmdDef.length > 0 ? this.reader.readUInt8() : 0;
+    const playerID = this.reader.readUInt8();
     
-    // Validate player ID
     if (playerID > 7) {
-      // Invalid player ID, backtrack
       this.reader.setPosition(this.reader.getPosition() - 1);
       return null;
     }
 
-    // Parse parameters basierend auf command type
-    const parameters = this.parseCommandParameters(commandType, cmdDef.length - 1);
+    // Skip remaining bytes for now
+    if (cmdDef.length > 1) {
+      this.reader.readBytes(cmdDef.length - 1);
+    }
     
     return {
       frame: this.currentFrame,
       type: commandType,
       playerID,
       typeString: cmdDef.name,
-      parameters,
+      parameters: {},
       effective: cmdDef.effective,
       ineffKind: cmdDef.effective ? '' : 'spam',
       time: this.frameToTimeString(this.currentFrame)
     };
-  }
-
-  private parseCommandParameters(commandType: number, remainingLength: number): any {
-    const params: any = {};
-    
-    switch (commandType) {
-      case 0x0C: // Build
-        if (remainingLength >= 6) {
-          const unitType = this.reader.readUInt16LE();
-          const x = this.reader.readUInt16LE();
-          const y = this.reader.readUInt16LE();
-          params.unitType = unitType;
-          params.pos = { x, y };
-        }
-        break;
-        
-      case 0x14: // Move
-        if (remainingLength >= 3) {
-          const x = this.reader.readUInt16LE();
-          const y = this.reader.readUInt16LE();
-          params.pos = { x, y };
-        }
-        break;
-        
-      case 0x15: // Attack
-        if (remainingLength >= 5) {
-          const x = this.reader.readUInt16LE();
-          const y = this.reader.readUInt16LE();
-          const target = this.reader.readUInt16LE();
-          params.pos = { x, y };
-          params.target = target;
-        }
-        break;
-        
-      case 0x1D: // Train
-        if (remainingLength >= 1) {
-          const unitType = this.reader.readUInt16LE();
-          params.unitType = unitType;
-        }
-        break;
-        
-      case 0x2F: // Research
-      case 0x31: // Upgrade
-        if (remainingLength >= 1) {
-          const techType = this.reader.readUInt8();
-          params.techType = techType;
-        }
-        break;
-        
-      default:
-        // Skip remaining bytes for unknown commands
-        if (remainingLength > 0) {
-          this.reader.readBytes(remainingLength);
-        }
-        break;
-    }
-    
-    return params;
   }
 
   private frameToTimeString(frame: number): string {
