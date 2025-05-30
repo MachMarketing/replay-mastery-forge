@@ -1,189 +1,222 @@
 
 /**
- * Enhanced Binary Reader for StarCraft: Brood War Replay files
- * Based on correct .rep file specification from screp
+ * Enhanced Binary Reader for StarCraft: Remastered replays
+ * Compatible with screp parsing logic
  */
 
-export class BWBinaryReader {
-  public data: DataView;
-  private position: number = 0;
-  private buffer: Uint8Array;
+export interface FormatDetection {
+  isCompressed: boolean;
+  format: 'legacy' | 'modern' | 'modern121' | 'unknown';
+  confidence: number;
+}
 
-  constructor(arrayBuffer: ArrayBuffer) {
-    this.data = new DataView(arrayBuffer);
-    this.buffer = new Uint8Array(arrayBuffer);
-    console.log('[BWBinaryReader] Initialized with buffer size:', arrayBuffer.byteLength);
+export class BWBinaryReader {
+  private buffer: ArrayBuffer;
+  private view: DataView;
+  private position: number = 0;
+
+  constructor(buffer: ArrayBuffer) {
+    this.buffer = buffer;
+    this.view = new DataView(buffer);
+    console.log('[BWBinaryReader] Initialized with buffer size:', buffer.byteLength);
+  }
+
+  // Position management
+  setPosition(position: number): void {
+    if (position < 0 || position > this.buffer.byteLength) {
+      throw new Error(`Invalid position: ${position} (buffer size: ${this.buffer.byteLength})`);
+    }
+    this.position = position;
   }
 
   getPosition(): number {
     return this.position;
   }
 
-  setPosition(pos: number): void {
-    this.position = Math.max(0, Math.min(pos, this.buffer.length));
+  getSize(): number {
+    return this.buffer.byteLength;
   }
 
-  canRead(bytes: number = 1): boolean {
-    return this.position + bytes <= this.buffer.length;
+  getRemainingBytes(): number {
+    return this.buffer.byteLength - this.position;
   }
 
+  canRead(bytes: number): boolean {
+    return this.position + bytes <= this.buffer.byteLength;
+  }
+
+  // Basic data reading
   readUInt8(): number {
     if (!this.canRead(1)) {
-      throw new Error(`Cannot read UInt8 at position ${this.position}: end of buffer`);
+      throw new Error(`Cannot read uint8 at position ${this.position}`);
     }
-    const value = this.data.getUint8(this.position);
+    const value = this.view.getUint8(this.position);
     this.position += 1;
     return value;
   }
 
   readUInt16LE(): number {
     if (!this.canRead(2)) {
-      throw new Error(`Cannot read UInt16 at position ${this.position}: end of buffer`);
+      throw new Error(`Cannot read uint16 at position ${this.position}`);
     }
-    const value = this.data.getUint16(this.position, true);
+    const value = this.view.getUint16(this.position, true);
     this.position += 2;
     return value;
   }
 
   readUInt32LE(): number {
     if (!this.canRead(4)) {
-      throw new Error(`Cannot read UInt32 at position ${this.position}: end of buffer`);
+      throw new Error(`Cannot read uint32 at position ${this.position}`);
     }
-    const value = this.data.getUint32(this.position, true);
+    const value = this.view.getUint32(this.position, true);
     this.position += 4;
     return value;
   }
 
+  readInt32LE(): number {
+    if (!this.canRead(4)) {
+      throw new Error(`Cannot read int32 at position ${this.position}`);
+    }
+    const value = this.view.getInt32(this.position, true);
+    this.position += 4;
+    return value;
+  }
+
+  // String reading methods
+  readFixedString(length: number): string {
+    if (!this.canRead(length)) {
+      throw new Error(`Cannot read string of length ${length} at position ${this.position}`);
+    }
+
+    const bytes = new Uint8Array(this.buffer, this.position, length);
+    this.position += length;
+
+    // Convert bytes to string, handling null terminators
+    let str = '';
+    for (let i = 0; i < bytes.length; i++) {
+      const byte = bytes[i];
+      if (byte === 0) break; // Stop at null terminator
+      if (byte >= 32 && byte <= 126) { // Printable ASCII
+        str += String.fromCharCode(byte);
+      }
+    }
+
+    return str.trim();
+  }
+
+  readNullTerminatedString(maxLength: number = 256): string {
+    const startPos = this.position;
+    let str = '';
+    let length = 0;
+
+    while (length < maxLength && this.canRead(1)) {
+      const byte = this.readUInt8();
+      length++;
+      
+      if (byte === 0) break; // Null terminator
+      
+      if (byte >= 32 && byte <= 126) { // Printable ASCII
+        str += String.fromCharCode(byte);
+      } else if (str.length > 0) {
+        // Stop if we encounter non-printable after starting the string
+        this.setPosition(this.position - 1); // Back up one byte
+        break;
+      }
+    }
+
+    return str.trim();
+  }
+
+  // Raw data reading
   readBytes(length: number): Uint8Array {
     if (!this.canRead(length)) {
-      throw new Error(`Cannot read ${length} bytes at position ${this.position}: end of buffer`);
+      throw new Error(`Cannot read ${length} bytes at position ${this.position}`);
     }
-    const bytes = this.buffer.slice(this.position, this.position + length);
+
+    const bytes = new Uint8Array(this.buffer, this.position, length);
     this.position += length;
     return bytes;
   }
 
-  readFixedString(length: number): string {
-    const bytes = this.readBytes(length);
-    
-    // Find null terminator
-    let actualLength = bytes.length;
-    for (let i = 0; i < bytes.length; i++) {
-      if (bytes[i] === 0) {
-        actualLength = i;
-        break;
-      }
+  readBuffer(length: number): ArrayBuffer {
+    if (!this.canRead(length)) {
+      throw new Error(`Cannot read buffer of length ${length} at position ${this.position}`);
     }
-    
-    const validBytes = bytes.slice(0, actualLength);
-    return this.decodeString(validBytes);
+
+    const buffer = this.buffer.slice(this.position, this.position + length);
+    this.position += length;
+    return buffer;
   }
 
-  /**
-   * Detect correct .rep file structure based on screp specification
-   */
-  detectFormat(): { type: string, isCompressed: boolean, headerOffset: number, playerDataOffset: number } {
+  // Format detection based on screp logic
+  detectFormat(): FormatDetection {
     const originalPos = this.position;
-    this.setPosition(0);
     
     try {
-      // Read replay header magic bytes
-      const magic = this.readUInt32LE();
       this.setPosition(0);
       
-      console.log(`[BWBinaryReader] Magic bytes: 0x${magic.toString(16)}`);
-      
-      // Check for compressed replay
-      if (magic === 0x5453494C) { // "LIST" in little endian
-        console.log('[BWBinaryReader] Detected compressed replay');
-        return { 
-          type: 'compressed', 
-          isCompressed: true, 
-          headerOffset: 0,
-          playerDataOffset: 0x1A1 
-        };
+      // Check for minimum file size
+      if (this.buffer.byteLength < 30) {
+        return { isCompressed: false, format: 'unknown', confidence: 0.0 };
       }
+
+      // Read replay ID at offset 12
+      this.setPosition(12);
+      const replayId = this.readFixedString(4);
       
-      // Standard uncompressed replay - correct offsets based on screp
-      return { 
-        type: 'standard', 
-        isCompressed: false, 
-        headerOffset: 0,
-        playerDataOffset: 0x1A1  // Correct offset for player data in .rep files
-      };
+      console.log('[BWBinaryReader] Replay ID:', replayId);
       
-    } catch (e) {
-      console.warn('[BWBinaryReader] Error detecting format:', e);
-      return { 
-        type: 'unknown', 
-        isCompressed: false, 
-        headerOffset: 0,
-        playerDataOffset: 0x1A1 
-      };
+      // Check for valid replay IDs (from screp)
+      if (replayId !== 'reRS' && replayId !== 'seRS') {
+        return { isCompressed: false, format: 'unknown', confidence: 0.0 };
+      }
+
+      // Modern 1.21+ format
+      if (replayId === 'seRS') {
+        return { isCompressed: true, format: 'modern121', confidence: 0.95 };
+      }
+
+      // Pre-1.21 format, check compression type at offset 28
+      this.setPosition(28);
+      const compressionByte = this.readUInt8();
+      const isZlib = compressionByte === 0x78;
+      
+      console.log('[BWBinaryReader] Compression byte:', '0x' + compressionByte.toString(16));
+      
+      if (isZlib) {
+        return { isCompressed: true, format: 'modern', confidence: 0.90 };
+      } else {
+        return { isCompressed: true, format: 'legacy', confidence: 0.85 };
+      }
+
+    } catch (error) {
+      console.error('[BWBinaryReader] Format detection failed:', error);
+      return { isCompressed: false, format: 'unknown', confidence: 0.0 };
     } finally {
       this.setPosition(originalPos);
     }
   }
 
-  /**
-   * Decode string with proper encoding handling
-   */
-  private decodeString(bytes: Uint8Array): string {
-    if (bytes.length === 0) return '';
-    
-    // Remove trailing zeros
-    let actualLength = bytes.length;
-    for (let i = bytes.length - 1; i >= 0; i--) {
-      if (bytes[i] === 0) {
-        actualLength = i;
-      } else {
-        break;
-      }
+  // Utility methods
+  peek(offset: number = 0): number {
+    const pos = this.position + offset;
+    if (pos >= this.buffer.byteLength) {
+      throw new Error(`Cannot peek at position ${pos}`);
     }
-    
-    const trimmedBytes = bytes.slice(0, actualLength);
-    if (trimmedBytes.length === 0) return '';
-    
-    // Convert to string - StarCraft uses Windows-1252 encoding typically
-    let result = '';
-    for (const byte of trimmedBytes) {
-      if (byte >= 32 && byte <= 126) {
-        // Standard ASCII
-        result += String.fromCharCode(byte);
-      } else if (byte >= 128 && byte <= 255) {
-        // Extended ASCII (Windows-1252)
-        result += String.fromCharCode(byte);
-      }
-    }
-    
-    return result.trim();
-  }
-
-  /**
-   * Create hex dump for debugging
-   */
-  createHexDump(offset: number, length: number): string {
-    const bytes: string[] = [];
-    const ascii: string[] = [];
-    
-    for (let i = 0; i < length && offset + i < this.buffer.length; i++) {
-      const byte = this.buffer[offset + i];
-      bytes.push(byte.toString(16).padStart(2, '0'));
-      ascii.push(byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : '.');
-    }
-    
-    return `${bytes.join(' ')} | ${ascii.join('')}`;
+    return this.view.getUint8(pos);
   }
 
   skip(bytes: number): void {
-    this.position = Math.min(this.position + bytes, this.buffer.length);
+    this.setPosition(this.position + bytes);
   }
 
-  getRemainingBytes(): number {
-    return this.buffer.length - this.position;
-  }
-
-  getBuffer(): Uint8Array {
-    return this.buffer;
+  // Create a sub-reader for a specific section
+  createSubReader(offset: number, length: number): BWBinaryReader {
+    if (offset + length > this.buffer.byteLength) {
+      throw new Error(`Sub-reader bounds exceed buffer size`);
+    }
+    
+    const subBuffer = this.buffer.slice(offset, offset + length);
+    return new BWBinaryReader(subBuffer);
   }
 }
