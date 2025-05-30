@@ -19,6 +19,7 @@ interface ReplayUploadProps {
 const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'parsing' | 'complete' | 'error'>('idle');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [detailedError, setDetailedError] = useState<string>('');
   
   const { parseReplay, isLoading, error, progress } = useEnhancedReplayParser();
   const { toast } = useToast();
@@ -31,6 +32,7 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
     
     setSelectedFile(file);
     setUploadStatus('parsing');
+    setDetailedError('');
 
     try {
       const result = await parseReplay(file);
@@ -46,10 +48,13 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
       
     } catch (err) {
       setUploadStatus('error');
+      const errorMessage = err instanceof Error ? err.message : 'Unbekannter Fehler';
+      setDetailedError(errorMessage);
       console.error('[ReplayUpload] Parse error:', err);
+      
       toast({
         title: "Parse-Fehler",
-        description: err instanceof Error ? err.message : 'Unbekannter Fehler',
+        description: errorMessage,
         variant: "destructive"
       });
     }
@@ -67,13 +72,13 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
   const getStatusIcon = () => {
     switch (uploadStatus) {
       case 'parsing':
-        return <Upload className="w-8 h-8 text-primary animate-pulse" />;
+        return <Upload className="w-8 h-8 text-blue-500 animate-pulse" />;
       case 'complete':
         return <CheckCircle className="w-8 h-8 text-green-500" />;
       case 'error':
         return <AlertCircle className="w-8 h-8 text-red-500" />;
       default:
-        return <FileText className="w-8 h-8 text-muted-foreground" />;
+        return <FileText className="w-8 h-8 text-gray-500" />;
     }
   };
 
@@ -84,7 +89,7 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
       case 'complete':
         return 'Enhanced Parse erfolgreich!';
       case 'error':
-        return error || 'Parse-Fehler';
+        return 'Fehler beim Parsen der Replay-Datei';
       default:
         return isDragActive ? 'Datei hier ablegen...' : 'StarCraft: Remastered .rep Datei hochladen';
     }
@@ -96,10 +101,13 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
         {...getRootProps()}
         className={`
           border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all
-          ${isDragActive ? 'border-primary bg-primary/5' : 'border-gray-300 hover:border-primary/50'}
+          ${isDragActive 
+            ? 'border-blue-500 bg-blue-50 text-blue-700' 
+            : 'border-gray-400 bg-gray-50 text-gray-700 hover:border-blue-400 hover:bg-blue-50'
+          }
           ${isLoading ? 'cursor-not-allowed opacity-70' : ''}
-          ${uploadStatus === 'error' ? 'border-red-300 bg-red-50' : ''}
-          ${uploadStatus === 'complete' ? 'border-green-300 bg-green-50' : ''}
+          ${uploadStatus === 'error' ? 'border-red-400 bg-red-50 text-red-700' : ''}
+          ${uploadStatus === 'complete' ? 'border-green-400 bg-green-50 text-green-700' : ''}
         `}
       >
         <input {...getInputProps()} />
@@ -113,23 +121,30 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
             </h3>
             
             {selectedFile && uploadStatus !== 'idle' && (
-              <p className="text-sm text-gray-600">
+              <p className="text-sm opacity-80">
                 {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
               </p>
+            )}
+
+            {uploadStatus === 'error' && detailedError && (
+              <div className="mt-4 p-3 bg-red-100 border border-red-300 rounded text-sm text-red-800">
+                <strong>Fehlerdetails:</strong><br />
+                {detailedError}
+              </div>
             )}
           </div>
           
           {uploadStatus === 'parsing' && (
             <div className="w-full max-w-xs">
               <Progress value={progress} className="h-2" />
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs opacity-70 mt-1">
                 Enhanced Parser: {Math.round(progress)}%
               </p>
             </div>
           )}
           
           {uploadStatus === 'idle' && (
-            <Button variant="outline">
+            <Button variant="outline" className="bg-white text-gray-700 border-gray-400 hover:bg-gray-100">
               .rep Datei auswählen
             </Button>
           )}
@@ -139,8 +154,10 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
               onClick={() => {
                 setUploadStatus('idle');
                 setSelectedFile(null);
+                setDetailedError('');
               }}
               variant="outline"
+              className="bg-white text-red-700 border-red-400 hover:bg-red-50"
             >
               Erneut versuchen
             </Button>
