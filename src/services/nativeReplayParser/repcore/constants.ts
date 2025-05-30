@@ -377,6 +377,8 @@ export const COMMAND_NAMES: Record<number, string> = {
   [CommandType.Land]: 'Land',
   [CommandType.Burrow]: 'Burrow',
   [CommandType.Unburrow]: 'Unburrow',
+  [CommandType.Cloak]: 'Cloak',
+  [CommandType.Decloak]: 'Decloak',
   [CommandType.HoldPosition]: 'Hold Position',
   [CommandType.Patrol]: 'Patrol',
   
