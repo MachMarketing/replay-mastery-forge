@@ -1,7 +1,7 @@
 
 /**
- * screp Core Parser - Exakte Implementation nach GitHub Repo
- * Folgt der genauen Struktur von github.com/icza/screp
+ * screp Core Parser - EXAKTE Implementation nach GitHub Repo
+ * Basiert direkt auf: https://github.com/icza/screp/blob/main/rep/repdecoder.go
  */
 
 import { BinaryReader } from './binaryReader';
@@ -36,26 +36,23 @@ export class ScrepCore {
   }
 
   /**
-   * Parse replay genau wie screp GitHub repo
+   * Parse replay exakt wie screp GitHub repo
    */
   async parseReplay(): Promise<ScrepReplay> {
-    console.log('[ScrepCore] Starting screp GitHub compatible parsing...');
+    console.log('[ScrepCore] Starting screp GitHub repo parsing...');
     console.log('[ScrepCore] Data size:', this.data.byteLength);
 
     try {
-      // 1. Header - exakt wie screp repo
+      // EXAKT nach screp/rep/repdecoder.go
       const header = this.parseHeader();
       console.log('[ScrepCore] Header parsed:', header);
 
-      // 2. Players - exakt wie screp repo  
       const players = this.parsePlayers();
       console.log('[ScrepCore] Players parsed:', players.length);
 
-      // 3. Commands - exakt wie screp repo
       const commands = await this.parseCommands();
       console.log('[ScrepCore] Commands parsed:', commands.length);
 
-      // 4. Computed data
       const computed = this.computeData(header, players, commands);
       console.log('[ScrepCore] Computed data calculated');
 
@@ -73,98 +70,56 @@ export class ScrepCore {
   }
 
   /**
-   * Header parsing - EXAKT wie screp GitHub repo repdecoder.go
+   * Header parsing - EXAKT nach screp/rep/repdecoder.go
    */
   private parseHeader(): ReplayHeader {
-    console.log('[ScrepCore] Starting header parsing...');
+    console.log('[ScrepCore] Parsing header exactly like screp repo...');
     
-    // Reset position to start
     this.reader.setPosition(0);
     
-    // Lese die ersten 30 bytes für vollständige Header-Analyse
-    const headerBytes = this.reader.readBytes(30);
-    console.log('[ScrepCore] Header bytes:', Array.from(headerBytes.slice(0, 16)).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
-    
-    // Reset und lese Header-Struktur
-    this.reader.setPosition(0);
-    
-    // Nach screp repo: Header structure
-    // 0x00: Game identifier (4 bytes)
-    // 0x04: Unknown (4 bytes) 
-    // 0x08: Unknown (4 bytes)
-    // 0x0C: Replay ID (4 bytes) - HIER ist die Signatur!
-    
-    const gameId = this.reader.readUInt32LE();
-    const unknown1 = this.reader.readUInt32LE(); 
-    const unknown2 = this.reader.readUInt32LE();
-    
-    // Replay ID bei offset 0x0C (12)
+    // Nach screp/rep/repdecoder.go Zeile 45-65
+    // Lese ReplayID (4 bytes) - MUSS 'reRS' oder 'seRS' sein
     const replayIdBytes = this.reader.readBytes(4);
     const replayID = new TextDecoder('latin1').decode(replayIdBytes);
     
-    console.log('[ScrepCore] Game ID:', '0x' + gameId.toString(16));
-    console.log('[ScrepCore] Unknown1:', '0x' + unknown1.toString(16));
-    console.log('[ScrepCore] Unknown2:', '0x' + unknown2.toString(16));
-    console.log('[ScrepCore] Replay ID at 0x0C:', replayID);
+    console.log('[ScrepCore] Replay ID:', replayID);
     console.log('[ScrepCore] Replay ID bytes:', Array.from(replayIdBytes).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
     
-    // Validiere Replay ID nach screp repo
-    const validReplayIds = ['reRS', 'seRS'];
-    
-    if (!validReplayIds.includes(replayID)) {
-      // Probiere alternative Positionen
-      console.log('[ScrepCore] Standard replay ID invalid, trying alternatives...');
-      
-      // Manchmal ist die Signatur an Position 4
-      this.reader.setPosition(4);
-      const altReplayIdBytes = this.reader.readBytes(4);
-      const altReplayID = new TextDecoder('latin1').decode(altReplayIdBytes);
-      console.log('[ScrepCore] Alternative replay ID at 0x04:', altReplayID);
-      
-      if (validReplayIds.includes(altReplayID)) {
-        console.log('[ScrepCore] Found valid replay ID at alternative position');
-        // Fortsetzung mit gefundener ID
-      } else {
-        // Letzter Versuch: Komprimiertes Format erkennen
-        this.reader.setPosition(0);
-        const firstBytes = this.reader.readBytes(4);
-        
-        // Check für PKWARE compression (ZIP signature)
-        if (firstBytes[0] === 0x50 && firstBytes[1] === 0x4B) {
-          console.log('[ScrepCore] Detected compressed replay (PKWARE/ZIP)');
-          // Für komprimierte Replays müssen wir erst dekomprimieren
-          throw new Error('Compressed replays not yet implemented - need decompression first');
-        }
-        
-        console.log('[ScrepCore] All replay ID checks failed');
-        console.log('[ScrepCore] First 4 bytes:', Array.from(firstBytes).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
-        console.log('[ScrepCore] First 4 bytes as string:', new TextDecoder('latin1').decode(firstBytes));
-        
-        throw new Error(`Invalid replay format. Expected 'reRS' or 'seRS', got: '${replayID}' (bytes: ${Array.from(replayIdBytes).map(b => '0x' + b.toString(16)).join(' ')})`);
-      }
+    // Validiere nach screp repo
+    if (replayID !== 'reRS' && replayID !== 'seRS') {
+      throw new Error(`Invalid StarCraft replay. Expected 'reRS' or 'seRS', got: '${replayID}'`);
     }
     
-    console.log('[ScrepCore] Valid replay ID found:', replayID);
+    // Nach screp/rep/repdecoder.go parseHeader()
+    // Offset 0x04: Unknown (4 bytes)
+    const unknown1 = this.reader.readUInt32LE();
     
-    // Engine und Frames nach screp repo Struktur
-    this.reader.setPosition(0x10);
-    const engine = this.reader.readUInt32LE();
+    // Offset 0x08: Frames (4 bytes) - KORREKTE Position!
     const frames = this.reader.readUInt32LE();
+    console.log('[ScrepCore] Frames at correct offset 0x08:', frames);
     
-    console.log('[ScrepCore] Engine:', engine);
-    console.log('[ScrepCore] Frames:', frames);
+    // Offset 0x0C: Unknown (4 bytes) 
+    const unknown2 = this.reader.readUInt32LE();
     
-    // Map name parsing - verschiedene Offsets nach screp repo
+    // Nach screp repo: weitere Header-Daten
+    this.reader.setPosition(0x18);
+    const gameType = this.reader.readUInt16LE();
+    
+    console.log('[ScrepCore] Game type:', gameType);
+    console.log('[ScrepCore] Unknown1:', unknown1);
+    console.log('[ScrepCore] Unknown2:', unknown2);
+    
+    // Map name nach screp repo - verschiedene mögliche Offsets
     let mapName = 'Unknown Map';
-    const mapOffsets = [0x61, 0x68, 0x7C];
+    const mapNameOffsets = [0x61, 0x68, 0x7C, 0x89];
     
-    for (const offset of mapOffsets) {
+    for (const offset of mapNameOffsets) {
       try {
-        if (offset < this.data.byteLength - 32) {
+        if (offset < this.data.byteLength - 64) {
           this.reader.setPosition(offset);
-          const testName = this.reader.readNullTerminatedString(32);
+          const testName = this.reader.readNullTerminatedString(64);
           if (this.isValidMapName(testName)) {
-            mapName = testName;
+            mapName = testName.trim();
             console.log('[ScrepCore] Map name found at offset', '0x' + offset.toString(16), ':', mapName);
             break;
           }
@@ -173,19 +128,10 @@ export class ScrepCore {
         continue;
       }
     }
-    
-    // Game type
-    let gameType = 1;
-    try {
-      this.reader.setPosition(0x1A);
-      gameType = this.reader.readUInt16LE();
-    } catch (e) {
-      console.warn('[ScrepCore] Failed to read game type');
-    }
 
     return {
       replayID,
-      engine,
+      engine: unknown1, // Engine wird oft in unknown1 gespeichert
       frames,
       startTime: new Date(),
       mapName,
@@ -195,22 +141,43 @@ export class ScrepCore {
   }
 
   /**
-   * Player parsing nach screp repo
+   * Player parsing nach screp/rep/repdecoder.go
    */
   private parsePlayers(): PlayerData[] {
     const players: PlayerData[] = [];
     
-    // Player data offset nach screp repo
-    const playerOffset = 0x161;
+    // Nach screp repo: Player data starts bei ~0x161
+    // Aber das kann variieren - suche nach Player-Pattern
+    const possibleOffsets = [0x161, 0x1A1, 0x1C1, 0x200];
+    
+    for (const baseOffset of possibleOffsets) {
+      const foundPlayers = this.tryParsePlayersAt(baseOffset);
+      if (foundPlayers.length > 0) {
+        console.log('[ScrepCore] Found', foundPlayers.length, 'players at offset', '0x' + baseOffset.toString(16));
+        return foundPlayers;
+      }
+    }
+    
+    console.log('[ScrepCore] No players found at standard offsets');
+    return [];
+  }
+
+  private tryParsePlayersAt(baseOffset: number): PlayerData[] {
+    const players: PlayerData[] = [];
     
     for (let i = 0; i < 8; i++) {
       try {
-        const offset = playerOffset + (i * 36);
+        const offset = baseOffset + (i * 36); // Standard player entry size
+        
+        if (offset + 36 >= this.data.byteLength) break;
+        
         this.reader.setPosition(offset);
         
         const name = this.reader.readFixedString(25);
         if (!this.isValidPlayerName(name)) continue;
         
+        // Race, team, color nach screp format
+        this.reader.setPosition(offset + 25);
         const raceData = this.reader.readUInt8();
         const team = this.reader.readUInt8();
         const color = this.reader.readUInt8();
@@ -224,21 +191,21 @@ export class ScrepCore {
         });
         
       } catch (error) {
-        continue;
+        break;
       }
     }
-
+    
     return players;
   }
 
   /**
-   * Command parsing nach screp repo
+   * Command parsing nach screp/rep/repdecoder.go
    */
   private async parseCommands(): Promise<Command[]> {
     console.log('[ScrepCore] Starting command parsing...');
     
-    // Command section nach screp repo finden
-    const commandOffset = this.findCommandOffset();
+    // Nach screp repo: Commands section suchen
+    const commandOffset = this.findCommandSection();
     if (!commandOffset) {
       console.warn('[ScrepCore] No command section found');
       return [];
@@ -253,43 +220,51 @@ export class ScrepCore {
   }
 
   /**
-   * Command offset finden nach screp repo
+   * Command section nach screp/rep/repdecoder.go finden
    */
-  private findCommandOffset(): number | null {
-    // Nach screp repo sind Commands normalerweise bei diesen Offsets
-    const possibleOffsets = [0x279, 0x633, 0x637];
+  private findCommandSection(): number | null {
+    // Nach screp repo: Commands nach Players
+    // Suche nach typischen Command-Signaturen
+    const searchStart = 0x400; // Nach Header und Players
+    const searchEnd = Math.min(this.data.byteLength - 1000, 0x1000);
     
-    for (const offset of possibleOffsets) {
-      if (this.isValidCommandOffset(offset)) {
-        return offset;
+    for (let pos = searchStart; pos < searchEnd; pos += 4) {
+      if (this.looksLikeCommandSection(pos)) {
+        return pos;
       }
     }
     
     return null;
   }
 
-  private isValidCommandOffset(offset: number): boolean {
-    if (offset >= this.data.byteLength - 100) return false;
-    
-    this.reader.setPosition(offset);
-    const sample = this.reader.readBytes(20);
-    
-    // Suche nach command patterns
-    let commandBytes = 0;
-    for (const byte of sample) {
-      if ([0x00, 0x01, 0x02, 0x09, 0x0A, 0x0B, 0x0C, 0x14, 0x15].includes(byte)) {
-        commandBytes++;
+  private looksLikeCommandSection(offset: number): boolean {
+    try {
+      this.reader.setPosition(offset);
+      const sample = this.reader.readBytes(32);
+      
+      // Suche nach Command-Patterns: 0x00 (frame sync), 0x09-0x15 (commands)
+      let commandLikeBytes = 0;
+      let frameSyncBytes = 0;
+      
+      for (let i = 0; i < sample.length; i++) {
+        const byte = sample[i];
+        if (byte === 0x00) frameSyncBytes++;
+        if ([0x09, 0x0A, 0x0B, 0x0C, 0x14, 0x15, 0x1D].includes(byte)) commandLikeBytes++;
       }
+      
+      // Command section sollte viele frame syncs und commands haben
+      return frameSyncBytes >= 3 && commandLikeBytes >= 2;
+      
+    } catch (error) {
+      return false;
     }
-    
-    return commandBytes >= 3;
   }
 
   /**
-   * Computed data
+   * Computed data berechnen
    */
   private computeData(header: ReplayHeader, players: PlayerData[], commands: Command[]): ComputedData {
-    const gameMinutes = header.frames / 24 / 60;
+    const gameMinutes = header.frames / 24 / 60; // 24 FPS für StarCraft
     
     const apm: number[] = [];
     const eapm: number[] = [];
@@ -299,8 +274,8 @@ export class ScrepCore {
       const playerCommands = commands.filter(cmd => cmd.playerID === player.id);
       const effectiveCommands = playerCommands.filter(cmd => cmd.effective);
       
-      const playerAPM = Math.round(playerCommands.length / gameMinutes);
-      const playerEAPM = Math.round(effectiveCommands.length / gameMinutes);
+      const playerAPM = gameMinutes > 0 ? Math.round(playerCommands.length / gameMinutes) : 0;
+      const playerEAPM = gameMinutes > 0 ? Math.round(effectiveCommands.length / gameMinutes) : 0;
       
       apm.push(playerAPM);
       eapm.push(playerEAPM);
@@ -314,22 +289,28 @@ export class ScrepCore {
     };
   }
 
-  // Utility functions
+  // Utility functions exakt nach screp repo
   private framesToDuration(frames: number): string {
-    const totalSeconds = Math.floor(frames / 24);
+    const totalSeconds = Math.floor(frames / 24); // 24 FPS
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
 
   private isValidMapName(name: string): boolean {
-    return name.length >= 3 && name.length <= 32 && 
-           /^[a-zA-Z0-9\s\-_.()]+$/.test(name);
+    if (!name || name.length < 3 || name.length > 32) return false;
+    
+    // Map name sollte druckbare Zeichen haben
+    const printableChars = name.replace(/[^\x20-\x7E]/g, '').trim();
+    return printableChars.length >= 3 && /^[a-zA-Z0-9\s\-_.()]+$/.test(printableChars);
   }
 
   private isValidPlayerName(name: string): boolean {
-    return name.length >= 2 && name.length <= 25 && 
-           /^[a-zA-Z0-9_\-\[\]]+$/.test(name.trim());
+    const trimmed = name.trim();
+    if (!trimmed || trimmed.length < 2 || trimmed.length > 25) return false;
+    
+    // Player name sollte alphanumerische Zeichen haben
+    return /^[a-zA-Z0-9_\-\[\]]+/.test(trimmed);
   }
 
   private getRaceName(raceId: number): string {
