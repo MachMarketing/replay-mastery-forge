@@ -21,6 +21,11 @@ export class BWBinaryReader {
     console.log('[BWBinaryReader] Initialized with buffer size:', buffer.byteLength);
   }
 
+  // Add data property getter for compatibility
+  get data(): DataView {
+    return this.view;
+  }
+
   // Position management
   setPosition(position: number): void {
     if (position < 0 || position > this.buffer.byteLength) {
@@ -146,6 +151,37 @@ export class BWBinaryReader {
     const buffer = this.buffer.slice(this.position, this.position + length);
     this.position += length;
     return buffer;
+  }
+
+  // Add createHexDump method for debugging
+  createHexDump(offset: number, length: number): string {
+    const startOffset = Math.max(0, offset);
+    const endOffset = Math.min(this.buffer.byteLength, offset + length);
+    const actualLength = endOffset - startOffset;
+    
+    if (actualLength <= 0) {
+      return 'No data available at offset';
+    }
+
+    const bytes = new Uint8Array(this.buffer, startOffset, actualLength);
+    const lines: string[] = [];
+    
+    for (let i = 0; i < bytes.length; i += 16) {
+      const lineBytes = bytes.slice(i, i + 16);
+      const hexPart = Array.from(lineBytes)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join(' ')
+        .padEnd(47, ' ');
+      
+      const asciiPart = Array.from(lineBytes)
+        .map(b => (b >= 32 && b <= 126) ? String.fromCharCode(b) : '.')
+        .join('');
+      
+      const lineOffset = (startOffset + i).toString(16).padStart(8, '0');
+      lines.push(`${lineOffset}: ${hexPart} |${asciiPart}|`);
+    }
+    
+    return lines.join('\n');
   }
 
   // Format detection based on screp logic
