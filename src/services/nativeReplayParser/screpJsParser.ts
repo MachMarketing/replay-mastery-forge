@@ -159,54 +159,34 @@ export class ScrepJsParser {
     
     console.log('[ScrepJsParser] Starte intelligente Build Order Extraktion');
     
-    // DEBUGGING: Alle möglichen Command-Quellen prüfen
-    const possibleCommandSources = [
-      { name: 'Commands', data: (screpResult as any).Commands },
-      { name: 'commands', data: (screpResult as any).commands },
-      { name: 'computed.commands', data: screpResult.computed?.commands },
-      { name: 'computed.buildOrders', data: screpResult.computed?.buildOrders },
-      { name: 'rawCommands', data: (screpResult as any).rawCommands },
-      { name: 'actions', data: (screpResult as any).actions },
-      { name: 'gameData', data: (screpResult as any).gameData },
-      { name: 'data', data: (screpResult as any).data }
-    ];
-    
-    console.log('[ScrepJsParser] Checking all possible command sources:');
-    possibleCommandSources.forEach(source => {
-      if (source.data) {
-        console.log(`[ScrepJsParser] ${source.name}:`, {
-          type: typeof source.data,
-          isArray: Array.isArray(source.data),
-          length: source.data.length || Object.keys(source.data).length,
-          firstItem: Array.isArray(source.data) ? source.data[0] : source.data[0] || 'not array'
-        });
-      } else {
-        console.log(`[ScrepJsParser] ${source.name}: not available`);
-      }
-    });
-    
-    // Finde die beste Command-Quelle
+    // Finde Commands in verschiedenen Quellen
     let commands: any[] = [];
     
-    // Versuche verschiedene Quellen
-    if (screpResult.computed?.buildOrders && Array.isArray(screpResult.computed.buildOrders)) {
-      console.log('[ScrepJsParser] Using computed.buildOrders as command source');
+    // Prüfe alle möglichen Command-Quellen
+    if ((screpResult as any).Commands && Array.isArray((screpResult as any).Commands)) {
+      commands = (screpResult as any).Commands;
+      console.log('[ScrepJsParser] Using Commands array:', commands.length);
+    } else if (screpResult.computed?.buildOrders && Array.isArray(screpResult.computed.buildOrders)) {
+      console.log('[ScrepJsParser] Converting buildOrders to commands format');
       
-      // Build Orders pro Spieler extrahieren
+      // Konvertiere buildOrders zu Command-Format
       screpResult.computed.buildOrders.forEach((playerBuildOrder, playerIndex) => {
         if (Array.isArray(playerBuildOrder)) {
           playerBuildOrder.forEach((buildItem, itemIndex) => {
+            // Extrahiere Unit-Name aus action string
+            const unitName = this.extractUnitNameFromAction(buildItem.action);
+            
             commands.push({
               Player: playerIndex,
               PlayerID: playerIndex,
-              frame: buildItem.frame || (itemIndex * 100), // Fallback frame
+              frame: buildItem.frame || (itemIndex * 200), // Fallback frame
               type: 'Build',
-              typeString: `Build ${buildItem.unitName || buildItem.action}`,
+              typeString: `Build ${unitName}`,
               parameters: {
-                unitName: buildItem.unitName,
-                unitType: this.getUnitIdFromName(buildItem.unitName)
+                unitName: unitName,
+                unitType: this.getUnitIdFromName(unitName)
               },
-              timestamp: buildItem.timestamp || buildItem.time,
+              timestamp: buildItem.timestamp || this.framesToTime(buildItem.frame || 0),
               action: buildItem.action,
               supply: buildItem.supply || 0
             });
@@ -214,13 +194,7 @@ export class ScrepJsParser {
         }
       });
       
-      console.log('[ScrepJsParser] Extracted', commands.length, 'commands from buildOrders');
-    } else if ((screpResult as any).Commands && Array.isArray((screpResult as any).Commands)) {
-      commands = (screpResult as any).Commands;
-      console.log('[ScrepJsParser] Using Commands array:', commands.length);
-    } else if ((screpResult as any).commands && Array.isArray((screpResult as any).commands)) {
-      commands = (screpResult as any).commands;
-      console.log('[ScrepJsParser] Using commands array:', commands.length);
+      console.log('[ScrepJsParser] Converted', commands.length, 'buildOrders to commands');
     }
     
     console.log('[ScrepJsParser] Final commands count:', commands.length);
@@ -356,10 +330,10 @@ export class ScrepJsParser {
     const buildOrders: Record<number, any[]> = {};
     screpResult.computed.buildOrders.forEach((buildOrder, playerIndex) => {
       buildOrders[playerIndex] = buildOrder.map(order => ({
-        time: order.timestamp || '0:00',
+        time: order.timestamp || this.framesToTime(order.frame || 0),
         action: order.action || 'Unknown Action',
         supply: order.supply || 0,
-        unitName: this.extractUnitName(order.action),
+        unitName: this.extractUnitNameFromAction(order.action),
         category: this.categorizeAction(order.action)
       }));
     });
@@ -382,6 +356,35 @@ export class ScrepJsParser {
       buildOrders,
       dataQuality
     };
+  }
+
+  private extractUnitNameFromAction(action: string): string {
+    if (!action) return 'Unknown';
+    
+    // Häufige Patterns für Unit-Namen in screp-js actions
+    const patterns = [
+      /Build (\w+)/,
+      /Train (\w+)/,
+      /Make (\w+)/,
+      /(\w+) built/,
+      /(\w+) trained/
+    ];
+    
+    for (const pattern of patterns) {
+      const match = action.match(pattern);
+      if (match) return match[1];
+    }
+    
+    // Fallback: nehme letztes Wort
+    const words = action.split(' ');
+    return words[words.length - 1] || 'Unknown';
+  }
+
+  private framesToTime(frame: number): string {
+    const totalSeconds = Math.floor(frame / 23.81);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
 
   private getUnitIdFromName(unitName: string): number {
@@ -414,7 +417,7 @@ export class ScrepJsParser {
       ))
       .slice(0, 10)
       .map(order => ({
-        time: order.timestamp || '0:00',
+        time: order.timestamp || this.framesToTime(order.frame || 0),
         action: order.action,
         intensity: Math.floor(Math.random() * 5) + 1
       }));
@@ -461,12 +464,6 @@ export class ScrepJsParser {
     return recommendations.length > 0 ? recommendations : ['Weiter so!'];
   }
 
-  private extractUnitName(action: string): string {
-    // Extrahiere Unit-Namen aus Action-String
-    const matches = action.match(/\b[A-Z][a-z]+\b/g);
-    return matches ? matches[matches.length - 1] : 'Unknown';
-  }
-
   private categorizeAction(action: string): 'build' | 'train' | 'tech' | 'upgrade' {
     const actionLower = action.toLowerCase();
     
@@ -489,7 +486,6 @@ export class ScrepJsParser {
   }
 
   private countCommands(screpResult: ScrepJsResult): number {
-    // Schätze Commands basierend auf APM und Spieldauer
     const totalAPM = screpResult.computed.apm.reduce((sum, apm) => sum + apm, 0);
     const gameMinutes = screpResult.header.frames / 24 / 60;
     return Math.round(totalAPM * gameMinutes);
