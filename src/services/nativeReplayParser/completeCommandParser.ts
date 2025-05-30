@@ -165,8 +165,8 @@ export class CompleteCommandParser {
       case CommandType.Burrow:
       case CommandType.Unburrow:
       case CommandType.HoldPosition:
-      case CommandType.Cloak:
-      case CommandType.Decloak:
+      case CommandType.CloakUnit:
+      case CommandType.DecloakUnit:
         return this.parseQueueableCommand(baseCommand);
         
       case CommandType.Chat:

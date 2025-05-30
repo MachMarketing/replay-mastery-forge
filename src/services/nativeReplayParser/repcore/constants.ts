@@ -1,4 +1,3 @@
-
 /**
  * RepCore Constants - Direct port from official screp repository
  * Complete unit, command, race, and other game constants
