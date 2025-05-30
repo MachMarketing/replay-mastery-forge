@@ -1,4 +1,3 @@
-
 /**
  * RepCore Constants - Direct port from official screp repository
  * Complete unit, command, race, and other game constants
@@ -62,7 +61,7 @@ export enum GameType {
   TopVsBottom = 15
 }
 
-// Command types - complete from screp
+// Command types - complete from screp with fixed enum values
 export enum CommandType {
   // Core commands
   RightClick = 0x14,
@@ -96,20 +95,20 @@ export enum CommandType {
   HoldPosition = 0x2A,
   Patrol = 0x17,
   
-  // 1.21+ commands with different IDs
-  RightClick121 = 0x25,
-  TargetedOrder121 = 0x26,
-  Select121 = 0x27,
-  SelectAdd121 = 0x28,
-  SelectRemove121 = 0x29,
-  Unload121 = 0x2A,
+  // 1.21+ commands with unique IDs
+  RightClick121 = 0x39,
+  TargetedOrder121 = 0x3A,
+  Select121 = 0x3B,
+  SelectAdd121 = 0x3C,
+  SelectRemove121 = 0x3D,
+  Unload121 = 0x3E,
   
   // Network commands
   Chat = 0x5C,
   KeepAlive = 0x00,
-  Sync = 0x36,
-  LeaveGame = 0x37,
-  MinimapPing = 0x38,
+  Sync = 0x37,
+  LeaveGame = 0x38,
+  MinimapPing = 0x3F,
   
   // Frame sync
   FrameSync = 0x00,
@@ -354,7 +353,7 @@ export const UNIT_NAMES: Record<number, string> = {
   [UnitID.Defilerpen]: 'Defiler Mound'
 };
 
-// Command name mappings exactly from screp - fixed duplicates
+// Command name mappings with fixed duplicate issues
 export const COMMAND_NAMES: Record<number, string> = {
   [CommandType.RightClick]: 'Right Click',
   [CommandType.Select]: 'Select',
@@ -378,12 +377,10 @@ export const COMMAND_NAMES: Record<number, string> = {
   [CommandType.Land]: 'Land',
   [CommandType.Burrow]: 'Burrow',
   [CommandType.Unburrow]: 'Unburrow',
-  [CommandType.Cloak]: 'Cloak',
-  [CommandType.Decloak]: 'Decloak',
   [CommandType.HoldPosition]: 'Hold Position',
   [CommandType.Patrol]: 'Patrol',
   
-  // 1.21+ commands - these are the ones that were duplicated
+  // 1.21+ commands with unique IDs
   [CommandType.RightClick121]: 'Right Click (1.21+)',
   [CommandType.TargetedOrder121]: 'Targeted Order (1.21+)',
   [CommandType.Select121]: 'Select (1.21+)',
