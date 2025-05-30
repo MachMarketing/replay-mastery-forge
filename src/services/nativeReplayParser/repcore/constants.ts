@@ -354,7 +354,7 @@ export const UNIT_NAMES: Record<number, string> = {
   [UnitID.Defilerpen]: 'Defiler Mound'
 };
 
-// Command name mappings exactly from screp
+// Command name mappings exactly from screp - fixed duplicates
 export const COMMAND_NAMES: Record<number, string> = {
   [CommandType.RightClick]: 'Right Click',
   [CommandType.Select]: 'Select',
@@ -382,12 +382,15 @@ export const COMMAND_NAMES: Record<number, string> = {
   [CommandType.Decloak]: 'Decloak',
   [CommandType.HoldPosition]: 'Hold Position',
   [CommandType.Patrol]: 'Patrol',
-  [CommandType.RightClick121]: 'Right Click',
-  [CommandType.TargetedOrder121]: 'Targeted Order',
-  [CommandType.Select121]: 'Select',
-  [CommandType.SelectAdd121]: 'Shift Select',
-  [CommandType.SelectRemove121]: 'Shift Deselect',
+  
+  // 1.21+ commands - these are the ones that were duplicated
+  [CommandType.RightClick121]: 'Right Click (1.21+)',
+  [CommandType.TargetedOrder121]: 'Targeted Order (1.21+)',
+  [CommandType.Select121]: 'Select (1.21+)',
+  [CommandType.SelectAdd121]: 'Shift Select (1.21+)',
+  [CommandType.SelectRemove121]: 'Shift Deselect (1.21+)',
   [CommandType.Unload121]: 'Unload',
+  
   [CommandType.Chat]: 'Chat',
   [CommandType.KeepAlive]: 'Keep Alive',
   [CommandType.Sync]: 'Sync',
