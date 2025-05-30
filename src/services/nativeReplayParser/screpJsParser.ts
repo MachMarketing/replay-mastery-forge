@@ -119,6 +119,14 @@ export class ScrepJsParser {
   private convertScrepResult(screpResult: ScrepJsResult): FinalReplayResult {
     console.log('[ScrepJsParser] Konvertiere screp-js Ergebnis zu FinalReplayResult mit intelligenter Build Order Analyse');
     
+    // Erstmal die komplette Struktur von screpResult loggen
+    console.log('[ScrepJsParser] COMPLETE screpResult structure:', {
+      keys: Object.keys(screpResult),
+      computed: screpResult.computed ? Object.keys(screpResult.computed) : 'none',
+      header: screpResult.header ? Object.keys(screpResult.header) : 'none',
+      players: screpResult.players ? screpResult.players.length : 'none'
+    });
+    
     // Header konvertieren
     const header = {
       mapName: screpResult.header.mapName || 'Unknown Map',
@@ -151,12 +159,74 @@ export class ScrepJsParser {
     
     console.log('[ScrepJsParser] Starte intelligente Build Order Extraktion');
     
-    // Extrahiere Commands für jeden Spieler - verwende das Commands Array
-    const commands = (screpResult as any).Commands || [];
-    console.log('[ScrepJsParser] Analysiere', commands.length, 'commands aus ScrepJsResult');
+    // DEBUGGING: Alle möglichen Command-Quellen prüfen
+    const possibleCommandSources = [
+      { name: 'Commands', data: (screpResult as any).Commands },
+      { name: 'commands', data: (screpResult as any).commands },
+      { name: 'computed.commands', data: screpResult.computed?.commands },
+      { name: 'computed.buildOrders', data: screpResult.computed?.buildOrders },
+      { name: 'rawCommands', data: (screpResult as any).rawCommands },
+      { name: 'actions', data: (screpResult as any).actions },
+      { name: 'gameData', data: (screpResult as any).gameData },
+      { name: 'data', data: (screpResult as any).data }
+    ];
+    
+    console.log('[ScrepJsParser] Checking all possible command sources:');
+    possibleCommandSources.forEach(source => {
+      if (source.data) {
+        console.log(`[ScrepJsParser] ${source.name}:`, {
+          type: typeof source.data,
+          isArray: Array.isArray(source.data),
+          length: source.data.length || Object.keys(source.data).length,
+          firstItem: Array.isArray(source.data) ? source.data[0] : source.data[0] || 'not array'
+        });
+      } else {
+        console.log(`[ScrepJsParser] ${source.name}: not available`);
+      }
+    });
+    
+    // Finde die beste Command-Quelle
+    let commands: any[] = [];
+    
+    // Versuche verschiedene Quellen
+    if (screpResult.computed?.buildOrders && Array.isArray(screpResult.computed.buildOrders)) {
+      console.log('[ScrepJsParser] Using computed.buildOrders as command source');
+      
+      // Build Orders pro Spieler extrahieren
+      screpResult.computed.buildOrders.forEach((playerBuildOrder, playerIndex) => {
+        if (Array.isArray(playerBuildOrder)) {
+          playerBuildOrder.forEach((buildItem, itemIndex) => {
+            commands.push({
+              Player: playerIndex,
+              PlayerID: playerIndex,
+              frame: buildItem.frame || (itemIndex * 100), // Fallback frame
+              type: 'Build',
+              typeString: `Build ${buildItem.unitName || buildItem.action}`,
+              parameters: {
+                unitName: buildItem.unitName,
+                unitType: this.getUnitIdFromName(buildItem.unitName)
+              },
+              timestamp: buildItem.timestamp || buildItem.time,
+              action: buildItem.action,
+              supply: buildItem.supply || 0
+            });
+          });
+        }
+      });
+      
+      console.log('[ScrepJsParser] Extracted', commands.length, 'commands from buildOrders');
+    } else if ((screpResult as any).Commands && Array.isArray((screpResult as any).Commands)) {
+      commands = (screpResult as any).Commands;
+      console.log('[ScrepJsParser] Using Commands array:', commands.length);
+    } else if ((screpResult as any).commands && Array.isArray((screpResult as any).commands)) {
+      commands = (screpResult as any).commands;
+      console.log('[ScrepJsParser] Using commands array:', commands.length);
+    }
+    
+    console.log('[ScrepJsParser] Final commands count:', commands.length);
     
     if (commands && commands.length > 0) {
-      console.log('[ScrepJsParser] Commands verfügbar:', commands.length);
+      console.log('[ScrepJsParser] Sample command structure:', commands[0]);
       
       players.forEach((player, index) => {
         const playerCommands = commands.filter((cmd: any) => 
@@ -166,6 +236,8 @@ export class ScrepJsParser {
         
         if (playerCommands.length > 0) {
           try {
+            console.log(`[ScrepJsParser] Sample player ${index} command:`, playerCommands[0]);
+            
             const timeline = BuildOrderExtractor.extractFromCommands(
               playerCommands,
               player,
@@ -187,12 +259,12 @@ export class ScrepJsParser {
                 race: player.race,
                 actions: [],
                 analysis: {
-                  strategy: 'unknown',
+                  strategy: 'error during extraction',
                   economicTiming: 0,
                   militaryTiming: 0,
                   techTiming: 0,
-                  errors: ['Commands konnten nicht analysiert werden'],
-                  suggestions: ['Parser-Verbesserungen erforderlich'],
+                  errors: [`Command extraction failed: ${error}`],
+                  suggestions: ['Parser needs improvement for this replay format'],
                   efficiency: 0
                 }
               },
@@ -207,12 +279,12 @@ export class ScrepJsParser {
               race: player.race,
               actions: [],
               analysis: {
-                strategy: 'no data',
+                strategy: 'no player commands',
                 economicTiming: 0,
                 militaryTiming: 0,
                 techTiming: 0,
-                errors: ['Keine Commands verfügbar'],
-                suggestions: ['Replay könnte beschädigt sein'],
+                errors: ['Keine Commands für diesen Spieler gefunden'],
+                suggestions: ['Commands könnten anders strukturiert sein'],
                 efficiency: 0
               }
             },
@@ -231,12 +303,12 @@ export class ScrepJsParser {
             race: player.race,
             actions: [],
             analysis: {
-              strategy: 'no commands',
+              strategy: 'no commands found',
               economicTiming: 0,
               militaryTiming: 0,
               techTiming: 0,
-              errors: ['Commands nicht von screp-js extrahiert'],
-              suggestions: ['Parser-Update erforderlich'],
+              errors: ['Keine Commands in screp-js Ergebnis gefunden'],
+              suggestions: ['Prüfe screp-js Version und Replay-Format'],
               efficiency: 0
             }
           },
@@ -296,7 +368,7 @@ export class ScrepJsParser {
     const dataQuality = {
       source: 'screp-js' as const,
       reliability: this.assessReliability(screpResult),
-      commandsFound: this.countCommands(screpResult),
+      commandsFound: commands.length,
       playersFound: players.length,
       apmCalculated: screpResult.computed.apm.some(apm => apm > 0),
       eapmCalculated: screpResult.computed.eapm.some(eapm => eapm > 0)
@@ -310,6 +382,27 @@ export class ScrepJsParser {
       buildOrders,
       dataQuality
     };
+  }
+
+  private getUnitIdFromName(unitName: string): number {
+    // Mapping der häufigsten Unit-Namen zu IDs
+    const unitMap: Record<string, number> = {
+      'SCV': 7,
+      'Probe': 64,
+      'Drone': 41,
+      'Marine': 0,
+      'Zealot': 65,
+      'Zergling': 37,
+      'Supply Depot': 106,
+      'Pylon': 60,
+      'Overlord': 42,
+      'Gateway': 133,
+      'Barracks': 109,
+      'Spawning Pool': 142,
+      'Cybernetics Core': 155
+    };
+    
+    return unitMap[unitName] || 0;
   }
 
   private generateMicroEvents(buildOrder: any[]): Array<{time: string; action: string; intensity: number}> {
