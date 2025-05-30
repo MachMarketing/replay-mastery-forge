@@ -177,7 +177,7 @@ export class ScrepJsParser {
     const buildOrders: Record<number, any[]> = {};
     screpResult.computed.buildOrders.forEach((buildOrder, playerIndex) => {
       buildOrders[playerIndex] = buildOrder.map(order => ({
-        time: order.timestamp || order.time || '0:00',
+        time: order.timestamp || '0:00',
         action: order.action || 'Unknown Action',
         supply: order.supply || 0,
         unitName: this.extractUnitName(order.action),
@@ -213,7 +213,7 @@ export class ScrepJsParser {
       ))
       .slice(0, 10)
       .map(order => ({
-        time: order.timestamp || order.time || '0:00',
+        time: order.timestamp || '0:00',
         action: order.action,
         intensity: Math.floor(Math.random() * 5) + 1
       }));

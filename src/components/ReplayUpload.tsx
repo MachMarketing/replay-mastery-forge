@@ -35,6 +35,13 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
     }
   };
 
+  const handleButtonClick = () => {
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    if (fileInput) {
+      fileInput.click();
+    }
+  };
+
   return (
     <div className="max-w-2xl mx-auto p-8">
       <div className="text-center mb-8">
@@ -76,7 +83,7 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
               disabled={isLoading}
             />
             <Button
-              onClick={() => document.querySelector('input[type="file"]')?.click()}
+              onClick={handleButtonClick}
               disabled={isLoading}
               className="mx-auto"
             >

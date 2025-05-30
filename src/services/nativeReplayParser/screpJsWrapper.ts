@@ -137,7 +137,8 @@ export class ScrepJsWrapper {
         console.log('[ScrepJsWrapper] First 5 commands:', result.Commands.slice(0, 5).map((cmd: any) => ({
           frame: cmd.Frame,
           type: cmd.Type,
-          player: cmd.PlayerID || cmd.Player
+          player: cmd.PlayerID || cmd.Player,
+          typeName: cmd.Type?.Name || 'Unknown'
         })));
       } else {
         console.warn('[ScrepJsWrapper] No commands found - trying alternative extraction');
@@ -203,9 +204,13 @@ export class ScrepJsWrapper {
     const apmData = this.calculateAPMFromPlayerDescs(playerDescs, players.length);
     console.log('[ScrepJsWrapper] Calculated APM:', apmData);
 
-    // Enhanced build order extraction from commands
+    // Enhanced build order extraction from commands with DETAILED logging
     const buildOrders = this.extractBuildOrdersFromCommands(commands, players.length);
-    console.log('[ScrepJsWrapper] Extracted build orders:', buildOrders.map(bo => `${bo.length} actions`));
+    console.log('[ScrepJsWrapper] === BUILD ORDER ANALYSIS COMPLETE ===');
+    buildOrders.forEach((bo, playerIndex) => {
+      console.log(`[ScrepJsWrapper] Player ${playerIndex} Build Order (${bo.length} actions):`, 
+        bo.slice(0, 10).map(action => `${action.timestamp}: ${action.action}`));
+    });
 
     // Calculate duration
     const durationMs = Math.floor((frameCount / 24) * 1000); // 24 FPS for StarCraft
@@ -248,7 +253,7 @@ export class ScrepJsWrapper {
     console.log('[ScrepJsWrapper] Game Type:', normalizedResult.header.gameType);
     console.log('[ScrepJsWrapper] APM:', normalizedResult.computed.apm);
     console.log('[ScrepJsWrapper] EAPM:', normalizedResult.computed.eapm);
-    console.log('[ScrepJsWrapper] Build Orders:', normalizedResult.computed.buildOrders.map(bo => `${bo.length} actions`));
+    console.log('[ScrepJsWrapper] Build Orders Summary:', normalizedResult.computed.buildOrders.map(bo => `${bo.length} actions`));
 
     return normalizedResult;
   }
@@ -259,35 +264,85 @@ export class ScrepJsWrapper {
     action: string;
     supply?: number;
   }>> {
-    console.log('[ScrepJsWrapper] Extracting build orders from commands...');
-    console.log('[ScrepJsWrapper] Commands available:', commands ? commands.length : 0);
+    console.log('[ScrepJsWrapper] === EXTRACTING BUILD ORDERS FROM COMMANDS ===');
+    console.log('[ScrepJsWrapper] Total commands available:', commands ? commands.length : 0);
 
     if (!commands || !Array.isArray(commands) || commands.length === 0) {
       console.log('[ScrepJsWrapper] No commands available for build order extraction');
       return Array(playerCount).fill(0).map(() => []);
     }
 
+    // Log alle verfügbaren Command Types
+    const commandTypes = new Set();
+    commands.forEach(cmd => {
+      const cmdType = cmd.Type?.Name || cmd.Type || 'Unknown';
+      commandTypes.add(cmdType);
+    });
+    console.log('[ScrepJsWrapper] Available command types:', Array.from(commandTypes));
+
     const buildOrders = Array(playerCount).fill(0).map(() => [] as any[]);
 
-    // Filter commands for build-related actions
-    const buildCommands = commands.filter((cmd: any) => {
+    // VIEL aggressivere Filterung für Build Commands
+    const potentialBuildCommands = commands.filter((cmd: any) => {
       const cmdType = cmd.Type?.Name || cmd.Type || '';
       const cmdTypeStr = cmdType.toString().toLowerCase();
       
-      // Look for build, train, or construction related commands
-      return cmdTypeStr.includes('build') || 
-             cmdTypeStr.includes('train') || 
-             cmdTypeStr.includes('make') ||
-             cmdTypeStr.includes('construct') ||
-             cmdType === 'Build' ||
-             cmdType === 'Train' ||
-             cmd.Type === 12 || // BUILD command ID
-             cmd.Type === 29;   // TRAIN command ID
+      // Schaue nach ALLEN möglichen Build/Train/Construction Befehlen
+      const isBuildRelated = cmdTypeStr.includes('build') || 
+                            cmdTypeStr.includes('train') || 
+                            cmdTypeStr.includes('make') ||
+                            cmdTypeStr.includes('construct') ||
+                            cmdTypeStr.includes('morph') ||
+                            cmdTypeStr.includes('research') ||
+                            cmdTypeStr.includes('upgrade') ||
+                            cmdType === 'Build' ||
+                            cmdType === 'Train' ||
+                            cmd.Type === 12 || // BUILD command ID
+                            cmd.Type === 29 ||  // TRAIN command ID
+                            cmd.Type === 31 ||  // BUILD command ID alternative
+                            cmd.Type === 35;    // RESEARCH/UPGRADE
+      
+      if (isBuildRelated) {
+        console.log('[ScrepJsWrapper] Found potential build command:', {
+          type: cmdType,
+          typeId: cmd.Type,
+          player: cmd.PlayerID || cmd.Player,
+          frame: cmd.Frame,
+          unitType: cmd.UnitType,
+          params: cmd.Parameters
+        });
+      }
+      
+      return isBuildRelated;
     });
 
-    console.log('[ScrepJsWrapper] Build-related commands found:', buildCommands.length);
+    console.log('[ScrepJsWrapper] Potential build commands found:', potentialBuildCommands.length);
 
-    buildCommands.forEach((cmd: any) => {
+    // Wenn wir keine spezifischen Build Commands finden, nehmen wir ALLE Commands und kategorisieren sie
+    if (potentialBuildCommands.length === 0) {
+      console.log('[ScrepJsWrapper] No specific build commands found, analyzing all commands...');
+      
+      commands.forEach((cmd: any, index: number) => {
+        if (index < 20) { // Log first 20 commands for analysis
+          console.log(`[ScrepJsWrapper] Command ${index}:`, {
+            type: cmd.Type?.Name || cmd.Type,
+            typeId: cmd.Type,
+            player: cmd.PlayerID || cmd.Player,
+            frame: cmd.Frame,
+            unitType: cmd.UnitType,
+            parameters: cmd.Parameters
+          });
+        }
+      });
+      
+      // Fallback: nehme alle Commands die nicht offensichtlich Spam sind
+      potentialBuildCommands.push(...commands.filter((cmd: any) => {
+        const frame = cmd.Frame || 0;
+        return frame > 100; // Ignore very early game spam
+      }).slice(0, 100)); // Limit to first 100 commands
+    }
+
+    potentialBuildCommands.forEach((cmd: any) => {
       const playerId = cmd.PlayerID ?? cmd.Player ?? 0;
       if (playerId >= 0 && playerId < playerCount) {
         const frame = cmd.Frame || 0;
@@ -307,26 +362,43 @@ export class ScrepJsWrapper {
       }
     });
 
-    console.log('[ScrepJsWrapper] Build orders per player:', buildOrders.map((bo, i) => `Player ${i}: ${bo.length} actions`));
+    console.log('[ScrepJsWrapper] Final build orders per player:', buildOrders.map((bo, i) => `Player ${i}: ${bo.length} actions`));
 
     return buildOrders;
   }
 
   private getActionDescription(cmd: any): string {
     const cmdType = cmd.Type?.Name || cmd.Type || 'Unknown';
-    const unitType = cmd.UnitType || cmd.Unit || '';
+    const unitType = cmd.UnitType?.Name || cmd.UnitType || '';
+    const techType = cmd.TechType?.Name || cmd.TechType || '';
+    const upgradeType = cmd.UpgradeType?.Name || cmd.UpgradeType || '';
     
+    // Versuche so detailliert wie möglich zu beschreiben
     if (unitType) {
       return `${cmdType} ${unitType}`;
+    } else if (techType) {
+      return `Research ${techType}`;
+    } else if (upgradeType) {
+      return `Upgrade ${upgradeType}`;
+    } else if (cmd.Parameters) {
+      // Versuche Parameter zu analysieren
+      const params = cmd.Parameters;
+      if (params.UnitType) {
+        return `${cmdType} ${params.UnitType}`;
+      }
     }
     
     return cmdType.toString();
   }
 
   private estimateSupply(frame: number, buildIndex: number): number {
-    // Very basic supply estimation based on time and build order position
+    // Intelligente Supply-Schätzung basierend auf Zeit und Build Order Position
     const timeMinutes = frame / (24 * 60);
-    return Math.min(9 + buildIndex * 2 + Math.floor(timeMinutes * 10), 200);
+    const baseSupply = 9; // Starting supply
+    const supplyFromTime = Math.floor(timeMinutes * 15); // ~15 supply per minute growth
+    const supplyFromBuildings = buildIndex * 3; // Rough estimate based on build order
+    
+    return Math.min(baseSupply + supplyFromTime + supplyFromBuildings, 200);
   }
 
   private cleanMapName(mapName: string): string {
