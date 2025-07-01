@@ -1,6 +1,6 @@
 
 /**
- * Command Parser - EXAKT nach screp GitHub repo
+ * Command Parser - EXAKT nach screp GitHub repo mit verbesserter Command-Erkennung
  * https://github.com/icza/screp/blob/main/rep/repdecoder.go
  */
 
@@ -17,10 +17,10 @@ export class CommandParser {
   }
 
   async parseAllCommands(): Promise<Command[]> {
-    console.log('[CommandParser] Starting command parsing (screp repo style)...');
+    console.log('[CommandParser] Starting improved command parsing...');
     const commands: Command[] = [];
     let iterations = 0;
-    const maxIterations = 200000; // Für längere Replays
+    const maxIterations = 500000; // Für sehr lange Replays
 
     while (this.reader.canRead(1) && iterations < maxIterations) {
       iterations++;
@@ -50,15 +50,20 @@ export class CommandParser {
           continue;
         }
         
-        // Regular command parsing
+        // Regular command parsing mit verbesserter Validierung
         const command = this.parseCommand(byte);
         if (command) {
           commands.push(command);
         }
         
       } catch (error) {
-        console.warn('[CommandParser] Parse error at iteration', iterations, ':', error);
-        break;
+        // Weniger aggressive Fehlerbehandlung
+        if (iterations < 1000) {
+          console.warn('[CommandParser] Early parse error at iteration', iterations, ':', error);
+          break;
+        }
+        // Für spätere Iterationen: ignoriere einzelne Fehler
+        continue;
       }
     }
 
@@ -70,7 +75,13 @@ export class CommandParser {
     const cmdDef = ScrepConstants.getCommandDefinition(commandType);
     
     if (!cmdDef) {
-      // Unknown command - skip
+      // Für unbekannte Commands: versuche trotzdem Player ID zu lesen
+      if (this.reader.canRead(1)) {
+        const possiblePlayerId = this.reader.peek();
+        if (possiblePlayerId <= 11) {
+          this.reader.readUInt8(); // Player ID konsumieren
+        }
+      }
       return null;
     }
     
@@ -86,7 +97,7 @@ export class CommandParser {
       return null;
     }
 
-    // Parameter lesen
+    // Parameter lesen mit verbesserter Fehlerbehandlung
     const parameters = this.parseCommandParameters(commandType, cmdDef.length);
     
     return {
@@ -97,7 +108,8 @@ export class CommandParser {
       parameters,
       effective: cmdDef.effective,
       ineffKind: cmdDef.effective ? '' : 'spam',
-      time: this.frameToTimeString(this.currentFrame)
+      time: this.frameToTimeString(this.currentFrame),
+      rawData: new Uint8Array([commandType, playerID]) // Für Debugging
     };
   }
 
@@ -109,10 +121,11 @@ export class CommandParser {
     }
     
     if (!this.reader.canRead(length)) {
+      console.warn('[CommandParser] Cannot read', length, 'bytes for command', commandType);
       return parameters;
     }
     
-    // Spezielle Parameter für Commands - nach screp repo
+    // Verbesserte Parameter-Parsing für verschiedene Commands
     switch (commandType) {
       case 0x0C: // Build
         if (length >= 6) {
@@ -120,6 +133,7 @@ export class CommandParser {
           parameters.x = this.reader.readUInt16LE();
           parameters.y = this.reader.readUInt16LE();
           parameters.unitName = ScrepConstants.getUnitName(parameters.unitTypeId);
+          console.log('[CommandParser] Build command:', parameters.unitName, 'at', parameters.x, parameters.y);
         }
         break;
         
@@ -142,14 +156,23 @@ export class CommandParser {
         if (length >= 2) {
           parameters.unitTypeId = this.reader.readUInt16LE();
           parameters.unitName = ScrepConstants.getUnitName(parameters.unitTypeId);
+          console.log('[CommandParser] Train command:', parameters.unitName);
         }
         break;
         
       case 0x2F: // Tech
-      case 0x31: // Upgrade
         if (length >= 2) {
           parameters.techId = this.reader.readUInt16LE();
           parameters.techName = ScrepConstants.getTechName(parameters.techId);
+          console.log('[CommandParser] Tech command:', parameters.techName);
+        }
+        break;
+        
+      case 0x31: // Upgrade
+        if (length >= 2) {
+          parameters.upgradeId = this.reader.readUInt16LE();
+          parameters.upgradeName = ScrepConstants.getTechName(parameters.upgradeId);
+          console.log('[CommandParser] Upgrade command:', parameters.upgradeName);
         }
         break;
         
@@ -160,11 +183,30 @@ export class CommandParser {
         }
         break;
         
+      case 0x09: // Select
+      case 0x0A: // Shift Select
+      case 0x0B: // Shift Deselect
+        if (length >= 2) {
+          parameters.count = this.reader.readUInt8();
+          parameters.unitType = this.reader.readUInt8();
+        }
+        break;
+        
       default:
-        // Für andere Commands: raw bytes
-        if (length > 0) {
-          const bytes = this.reader.readBytes(length);
-          parameters.raw = Array.from(bytes);
+        // Für andere Commands: raw bytes mit Fehlerbehandlung
+        try {
+          if (length > 0 && length <= 32) { // Sinnvolle Länge
+            const bytes = this.reader.readBytes(length);
+            parameters.raw = Array.from(bytes);
+          } else {
+            console.warn('[CommandParser] Suspicious parameter length:', length, 'for command', commandType);
+            // Skip suspicious lengths to avoid corruption
+            if (length > 0 && length <= 1024) {
+              this.reader.skip(length);
+            }
+          }
+        } catch (error) {
+          console.warn('[CommandParser] Error reading parameters for command', commandType, ':', error);
         }
         break;
     }
