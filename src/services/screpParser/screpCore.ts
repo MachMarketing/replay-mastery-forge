@@ -1,4 +1,3 @@
-
 /**
  * screp Core Parser - EXAKTE Implementation nach screp GitHub Repo
  * https://github.com/icza/screp/blob/main/rep/repdecoder.go
@@ -332,5 +331,4 @@ export class ScrepCore {
   }
 }
 
-export { ScrepCore };
 export type { ScrepParseResult };
