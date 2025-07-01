@@ -67,35 +67,54 @@ export class ScrepCore {
   }
 
   /**
-   * Header parsing - EXAKT nach screp/rep/repdecoder.go mit korrekten Offsets
+   * Header parsing - KORRIGIERTE Offsets für SC:R Replays
    */
   private parseHeader(): ReplayHeader {
-    console.log('[ScrepCore] Parsing header with corrected offsets...');
+    console.log('[ScrepCore] Parsing header with SC:R corrected offsets...');
     
     this.reader.setPosition(0);
     
-    // Nach screp repo: ReplayID ist am Anfang, nicht GameID
-    // Offset 0x00: ReplayID (4 bytes) - 'reRS' oder 'seRS'
+    // KORREKT: ReplayID ist bei Offset 0x0C (12), nicht 0x00!
+    // Das ist der Unterschied zwischen SC1 und SC:R Replays
+    this.reader.setPosition(0x0C);
     const replayIdBytes = this.reader.readBytes(4);
     const replayID = new TextDecoder('latin1').decode(replayIdBytes);
-    console.log('[ScrepCore] Replay ID at 0x00:', replayID);
+    console.log('[ScrepCore] Replay ID at 0x0C (correct offset):', replayID);
     
     // Validate replay ID first
     if (replayID !== 'reRS' && replayID !== 'seRS') {
-      throw new Error(`Invalid StarCraft replay. Expected 'reRS' or 'seRS', got: '${replayID}'`);
+      console.log('[ScrepCore] First attempt failed, trying fallback detection...');
+      
+      // Fallback: Durchsuche ersten 64 bytes nach gültiger Replay ID
+      let foundValidId = false;
+      let validReplayId = '';
+      
+      for (let offset = 0; offset < Math.min(64, this.data.byteLength - 4); offset++) {
+        this.reader.setPosition(offset);
+        const testBytes = this.reader.readBytes(4);
+        const testId = new TextDecoder('latin1').decode(testBytes);
+        
+        if (testId === 'reRS' || testId === 'seRS') {
+          console.log('[ScrepCore] Found valid Replay ID at offset:', '0x' + offset.toString(16), 'ID:', testId);
+          validReplayId = testId;
+          foundValidId = true;
+          break;
+        }
+      }
+      
+      if (!foundValidId) {
+        throw new Error(`Invalid StarCraft replay. No valid replay ID found. Expected 'reRS' or 'seRS', but searched first 64 bytes without success.`);
+      }
+      
+      replayID = validReplayId;
     }
     
-    // Skip to known header positions nach screp repo
-    this.reader.setPosition(0x0C);
-    const gameId = this.reader.readUInt32LE();
-    console.log('[ScrepCore] Game ID at 0x0C:', '0x' + gameId.toString(16));
-    
-    // Engine version
+    // Engine version - SC:R verwendet anderen Offset
     this.reader.setPosition(0x10);
     const engine = this.reader.readUInt32LE();
     console.log('[ScrepCore] Engine at 0x10:', engine);
     
-    // Frames - korrekte Position nach screp repo
+    // Frames - SC:R korrekte Position
     this.reader.setPosition(0x14);
     const frames = this.reader.readUInt32LE();
     console.log('[ScrepCore] Frames at 0x14:', frames);
@@ -105,8 +124,13 @@ export class ScrepCore {
     const gameType = this.reader.readUInt16LE();
     console.log('[ScrepCore] Game type at 0x18:', gameType);
     
-    // Map name - bessere Detection
-    const mapName = this.findMapNameImproved();
+    // Game ID - richtige Position für SC:R
+    this.reader.setPosition(0x00);
+    const gameId = this.reader.readUInt32LE();
+    console.log('[ScrepCore] Game ID at 0x00:', '0x' + gameId.toString(16));
+    
+    // Map name - SC:R spezifische Detection
+    const mapName = this.findMapNameSCR();
     console.log('[ScrepCore] Map name found:', mapName);
 
     return {
@@ -122,18 +146,19 @@ export class ScrepCore {
   }
 
   /**
-   * Verbesserte Map name detection mit mehreren Strategien
+   * SC:R spezifische Map name detection
    */
-  private findMapNameImproved(): string {
-    // Strategie 1: Bekannte Offsets für verschiedene Replay-Versionen
-    const commonOffsets = [0x61, 0x68, 0x75, 0x7C, 0x89, 0xA5, 0xB2, 0xC0];
+  private findMapNameSCR(): string {
+    // SC:R Map Namen sind typischerweise bei anderen Offsets als SC1
+    const scrOffsets = [0x75, 0x89, 0x95, 0xA5, 0xB2, 0xC0, 0xD0, 0xE0];
     
-    for (const offset of commonOffsets) {
+    for (const offset of scrOffsets) {
       try {
         if (offset + 64 < this.data.byteLength) {
           this.reader.setPosition(offset);
           const testName = this.reader.readNullTerminatedString(32);
           if (this.isValidMapName(testName)) {
+            console.log('[ScrepCore] Found valid map name at offset', '0x' + offset.toString(16) + ':', testName);
             return testName.trim();
           }
         }
@@ -142,12 +167,14 @@ export class ScrepCore {
       }
     }
     
-    // Strategie 2: Durchsuche bekannten Bereich für Map-Pattern
-    for (let pos = 0x50; pos < Math.min(0x200, this.data.byteLength - 32); pos += 4) {
+    // Erweiterte Suche für SC:R
+    console.log('[ScrepCore] Extended map name search for SC:R...');
+    for (let pos = 0x60; pos < Math.min(0x300, this.data.byteLength - 32); pos += 2) {
       try {
         this.reader.setPosition(pos);
         const testName = this.reader.readNullTerminatedString(32);
-        if (this.isValidMapName(testName)) {
+        if (this.isValidMapName(testName) && testName.length > 5) {
+          console.log('[ScrepCore] Extended search found map at', '0x' + pos.toString(16) + ':', testName);
           return testName.trim();
         }
       } catch (e) {
@@ -159,30 +186,30 @@ export class ScrepCore {
   }
 
   /**
-   * Player parsing - verbesserte Logik nach screp repo
+   * Player parsing - SC:R angepasst
    */
   private parsePlayers(): PlayerData[] {
-    console.log('[ScrepCore] Parsing players with improved logic...');
+    console.log('[ScrepCore] Parsing players with SC:R logic...');
     
-    // Player section - erweiterte Offset-Suche
-    const playerOffsets = [0x161, 0x1A1, 0x1C1, 0x200, 0x240, 0x280, 0x2C0];
+    // SC:R Player section - erweiterte Offset-Suche
+    const scrPlayerOffsets = [0x161, 0x1A1, 0x1C1, 0x200, 0x240, 0x280, 0x2C0, 0x300];
     
-    for (const baseOffset of playerOffsets) {
+    for (const baseOffset of scrPlayerOffsets) {
       const players = this.tryParsePlayersAt(baseOffset);
       if (players.length > 0 && this.validatePlayers(players)) {
-        console.log('[ScrepCore] Found', players.length, 'valid players at offset', '0x' + baseOffset.toString(16));
+        console.log('[ScrepCore] Found', players.length, 'valid SC:R players at offset', '0x' + baseOffset.toString(16));
         return players;
       }
     }
     
-    console.warn('[ScrepCore] No valid players found');
+    console.warn('[ScrepCore] No valid SC:R players found');
     return [];
   }
 
   private tryParsePlayersAt(baseOffset: number): PlayerData[] {
     const players: PlayerData[] = [];
     
-    for (let i = 0; i < 12; i++) { // Max 12 players
+    for (let i = 0; i < 12; i++) {
       try {
         const offset = baseOffset + (i * 36); // Standard player entry size
         
@@ -190,13 +217,13 @@ export class ScrepCore {
         
         this.reader.setPosition(offset);
         
-        // Player name (25 bytes) - mit besserer Dekodierung
+        // Player name (25 bytes) - SC:R spezifische Dekodierung
         const nameBytes = this.reader.readBytes(25);
-        const name = this.decodePlayerName(nameBytes);
+        const name = this.decodeSCRPlayerName(nameBytes);
         
         if (!this.isValidPlayerName(name)) continue;
         
-        // Race, team, color
+        // Race, team, color - SC:R Format
         const raceId = this.reader.readUInt8();
         const team = this.reader.readUInt8();
         const color = this.reader.readUInt8();
@@ -212,6 +239,8 @@ export class ScrepCore {
           type
         });
         
+        console.log('[ScrepCore] SC:R Player', i + ':', name, '(' + ScrepConstants.getRaceName(raceId) + ')');
+        
       } catch (error) {
         break;
       }
@@ -221,15 +250,18 @@ export class ScrepCore {
   }
 
   /**
-   * Bessere Player-Name Dekodierung
+   * SC:R spezifische Player-Name Dekodierung
    */
-  private decodePlayerName(bytes: Uint8Array): string {
+  private decodeSCRPlayerName(bytes: Uint8Array): string {
     let name = '';
     for (let i = 0; i < bytes.length && bytes[i] !== 0; i++) {
       const byte = bytes[i];
-      // Nur druckbare ASCII-Zeichen
+      // SC:R unterstützt erweiterten Zeichensatz
       if (byte >= 32 && byte <= 126) {
         name += String.fromCharCode(byte);
+      } else if (byte > 127) {
+        // Mögliche Unicode-Zeichen in SC:R
+        name += '?';
       }
     }
     return name.trim();
@@ -241,9 +273,9 @@ export class ScrepCore {
   private validatePlayers(players: PlayerData[]): boolean {
     if (players.length === 0) return false;
     
-    // Mindestens 2 Spieler für ein echtes Spiel
-    const humanPlayers = players.filter(p => p.type === 1);
-    if (humanPlayers.length < 2) return false;
+    // Mindestens 1 Spieler für ein echtes Spiel (SC:R kann auch 1v1 vs KI sein)
+    const validPlayers = players.filter(p => p.name.length > 1);
+    if (validPlayers.length < 1) return false;
     
     // Alle Spieler sollten gültige Namen haben
     return players.every(p => this.isValidPlayerName(p.name));
@@ -253,7 +285,7 @@ export class ScrepCore {
    * Command parsing - delegiert an CommandParser
    */
   private async parseCommands(): Promise<Command[]> {
-    console.log('[ScrepCore] Starting command parsing...');
+    console.log('[ScrepCore] Starting SC:R command parsing...');
     
     const commandOffset = this.findCommandSection();
     if (!commandOffset) {
@@ -270,12 +302,12 @@ export class ScrepCore {
   }
 
   /**
-   * Verbesserte Command section detection
+   * SC:R Command section detection
    */
   private findCommandSection(): number | null {
-    // Command section nach Players - erweiterte Suche
-    const searchStart = 0x400;
-    const searchEnd = Math.min(this.data.byteLength - 1000, 0x4000);
+    // SC:R Command section - erweiterte Suche
+    const searchStart = 0x500;
+    const searchEnd = Math.min(this.data.byteLength - 1000, 0x6000);
     
     for (let pos = searchStart; pos < searchEnd; pos += 4) {
       if (this.looksLikeCommandSection(pos)) {
@@ -289,9 +321,9 @@ export class ScrepCore {
   private looksLikeCommandSection(offset: number): boolean {
     try {
       this.reader.setPosition(offset);
-      const sample = this.reader.readBytes(128);
+      const sample = this.reader.readBytes(256);
       
-      // Erweiterte Pattern-Erkennung
+      // SC:R spezifische Pattern-Erkennung
       let frameSyncCount = 0;
       let commandCount = 0;
       let validPatterns = 0;
@@ -299,22 +331,26 @@ export class ScrepCore {
       for (let i = 0; i < sample.length - 2; i++) {
         const byte = sample[i];
         const nextByte = sample[i + 1];
-        const thirdByte = sample[i + 2];
         
-        // Frame sync patterns (0x00, 0x01, 0x02, 0x03)
+        // Frame sync patterns (0x00-0x03)
         if (byte <= 0x03) frameSyncCount++;
         
-        // Bekannte Commands mit Player ID
+        // SC:R Commands mit Player ID (0-11)
         if (ScrepConstants.isValidCommandType(byte) && nextByte < 12) {
           commandCount++;
           validPatterns++;
         }
         
-        // Sequentielle Patterns
+        // SC:R spezifische Sequenzen
         if (byte === 0x00 && nextByte === 0x00) validPatterns++;
+        if (byte === 0x0C && nextByte < 12) validPatterns++; // Build commands
+        if (byte === 0x1E && nextByte < 12) validPatterns++; // Train commands
       }
       
-      return frameSyncCount >= 3 && commandCount >= 2 && validPatterns >= 5;
+      console.log('[ScrepCore] Command pattern analysis at', '0x' + offset.toString(16) + ':', 
+                  'frameSyncs:', frameSyncCount, 'commands:', commandCount, 'patterns:', validPatterns);
+      
+      return frameSyncCount >= 5 && commandCount >= 3 && validPatterns >= 8;
       
     } catch (error) {
       return false;
@@ -341,6 +377,8 @@ export class ScrepCore {
       apm.push(playerAPM);
       eapm.push(playerEAPM);
       buildOrders.push(this.extractBuildOrder(playerCommands));
+      
+      console.log('[ScrepCore] Player', player.name, 'APM:', playerAPM, 'EAPM:', playerEAPM);
     });
     
     return {
@@ -380,7 +418,8 @@ export class ScrepCore {
   private isValidPlayerName(name: string): boolean {
     const trimmed = name.trim();
     if (!trimmed || trimmed.length < 2 || trimmed.length > 25) return false;
-    return /^[a-zA-Z0-9_\-\[\]]+/.test(trimmed);
+    // SC:R erlaubt mehr Sonderzeichen
+    return /^[a-zA-Z0-9_\-\[\]`'~!@#$%^&*()+={}|\\:";'<>?,./ ]+/.test(trimmed);
   }
 }
 
