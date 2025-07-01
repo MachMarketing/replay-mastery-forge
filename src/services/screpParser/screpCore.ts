@@ -78,7 +78,7 @@ export class ScrepCore {
     // Das ist der Unterschied zwischen SC1 und SC:R Replays
     this.reader.setPosition(0x0C);
     const replayIdBytes = this.reader.readBytes(4);
-    const replayID = new TextDecoder('latin1').decode(replayIdBytes);
+    let replayID = new TextDecoder('latin1').decode(replayIdBytes);
     console.log('[ScrepCore] Replay ID at 0x0C (correct offset):', replayID);
     
     // Validate replay ID first
