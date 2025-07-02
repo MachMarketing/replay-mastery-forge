@@ -1,6 +1,5 @@
-
 /**
- * Command Parser - EXAKT nach screp GitHub repo mit verbesserter Command-Erkennung
+ * Command Parser - EXAKT nach screp GitHub repo
  * https://github.com/icza/screp/blob/main/rep/repdecoder.go
  */
 
@@ -17,10 +16,10 @@ export class CommandParser {
   }
 
   async parseAllCommands(): Promise<Command[]> {
-    console.log('[CommandParser] Starting improved command parsing...');
+    console.log('[CommandParser] Starting command parsing...');
     const commands: Command[] = [];
     let iterations = 0;
-    const maxIterations = 500000; // Für sehr lange Replays
+    const maxIterations = 1000000;
 
     while (this.reader.canRead(1) && iterations < maxIterations) {
       iterations++;
@@ -28,46 +27,43 @@ export class CommandParser {
       try {
         const byte = this.reader.readUInt8();
         
-        // Frame sync commands - EXAKT nach screp repo
+        // Frame sync commands - EXAKT nach screp
         if (byte === 0x00) {
-          // Frame increment
           this.currentFrame++;
           continue;
-        } else if (byte === 0x01 && this.reader.canRead(1)) {
-          // Frame skip (1 byte)
+        } else if (byte === 0x01) {
+          if (!this.reader.canRead(1)) break;
           const skip = this.reader.readUInt8();
           this.currentFrame += skip;
           continue;
-        } else if (byte === 0x02 && this.reader.canRead(2)) {
-          // Frame skip (2 bytes)
+        } else if (byte === 0x02) {
+          if (!this.reader.canRead(2)) break;
           const skip = this.reader.readUInt16LE();
           this.currentFrame += skip;
           continue;
-        } else if (byte === 0x03 && this.reader.canRead(4)) {
-          // Frame skip (4 bytes)
+        } else if (byte === 0x03) {
+          if (!this.reader.canRead(4)) break;
           const skip = this.reader.readUInt32LE();
           this.currentFrame += skip;
           continue;
         }
         
-        // Regular command parsing mit verbesserter Validierung
+        // Regular command
         const command = this.parseCommand(byte);
         if (command) {
           commands.push(command);
         }
         
       } catch (error) {
-        // Weniger aggressive Fehlerbehandlung
         if (iterations < 1000) {
-          console.warn('[CommandParser] Early parse error at iteration', iterations, ':', error);
+          console.warn('[CommandParser] Early error:', error);
           break;
         }
-        // Für spätere Iterationen: ignoriere einzelne Fehler
         continue;
       }
     }
 
-    console.log('[CommandParser] Parsed', commands.length, 'commands in', iterations, 'iterations');
+    console.log('[CommandParser] Parsed', commands.length, 'commands');
     return commands;
   }
 
@@ -75,29 +71,27 @@ export class CommandParser {
     const cmdDef = ScrepConstants.getCommandDefinition(commandType);
     
     if (!cmdDef) {
-      // Für unbekannte Commands: versuche trotzdem Player ID zu lesen
+      // Unbekannter Command - versuche Player ID zu überspringen
       if (this.reader.canRead(1)) {
         const possiblePlayerId = this.reader.peek();
         if (possiblePlayerId <= 11) {
-          this.reader.readUInt8(); // Player ID konsumieren
+          this.reader.readUInt8();
         }
       }
       return null;
     }
     
-    if (!this.reader.canRead(1)) {
-      return null;
-    }
+    if (!this.reader.canRead(1)) return null;
 
     const playerID = this.reader.readUInt8();
     
-    // Validate Player ID
-    if (playerID > 11) { // 0-7 für Spieler, 8-11 für Computer
+    // Validate Player ID (0-11)
+    if (playerID > 11) {
       this.reader.setPosition(this.reader.getPosition() - 1);
       return null;
     }
 
-    // Parameter lesen mit verbesserter Fehlerbehandlung
+    // Parse parameters
     const parameters = this.parseCommandParameters(commandType, cmdDef.length);
     
     return {
@@ -107,25 +101,21 @@ export class CommandParser {
       typeString: cmdDef.name,
       parameters,
       effective: cmdDef.effective,
-      ineffKind: cmdDef.effective ? '' : 'spam',
+      ineffKind: cmdDef.effective ? '' : this.getIneffKind(commandType),
       time: this.frameToTimeString(this.currentFrame),
-      rawData: new Uint8Array([commandType, playerID]) // Für Debugging
+      rawData: new Uint8Array([commandType, playerID])
     };
   }
 
   private parseCommandParameters(commandType: number, length: number): any {
     const parameters: any = {};
     
-    if (length === 0) {
-      return parameters;
-    }
-    
+    if (length === 0) return parameters;
     if (!this.reader.canRead(length)) {
-      console.warn('[CommandParser] Cannot read', length, 'bytes for command', commandType);
+      console.warn('[CommandParser] Cannot read parameters for command', commandType);
       return parameters;
     }
     
-    // Verbesserte Parameter-Parsing für verschiedene Commands
     switch (commandType) {
       case 0x0C: // Build
         if (length >= 6) {
@@ -133,22 +123,6 @@ export class CommandParser {
           parameters.x = this.reader.readUInt16LE();
           parameters.y = this.reader.readUInt16LE();
           parameters.unitName = ScrepConstants.getUnitName(parameters.unitTypeId);
-          console.log('[CommandParser] Build command:', parameters.unitName, 'at', parameters.x, parameters.y);
-        }
-        break;
-        
-      case 0x14: // Move/Right Click
-        if (length >= 4) {
-          parameters.x = this.reader.readUInt16LE();
-          parameters.y = this.reader.readUInt16LE();
-        }
-        break;
-        
-      case 0x15: // Attack/Targeted Order
-        if (length >= 6) {
-          parameters.x = this.reader.readUInt16LE();
-          parameters.y = this.reader.readUInt16LE();
-          parameters.targetUnitId = this.reader.readUInt16LE();
         }
         break;
         
@@ -156,7 +130,6 @@ export class CommandParser {
         if (length >= 2) {
           parameters.unitTypeId = this.reader.readUInt16LE();
           parameters.unitName = ScrepConstants.getUnitName(parameters.unitTypeId);
-          console.log('[CommandParser] Train command:', parameters.unitName);
         }
         break;
         
@@ -164,7 +137,6 @@ export class CommandParser {
         if (length >= 2) {
           parameters.techId = this.reader.readUInt16LE();
           parameters.techName = ScrepConstants.getTechName(parameters.techId);
-          console.log('[CommandParser] Tech command:', parameters.techName);
         }
         break;
         
@@ -172,7 +144,22 @@ export class CommandParser {
         if (length >= 2) {
           parameters.upgradeId = this.reader.readUInt16LE();
           parameters.upgradeName = ScrepConstants.getTechName(parameters.upgradeId);
-          console.log('[CommandParser] Upgrade command:', parameters.upgradeName);
+        }
+        break;
+        
+      case 0x14: // Move
+      case 0x17: // Right Click
+        if (length >= 4) {
+          parameters.x = this.reader.readUInt16LE();
+          parameters.y = this.reader.readUInt16LE();
+        }
+        break;
+        
+      case 0x15: // Attack
+        if (length >= 6) {
+          parameters.x = this.reader.readUInt16LE();
+          parameters.y = this.reader.readUInt16LE();
+          parameters.targetUnitId = this.reader.readUInt16LE();
         }
         break;
         
@@ -192,21 +179,23 @@ export class CommandParser {
         }
         break;
         
-      default:
-        // Für andere Commands: raw bytes mit Fehlerbehandlung
+      case 0x4B: // Chat - Variable length
+        // Chat has variable length, read until we find reasonable data
         try {
-          if (length > 0 && length <= 32) { // Sinnvolle Länge
-            const bytes = this.reader.readBytes(length);
-            parameters.raw = Array.from(bytes);
-          } else {
-            console.warn('[CommandParser] Suspicious parameter length:', length, 'for command', commandType);
-            // Skip suspicious lengths to avoid corruption
-            if (length > 0 && length <= 1024) {
-              this.reader.skip(length);
-            }
-          }
-        } catch (error) {
-          console.warn('[CommandParser] Error reading parameters for command', commandType, ':', error);
+          const chatData = this.reader.readBytes(Math.min(length, 80));
+          parameters.message = new TextDecoder('utf-8', { fatal: false }).decode(chatData);
+        } catch {
+          this.reader.skip(length);
+        }
+        break;
+        
+      default:
+        // Raw bytes für andere Commands
+        if (length > 0 && length <= 32) {
+          const bytes = this.reader.readBytes(length);
+          parameters.raw = Array.from(bytes);
+        } else if (length > 0) {
+          this.reader.skip(length);
         }
         break;
     }
@@ -214,8 +203,29 @@ export class CommandParser {
     return parameters;
   }
 
+  private getIneffKind(commandType: number): string {
+    // Klassifizierung nach screp IneffKind
+    switch (commandType) {
+      case 0x0D: // Vision
+      case 0x0F: // Game Speed
+      case 0x10: // Pause
+      case 0x11: // Resume
+        return 'ui';
+      case 0x36: // Sync
+        return 'sync';
+      case 0x48: // Minimap Ping
+        return 'ui';
+      case 0x4B: // Chat
+      case 0x5B: // Chat To Allies
+      case 0x5C: // Chat To All
+        return 'chat';
+      default:
+        return 'spam';
+    }
+  }
+
   private frameToTimeString(frame: number): string {
-    const totalSeconds = Math.floor(frame / 24); // 24 FPS für StarCraft
+    const totalSeconds = Math.floor(frame / 24);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
