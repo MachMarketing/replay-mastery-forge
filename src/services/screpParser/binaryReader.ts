@@ -1,4 +1,3 @@
-
 /**
  * Binary Reader für screp parsing - optimiert nach screp repo
  */
