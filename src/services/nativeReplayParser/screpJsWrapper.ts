@@ -131,11 +131,62 @@ export class ScrepJsWrapper {
       }
 
       console.log('[ScrepJsWrapper] screp-js parsing successful, result keys:', Object.keys(result));
-      console.log('[ScrepJsWrapper] Full result for debugging:', result);
+      console.log('[ScrepJsWrapper] Full result structure:', result);
 
-      // CRITICAL: Command-Validierung und Alternative-Pfade
-      console.log('[ScrepJsWrapper] === COMMAND ANALYSIS ===');
-      console.log('[ScrepJsWrapper] Commands available:', !!result.Commands, result.Commands ? result.Commands.length : 0);
+      // CRITICAL: Deep command extraction with multiple strategies
+      console.log('[ScrepJsWrapper] === DEEP COMMAND EXTRACTION ===');
+      console.log('[ScrepJsWrapper] Direct Commands:', !!result.Commands, result.Commands ? result.Commands.length : 0);
+      console.log('[ScrepJsWrapper] Result.commands:', !!result.commands, result.commands ? result.commands.length : 0);
+      console.log('[ScrepJsWrapper] Computed.Commands:', !!result.Computed?.Commands, result.Computed?.Commands ? result.Computed.Commands.length : 0);
+      console.log('[ScrepJsWrapper] All available keys in result:', Object.keys(result));
+      
+      // Try multiple command extraction paths
+      let extractedCommands = null;
+      
+      // Path 1: Direct Commands array
+      if (result.Commands && Array.isArray(result.Commands) && result.Commands.length > 0) {
+        extractedCommands = result.Commands;
+        console.log('[ScrepJsWrapper] ✅ Using direct Commands array:', extractedCommands.length);
+      }
+      // Path 2: Lowercase commands
+      else if (result.commands && Array.isArray(result.commands) && result.commands.length > 0) {
+        extractedCommands = result.commands;
+        console.log('[ScrepJsWrapper] ✅ Using lowercase commands array:', extractedCommands.length);
+      }
+      // Path 3: Computed.Commands
+      else if (result.Computed?.Commands && Array.isArray(result.Computed.Commands) && result.Computed.Commands.length > 0) {
+        extractedCommands = result.Computed.Commands;
+        console.log('[ScrepJsWrapper] ✅ Using Computed.Commands:', extractedCommands.length);
+      }
+      // Path 4: Search for commands in all top-level properties
+      else {
+        console.log('[ScrepJsWrapper] 🔍 Searching for commands in all properties...');
+        for (const [key, value] of Object.entries(result)) {
+          if (Array.isArray(value) && value.length > 0) {
+            // Check if this looks like a commands array
+            const firstItem = value[0];
+            if (firstItem && (firstItem.Type !== undefined || firstItem.Frame !== undefined || firstItem.PlayerID !== undefined)) {
+              extractedCommands = value;
+              console.log('[ScrepJsWrapper] ✅ Found commands in key:', key, 'Length:', extractedCommands.length);
+              break;
+            }
+          }
+        }
+      }
+      
+      if (extractedCommands) {
+        result.Commands = extractedCommands;
+        console.log('[ScrepJsWrapper] ✅ COMMANDS SUCCESSFULLY EXTRACTED:', result.Commands.length);
+        console.log('[ScrepJsWrapper] First 3 commands:', result.Commands.slice(0, 3).map((cmd: any) => ({
+          frame: cmd.Frame || cmd.frame,
+          type: cmd.Type?.Name || cmd.Type || cmd.type,
+          player: cmd.PlayerID || cmd.Player || cmd.playerId,
+          raw: cmd
+        })));
+      } else {
+        console.error('[ScrepJsWrapper] ❌ NO COMMANDS FOUND IN ANY LOCATION');
+        console.log('[ScrepJsWrapper] Available data structure:', JSON.stringify(result, null, 2).substring(0, 1000));
+      }
       
       // Wenn Commands null/leer sind, versuche Re-Parse mit anderen Optionen
       if (!result.Commands || !Array.isArray(result.Commands) || result.Commands.length === 0) {
