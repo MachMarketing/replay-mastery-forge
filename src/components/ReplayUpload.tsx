@@ -3,16 +3,17 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
-import { useReplayParser, CompleteReplayResult } from '@/hooks/useReplayParser';
+import { useEnhancedReplayParser } from '@/hooks/useEnhancedReplayParser';
+import { NewFinalReplayResult } from '@/services/nativeReplayParser/newScrepParser';
 import { Upload, FileText, AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface ReplayUploadProps {
-  onParseComplete: (data: CompleteReplayResult) => void;
+  onParseComplete: (data: NewFinalReplayResult) => void;
 }
 
 const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
-  const { parseReplay, isLoading, error, progress } = useReplayParser();
+  const { parseReplay, isLoading, error, progress } = useEnhancedReplayParser();
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

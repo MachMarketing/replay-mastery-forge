@@ -1,14 +1,14 @@
 
 import React, { useState } from 'react';
-import { CompleteReplayResult } from '@/hooks/useReplayParser';
+import { NewFinalReplayResult } from '@/services/nativeReplayParser/newScrepParser';
 import ReplayUpload from '@/components/ReplayUpload';
 import CompleteReplayResults from '@/components/CompleteReplayResults';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const Upload: React.FC = () => {
-  const [replayData, setReplayData] = useState<CompleteReplayResult | null>(null);
+  const [replayData, setReplayData] = useState<NewFinalReplayResult | null>(null);
 
-  const handleParseComplete = (data: CompleteReplayResult) => {
+  const handleParseComplete = (data: NewFinalReplayResult) => {
     console.log('[Upload] screp-core parse complete received:', data);
     setReplayData(data);
   };

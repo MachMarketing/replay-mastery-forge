@@ -1,24 +1,23 @@
 /**
- * Vollständige Replay-Ergebnisse für CompleteReplayResult
- * Zeigt alle Daten für umfassende AI-Analysen
+ * screp-core Replay Results - zeigt NewFinalReplayResult data
  */
 
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { CompleteReplayResult } from '@/hooks/useReplayParser';
+import { NewFinalReplayResult } from '@/services/nativeReplayParser/newScrepParser';
 import { 
-  Clock, Users, Zap, Target, TrendingUp, Swords, Building, Cpu, Activity, 
+  Clock, Users, Zap, Target, TrendingUp, Building, Cpu, Activity, 
   BarChart3, Brain, GamepadIcon 
 } from 'lucide-react';
 
 interface CompleteReplayResultsProps {
-  data: CompleteReplayResult;
+  data: NewFinalReplayResult;
 }
 
 const CompleteReplayResults: React.FC<CompleteReplayResultsProps> = ({ data }) => {
-  const { header, players, commands, buildOrders, gameplayAnalysis, strategy, dataQuality } = data;
+  const { header, players, buildOrders, gameplayAnalysis, dataQuality } = data;
   
   return (
     <div className="space-y-6">
@@ -48,23 +47,23 @@ const CompleteReplayResults: React.FC<CompleteReplayResultsProps> = ({ data }) =
             <div className="text-center">
               <Activity className="h-6 w-6 mx-auto mb-1 text-muted-foreground" />
               <div className="text-sm text-muted-foreground">Commands</div>
-              <div className="font-bold">{commands.length}</div>
+              <div className="font-bold">{dataQuality.commandsFound}</div>
             </div>
             <div className="text-center">
               <Brain className="h-6 w-6 mx-auto mb-1 text-muted-foreground" />
-              <div className="text-sm text-muted-foreground">AI Ready</div>
-              <div className="font-bold">{dataQuality.aiReadiness ? '✅' : '❌'}</div>
+              <div className="text-sm text-muted-foreground">Qualität</div>
+              <div className="font-bold">{dataQuality.reliability}</div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Players with Complete Metrics */}
+      {/* Players with screp-core Metrics */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Cpu className="h-5 w-5" />
-            Spieler-Performance (Vollständige Analyse)
+            Spieler-Performance (screp-core)
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -75,7 +74,7 @@ const CompleteReplayResults: React.FC<CompleteReplayResultsProps> = ({ data }) =
                   <div>
                     <div className="font-semibold text-lg">{player.name}</div>
                     <div className="text-sm text-muted-foreground">
-                      {player.race} • {player.totalCommands} Commands
+                      {player.race} • {player.efficiency}% Effizienz
                     </div>
                   </div>
                   <div className="flex gap-2">
@@ -84,7 +83,7 @@ const CompleteReplayResults: React.FC<CompleteReplayResultsProps> = ({ data }) =
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                   <div className="text-center">
                     <div className="font-medium text-blue-600">APM</div>
                     <div className="text-xl font-bold">{player.apm}</div>
@@ -98,12 +97,8 @@ const CompleteReplayResults: React.FC<CompleteReplayResultsProps> = ({ data }) =
                     <div className="text-xl font-bold">{player.efficiency}%</div>
                   </div>
                   <div className="text-center">
-                    <div className="font-medium text-orange-600">Total</div>
-                    <div className="text-xl font-bold">{player.totalCommands}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="font-medium text-red-600">Effektiv</div>
-                    <div className="text-xl font-bold">{player.effectiveCommands}</div>
+                    <div className="font-medium text-orange-600">Team</div>
+                    <div className="text-xl font-bold">{player.team}</div>
                   </div>
                 </div>
               </div>
@@ -117,7 +112,7 @@ const CompleteReplayResults: React.FC<CompleteReplayResultsProps> = ({ data }) =
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <BarChart3 className="h-5 w-5" />
-            Erweiterte Gameplay-Analyse
+            Gameplay-Analyse (screp-core)
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -140,33 +135,53 @@ const CompleteReplayResults: React.FC<CompleteReplayResultsProps> = ({ data }) =
                     <div className="grid grid-cols-3 gap-2 text-sm">
                       <div className="text-center">
                         <div className="text-green-600">Economic</div>
-                        <div className="font-bold">{analysis.apmBreakdown.economic}</div>
+                        <div className="font-bold">{analysis.apmBreakdown?.economic || 0}</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-red-600">Military</div>
-                        <div className="font-bold">{analysis.apmBreakdown.military}</div>
+                        <div className="text-red-600">Micro</div>
+                        <div className="font-bold">{analysis.apmBreakdown?.micro || 0}</div>
                       </div>
                       <div className="text-center">
-                        <div className="text-blue-600">Micro</div>
-                        <div className="font-bold">{analysis.apmBreakdown.micro}</div>
+                        <div className="text-blue-600">Effective</div>
+                        <div className="font-bold">{analysis.apmBreakdown?.effective || 0}</div>
                       </div>
                     </div>
                   </div>
                   
-                  {/* Key Moments */}
-                  {analysis.keyMoments && analysis.keyMoments.length > 0 && (
+                  {/* Micro Events */}
+                  {analysis.microEvents && analysis.microEvents.length > 0 && (
                     <div>
-                      <h4 className="font-medium mb-2">Schlüsselmomente</h4>
+                      <h4 className="font-medium mb-2">Micro Events</h4>
                       <div className="space-y-1 text-sm">
-                        {analysis.keyMoments.slice(0, 3).map((moment, i) => (
+                        {analysis.microEvents.slice(0, 3).map((event, i) => (
                           <div key={i} className="flex justify-between">
-                            <span>{moment.time}</span>
-                            <span className="text-muted-foreground">{moment.event}</span>
+                            <span>{event.time}</span>
+                            <span className="text-muted-foreground">{event.action}</span>
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
+                  
+                  {/* Strengths & Weaknesses */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <h4 className="font-medium text-green-700 mb-1">Stärken</h4>
+                      <ul className="text-sm text-green-600 list-disc list-inside">
+                        {analysis.strengths?.slice(0, 2).map((strength, i) => (
+                          <li key={i}>{strength}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <h4 className="font-medium text-red-700 mb-1">Schwächen</h4>
+                      <ul className="text-sm text-red-600 list-disc list-inside">
+                        {analysis.weaknesses?.slice(0, 2).map((weakness, i) => (
+                          <li key={i}>{weakness}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
                   
                   {/* Recommendations */}
                   {analysis.recommendations && analysis.recommendations.length > 0 && (
@@ -186,64 +201,13 @@ const CompleteReplayResults: React.FC<CompleteReplayResultsProps> = ({ data }) =
         </CardContent>
       </Card>
 
-      {/* Strategic Analysis */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Brain className="h-5 w-5" />
-            Strategische Analyse
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {players.map((player, index) => {
-              const playerStrategy = strategy[index];
-              if (!playerStrategy) return null;
-              
-              return (
-                <div key={index} className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-semibold">{player.name}</h3>
-                    <Badge variant="outline">{player.race}</Badge>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <div className="font-medium text-muted-foreground">Opening</div>
-                      <div>{playerStrategy.openingStrategy}</div>
-                    </div>
-                    <div>
-                      <div className="font-medium text-muted-foreground">Economic</div>
-                      <div>{playerStrategy.economicApproach}</div>
-                    </div>
-                    <div>
-                      <div className="font-medium text-muted-foreground">Military</div>
-                      <div>{playerStrategy.militaryFocus}</div>
-                    </div>
-                    <div>
-                      <div className="font-medium text-muted-foreground">Tech Path</div>
-                      <div>{playerStrategy.techPath}</div>
-                    </div>
-                  </div>
-                  
-                  <div className="mt-2">
-                    <div className="font-medium text-muted-foreground">Strategy Efficiency</div>
-                    <div className="text-lg font-bold">{playerStrategy.efficiency}%</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Build Orders */}
+      {/* Build Orders - DER WICHTIGSTE TEIL */}
       {Object.keys(buildOrders).length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Building className="h-5 w-5" />
-              Intelligente Build Orders
+              🚀 screp-core Build Orders (ECHTE DATEN!)
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -260,7 +224,7 @@ const CompleteReplayResults: React.FC<CompleteReplayResultsProps> = ({ data }) =
                       {player.name}
                       <Badge variant="outline">{player.race}</Badge>
                       <span className="text-sm text-muted-foreground">
-                        ({playerBuildOrder.length} Actions)
+                        ({playerBuildOrder.length} Build Actions)
                       </span>
                     </h4>
                     
@@ -275,7 +239,7 @@ const CompleteReplayResults: React.FC<CompleteReplayResultsProps> = ({ data }) =
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {playerBuildOrder.slice(0, 15).map((entry, index) => (
+                        {playerBuildOrder.slice(0, 20).map((entry, index) => (
                           <TableRow key={index}>
                             <TableCell className="font-mono text-xs">
                               {entry.time}
@@ -287,7 +251,7 @@ const CompleteReplayResults: React.FC<CompleteReplayResultsProps> = ({ data }) =
                               {entry.action}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">
-                              {entry.unitName}
+                              {entry.unitName || 'Unknown'}
                             </TableCell>
                             <TableCell className="text-sm">
                               <Badge variant="secondary" className="text-xs">
@@ -306,90 +270,32 @@ const CompleteReplayResults: React.FC<CompleteReplayResultsProps> = ({ data }) =
         </Card>
       )}
 
-      {/* Command Analysis for AI */}
-      {commands.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Swords className="h-5 w-5" />
-              Command-Analyse (Sample für AI)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-4">
-              <div className="text-sm text-muted-foreground">
-                Zeigt die ersten 20 Commands für AI-Analyse. Insgesamt: {commands.length} Commands
-              </div>
-            </div>
-            
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-20">Zeit</TableHead>
-                  <TableHead className="w-16">Player</TableHead>
-                  <TableHead>Command</TableHead>
-                  <TableHead>Parameter</TableHead>
-                  <TableHead>Effektiv</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {commands.slice(0, 20).map((command, index) => (
-                  <TableRow key={index}>
-                    <TableCell className="font-mono text-xs">
-                      {command.timestamp}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {players[command.playerId]?.name || `P${command.playerId}`}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {command.commandType}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {command.parameters?.unitName || '-'}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={command.effective ? 'default' : 'secondary'} className="text-xs">
-                        {command.effective ? 'Ja' : 'Nein'}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Data Quality for AI Confidence */}
+      {/* Data Quality */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">AI-Analyse Datenqualität</CardTitle>
+          <CardTitle className="text-sm">screp-core Datenqualität</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-xs">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-xs">
             <div>
-              <div className="text-muted-foreground">Quelle</div>
+              <div className="text-muted-foreground">Parser</div>
               <div className="font-mono">{dataQuality.source}</div>
             </div>
             <div>
-              <div className="text-muted-foreground">Zuverlässigkeit</div>
+              <div className="text-muted-foreground">Qualität</div>
               <div className="font-mono capitalize">{dataQuality.reliability}</div>
             </div>
             <div>
               <div className="text-muted-foreground">Commands</div>
-              <div className="font-mono">{dataQuality.commandsExtracted}</div>
+              <div className="font-mono">{dataQuality.commandsFound}</div>
             </div>
             <div>
-              <div className="text-muted-foreground">Parsed</div>
-              <div className="font-mono">{dataQuality.commandsParsed}</div>
+              <div className="text-muted-foreground">APM berechnet</div>
+              <div className="font-mono">{dataQuality.apmCalculated ? '✅' : '❌'}</div>
             </div>
             <div>
-              <div className="text-muted-foreground">Vollständigkeit</div>
-              <div className="font-mono">{dataQuality.dataCompleteness}%</div>
-            </div>
-            <div>
-              <div className="text-muted-foreground">AI Ready</div>
-              <div className="font-mono">{dataQuality.aiReadiness ? '✅' : '❌'}</div>
+              <div className="text-muted-foreground">EAPM berechnet</div>
+              <div className="font-mono">{dataQuality.eapmCalculated ? '✅' : '❌'}</div>
             </div>
           </div>
         </CardContent>
