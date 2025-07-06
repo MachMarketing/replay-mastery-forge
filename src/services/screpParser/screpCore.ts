@@ -160,51 +160,67 @@ export class ScrepCore {
   }
 
   /**
-   * Players parsing - nach repdecoder.go:DecodePlayers
+   * Players parsing - KORRIGIERT für SC:R
    */
   private parsePlayers(): PlayerData[] {
-    console.log('[ScrepCore] Parsing players...');
+    console.log('[ScrepCore] Parsing SC:R players...');
     
-    // Player section Offsets für SC:R
-    const playerOffsets = [0x161, 0x1A1, 0x1C1, 0x200, 0x240];
+    // SC:R Player Offsets (korrigiert)
+    const playerOffsets = [0x161, 0x1A1, 0x1C1];
     
     for (const offset of playerOffsets) {
       const players = this.tryParsePlayersAt(offset);
-      if (players.length >= 2) {
-        console.log('[ScrepCore] Found', players.length, 'players at offset', '0x' + offset.toString(16));
-        return players;
+      // Nur echte Spieler (nicht Observer, nicht empty)
+      const realPlayers = players.filter(p => 
+        p.name.length >= 2 && 
+        !p.name.includes('Observer') && 
+        p.name !== 'Computer' &&
+        p.type !== 0 // Not empty slot
+      );
+      
+      if (realPlayers.length >= 2 && realPlayers.length <= 8) {
+        console.log('[ScrepCore] Found', realPlayers.length, 'real players at offset', '0x' + offset.toString(16));
+        realPlayers.forEach((p, i) => {
+          console.log(`[ScrepCore] Player ${i}: ${p.name} (${p.race}) Team:${p.team}`);
+        });
+        return realPlayers;
       }
     }
     
-    throw new Error('No valid players found in replay');
+    throw new Error('No valid SC:R players found in replay');
   }
 
   private tryParsePlayersAt(baseOffset: number): PlayerData[] {
     const players: PlayerData[] = [];
     
     try {
-      for (let i = 0; i < 12; i++) {
+      // SC:R hat max 8 aktive Spieler slots
+      for (let i = 0; i < 8; i++) {
         const offset = baseOffset + (i * 36); // 36 bytes per player
         
         if (offset + 36 >= this.data.byteLength) break;
         
         this.reader.setPosition(offset);
         
-        // Player name (25 bytes)
+        // Player name (25 bytes) - SC:R Format
         const nameBytes = this.reader.readBytes(25);
         const name = this.decodePlayerName(nameBytes);
         
-        if (!this.isValidPlayerName(name)) continue;
+        // Skip empty/invalid names
+        if (!this.isValidSCRPlayerName(name)) continue;
         
-        // Race, team, color, type
+        // Race, team, color, type (SC:R specific)
         const raceId = this.reader.readUInt8();
-        const team = this.reader.readUInt8();
+        const team = this.reader.readUInt8();  
         const color = this.reader.readUInt8();
         const type = this.reader.readUInt8();
         
+        // Validate SC:R player data
+        if (type === 0 || raceId > 6) continue; // Empty slot or invalid race
+        
         players.push({
-          id: i,
-          name,
+          id: players.length, // Use index as ID
+          name: name.trim(),
           race: ScrepConstants.getRaceName(raceId),
           raceId,
           team,
@@ -213,10 +229,22 @@ export class ScrepCore {
         });
       }
     } catch (error) {
+      console.warn('[ScrepCore] Player parsing error at offset', baseOffset, error);
       return [];
     }
     
-    return players.filter(p => p.name.length > 1);
+    return players;
+  }
+
+  private isValidSCRPlayerName(name: string): boolean {
+    const trimmed = name.trim();
+    // SC:R Namen sind mindestens 2 Zeichen, max 25
+    // Keine Kontrolzeichen, keine Observer
+    return trimmed.length >= 2 && 
+           trimmed.length <= 25 && 
+           !trimmed.toLowerCase().includes('observer') &&
+           !trimmed.toLowerCase().includes('computer') &&
+           /^[a-zA-Z0-9_\-\[\]`'~!@#$%^&*()+={}|\\:";'<>?,./ ]+/.test(trimmed);
   }
 
   private decodePlayerName(bytes: Uint8Array): string {
