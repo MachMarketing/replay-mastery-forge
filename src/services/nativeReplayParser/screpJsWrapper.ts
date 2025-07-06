@@ -1,4 +1,5 @@
 import * as Screp from 'screp-js';
+import { ScUnitDatabase } from './scUnitDatabase';
 
 export interface ScrepJsResult {
   header: {
@@ -208,10 +209,10 @@ export class ScrepJsWrapper {
     const frameCount = header.Frames || computed.LastFrame || 0;
     console.log('[ScrepJsWrapper] Frame count:', frameCount);
 
-    // Enhanced map name cleaning
-    const rawMapName = header.Map || header.MapName || 'Unknown Map';
-    const cleanMapName = this.cleanMapName(rawMapName);
-    console.log('[ScrepJsWrapper] Cleaned map name:', cleanMapName);
+    // IMPROVED map name cleaning - less aggressive for SC:R compatibility
+    const rawMapName = header.Map || header.MapName || header.Title || 'Unknown Map';
+    const cleanMapName = this.improvedCleanMapName(rawMapName);
+    console.log('[ScrepJsWrapper] Raw map name:', rawMapName, '-> Cleaned:', cleanMapName);
 
     // Enhanced player extraction
     const rawPlayers = header.Players || [];
@@ -297,7 +298,7 @@ export class ScrepJsWrapper {
     action: string;
     supply?: number;
   }>> {
-    console.log('[ScrepJsWrapper] === EXTRACTING BUILD ORDERS FROM COMMANDS ===');
+    console.log('[ScrepJsWrapper] === ENHANCED BUILD ORDER EXTRACTION ===');
     console.log('[ScrepJsWrapper] Total commands available:', commands ? commands.length : 0);
 
     if (!commands || !Array.isArray(commands) || commands.length === 0) {
@@ -305,13 +306,9 @@ export class ScrepJsWrapper {
       return Array(playerCount).fill(0).map(() => []);
     }
 
-    // Log alle verfügbaren Command Types
-    const commandTypes = new Set();
-    commands.forEach(cmd => {
-      const cmdType = cmd.Type?.Name || cmd.Type || 'Unknown';
-      commandTypes.add(cmdType);
-    });
-    console.log('[ScrepJsWrapper] Available command types:', Array.from(commandTypes));
+    // Enhanced command analysis with StarCraft database
+    const commandAnalysis = this.analyzeCommandStructure(commands);
+    console.log('[ScrepJsWrapper] Command analysis:', commandAnalysis);
 
     const buildOrders = Array(playerCount).fill(0).map(() => [] as any[]);
 
@@ -401,27 +398,28 @@ export class ScrepJsWrapper {
   }
 
   private getActionDescription(cmd: any): string {
-    const cmdType = cmd.Type?.Name || cmd.Type || 'Unknown';
+    // Enhanced action description using StarCraft database
+    const cmdType = ScUnitDatabase.getCommandType(cmd.Type) || 
+                   { name: cmd.Type?.Name || cmd.Type || 'Unknown', category: 'other' };
+    
+    // Try to get unit information from database
+    const unitId = cmd.UnitType?.ID || cmd.UnitType || cmd.Parameters?.unitTypeId;
+    const unit = unitId ? ScUnitDatabase.getUnit(unitId) : null;
+    
+    if (unit) {
+      return `${cmdType.name} ${unit.name}`;
+    }
+    
+    // Fallback to original logic with enhanced detection
     const unitType = cmd.UnitType?.Name || cmd.UnitType || '';
     const techType = cmd.TechType?.Name || cmd.TechType || '';
     const upgradeType = cmd.UpgradeType?.Name || cmd.UpgradeType || '';
     
-    // Versuche so detailliert wie möglich zu beschreiben
-    if (unitType) {
-      return `${cmdType} ${unitType}`;
-    } else if (techType) {
-      return `Research ${techType}`;
-    } else if (upgradeType) {
-      return `Upgrade ${upgradeType}`;
-    } else if (cmd.Parameters) {
-      // Versuche Parameter zu analysieren
-      const params = cmd.Parameters;
-      if (params.UnitType) {
-        return `${cmdType} ${params.UnitType}`;
-      }
-    }
+    if (unitType) return `${cmdType.name} ${unitType}`;
+    if (techType) return `Research ${techType}`;
+    if (upgradeType) return `Upgrade ${upgradeType}`;
     
-    return cmdType.toString();
+    return cmdType.name;
   }
 
   private estimateSupply(frame: number, buildIndex: number): number {
@@ -434,14 +432,84 @@ export class ScrepJsWrapper {
     return Math.min(baseSupply + supplyFromTime + supplyFromBuildings, 200);
   }
 
-  private cleanMapName(mapName: string): string {
+  private improvedCleanMapName(mapName: string): string {
     if (!mapName) return 'Unknown Map';
     
-    // Remove control characters and clean up
-    return mapName
-      .replace(/[\x00-\x1F\x7F]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim() || 'Unknown Map';
+    // Less aggressive cleaning for SC:R compatibility
+    let cleaned = mapName;
+    
+    // Remove only null bytes and extreme control characters
+    cleaned = cleaned.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '');
+    
+    // Preserve Korean/Chinese characters and special map characters
+    // Only clean up excessive whitespace
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    
+    // If still empty or too short, try alternative sources
+    if (!cleaned || cleaned.length < 2) {
+      cleaned = 'Unknown Map';
+    }
+    
+    return cleaned;
+  }
+
+  private analyzeCommandStructure(commands: any[]): { 
+    totalCommands: number;
+    buildCommands: number;
+    commandTypeBreakdown: Record<string, number>;
+    sampleCommands: any[];
+  } {
+    const analysis = {
+      totalCommands: commands.length,
+      buildCommands: 0,
+      commandTypeBreakdown: {} as Record<string, number>,
+      sampleCommands: commands.slice(0, 10) // First 10 for debugging
+    };
+
+    commands.forEach(cmd => {
+      // Analyze command structure
+      const cmdType = this.getCommandTypeDescription(cmd);
+      analysis.commandTypeBreakdown[cmdType] = (analysis.commandTypeBreakdown[cmdType] || 0) + 1;
+      
+      // Count build-related commands
+      if (this.isCommandBuildRelated(cmd)) {
+        analysis.buildCommands++;
+      }
+    });
+
+    return analysis;
+  }
+
+  private getCommandTypeDescription(cmd: any): string {
+    // Try various ways to get command type from screp-js
+    if (cmd.Type?.Name) return cmd.Type.Name;
+    if (cmd.TypeString) return cmd.TypeString;
+    if (typeof cmd.Type === 'number') return `Type${cmd.Type}`;
+    if (cmd.type) return String(cmd.type);
+    return 'Unknown';
+  }
+
+  private isCommandBuildRelated(cmd: any): boolean {
+    const cmdType = this.getCommandTypeDescription(cmd).toLowerCase();
+    
+    // Enhanced build command detection
+    const buildKeywords = [
+      'build', 'train', 'construct', 'morph', 'make',
+      'research', 'upgrade', 'evolve', 'mutate'
+    ];
+    
+    // Check command type ID (from StarCraft documentation)
+    const typeId = cmd.Type?.ID || cmd.Type || cmd.typeId;
+    if (typeof typeId === 'number') {
+      // Key build command IDs from StarCraft
+      const buildCommandIds = [0x0C, 0x1E, 0x2F, 0x31]; // Build, Train, Research, Upgrade
+      if (buildCommandIds.includes(typeId)) {
+        return true;
+      }
+    }
+    
+    // Check command name
+    return buildKeywords.some(keyword => cmdType.includes(keyword));
   }
 
   private mapRaceToId(raceName: string): number {
