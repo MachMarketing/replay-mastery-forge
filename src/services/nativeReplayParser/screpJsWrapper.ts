@@ -95,31 +95,34 @@ export class ScrepJsWrapper {
       console.log('[ScrepJsWrapper] Parsing with screp-js...');
       console.log('[ScrepJsWrapper] Available screp-js methods:', Object.keys(this.screpModule));
 
-      // Enhanced options to ensure commands are included
+      // screp-js korrekte API-Nutzung - Commands MÜSSEN explizit aktiviert werden
       const parseOptions = {
-        includeCommands: true,
-        withCmds: true,
-        verboseCommands: true,
-        calculateAPM: true,
-        parseActions: true,
-        parseChat: true,
-        extractMapData: true,
-        cmdDetails: true,
-        fullParse: true
+        Commands: true, // CRITICAL: Commands explizit aktivieren
+        Computed: true,
+        MapData: false, // Nicht benötigt für unsere Analyse
+        Header: true
       };
 
       let result;
       
+      // screp-js hat verschiedene Parse-Modi - versuche alle
       if (typeof this.screpModule.parseBuffer === 'function') {
-        console.log('[ScrepJsWrapper] Using parseBuffer method');
+        console.log('[ScrepJsWrapper] Using parseBuffer with Commands=true');
         result = this.screpModule.parseBuffer(buffer, parseOptions);
-        
-        if (result && typeof result.then === 'function') {
-          console.log('[ScrepJsWrapper] Result is a Promise, awaiting...');
-          result = await result;
-        }
+      } else if (typeof this.screpModule.default?.parseBuffer === 'function') {
+        console.log('[ScrepJsWrapper] Using default.parseBuffer');
+        result = this.screpModule.default.parseBuffer(buffer, parseOptions);
+      } else if (typeof this.screpModule === 'function') {
+        console.log('[ScrepJsWrapper] Using screp-js as function');
+        result = this.screpModule(buffer, parseOptions);
       } else {
-        throw new Error('parseBuffer method not available in screp-js');
+        throw new Error('No valid parseBuffer method found in screp-js');
+      }
+      
+      // Handle Promise if needed
+      if (result && typeof result.then === 'function') {
+        console.log('[ScrepJsWrapper] Result is a Promise, awaiting...');
+        result = await result;
       }
 
       if (!result) {
@@ -129,28 +132,58 @@ export class ScrepJsWrapper {
       console.log('[ScrepJsWrapper] screp-js parsing successful, result keys:', Object.keys(result));
       console.log('[ScrepJsWrapper] Full result for debugging:', result);
 
-      // Enhanced logging for commands
+      // CRITICAL: Command-Validierung und Alternative-Pfade
       console.log('[ScrepJsWrapper] === COMMAND ANALYSIS ===');
       console.log('[ScrepJsWrapper] Commands available:', !!result.Commands, result.Commands ? result.Commands.length : 0);
       
+      // Wenn Commands null/leer sind, versuche Re-Parse mit anderen Optionen
+      if (!result.Commands || !Array.isArray(result.Commands) || result.Commands.length === 0) {
+        console.warn('[ScrepJsWrapper] No commands in primary result - trying aggressive re-parse...');
+        
+        // Versuche verschiedene screp-js Optionen
+        const aggressiveOptions = [
+          { Commands: true, Computed: true, Header: true },
+          { includeCommands: true, withCmds: true },
+          { parseCommands: true, fullParse: true },
+          { } // Default ohne Optionen
+        ];
+        
+        for (const option of aggressiveOptions) {
+          try {
+            console.log('[ScrepJsWrapper] Trying parse option:', option);
+            let retryResult;
+            
+            if (typeof this.screpModule.parseBuffer === 'function') {
+              retryResult = this.screpModule.parseBuffer(buffer, option);
+            } else if (typeof this.screpModule.default?.parseBuffer === 'function') {
+              retryResult = this.screpModule.default.parseBuffer(buffer, option);
+            }
+            
+            if (retryResult && typeof retryResult.then === 'function') {
+              retryResult = await retryResult;
+            }
+            
+            if (retryResult?.Commands && Array.isArray(retryResult.Commands) && retryResult.Commands.length > 0) {
+              console.log('[ScrepJsWrapper] SUCCESS! Found commands with option:', option, 'Commands:', retryResult.Commands.length);
+              result.Commands = retryResult.Commands;
+              break;
+            }
+          } catch (retryError) {
+            console.log('[ScrepJsWrapper] Retry option failed:', option, retryError.message);
+          }
+        }
+      }
+      
       if (result.Commands && Array.isArray(result.Commands) && result.Commands.length > 0) {
+        console.log('[ScrepJsWrapper] ✅ COMMANDS SUCCESSFULLY EXTRACTED:', result.Commands.length);
         console.log('[ScrepJsWrapper] First 5 commands:', result.Commands.slice(0, 5).map((cmd: any) => ({
           frame: cmd.Frame,
           type: cmd.Type,
           player: cmd.PlayerID || cmd.Player,
-          typeName: cmd.Type?.Name || 'Unknown'
+          typeName: cmd.Type?.Name || cmd.Type || 'Unknown'
         })));
       } else {
-        console.warn('[ScrepJsWrapper] No commands found - trying alternative extraction');
-        
-        // Try to access commands through different paths
-        if (result.Cmds) {
-          console.log('[ScrepJsWrapper] Found commands in result.Cmds:', result.Cmds.length);
-          result.Commands = result.Cmds;
-        } else if (result.commands) {
-          console.log('[ScrepJsWrapper] Found commands in result.commands:', result.commands.length);
-          result.Commands = result.commands;
-        }
+        console.error('[ScrepJsWrapper] ❌ FAILED TO EXTRACT COMMANDS - screp-js may not support this replay format');
       }
 
       return this.normalizeScrepResult(result);

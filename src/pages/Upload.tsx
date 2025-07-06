@@ -33,7 +33,7 @@ const Upload: React.FC = () => {
           </TabsList>
           
           <TabsContent value="analysis">
-            <ReplayAnalysisDisplay replayData={replayData} />
+            <CompleteReplayResults data={replayData} />
           </TabsContent>
         </Tabs>
       )}
