@@ -10,13 +10,13 @@ import { useEnhancedReplayParser } from '@/hooks/useEnhancedReplayParser';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { AnalysisResult } from '@/components/AnalysisResult';
-import { EnhancedReplayResult } from '@/services/nativeReplayParser/enhancedDataMapper';
+import { NewFinalReplayResult } from '@/services/nativeReplayParser/newScrepParser';
 
 const ParserTest: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [parsingStatus, setParsingStatus] = useState<'idle' | 'uploading' | 'parsing' | 'complete' | 'error'>('idle');
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [parsedReplayData, setParsedReplayData] = useState<EnhancedReplayResult | null>(null);
+  const [parsedReplayData, setParsedReplayData] = useState<NewFinalReplayResult | null>(null);
   const { parseReplay, error, progress } = useEnhancedReplayParser();
   const { toast } = useToast();
 

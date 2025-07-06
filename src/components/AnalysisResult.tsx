@@ -6,11 +6,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
-import { EnhancedReplayResult } from '@/services/nativeReplayParser/enhancedDataMapper';
+import { NewFinalReplayResult } from '@/services/nativeReplayParser/newScrepParser';
 import { EnhancedBuildOrderDisplay } from './EnhancedBuildOrderDisplay';
 
 interface AnalysisResultProps {
-  replayData: EnhancedReplayResult;
+  replayData: NewFinalReplayResult;
   onReset: () => void;
 }
 
@@ -34,21 +34,21 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
 
   const getQualityBadge = (quality: string) => {
     switch (quality) {
-      case 'high': return 'Enhanced Parser - Echte Aktionen';
-      case 'medium': return 'Standard Analysis';
-      case 'low': return 'Header-Only Analysis';
+      case 'high': return 'screp-core Parser - Echte Commands';
+      case 'medium': return 'screp-core Standard';
+      case 'low': return 'screp-core Basic';
       default: return 'Unknown';
     }
   };
 
   const player1 = replayData.players[0];
   const player2 = replayData.players[1];
-  const apm1 = replayData.realMetrics[0]?.apm || 0;
-  const apm2 = replayData.realMetrics[1]?.apm || 0;
+  const apm1 = player1?.apm || 0;
+  const apm2 = player2?.apm || 0;
 
-  // Get real action count from enhanced data
-  const realActionsExtracted = replayData.realCommands.length;
-  const realBuildOrdersCount = Object.values(replayData.enhancedBuildOrders).reduce((sum, bo) => sum + bo.length, 0);
+  // Get real action count from screp-core data
+  const realActionsExtracted = replayData.dataQuality.commandsFound;
+  const realBuildOrdersCount = Object.values(replayData.buildOrders).reduce((sum, bo) => sum + bo.length, 0);
 
   return (
     <div className="space-y-6">
@@ -56,7 +56,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle className="text-2xl font-bold">Enhanced Replay Analysis</CardTitle>
+            <CardTitle className="text-2xl font-bold">screp-core Replay Analysis</CardTitle>
             <div className="flex items-center gap-4 mt-2">
               <Badge variant="outline" className="text-sm">
                 {replayData.dataQuality.source.toUpperCase()}
@@ -79,7 +79,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="enhanced-build-orders">Enhanced Build Orders</TabsTrigger>
+          <TabsTrigger value="enhanced-build-orders">Build Orders</TabsTrigger>
           <TabsTrigger value="performance">Performance Analysis</TabsTrigger>
           <TabsTrigger value="raw-data">Raw Data</TabsTrigger>
         </TabsList>
@@ -150,9 +150,9 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
         </TabsContent>
 
         <TabsContent value="enhanced-build-orders" className="space-y-6">
-          {Object.keys(replayData.enhancedBuildOrders).length > 0 ? (
+          {Object.keys(replayData.buildOrders).length > 0 ? (
             <div className="space-y-6">
-              {Object.entries(replayData.enhancedBuildOrders).map(([playerId, buildOrder]) => (
+              {Object.entries(replayData.buildOrders).map(([playerId, buildOrder]) => (
                 <Card key={playerId}>
                   <CardHeader>
                     <CardTitle>
@@ -165,7 +165,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
                         <div key={index} className="flex justify-between items-center py-1 border-b">
                           <span className="text-sm font-mono">{entry.time}</span>
                           <span className="text-sm">{entry.action}</span>
-                          <span className="text-sm text-muted-foreground">{entry.unitName}</span>
+                          <span className="text-sm text-muted-foreground">{entry.unitName || 'Unknown'}</span>
                           <Badge variant="outline" className="text-xs">{entry.category}</Badge>
                         </div>
                       ))}
@@ -245,7 +245,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
                   
                   <div className="text-center">
                     <div className="text-2xl font-bold text-purple-500">
-                      {replayData.dataQuality.commandsExtracted}
+                      {replayData.dataQuality.commandsFound}
                     </div>
                     <div className="text-sm text-muted-foreground">Commands</div>
                   </div>
@@ -331,10 +331,13 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ replayData, onRe
                   realActionsExtracted,
                   realBuildOrdersCount,
                   commandsBreakdown: {
-                    total: replayData.realCommands.length,
-                    byPlayer: Object.keys(replayData.realMetrics).map(playerId => ({
-                      player: parseInt(playerId),
-                      actions: replayData.realMetrics[parseInt(playerId)]?.realActions || 0
+                    total: replayData.dataQuality.commandsFound,
+                    byPlayer: replayData.players.map((player, index) => ({
+                      player: index,
+                      name: player.name,
+                      apm: player.apm,
+                      eapm: player.eapm,
+                      efficiency: player.efficiency
                     }))
                   }
                 }, null, 2)}

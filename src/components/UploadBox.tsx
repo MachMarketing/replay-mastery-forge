@@ -6,10 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useEnhancedReplayParser } from '@/hooks/useEnhancedReplayParser';
 import { useToast } from '@/hooks/use-toast';
-import { EnhancedReplayResult } from '@/services/nativeReplayParser/enhancedDataMapper';
+import { NewFinalReplayResult } from '@/services/nativeReplayParser/newScrepParser';
 
 interface UploadBoxProps {
-  onUploadComplete: (file: File, replayData: EnhancedReplayResult) => void;
+  onUploadComplete: (file: File, replayData: NewFinalReplayResult) => void;
 }
 
 const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
