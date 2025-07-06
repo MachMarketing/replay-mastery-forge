@@ -6,14 +6,14 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { NewFinalReplayResult } from '@/services/nativeReplayParser/newScrepParser';
+import { JssuhReplayResult } from '@/services/nativeReplayParser/jssuhParser';
 import { 
   Clock, Users, Zap, Target, TrendingUp, Building, Cpu, Activity, 
   BarChart3, Brain, GamepadIcon 
 } from 'lucide-react';
 
 interface CompleteReplayResultsProps {
-  data: NewFinalReplayResult;
+  data: JssuhReplayResult;
 }
 
 const CompleteReplayResults: React.FC<CompleteReplayResultsProps> = ({ data }) => {

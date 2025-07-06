@@ -5,12 +5,12 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import UploadBox from '@/components/UploadBox';
 import { AnalysisResult } from '@/components/AnalysisResult';
-import { NewFinalReplayResult } from '@/services/nativeReplayParser/newScrepParser';
+import { JssuhReplayResult } from '@/services/nativeReplayParser/jssuhParser';
 
 const UploadPage: React.FC = () => {
-  const [analysisData, setAnalysisData] = useState<NewFinalReplayResult | null>(null);
+  const [analysisData, setAnalysisData] = useState<JssuhReplayResult | null>(null);
 
-  const handleUploadComplete = async (file: File, replayData: NewFinalReplayResult) => {
+  const handleUploadComplete = async (file: File, replayData: JssuhReplayResult) => {
     console.log('[UploadPage] Received screp-core replay data:', {
       playerCount: replayData.players.length,
       mapName: replayData.header.mapName,
