@@ -1,5 +1,5 @@
 import * as Screp from 'screp-js';
-import { ScUnitDatabase } from './scUnitDatabase';
+import { SC_UNITS, getUnitById } from './scUnitDatabase';
 
 export interface ScrepJsResult {
   header: {
@@ -420,16 +420,14 @@ export class ScrepJsWrapper {
   }
 
   private getActionDescription(cmd: any): string {
-    // Enhanced action description using StarCraft database
-    const cmdType = ScUnitDatabase.getCommandType(cmd.Type) || 
-                   { name: cmd.Type?.Name || cmd.Type || 'Unknown', category: 'other' };
+    const cmdType = cmd.Type?.Name || cmd.Type || 'Unknown';
     
     // Try to get unit information from database
     const unitId = cmd.UnitType?.ID || cmd.UnitType || cmd.Parameters?.unitTypeId;
-    const unit = unitId ? ScUnitDatabase.getUnit(unitId) : null;
+    const unit = unitId ? getUnitById(unitId) : null;
     
     if (unit) {
-      return `${cmdType.name} ${unit.name}`;
+      return `${cmdType} ${unit.name}`;
     }
     
     // Fallback to original logic with enhanced detection
@@ -437,11 +435,11 @@ export class ScrepJsWrapper {
     const techType = cmd.TechType?.Name || cmd.TechType || '';
     const upgradeType = cmd.UpgradeType?.Name || cmd.UpgradeType || '';
     
-    if (unitType) return `${cmdType.name} ${unitType}`;
+    if (unitType) return `${cmdType} ${unitType}`;
     if (techType) return `Research ${techType}`;
     if (upgradeType) return `Upgrade ${upgradeType}`;
     
-    return cmdType.name;
+    return cmdType;
   }
 
   private estimateSupply(frame: number, buildIndex: number): number {
