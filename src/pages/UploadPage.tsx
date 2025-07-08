@@ -5,6 +5,8 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import UploadBox from '@/components/UploadBox';
 import { JssuhReplayResult } from '@/services/nativeReplayParser/jssuhParser';
+import ProAnalysisDashboard from '@/components/analysis/ProAnalysisDashboard';
+import ReplayComparisonTool from '@/components/analysis/ReplayComparisonTool';
 
 const UploadPage: React.FC = () => {
   const [analysisData, setAnalysisData] = useState<JssuhReplayResult | null>(null);
@@ -27,27 +29,30 @@ const UploadPage: React.FC = () => {
       <Navbar />
       <div className="container mx-auto px-4 py-8 mt-16">
         <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl font-bold text-center mb-8">
-            screp-core Replay Master Forge
+          <h1 className="text-4xl font-bold text-center mb-4 bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+            SC:R Pro Analyzer
           </h1>
-          <p className="text-center text-muted-foreground mb-8">
-            Analysiere deine StarCraft: Remastered Replays mit vollständiger screp-core Implementation für echte Build Orders und Gameplay-Insights
+          <p className="text-center text-muted-foreground mb-2 text-lg">
+            Von Beginner zu Pro • Echte SC:R Datenanalyse • KI-gestützte Verbesserungen
+          </p>
+          <p className="text-center text-sm text-muted-foreground mb-8">
+            Analysiere deine StarCraft: Remastered Replays mit professioneller screp-core Engine
           </p>
           
           {analysisData ? (
-            <div className="space-y-6">
-              <div className="bg-card p-6 rounded-lg">
-                <h2 className="text-xl font-bold mb-4">jssuh Parser Ergebnisse</h2>
-                <pre className="bg-muted p-4 rounded overflow-auto text-sm max-h-96">
-                  {JSON.stringify(analysisData, null, 2)}
-                </pre>
-              </div>
-              <div className="text-center">
+            <div className="space-y-8">
+              {/* Pro Analysis Dashboard */}
+              <ProAnalysisDashboard data={analysisData} />
+              
+              {/* Replay Comparison Tool */}
+              <ReplayComparisonTool currentReplay={analysisData} />
+              
+              <div className="text-center pt-6 border-t">
                 <button 
                   onClick={() => setAnalysisData(null)}
-                  className="text-primary hover:underline"
+                  className="text-primary hover:underline text-lg font-medium"
                 >
-                  Neue jssuh Replay analysieren
+                  ← Neue Replay analysieren
                 </button>
               </div>
             </div>
