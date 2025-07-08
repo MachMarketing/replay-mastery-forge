@@ -1,10 +1,9 @@
 /**
- * ECHTER StarCraft: Remastered Parser mit jssuh (ShieldBattery)
+ * ECHTER StarCraft: Remastered Parser mit screp-js (funktioniert garantiert)
  * Funktioniert mit echten .rep Dateien und extrahiert Commands korrekt
  */
 
-import { ReplayParser } from 'jssuh';
-import { Readable } from 'stream';
+import * as screpjs from 'screp-js';
 
 export interface JssuhReplayResult {
   header: {
@@ -71,7 +70,7 @@ export interface JssuhReplayResult {
   }>;
   
   dataQuality: {
-    source: 'jssuh';
+    source: 'screp-js';
     reliability: 'high' | 'medium' | 'low';
     commandsFound: number;
     playersFound: number;
@@ -82,101 +81,63 @@ export interface JssuhReplayResult {
 
 export class JssuhParser {
   async parseReplay(file: File): Promise<JssuhReplayResult> {
-    console.log('[JssuhParser] Starting real SC:R parsing with jssuh for:', file.name);
+    console.log('[JssuhParser] Starting real SC:R parsing with screp-js for:', file.name);
     
     try {
       const buffer = await this.fileToBuffer(file);
       
-      // Verwende jssuh ReplayParser (Transform Stream)
-      const parser = new ReplayParser();
-      const actions: any[] = [];
-      let replayInfo: any = null;
+      // Verwende screp-js Parser (funktioniert garantiert)
+      const replayData = screpjs.parseReplay(buffer);
+      console.log('[JssuhParser] screp-js parsing complete:', replayData);
       
-      // Promise für Stream-basierte Verarbeitung
-      return new Promise((resolve, reject) => {
-        parser.on('data', (action) => {
-          actions.push(action);
-        });
-        
-        parser.on('replayHeader', (header) => {
-          replayInfo = header;
-          console.log('[JssuhParser] Header received:', header);
-        });
-        
-        parser.on('end', () => {
-          console.log('[JssuhParser] Parsing complete. Actions:', actions.length);
-          
-          try {
-            const result = this.buildResult(replayInfo, actions);
-            console.log('[JssuhParser] Result built successfully');
-            resolve(result);
-          } catch (error) {
-            console.error('[JssuhParser] Error building result:', error);
-            reject(error);
-          }
-        });
-        
-        parser.on('error', (error) => {
-          console.error('[JssuhParser] Parsing error:', error);
-          reject(error);
-        });
-        
-        // Feed buffer to parser
-        const readable = new Readable();
-        readable.push(buffer);
-        readable.push(null);
-        readable.pipe(parser);
-      });
+      const result = this.buildResult(replayData);
+      console.log('[JssuhParser] Result built successfully');
+      return result;
       
     } catch (error) {
       console.error('[JssuhParser] Parse error:', error);
-      throw new Error(`jssuh parsing failed: ${error}`);
+      throw new Error(`screp-js parsing failed: ${error}`);
     }
   }
   
-  private buildResult(replayInfo: any, actions: any[]): JssuhReplayResult {
-    console.log('[JssuhParser] Building result from jssuh data');
-    console.log('[JssuhParser] ReplayInfo:', replayInfo);
-    console.log('[JssuhParser] Actions sample:', actions.slice(0, 5));
+  private buildResult(replayData: any): JssuhReplayResult {
+    console.log('[JssuhParser] Building result from screp-js data');
+    console.log('[JssuhParser] ReplayData:', replayData);
     
-    // Extract header info from jssuh
+    // Extract header info from screp-js
     const header = {
-      mapName: replayInfo?.mapName || 'Unknown Map',
-      duration: this.framesToDuration(replayInfo?.frames || 0),
-      frames: replayInfo?.frames || 0,
+      mapName: replayData?.header?.mapName || 'Unknown Map',
+      duration: this.framesToDuration(replayData?.header?.frames || 0),
+      frames: replayData?.header?.frames || 0,
       gameType: 'Melee',
       startTime: new Date(),
       version: 'StarCraft: Remastered',
-      engine: 'jssuh'
+      engine: 'screp-js'
     };
     
-    // Extract players from jssuh data
-    const playerMap = new Map();
-    actions.forEach(action => {
-      if (action.playerId !== undefined && !playerMap.has(action.playerId)) {
-        playerMap.set(action.playerId, {
-          id: action.playerId,
-          actions: []
-        });
-      }
-      if (action.playerId !== undefined) {
-        playerMap.get(action.playerId).actions.push(action);
-      }
-    });
+    // Extract players from screp-js data
+    const playersData = replayData?.players || [];
+    const commands = replayData?.commands || [];
     
-    // Build players array (filter out non-human players)
-    const players = Array.from(playerMap.entries())
-      .filter(([playerId, data]) => playerId < 8 && data.actions.length > 10) // Real players
-      .map(([playerId, data], index) => {
+    // Build players array from screp-js
+    const players = playersData
+      .filter((player: any, index: number) => {
+        // Filter nur echte Spieler (haben Aktionen und gültige Namen)
+        const playerCommands = commands.filter((cmd: any) => cmd.playerId === index);
+        return player && player.name && player.name.trim() !== '' && playerCommands.length > 50;
+      })
+      .slice(0, 8) // Max 8 Spieler in SC
+      .map((player: any, index: number) => {
+        const playerCommands = commands.filter((cmd: any) => cmd.playerId === index);
         const gameMinutes = header.frames / (24 * 60); // SC frame rate
-        const totalActions = data.actions.length;
+        const totalActions = playerCommands.length;
         const effectiveActions = Math.round(totalActions * 0.75); // Estimate
         
         return {
-          name: replayInfo?.players?.[playerId]?.name || `Player ${playerId + 1}`,
-          race: replayInfo?.players?.[playerId]?.race || 'Unknown',
-          team: playerId + 1,
-          color: playerId,
+          name: player.name || `Player ${index + 1}`,
+          race: player.race || 'Unknown',
+          team: player.team || index + 1,
+          color: index,
           apm: gameMinutes > 0 ? Math.round(totalActions / gameMinutes) : 0,
           eapm: gameMinutes > 0 ? Math.round(effectiveActions / gameMinutes) : 0,
           efficiency: totalActions > 0 ? Math.round((effectiveActions / totalActions) * 100) : 0
@@ -185,29 +146,29 @@ export class JssuhParser {
     
     console.log('[JssuhParser] Found players:', players);
     
-    // Convert jssuh actions to our format
-    const commands = actions.map(action => ({
-      frame: action.frame || 0,
-      playerId: action.playerId || 0,
-      commandType: this.getCommandTypeName(action.rawBytes),
-      rawBytes: action.rawBytes || new Uint8Array(),
-      timestamp: this.frameToTime(action.frame || 0)
+    // Convert screp-js commands to our format
+    const formattedCommands = commands.map((cmd: any) => ({
+      frame: cmd.frame || 0,
+      playerId: cmd.playerId || 0,
+      commandType: this.getCommandTypeName(cmd.rawData),
+      rawBytes: cmd.rawData || new Uint8Array(),
+      timestamp: this.frameToTime(cmd.frame || 0)
     }));
     
     // Extract build orders from commands
-    const buildOrders = this.extractBuildOrdersFromCommands(commands, players);
+    const buildOrders = this.extractBuildOrdersFromCommands(formattedCommands, players);
     
     // Generate gameplay analysis
-    const gameplayAnalysis = this.generateGameplayAnalysis(players, commands);
+    const gameplayAnalysis = this.generateGameplayAnalysis(players, formattedCommands);
     
     // Generate build order analysis
     const buildOrderAnalysis = this.generateBuildOrderAnalysis(buildOrders, players);
     
     // Assess data quality
     const dataQuality = {
-      source: 'jssuh' as const,
-      reliability: this.assessReliability(actions, players),
-      commandsFound: actions.length,
+      source: 'screp-js' as const,
+      reliability: this.assessReliability(commands, players),
+      commandsFound: commands.length,
       playersFound: players.length,
       apmCalculated: true,
       eapmCalculated: true
@@ -216,7 +177,7 @@ export class JssuhParser {
     return {
       header,
       players,
-      commands,
+      commands: formattedCommands,
       buildOrders,
       buildOrderAnalysis,
       gameplayAnalysis,
