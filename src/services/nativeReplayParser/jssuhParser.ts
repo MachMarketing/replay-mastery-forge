@@ -102,7 +102,7 @@ export class JssuhParser {
   
   private buildResult(replayData: any): JssuhReplayResult {
     console.log('[JssuhParser] Building result from screparsed data');
-    console.log('[JssuhParser] ReplayData:', replayData);
+    console.log('[JssuhParser] ReplayData structure:', JSON.stringify(replayData, null, 2));
     
     // Extract header info from screparsed
     const header = {
@@ -115,9 +115,9 @@ export class JssuhParser {
       engine: 'screparsed'
     };
     
-    // Extract players from screparsed data
+    // Extract players from screparsed data  
     const playersData = replayData?.players || [];
-    const commands = replayData?.commands || [];
+    const commands = replayData?.commands || []; // Commands könnten anders strukturiert sein
     
     // Build players array from screparsed
     const players = playersData
@@ -140,14 +140,17 @@ export class JssuhParser {
     
     console.log('[JssuhParser] Found players:', players);
     
-    // Convert screparsed commands to our format
-    const formattedCommands = commands.map((cmd: any) => ({
-      frame: cmd.frame || 0,
-      playerId: cmd.playerID || 0,
-      commandType: this.getCommandTypeName(cmd.data),
-      rawBytes: cmd.data || new Uint8Array(),
-      timestamp: this.frameToTime(cmd.frame || 0)
-    }));
+    // Convert screparsed commands to our format - mit Null-Check
+    const formattedCommands = commands.map((cmd: any, index: number) => {
+      console.log(`[JssuhParser] Command ${index}:`, cmd); // Debug einzelne Commands
+      return {
+        frame: cmd.frame || 0,
+        playerId: cmd.playerID || 0,
+        commandType: this.getCommandTypeName(cmd.data || cmd.rawData || new Uint8Array()),
+        rawBytes: cmd.data || cmd.rawData || new Uint8Array(),
+        timestamp: this.frameToTime(cmd.frame || 0)
+      };
+    });
     
     // Extract build orders from commands
     const buildOrders = this.extractBuildOrdersFromCommands(formattedCommands, players);
@@ -195,7 +198,10 @@ export class JssuhParser {
   }
   
   private getCommandTypeName(rawBytes: Uint8Array): string {
-    if (!rawBytes || rawBytes.length === 0) return 'Unknown';
+    if (!rawBytes || rawBytes.length === 0) {
+      console.log('[JssuhParser] No rawBytes provided to getCommandTypeName');
+      return 'Unknown';
+    }
     
     const firstByte = rawBytes[0];
     
