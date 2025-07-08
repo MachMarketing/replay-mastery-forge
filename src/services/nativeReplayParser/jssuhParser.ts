@@ -140,14 +140,13 @@ export class JssuhParser {
     
     console.log('[JssuhParser] Found players:', players);
     
-    // Convert screparsed commands to our format - mit Null-Check
+    // Convert screparsed commands to our format - mit korrigierter Struktur
     const formattedCommands = commands.map((cmd: any, index: number) => {
-      console.log(`[JssuhParser] Command ${index}:`, cmd); // Debug einzelne Commands
       return {
         frame: cmd.frame || 0,
-        playerId: cmd.playerID || 0,
-        commandType: this.getCommandTypeName(cmd.data || cmd.rawData || new Uint8Array()),
-        rawBytes: cmd.data || cmd.rawData || new Uint8Array(),
+        playerId: cmd.playerId || 0,
+        commandType: cmd.typeName || `Command_${cmd.kind || 'Unknown'}`,
+        rawBytes: new Uint8Array(), // screparsed hat keine raw bytes
         timestamp: this.frameToTime(cmd.frame || 0)
       };
     });
