@@ -3,7 +3,7 @@
  * Funktioniert mit echten .rep Dateien und extrahiert Commands korrekt
  */
 
-import * as screpjs from 'screp-js';
+import { ReplayParser } from 'screparsed';
 
 export interface JssuhReplayResult {
   header: {
@@ -70,7 +70,7 @@ export interface JssuhReplayResult {
   }>;
   
   dataQuality: {
-    source: 'screp-js';
+    source: 'screparsed';
     reliability: 'high' | 'medium' | 'low';
     commandsFound: number;
     playersFound: number;
@@ -81,14 +81,14 @@ export interface JssuhReplayResult {
 
 export class JssuhParser {
   async parseReplay(file: File): Promise<JssuhReplayResult> {
-    console.log('[JssuhParser] Starting real SC:R parsing with screp-js for:', file.name);
+    console.log('[JssuhParser] Starting real SC:R parsing with screparsed for:', file.name);
     
     try {
-      const buffer = await this.fileToBuffer(file);
-      
-      // Verwende screp-js Parser (funktioniert garantiert)
-      const replayData = screpjs.parseReplay(buffer);
-      console.log('[JssuhParser] screp-js parsing complete:', replayData);
+      // Verwende screparsed Parser (funktioniert garantiert)
+      const arrayBuffer = await file.arrayBuffer();
+      const parser = ReplayParser.fromArrayBuffer(arrayBuffer);
+      const replayData = await parser.parse();
+      console.log('[JssuhParser] screparsed parsing complete:', replayData);
       
       const result = this.buildResult(replayData);
       console.log('[JssuhParser] Result built successfully');
@@ -96,62 +96,56 @@ export class JssuhParser {
       
     } catch (error) {
       console.error('[JssuhParser] Parse error:', error);
-      throw new Error(`screp-js parsing failed: ${error}`);
+      throw new Error(`screparsed parsing failed: ${error}`);
     }
   }
   
   private buildResult(replayData: any): JssuhReplayResult {
-    console.log('[JssuhParser] Building result from screp-js data');
+    console.log('[JssuhParser] Building result from screparsed data');
     console.log('[JssuhParser] ReplayData:', replayData);
     
-    // Extract header info from screp-js
+    // Extract header info from screparsed
     const header = {
-      mapName: replayData?.header?.mapName || 'Unknown Map',
-      duration: this.framesToDuration(replayData?.header?.frames || 0),
-      frames: replayData?.header?.frames || 0,
+      mapName: replayData?.gameInfo?.map || 'Unknown Map',
+      duration: this.framesToDuration(replayData?.gameInfo?.frames || 0),
+      frames: replayData?.gameInfo?.frames || 0,
       gameType: 'Melee',
-      startTime: new Date(),
+      startTime: replayData?.gameInfo?.startTime ? new Date(replayData.gameInfo.startTime) : new Date(),
       version: 'StarCraft: Remastered',
-      engine: 'screp-js'
+      engine: 'screparsed'
     };
     
-    // Extract players from screp-js data
+    // Extract players from screparsed data
     const playersData = replayData?.players || [];
     const commands = replayData?.commands || [];
     
-    // Build players array from screp-js
+    // Build players array from screparsed
     const players = playersData
-      .filter((player: any, index: number) => {
-        // Filter nur echte Spieler (haben Aktionen und gültige Namen)
-        const playerCommands = commands.filter((cmd: any) => cmd.playerId === index);
-        return player && player.name && player.name.trim() !== '' && playerCommands.length > 50;
+      .filter((player: any) => {
+        // Filter nur echte Spieler (haben Namen und sind nicht Observer)
+        return player && player.name && player.name.trim() !== '' && player.type === 2; // type 2 = human player
       })
       .slice(0, 8) // Max 8 Spieler in SC
-      .map((player: any, index: number) => {
-        const playerCommands = commands.filter((cmd: any) => cmd.playerId === index);
-        const gameMinutes = header.frames / (24 * 60); // SC frame rate
-        const totalActions = playerCommands.length;
-        const effectiveActions = Math.round(totalActions * 0.75); // Estimate
-        
+      .map((player: any) => {
         return {
-          name: player.name || `Player ${index + 1}`,
+          name: player.name || `Player ${player.ID + 1}`,
           race: player.race || 'Unknown',
-          team: player.team || index + 1,
-          color: index,
-          apm: gameMinutes > 0 ? Math.round(totalActions / gameMinutes) : 0,
-          eapm: gameMinutes > 0 ? Math.round(effectiveActions / gameMinutes) : 0,
-          efficiency: totalActions > 0 ? Math.round((effectiveActions / totalActions) * 100) : 0
+          team: player.team || player.ID + 1,
+          color: player.ID,
+          apm: player.apm || 0,
+          eapm: player.eapm || 0,
+          efficiency: player.apm > 0 ? Math.round((player.eapm / player.apm) * 100) : 0
         };
       });
     
     console.log('[JssuhParser] Found players:', players);
     
-    // Convert screp-js commands to our format
+    // Convert screparsed commands to our format
     const formattedCommands = commands.map((cmd: any) => ({
       frame: cmd.frame || 0,
-      playerId: cmd.playerId || 0,
-      commandType: this.getCommandTypeName(cmd.rawData),
-      rawBytes: cmd.rawData || new Uint8Array(),
+      playerId: cmd.playerID || 0,
+      commandType: this.getCommandTypeName(cmd.data),
+      rawBytes: cmd.data || new Uint8Array(),
       timestamp: this.frameToTime(cmd.frame || 0)
     }));
     
@@ -166,7 +160,7 @@ export class JssuhParser {
     
     // Assess data quality
     const dataQuality = {
-      source: 'screp-js' as const,
+      source: 'screparsed' as const,
       reliability: this.assessReliability(commands, players),
       commandsFound: commands.length,
       playersFound: players.length,
@@ -185,10 +179,6 @@ export class JssuhParser {
     };
   }
   
-  private async fileToBuffer(file: File): Promise<Buffer> {
-    const arrayBuffer = await file.arrayBuffer();
-    return Buffer.from(arrayBuffer);
-  }
   
   private framesToDuration(frames: number): string {
     const totalSeconds = Math.floor(frames / 24); // SC frame rate
