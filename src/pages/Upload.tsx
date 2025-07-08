@@ -1,14 +1,13 @@
 
 import React, { useState } from 'react';
-import { NewFinalReplayResult } from '@/services/nativeReplayParser/newScrepParser';
+import { JssuhReplayResult } from '@/services/nativeReplayParser/jssuhParser';
 import ReplayUpload from '@/components/ReplayUpload';
-import CompleteReplayResults from '@/components/CompleteReplayResults';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const Upload: React.FC = () => {
-  const [replayData, setReplayData] = useState<NewFinalReplayResult | null>(null);
+  const [replayData, setReplayData] = useState<JssuhReplayResult | null>(null);
 
-  const handleParseComplete = (data: NewFinalReplayResult) => {
+  const handleParseComplete = (data: JssuhReplayResult) => {
     console.log('[Upload] screp-core parse complete received:', data);
     setReplayData(data);
   };
@@ -33,7 +32,12 @@ const Upload: React.FC = () => {
           </TabsList>
           
           <TabsContent value="analysis">
-            <CompleteReplayResults data={replayData} />
+            <div className="p-4">
+              <h2 className="text-xl font-bold mb-4">jssuh Parser Ergebnisse</h2>
+              <pre className="bg-muted p-4 rounded overflow-auto text-sm">
+                {JSON.stringify(replayData, null, 2)}
+              </pre>
+            </div>
           </TabsContent>
         </Tabs>
       )}

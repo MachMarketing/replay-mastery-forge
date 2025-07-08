@@ -4,7 +4,6 @@ import { useEnhancedReplayParser } from '@/hooks/useEnhancedReplayParser';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import UploadBox from '@/components/UploadBox';
-import { AnalysisResult } from '@/components/AnalysisResult';
 import { JssuhReplayResult } from '@/services/nativeReplayParser/jssuhParser';
 
 const UploadPage: React.FC = () => {
@@ -37,13 +36,18 @@ const UploadPage: React.FC = () => {
           
           {analysisData ? (
             <div className="space-y-6">
-              <AnalysisResult replayData={analysisData} onReset={() => setAnalysisData(null)} />
+              <div className="bg-card p-6 rounded-lg">
+                <h2 className="text-xl font-bold mb-4">jssuh Parser Ergebnisse</h2>
+                <pre className="bg-muted p-4 rounded overflow-auto text-sm max-h-96">
+                  {JSON.stringify(analysisData, null, 2)}
+                </pre>
+              </div>
               <div className="text-center">
                 <button 
                   onClick={() => setAnalysisData(null)}
                   className="text-primary hover:underline"
                 >
-                  Neue screp-core Replay analysieren
+                  Neue jssuh Replay analysieren
                 </button>
               </div>
             </div>

@@ -4,12 +4,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { useEnhancedReplayParser } from '@/hooks/useEnhancedReplayParser';
-import { NewFinalReplayResult } from '@/services/nativeReplayParser/newScrepParser';
+import { JssuhReplayResult } from '@/services/nativeReplayParser/jssuhParser';
 import { Upload, FileText, AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface ReplayUploadProps {
-  onParseComplete: (data: NewFinalReplayResult) => void;
+  onParseComplete: (data: JssuhReplayResult) => void;
 }
 
 const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {

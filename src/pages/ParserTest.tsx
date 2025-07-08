@@ -9,14 +9,13 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useEnhancedReplayParser } from '@/hooks/useEnhancedReplayParser';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { AnalysisResult } from '@/components/AnalysisResult';
-import { NewFinalReplayResult } from '@/services/nativeReplayParser/newScrepParser';
+import { JssuhReplayResult } from '@/services/nativeReplayParser/jssuhParser';
 
 const ParserTest: React.FC = () => {
   const [file, setFile] = useState<File | null>(null);
   const [parsingStatus, setParsingStatus] = useState<'idle' | 'uploading' | 'parsing' | 'complete' | 'error'>('idle');
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [parsedReplayData, setParsedReplayData] = useState<NewFinalReplayResult | null>(null);
+  const [parsedReplayData, setParsedReplayData] = useState<JssuhReplayResult | null>(null);
   const { parseReplay, error, progress } = useEnhancedReplayParser();
   const { toast } = useToast();
 
@@ -133,7 +132,12 @@ const ParserTest: React.FC = () => {
                 Neue Replay hochladen
               </Button>
             </div>
-            <AnalysisResult replayData={parsedReplayData} onReset={() => setParsedReplayData(null)} />
+            <div className="bg-card p-6 rounded-lg">
+              <h3 className="text-lg font-semibold mb-4">jssuh Parser Rohdaten</h3>
+              <pre className="bg-muted p-4 rounded overflow-auto text-xs max-h-96">
+                {JSON.stringify(parsedReplayData, null, 2)}
+              </pre>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

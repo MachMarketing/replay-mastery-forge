@@ -42,6 +42,13 @@ export interface JssuhReplayResult {
     unitName: string;
     category: 'build' | 'train' | 'tech' | 'upgrade';
   }>>;
+
+  buildOrderAnalysis: Record<number, {
+    totalBuildings: number;
+    totalUnits: number;
+    economicEfficiency: number;
+    strategicAssessment: string;
+  }>;
   
   gameplayAnalysis: Record<number, {
     playstyle: string;
@@ -193,6 +200,9 @@ export class JssuhParser {
     // Generate gameplay analysis
     const gameplayAnalysis = this.generateGameplayAnalysis(players, commands);
     
+    // Generate build order analysis
+    const buildOrderAnalysis = this.generateBuildOrderAnalysis(buildOrders, players);
+    
     // Assess data quality
     const dataQuality = {
       source: 'jssuh' as const,
@@ -208,6 +218,7 @@ export class JssuhParser {
       players,
       commands,
       buildOrders,
+      buildOrderAnalysis,
       gameplayAnalysis,
       dataQuality
     };
@@ -372,5 +383,24 @@ export class JssuhParser {
     if (actions.length > 1000 && players.length >= 2) return 'high';
     if (actions.length > 500 && players.length >= 1) return 'medium';
     return 'low';
+  }
+
+  private generateBuildOrderAnalysis(buildOrders: Record<number, any[]>, players: any[]): Record<number, any> {
+    const analysis: Record<number, any> = {};
+    
+    players.forEach(player => {
+      const playerBuildOrder = buildOrders[player.color] || [];
+      const buildings = playerBuildOrder.filter(item => item.category === 'build').length;
+      const units = playerBuildOrder.filter(item => item.category === 'train').length;
+      
+      analysis[player.color] = {
+        totalBuildings: buildings,
+        totalUnits: units,
+        economicEfficiency: Math.min(100, Math.round((buildings + units) * 5)),
+        strategicAssessment: buildings > units ? 'Economic Focus' : units > buildings ? 'Military Focus' : 'Balanced'
+      };
+    });
+    
+    return analysis;
   }
 }
