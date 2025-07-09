@@ -123,8 +123,20 @@ export class JssuhParser {
       const players = JssuhParserHelpers.extractPlayersData(replayData);
       
       console.log('[JssuhParser] Extracting professional build orders from screparsed data');
+      console.log('[JssuhParser] Available screparsed data structure:', {
+        hasCommands: !!replayData?.commands,
+        commandsLength: replayData?.commands?.length || 0,
+        firstCommand: replayData?.commands?.[0],
+        hasPlayers: !!replayData?.players,
+        playersLength: replayData?.players?.length || 0,
+        gameInfo: replayData?.gameInfo
+      });
+      
       const buildOrders = ProfessionalBuildOrderExtractor.extractBuildOrders(replayData);
-      console.log('[JssuhParser] Professional build order extraction complete');
+      console.log('[JssuhParser] Professional build order extraction complete:', {
+        totalPlayers: Object.keys(buildOrders).length,
+        totalBuildOrderItems: Object.values(buildOrders).reduce((sum, playerData) => sum + (playerData.buildOrder?.length || 0), 0)
+      });
       
       const tracker = new RealTimeTracker(replayData?.players?.length || 0, playerRaces);
       formattedCommands.forEach((cmd: any) => {
