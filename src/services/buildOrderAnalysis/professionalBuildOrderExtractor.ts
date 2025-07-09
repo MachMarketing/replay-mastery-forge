@@ -285,19 +285,30 @@ export class ProfessionalBuildOrderExtractor {
     // Handle train commands
     if (commandType.includes('Train') || commandType.includes('TypeIDTrain')) {
       action = 'Train';
+      // If no unit name, create a generic training action
+      if (!unitName) {
+        unitName = `Unit (ID: ${unitId || 'Unknown'})`;
+      }
     } else if (commandType.includes('Build') || commandType.includes('TypeIDBuild')) {
       action = 'Build';
+      if (!unitName) {
+        unitName = `Building (ID: ${unitId || 'Unknown'})`;
+      }
     } else if (commandType.includes('Morph')) {
       action = 'Build'; // Morph is treated as build
+      if (!unitName) {
+        unitName = `Morphed Unit (ID: ${unitId || 'Unknown'})`;
+      }
     }
     
-    if (unitId !== undefined && unitName !== '' && unitName !== `Unit_${unitId}`) {
+    // Create build order item even if we don't have perfect unit names
+    if (unitId !== undefined || commandType.includes('Train') || commandType.includes('Build') || commandType.includes('Morph')) {
       console.log('[ProfessionalBuildOrderExtractor] Creating build order item:', action, unitName);
       
       return {
         supply: currentSupply.toString(),
         action: action as "Build" | "Train",
-        unitName,
+        unitName: unitName || 'Unknown Unit',
         frame: cmd.frame || 0,
         timestamp: timeString,
         isSupplyProvider: this.SUPPLY_PROVIDERS[unitName] !== undefined,
@@ -310,13 +321,13 @@ export class ProfessionalBuildOrderExtractor {
         maxSupply: currentSupply + 200,
         resourceCost: this.getResourceCost(unitName),
         timing: timeString,
-        name: unitName,
-        buildingName: unitName,
-        unitId: unitId,
+        name: unitName || 'Unknown Unit',
+        buildingName: unitName || 'Unknown Building',
+        unitId: unitId || 0,
         cost: { minerals: this.getResourceCost(unitName), gas: 0 },
         race: 'Unknown',
         efficiency: "optimal" as const,
-        description: `${action} ${unitName} at ${timeString}`
+        description: `${action} ${unitName || 'Unknown Unit'} at ${timeString}`
       };
     }
     
@@ -466,11 +477,15 @@ export class ProfessionalBuildOrderExtractor {
    * Check if item should be included in professional build order
    */
   private static isEssentialItem(item: ProfessionalBuildOrderItem): boolean {
-    return this.ESSENTIAL_BUILDINGS[item.unitName] || 
-           this.ESSENTIAL_UNITS[item.unitName] || 
-           this.ESSENTIAL_TECH[item.unitName] ||
-           item.category === 'tech' || 
-           item.action === 'Upgrade';
+    // For now, include ALL build order items to see what we're getting
+    return true;
+    
+    // Original filtering logic (commented out for debugging)
+    // return this.ESSENTIAL_BUILDINGS[item.unitName] || 
+    //        this.ESSENTIAL_UNITS[item.unitName] || 
+    //        this.ESSENTIAL_TECH[item.unitName] ||
+    //        item.category === 'tech' || 
+    //        item.action === 'Upgrade';
   }
 
   /**
