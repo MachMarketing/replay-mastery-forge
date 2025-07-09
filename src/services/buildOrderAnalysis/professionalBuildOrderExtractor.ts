@@ -4,6 +4,7 @@
  */
 
 import { ScrepConstants } from '../screpParser/constants';
+import { getUnitById } from '../nativeReplayParser/scUnitDatabase';
 
 export interface ProfessionalBuildOrderItem {
   supply: string;
@@ -282,22 +283,69 @@ export class ProfessionalBuildOrderExtractor {
       console.log('[ProfessionalBuildOrderExtractor] Found unit ID in parameters:', unitId, 'Unit:', unitName);
     }
     
-    // Handle train commands
+    // Handle train commands with better unit detection
     if (commandType.includes('Train') || commandType.includes('TypeIDTrain')) {
       action = 'Train';
-      // If no unit name, create a generic training action
+      
+      // Try to use the unit database first
+      if (unitId !== undefined) {
+        const unit = getUnitById(unitId);
+        if (unit) {
+          unitName = unit.name;
+        }
+      }
+      
+      // Fallback patterns for common units
       if (!unitName) {
-        unitName = `Unit (ID: ${unitId || 'Unknown'})`;
+        if (commandType.includes('SCV') || unitId === 0x07) unitName = 'SCV';
+        else if (commandType.includes('Marine') || unitId === 0x00) unitName = 'Marine';
+        else if (commandType.includes('Drone') || unitId === 0x25) unitName = 'Drone';
+        else if (commandType.includes('Probe') || unitId === 0x40) unitName = 'Probe';
+        else if (commandType.includes('Zealot') || unitId === 0x41) unitName = 'Zealot';
+        else if (commandType.includes('Zergling') || unitId === 0x26) unitName = 'Zergling';
+        else unitName = `Trained Unit`;
       }
     } else if (commandType.includes('Build') || commandType.includes('TypeIDBuild')) {
       action = 'Build';
-      if (!unitName) {
-        unitName = `Building (ID: ${unitId || 'Unknown'})`;
+      
+      // Try to use the unit database first
+      if (unitId !== undefined) {
+        const unit = getUnitById(unitId);
+        if (unit) {
+          unitName = unit.name;
+        }
       }
-    } else if (commandType.includes('Morph')) {
-      action = 'Build'; // Morph is treated as build
+      
+      // Fallback patterns for common buildings
       if (!unitName) {
-        unitName = `Morphed Unit (ID: ${unitId || 'Unknown'})`;
+        if (commandType.includes('Depot') || unitId === 0x6B) unitName = 'Supply Depot';
+        else if (commandType.includes('Barracks') || unitId === 0x6D) unitName = 'Barracks';
+        else if (commandType.includes('Pylon') || unitId === 0x9C) unitName = 'Pylon';
+        else if (commandType.includes('Gateway') || unitId === 0x9F) unitName = 'Gateway';
+        else if (commandType.includes('Hatchery') || unitId === 0x82) unitName = 'Hatchery';
+        else if (commandType.includes('Pool') || unitId === 0x8D) unitName = 'Spawning Pool';
+        else unitName = `Building`;
+      }
+    } else if (commandType.includes('Morph') || commandType.includes('TypeIDUnitMorph')) {
+      action = 'Build'; // Morph is treated as build
+      
+      // Try to use the unit database first
+      if (unitId !== undefined) {
+        const unit = getUnitById(unitId);
+        if (unit) {
+          unitName = unit.name;
+        }
+      }
+      
+      // Fallback patterns for common morphs
+      if (!unitName) {
+        if (commandType.includes('Lair') || unitId === 0x83) unitName = 'Lair';
+        else if (commandType.includes('Hive') || unitId === 0x84) unitName = 'Hive';
+        else if (commandType.includes('Lurker') || unitId === 0x67) unitName = 'Lurker';
+        else if (commandType.includes('Guardian') || unitId === 0x2C) unitName = 'Guardian';
+        else if (commandType.includes('Spore') || unitId === 0x8F) unitName = 'Spore Colony';
+        else if (commandType.includes('Sunken') || unitId === 0x90) unitName = 'Sunken Colony';
+        else unitName = `Morphed Unit`;
       }
     }
     
