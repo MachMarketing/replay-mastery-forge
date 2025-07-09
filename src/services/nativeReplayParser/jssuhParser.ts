@@ -96,18 +96,28 @@ export class JssuhParser {
       });
       
       // Convert screparsed commands to our format first
-      const formattedCommands = (replayData?.commands || []).map((cmd: any) => ({
-        frame: cmd.frame || 0,
-        playerId: cmd.playerId || 0,
-        type: cmd.type || 0,
-        typeString: JssuhParserHelpers.mapCommandType(cmd.typeName || cmd.kind),
-        parameters: cmd.parameters || {},
-        effective: true,
-        ineffKind: '',
-        time: this.frameToTime(cmd.frame || 0),
-        rawData: new Uint8Array(),
-        data: new Uint8Array()
-      }));
+      const formattedCommands = (replayData?.commands || []).map((cmd: any) => {
+        const mappedType = JssuhParserHelpers.mapCommandType(cmd.typeName || cmd.kind);
+        console.log('[JssuhParser] Command mapping:', {
+          original: cmd.typeName || cmd.kind,
+          mapped: mappedType,
+          type: cmd.type,
+          playerId: cmd.playerId
+        });
+        
+        return {
+          frame: cmd.frame || 0,
+          playerId: cmd.playerId || 0,
+          type: cmd.type || 0,
+          typeString: mappedType,
+          parameters: cmd.parameters || {},
+          effective: true,
+          ineffKind: '',
+          time: this.frameToTime(cmd.frame || 0),
+          rawData: new Uint8Array(),
+          data: new Uint8Array()
+        };
+      });
 
       // Enhanced Build Order Extractor
       const players = JssuhParserHelpers.extractPlayersData(replayData);
