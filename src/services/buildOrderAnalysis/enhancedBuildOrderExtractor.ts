@@ -233,7 +233,7 @@ export class EnhancedBuildOrderExtractor {
     console.log('[EnhancedBuildOrderExtractor] Processing', commands.length, 'commands');
     
     for (const cmd of commands) {
-      if (cmd.effective && ['Build', 'Train', 'Research', 'Upgrade', 'Morph'].includes(cmd.typeString)) {
+      if (cmd.effective && ['Build', 'Research', 'Upgrade', 'Morph'].includes(cmd.typeString)) {
         console.log(`[EnhancedBuildOrderExtractor] Processing build command:`, {
           type: cmd.typeString,
           playerId: cmd.playerId,
@@ -251,7 +251,7 @@ export class EnhancedBuildOrderExtractor {
             this.processBuildCommand(cmd, playerId, playerState);
             break;
           case 'Train':
-            this.processTrainCommand(cmd, playerId, playerState);
+            // Skip Train commands - build orders only show buildings, not units
             break;
           case 'Research':
             this.processResearchCommand(cmd, playerId, playerState);
@@ -260,7 +260,8 @@ export class EnhancedBuildOrderExtractor {
             this.processUpgradeCommand(cmd, playerId, playerState);
             break;
           case 'Morph':
-            this.processTrainCommand(cmd, playerId, playerState); // Morph is similar to Train
+            // Morph commands can create buildings (like Lair from Hatchery)
+            this.processBuildCommand(cmd, playerId, playerState);
             break;
         }
       }
