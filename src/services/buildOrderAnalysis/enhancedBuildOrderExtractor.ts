@@ -625,13 +625,6 @@ export class EnhancedBuildOrderExtractor {
     return this.buildOrders.get(playerId) || [];
   }
 
-  public getAllBuildOrders(): Record<number, EnhancedBuildOrderEntry[]> {
-    const result: Record<number, EnhancedBuildOrderEntry[]> = {};
-    this.buildOrders.forEach((buildOrder, playerId) => {
-      result[playerId] = buildOrder;
-    });
-    return result;
-  }
 
   public getPlayerState(playerId: number): PlayerResourceState | undefined {
     return this.playerStates.get(playerId);
@@ -822,5 +815,200 @@ export class EnhancedBuildOrderExtractor {
     };
 
     this.buildOrders.get(playerId)?.push(entry);
+  }
+
+  public getAllBuildOrders(): Record<number, EnhancedBuildOrderEntry[]> {
+    const result: Record<number, EnhancedBuildOrderEntry[]> = {};
+    this.buildOrders.forEach((orders, playerId) => {
+      result[playerId] = orders;
+    });
+    return result;
+  }
+
+  // Neue Methode um direkt aus screparsed Daten zu extrahieren
+  public processScreparsedData(replayData: any): void {
+    console.log('[EnhancedBuildOrderExtractor] Processing screparsed data directly');
+    
+    if (!replayData?.commands) {
+      console.log('[EnhancedBuildOrderExtractor] No commands in screparsed data');
+      return;
+    }
+
+    // Zähler für Supply-Tracking per Spieler
+    const supplyTracking = new Map<number, number>();
+    Array.from(this.playerStates.keys()).forEach(playerId => {
+      supplyTracking.set(playerId, this.getStartingSupply(this.raceMapping[playerId]));
+    });
+
+    // Direkt aus screparsed commands extrahieren
+    replayData.commands.forEach((cmd: any) => {
+      const playerId = cmd.playerId || 0;
+      if (!this.buildOrders.has(playerId)) {
+        this.buildOrders.set(playerId, []);
+      }
+
+      // Schaue nach Build/Train/Research Commands in den rohen Daten
+      const entry = this.extractFromScreparsedCommand(cmd, supplyTracking.get(playerId) || 4);
+      if (entry) {
+        this.buildOrders.get(playerId)!.push(entry);
+        
+        // Update supply tracking
+        if (entry.category === 'supply' || entry.unitName.includes('Overlord') || entry.unitName.includes('Pylon') || entry.unitName.includes('Supply Depot')) {
+          const currentSupply = supplyTracking.get(playerId) || 4;
+          supplyTracking.set(playerId, currentSupply + 1);
+        }
+        
+        console.log(`[EnhancedBuildOrderExtractor] Added screparsed entry for player ${playerId}:`, entry);
+      }
+    });
+
+    // Sortiere nach Zeit
+    this.buildOrders.forEach((orders) => {
+      orders.sort((a, b) => a.frame - b.frame);
+    });
+  }
+
+  private extractFromScreparsedCommand(cmd: any, currentSupply: number): EnhancedBuildOrderEntry | null {
+    // Schaue nach dem typeName direkt in screparsed
+    const typeName = cmd.typeName || cmd.kind;
+    
+    if (!typeName) return null;
+
+    // Extrahiere Unit/Building ID falls verfügbar
+    let unitId = 0;
+    let unitName = 'Unknown';
+    let category: 'economy' | 'military' | 'tech' | 'supply' = 'military';
+    let action: 'Build' | 'Train' | 'Research' | 'Upgrade' = 'Build';
+
+    // Versuche Unit/Building zu identifizieren
+    if (typeName.includes('Build') || typeName.includes('Train') || typeName.includes('Morph')) {
+      // Schaue in parameters nach Unit ID
+      if (cmd.parameters && cmd.parameters.length > 0) {
+        unitId = cmd.parameters[0];
+        const unitData = SC_UNITS[unitId];
+        if (unitData) {
+          unitName = unitData.name;
+          
+          // Bestimme Kategorie und Action
+          if (unitData.category === 'building') {
+            action = 'Build';
+            category = this.determineBuildingCategory(unitName);
+          } else if (unitData.category === 'worker') {
+            action = 'Train';
+            category = 'economy';
+          } else if (unitName === 'Overlord' || unitName === 'Pylon' || unitName === 'Supply Depot') {
+            action = 'Train';
+            category = 'supply';
+          } else {
+            action = 'Train';
+            category = 'military';
+          }
+        } else {
+          // Fallback für unbekannte Unit IDs
+          unitName = `Unit_${unitId}`;
+        }
+      } else {
+        // Fallback basierend auf Command Type
+        if (typeName.includes('Train')) {
+          action = 'Train';
+          unitName = 'Unit';
+          category = 'military';
+        } else if (typeName.includes('Build')) {
+          action = 'Build';
+          unitName = 'Building';
+          category = 'economy';
+        } else if (typeName.includes('Morph')) {
+          action = 'Build';
+          unitName = 'Morph';
+          category = 'tech';
+        }
+      }
+
+      // Filtere nur wichtige Build Order Einträge
+      if (this.isImportantForBuildOrder(unitName, category)) {
+        const supplyString = this.formatSupply(currentSupply, unitName);
+        
+        return {
+          time: this.frameToTimeString(cmd.frame || 0),
+          frame: cmd.frame || 0,
+          gameTime: Math.floor((cmd.frame || 0) / 24),
+          supply: supplyString,
+          currentSupply: currentSupply,
+          maxSupply: this.calculateMaxSupply(currentSupply, unitName),
+          action: action,
+          unitName: unitName,
+          unitId: unitId,
+          cost: this.getCostForUnit(unitId),
+          category: category,
+          race: this.raceMapping[cmd.playerId] || 'unknown',
+          efficiency: 'optimal',
+          description: `${supplyString} ${unitName}`
+        };
+      }
+    }
+
+    return null;
+  }
+
+  private isImportantForBuildOrder(unitName: string, category: string): boolean {
+    // Nur wichtige Einträge für Build Order
+    if (category === 'supply') return true; // Overlords, Pylons, Supply Depots
+    if (category === 'economy' && (unitName.includes('Hatchery') || unitName.includes('Nexus') || unitName.includes('Command Center'))) return true;
+    if (category === 'economy' && (unitName.includes('Assimilator') || unitName.includes('Refinery') || unitName.includes('Extractor'))) return true;
+    if (category === 'tech') return true; // Alle Tech Buildings
+    
+    // Wichtige Produktionsgebäude
+    const importantBuildings = [
+      'Gateway', 'Barracks', 'Spawning Pool',
+      'Factory', 'Stargate', 'Spire',
+      'Cybernetics Core', 'Academy', 'Hydralisk Den',
+      'Forge', 'Engineering Bay', 'Evolution Chamber'
+    ];
+    
+    return importantBuildings.includes(unitName);
+  }
+
+  private determineBuildingCategory(unitName: string): 'economy' | 'military' | 'tech' | 'supply' {
+    if (unitName === 'Pylon' || unitName === 'Supply Depot' || unitName === 'Overlord') {
+      return 'supply';
+    }
+    
+    const economyBuildings = ['Nexus', 'Command Center', 'Hatchery', 'Assimilator', 'Refinery', 'Extractor'];
+    if (economyBuildings.includes(unitName)) {
+      return 'economy';
+    }
+    
+    const techBuildings = ['Cybernetics Core', 'Academy', 'Engineering Bay', 'Evolution Chamber', 'Forge', 'Templar Archives'];
+    if (techBuildings.includes(unitName)) {
+      return 'tech';
+    }
+    
+    return 'military';
+  }
+
+  private formatSupply(currentSupply: number, unitName: string): string {
+    // Professionelles Format: "8 Pylon", "12 Gateway", etc.
+    return `${currentSupply} ${unitName}`;
+  }
+
+  private calculateMaxSupply(currentSupply: number, unitName: string): number {
+    if (unitName === 'Pylon' || unitName === 'Supply Depot') {
+      return currentSupply + 8;
+    }
+    if (unitName === 'Overlord') {
+      return currentSupply + 8;
+    }
+    return currentSupply;
+  }
+
+  private getCostForUnit(unitId: number): { minerals: number; gas: number } {
+    const unitData = SC_UNITS[unitId];
+    if (unitData) {
+      return {
+        minerals: unitData.cost.minerals,
+        gas: unitData.cost.gas
+      };
+    }
+    return { minerals: 0, gas: 0 };
   }
 }

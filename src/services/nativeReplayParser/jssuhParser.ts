@@ -119,12 +119,12 @@ export class JssuhParser {
         };
       });
 
-      // Enhanced Build Order Extractor
+      // Enhanced Build Order Extractor - verwende direkt screparsed Daten
       const players = JssuhParserHelpers.extractPlayersData(replayData);
       const buildOrderExtractor = new EnhancedBuildOrderExtractor(players);
       
-      console.log('[JssuhParser] Processing', formattedCommands.length, 'commands for build order extraction');
-      buildOrderExtractor.processCommands(formattedCommands);
+      console.log('[JssuhParser] Processing screparsed data directly for build order extraction');
+      buildOrderExtractor.processScreparsedData(replayData);
       console.log('[JssuhParser] Build order extraction complete');
       
       const tracker = new RealTimeTracker(replayData?.players?.length || 0, playerRaces);
