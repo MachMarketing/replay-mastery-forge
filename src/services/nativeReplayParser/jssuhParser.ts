@@ -5,6 +5,8 @@
 
 import { ReplayParser } from 'screparsed';
 import { RealTimeTracker } from './realTimeTracker';
+import { EnhancedBuildOrderExtractor, EnhancedBuildOrderEntry } from '../buildOrderAnalysis/enhancedBuildOrderExtractor';
+import { JssuhParserHelpers } from './jssuhParserHelpers';
 
 export interface JssuhReplayResult {
   header: {
@@ -35,13 +37,7 @@ export interface JssuhReplayResult {
     timestamp: string;
   }>;
   
-  buildOrders: Record<number, Array<{
-    time: string;
-    action: string;
-    supply: number;
-    unitName: string;
-    category: 'build' | 'train' | 'tech' | 'upgrade';
-  }>>;
+  buildOrders: Record<number, EnhancedBuildOrderEntry[]>;
 
   buildOrderAnalysis: Record<number, {
     totalBuildings: number;
@@ -99,14 +95,31 @@ export class JssuhParser {
         }
       });
       
-      const tracker = new RealTimeTracker(replayData?.players?.length || 0, playerRaces);
+      // Convert screparsed commands to our format first
+      const formattedCommands = (replayData?.commands || []).map((cmd: any) => ({
+        frame: cmd.frame || 0,
+        playerId: cmd.playerId || 0,
+        type: cmd.type || 0,
+        typeString: JssuhParserHelpers.mapCommandType(cmd.typeName || cmd.kind),
+        parameters: cmd.parameters || {},
+        effective: true,
+        ineffKind: '',
+        time: this.frameToTime(cmd.frame || 0),
+        rawData: new Uint8Array(),
+        data: new Uint8Array()
+      }));
+
+      // Enhanced Build Order Extractor
+      const players = JssuhParserHelpers.extractPlayersData(replayData);
+      const buildOrderExtractor = new EnhancedBuildOrderExtractor(players);
+      buildOrderExtractor.processCommands(formattedCommands);
       
-      // Verarbeite alle Commands für echte Build Orders  
-      (replayData?.commands || []).forEach((cmd: any) => {
+      const tracker = new RealTimeTracker(replayData?.players?.length || 0, playerRaces);
+      formattedCommands.forEach((cmd: any) => {
         tracker.processCommand(cmd);
       });
       
-      const result = this.buildResult(replayData, tracker);
+      const result = this.buildResult(replayData, tracker, buildOrderExtractor, formattedCommands);
       console.log('[JssuhParser] Result built successfully');
       return result;
       
@@ -116,7 +129,7 @@ export class JssuhParser {
     }
   }
   
-  private buildResult(replayData: any, tracker: RealTimeTracker): JssuhReplayResult {
+  private buildResult(replayData: any, tracker: RealTimeTracker, buildOrderExtractor: EnhancedBuildOrderExtractor, formattedCommands: any[]): JssuhReplayResult {
     console.log('[JssuhParser] Building result from screparsed data');
     console.log('[JssuhParser] ReplayData structure:', JSON.stringify(replayData, null, 2));
     
@@ -131,47 +144,13 @@ export class JssuhParser {
       engine: 'screparsed'
     };
     
-    // Extract players from screparsed data  
-    const playersData = replayData?.players || [];
-    const commands = replayData?.commands || []; // Commands könnten anders strukturiert sein
-    
-    // Build players array from screparsed
-    const players = playersData
-      .filter((player: any) => {
-        // Filter nur echte Spieler (haben Namen und sind nicht Observer)
-        return player && player.name && player.name.trim() !== '' && player.type === 2; // type 2 = human player
-      })
-      .slice(0, 8) // Max 8 Spieler in SC
-      .map((player: any) => {
-        return {
-          name: player.name || `Player ${player.ID + 1}`,
-          race: player.race || 'Unknown',
-          team: player.team || player.ID + 1,
-          color: player.ID,
-          apm: player.apm || 0,
-          eapm: player.eapm || 0,
-          efficiency: player.apm > 0 ? Math.round((player.eapm / player.apm) * 100) : 0
-        };
-      });
+    // Extract players 
+    const players = JssuhParserHelpers.extractPlayersData(replayData);
     
     console.log('[JssuhParser] Found players:', players);
     
-    // Convert screparsed commands to our format - mit korrigierter Struktur
-    const formattedCommands = commands.map((cmd: any, index: number) => {
-      return {
-        frame: cmd.frame || 0,
-        playerId: cmd.playerId || 0,
-        commandType: cmd.typeName || `Command_${cmd.kind || 'Unknown'}`,
-        rawBytes: new Uint8Array(), // screparsed hat keine raw bytes
-        timestamp: this.frameToTime(cmd.frame || 0)
-      };
-    });
-    
-    // Echte Build Orders vom Tracker extrahieren
-    const buildOrders: Record<number, any[]> = {};
-    players.forEach((player, index) => {
-      buildOrders[index] = tracker.getBuildOrder(index);
-    });
+    // Enhanced Build Orders from extractor
+    const buildOrders = buildOrderExtractor.getAllBuildOrders();
     
     // Echte Gameplay Analysis vom Tracker
     const gameplayAnalysis: Record<number, any> = {};
@@ -216,8 +195,8 @@ export class JssuhParser {
     // Assess data quality
     const dataQuality = {
       source: 'screparsed' as const,
-      reliability: this.assessReliability(commands, players),
-      commandsFound: commands.length,
+      reliability: this.assessReliability(formattedCommands, players),
+      commandsFound: formattedCommands.length,
       playersFound: players.length,
       apmCalculated: true,
       eapmCalculated: true
@@ -226,7 +205,13 @@ export class JssuhParser {
     return {
       header,
       players,
-      commands: formattedCommands,
+      commands: formattedCommands.map(cmd => ({
+        frame: cmd.frame,
+        playerId: cmd.playerId,
+        commandType: cmd.typeString,
+        rawBytes: new Uint8Array(),
+        timestamp: cmd.time
+      })),
       buildOrders,
       buildOrderAnalysis,
       gameplayAnalysis,

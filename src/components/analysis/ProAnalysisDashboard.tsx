@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { JssuhReplayResult } from '@/services/nativeReplayParser/jssuhParser';
+import { EnhancedBuildOrderEntry } from '@/services/buildOrderAnalysis/enhancedBuildOrderExtractor';
 import { 
   TrendingUp, 
   Zap, 
@@ -307,25 +308,59 @@ const ProAnalysisDashboard: React.FC<ProAnalysisDashboardProps> = ({ data }) => 
             </CardHeader>
             <CardContent>
               <div className="space-y-3 max-h-96 overflow-y-auto">
-                {buildOrder.slice(0, 15).map((entry: any, index: number) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                {buildOrder.slice(0, 20).map((entry: EnhancedBuildOrderEntry, index: number) => (
+                  <div key={index} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center text-sm font-medium">
                         {index + 1}
                       </div>
                       <div>
                         <div className="font-medium">{entry.action} {entry.unitName}</div>
-                        <div className="text-sm text-muted-foreground">{entry.time}</div>
+                        <div className="text-sm text-muted-foreground flex items-center gap-2">
+                          <span>{entry.time}</span>
+                          <span>•</span>
+                          <span>{entry.cost.minerals}M</span>
+                          {entry.cost.gas > 0 && <span>{entry.cost.gas}G</span>}
+                        </div>
                       </div>
                     </div>
                     <div className="text-right">
                       <div className="text-sm font-medium">{entry.supply}</div>
-                      <Badge variant="outline" className="text-xs">
-                        {entry.category}
-                      </Badge>
+                      <div className="flex gap-1 mt-1">
+                        <Badge 
+                          variant="outline" 
+                          className={`text-xs ${
+                            entry.category === 'economy' ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300' :
+                            entry.category === 'military' ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' :
+                            entry.category === 'tech' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' :
+                            'bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300'
+                          }`}
+                        >
+                          {entry.category}
+                        </Badge>
+                        {entry.efficiency !== 'optimal' && (
+                          <Badge 
+                            variant="outline" 
+                            className={`text-xs ${
+                              entry.efficiency === 'supply-blocked' ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' :
+                              entry.efficiency === 'late' ? 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300' :
+                              'bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300'
+                            }`}
+                          >
+                            {entry.efficiency}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
+                {buildOrder.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Building className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                    <p>Keine Build Order Daten gefunden</p>
+                    <p className="text-sm">Upload eine .rep Datei für echte Build Order Analyse</p>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
