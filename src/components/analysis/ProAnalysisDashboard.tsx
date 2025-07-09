@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { JssuhReplayResult } from '@/services/nativeReplayParser/jssuhParser';
-import { EnhancedBuildOrderEntry } from '@/services/buildOrderAnalysis/enhancedBuildOrderExtractor';
+import { ProfessionalBuildOrderItem } from '@/services/buildOrderAnalysis/professionalBuildOrderExtractor';
 import { 
   TrendingUp, 
   Zap, 
@@ -308,7 +308,7 @@ const ProAnalysisDashboard: React.FC<ProAnalysisDashboardProps> = ({ data }) => 
             </CardHeader>
             <CardContent>
               <div className="space-y-3 max-h-96 overflow-y-auto">
-                {buildOrder.slice(0, 20).map((entry: EnhancedBuildOrderEntry, index: number) => (
+                {buildOrder.slice(0, 20).map((entry: ProfessionalBuildOrderItem, index: number) => (
                   <div key={index} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center text-sm font-medium">
