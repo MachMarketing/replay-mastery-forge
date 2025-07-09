@@ -230,9 +230,44 @@ export class EnhancedBuildOrderExtractor {
   }
 
   public processCommands(commands: Command[]): void {
+    console.log('[EnhancedBuildOrderExtractor] Processing', commands.length, 'commands');
+    
     for (const cmd of commands) {
-      this.processCommand(cmd);
+      if (cmd.effective && ['Build', 'Train', 'Research', 'Upgrade'].includes(cmd.typeString)) {
+        console.log(`[EnhancedBuildOrderExtractor] Processing build command:`, {
+          type: cmd.typeString,
+          playerId: cmd.playerId,
+          time: cmd.time,
+          parameters: cmd.parameters
+        });
+        
+        const playerId = cmd.playerId || 0;
+        const playerState = this.playerStates.get(playerId);
+        if (!playerState) continue;
+        
+        // Call the correct method based on command type
+        switch (cmd.typeString) {
+          case 'Build':
+            this.processBuildCommand(cmd, playerId, playerState);
+            break;
+          case 'Train':
+            this.processTrainCommand(cmd, playerId, playerState);
+            break;
+          case 'Research':
+            this.processResearchCommand(cmd, playerId, playerState);
+            break;
+          case 'Upgrade':
+            this.processUpgradeCommand(cmd, playerId, playerState);
+            break;
+        }
+      }
     }
+    
+    console.log('[EnhancedBuildOrderExtractor] Extraction complete. Build orders found:', 
+      Array.from(this.buildOrders.entries()).map(([playerId, orders]) => 
+        `Player ${playerId}: ${orders.length} entries`
+      ).join(', ')
+    );
   }
 
   private processCommand(cmd: Command): void {
