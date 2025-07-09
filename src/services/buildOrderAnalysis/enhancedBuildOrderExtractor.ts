@@ -299,53 +299,84 @@ export class EnhancedBuildOrderExtractor {
   }
 
   private processBuildCommand(cmd: Command, playerId: number, playerState: PlayerResourceState): void {
-    // Extract unit info from command parameters or estimate based on timing
+    // Extract building info based on race and supply timing (Liquipedia style)
     const gameTime = cmd.frame / 24; // seconds
     const race = this.raceMapping[playerId];
     const supply = playerState.currentSupply;
     
-    // Estimate building based on race, timing and supply
+    // Estimate building based on standard build order patterns
     let unitName = 'Building';
     let cost = { minerals: 100, gas: 0 };
     let category: 'economy' | 'military' | 'tech' | 'supply' = 'military';
     
-    // Race-specific build estimation based on standard timings
+    // Race-specific build estimation based on professional build orders
     if (race === 'protoss') {
-      if (supply <= 8 && gameTime < 60) {
+      if (supply === 8 && gameTime < 60) {
         unitName = 'Pylon';
         cost = { minerals: 100, gas: 0 };
         category = 'supply';
         playerState.maxSupply += 8;
-      } else if (supply >= 8 && supply <= 12 && gameTime < 120) {
+      } else if (supply >= 10 && supply <= 12 && gameTime < 120) {
         unitName = 'Gateway';
         cost = { minerals: 150, gas: 0 };
         category = 'military';
-      } else if (gameTime > 120 && gameTime < 300) {
-        unitName = 'Cybernetics Core';
-        cost = { minerals: 200, gas: 0 };
-        category = 'tech';
+      } else if (supply >= 13 && supply <= 16 && gameTime < 180) {
+        unitName = 'Assimilator';
+        cost = { minerals: 100, gas: 0 };
+        category = 'economy';
+      } else if (supply >= 14 && supply <= 18 && gameTime > 120 && gameTime < 300) {
+        // Could be Nexus expansion or Cybernetics Core
+        if (gameTime < 200) {
+          unitName = 'Nexus';
+          cost = { minerals: 400, gas: 0 };
+          category = 'economy';
+        } else {
+          unitName = 'Cybernetics Core';
+          cost = { minerals: 200, gas: 0 };
+          category = 'tech';
+        }
+      } else if (gameTime > 180) {
+        unitName = 'Pylon';
+        cost = { minerals: 100, gas: 0 };
+        category = 'supply';
+        playerState.maxSupply += 8;
       }
     } else if (race === 'terran') {
-      if (supply <= 9 && gameTime < 60) {
+      if (supply === 9 && gameTime < 60) {
         unitName = 'Supply Depot';
         cost = { minerals: 100, gas: 0 };
         category = 'supply';
         playerState.maxSupply += 8;
-      } else if (supply >= 9 && supply <= 14 && gameTime < 120) {
+      } else if (supply >= 10 && supply <= 14 && gameTime < 120) {
         unitName = 'Barracks';
         cost = { minerals: 150, gas: 0 };
         category = 'military';
+      } else if (supply >= 15 && supply <= 20 && gameTime > 120 && gameTime < 300) {
+        if (gameTime < 180) {
+          unitName = 'Supply Depot';
+          cost = { minerals: 100, gas: 0 };
+          category = 'supply';
+          playerState.maxSupply += 8;
+        } else {
+          unitName = 'Command Center';
+          cost = { minerals: 400, gas: 0 };
+          category = 'economy';
+        }
       } else if (gameTime > 180) {
         unitName = 'Factory';
         cost = { minerals: 200, gas: 100 };
         category = 'military';
       }
     } else if (race === 'zerg') {
-      if (supply >= 8 && supply <= 12 && gameTime < 120) {
+      if (supply >= 9 && supply <= 12 && gameTime < 120) {
         unitName = 'Spawning Pool';
         cost = { minerals: 200, gas: 0 };
         category = 'military';
-      } else if (gameTime > 120 && gameTime < 300) {
+      } else if (supply >= 12 && supply <= 16 && gameTime > 120 && gameTime < 300) {
+        unitName = 'Hatchery';
+        cost = { minerals: 300, gas: 0 };
+        category = 'economy';
+      } else if (gameTime > 120) {
         unitName = 'Hydralisk Den';
         cost = { minerals: 100, gas: 50 };
         category = 'military';
@@ -357,7 +388,7 @@ export class EnhancedBuildOrderExtractor {
     playerState.gas = Math.max(0, playerState.gas - cost.gas);
     playerState.buildings.push(unitName);
 
-    // Create build order entry
+    // Create build order entry in Liquipedia style: "Supply Building"
     const entry: EnhancedBuildOrderEntry = {
       time: this.frameToTimeString(cmd.frame),
       frame: cmd.frame,
@@ -366,13 +397,13 @@ export class EnhancedBuildOrderExtractor {
       currentSupply: playerState.currentSupply,
       maxSupply: playerState.maxSupply,
       action: 'Build',
-      unitName: unitName,
+      unitName: `${supply} ${unitName}`, // Liquipedia format: "8 Pylon", "10 Gateway"
       unitId: 0,
       cost: cost,
       category: category,
       race: this.raceMapping[playerId],
       efficiency: this.evaluateEfficiency({ name: unitName, race: race as any, category: 'building', cost: { minerals: cost.minerals, gas: cost.gas, supply: 0, buildTime: 0 }, id: 0 }, playerState, cmd.frame),
-      description: `${race.charAt(0).toUpperCase() + race.slice(1)} building - ${unitName}`
+      description: `${race.charAt(0).toUpperCase() + race.slice(1)} build order - ${supply} ${unitName}`
     };
 
     this.buildOrders.get(playerId)?.push(entry);
