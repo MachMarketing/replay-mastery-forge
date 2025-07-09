@@ -869,82 +869,101 @@ export class EnhancedBuildOrderExtractor {
   }
 
   private extractFromScreparsedCommand(cmd: any, currentSupply: number): EnhancedBuildOrderEntry | null {
-    // Schaue nach dem typeName direkt in screparsed
-    const typeName = cmd.typeName || cmd.kind;
+    console.log('[extractFromScreparsedCommand] Processing command:', {
+      typeName: cmd.typeName,
+      parameters: cmd.parameters,
+      data: cmd.data,
+      targetUnitType: cmd.targetUnitType,
+      unitType: cmd.unitType
+    });
     
+    const typeName = cmd.typeName || cmd.kind;
     if (!typeName) return null;
 
-    // Extrahiere Unit/Building ID falls verfügbar
+    // Nur Build/Train/Morph Commands verarbeiten
+    if (!['TypeIDBuild', 'TypeIDTrain', 'TypeIDUnitMorph', 'TypeIDResearch', 'TypeIDUpgrade'].includes(typeName)) {
+      return null;
+    }
+
     let unitId = 0;
     let unitName = 'Unknown';
     let category: 'economy' | 'military' | 'tech' | 'supply' = 'military';
     let action: 'Build' | 'Train' | 'Research' | 'Upgrade' = 'Build';
 
-    // Versuche Unit/Building zu identifizieren
-    if (typeName.includes('Build') || typeName.includes('Train') || typeName.includes('Morph')) {
-      // Schaue in parameters nach Unit ID
-      if (cmd.parameters && cmd.parameters.length > 0) {
-        unitId = cmd.parameters[0];
-        const unitData = SC_UNITS[unitId];
-        if (unitData) {
-          unitName = unitData.name;
-          
-          // Bestimme Kategorie und Action
-          if (unitData.category === 'building') {
-            action = 'Build';
-            category = this.determineBuildingCategory(unitName);
-          } else if (unitData.category === 'worker') {
-            action = 'Train';
-            category = 'economy';
-          } else if (unitName === 'Overlord' || unitName === 'Pylon' || unitName === 'Supply Depot') {
-            action = 'Train';
-            category = 'supply';
-          } else {
-            action = 'Train';
-            category = 'military';
-          }
+    // Extrahiere Unit ID aus verschiedenen Quellen
+    if (cmd.parameters?.unitTypeId !== undefined) {
+      unitId = cmd.parameters.unitTypeId;
+    } else if (cmd.targetUnitType !== undefined) {
+      unitId = cmd.targetUnitType;
+    } else if (cmd.unitType !== undefined) {
+      unitId = cmd.unitType;
+    } else if (cmd.data && cmd.data.length >= 2) {
+      // Versuche aus raw data zu extrahieren
+      unitId = cmd.data[0] | (cmd.data[1] << 8);
+    }
+
+    console.log('[extractFromScreparsedCommand] Extracted unitId:', unitId);
+
+    if (unitId > 0) {
+      const unitData = SC_UNITS[unitId];
+      if (unitData) {
+        unitName = unitData.name;
+        
+        // Bestimme Kategorie und Action basierend auf Unit Type
+        if (unitData.category === 'building') {
+          action = 'Build';
+          category = this.determineBuildingCategory(unitName);
+        } else if (unitData.category === 'worker') {
+          action = 'Train';
+          category = 'economy';
+        } else if (unitName === 'Overlord' || unitName === 'Pylon' || unitName === 'Supply Depot') {
+          action = 'Train';
+          category = 'supply';
         } else {
-          // Fallback für unbekannte Unit IDs
-          unitName = `Unit_${unitId}`;
+          action = 'Train';
+          category = 'military';
         }
       } else {
-        // Fallback basierend auf Command Type
-        if (typeName.includes('Train')) {
-          action = 'Train';
-          unitName = 'Unit';
-          category = 'military';
-        } else if (typeName.includes('Build')) {
-          action = 'Build';
-          unitName = 'Building';
-          category = 'economy';
-        } else if (typeName.includes('Morph')) {
-          action = 'Build';
-          unitName = 'Morph';
-          category = 'tech';
-        }
+        // Fallback für unbekannte Unit IDs
+        unitName = `Unit_${unitId}`;
       }
+    } else {
+      // Fallback basierend auf Command Type
+      if (typeName.includes('Train')) {
+        action = 'Train';
+        unitName = 'Unit';
+        category = 'military';
+      } else if (typeName.includes('Build')) {
+        action = 'Build';
+        unitName = 'Building';
+        category = 'economy';
+      } else if (typeName.includes('Morph')) {
+        action = 'Build';
+        unitName = 'Morph';
+        category = 'tech';
+      }
+    }
 
-      // Filtere nur wichtige Build Order Einträge
-      if (this.isImportantForBuildOrder(unitName, category)) {
-        const supplyString = this.formatSupply(currentSupply, unitName);
-        
-        return {
-          time: this.frameToTimeString(cmd.frame || 0),
-          frame: cmd.frame || 0,
-          gameTime: Math.floor((cmd.frame || 0) / 24),
-          supply: supplyString,
-          currentSupply: currentSupply,
-          maxSupply: this.calculateMaxSupply(currentSupply, unitName),
-          action: action,
-          unitName: unitName,
-          unitId: unitId,
-          cost: this.getCostForUnit(unitId),
-          category: category,
-          race: this.raceMapping[cmd.playerId] || 'unknown',
-          efficiency: 'optimal',
-          description: `${supplyString} ${unitName}`
-        };
-      }
+    // Filtere nur wichtige Build Order Einträge
+    if (this.isImportantForBuildOrder(unitName, category)) {
+      const supplyString = this.formatSupply(currentSupply, unitName);
+      
+      return {
+        time: this.frameToTimeString(cmd.frame || 0),
+        frame: cmd.frame || 0,
+        gameTime: Math.floor((cmd.frame || 0) / 24),
+        supply: supplyString,
+        currentSupply: currentSupply,
+        maxSupply: this.calculateMaxSupply(currentSupply, unitName),
+        action: action,
+        unitName: unitName,
+        unitId: unitId,
+        cost: this.getCostForUnit(unitId),
+        category: category,
+        race: this.raceMapping[cmd.playerId] || 'unknown',
+        efficiency: 'optimal',
+        description: `${supplyString} ${unitName}`
+      };
     }
 
     return null;
@@ -1010,5 +1029,83 @@ export class EnhancedBuildOrderExtractor {
       };
     }
     return { minerals: 0, gas: 0 };
+  }
+
+  private getUnitName(unitId: number): string {
+    const unitData = SC_UNITS[unitId];
+    return unitData ? unitData.name : `Unit_${unitId}`;
+  }
+
+  private getTechName(techId: number): string {
+    // Vereinfachtes Tech-Mapping
+    const techMap: Record<number, string> = {
+      0: 'Stim Packs',
+      1: 'Lockdown',
+      2: 'EMP Shockwave',
+      3: 'Spider Mines',
+      4: 'Scanner Sweep',
+      5: 'Tank Siege Mode',
+      6: 'Defensive Matrix',
+      7: 'Irradiate',
+      8: 'Yamato Gun',
+      9: 'Cloaking Field',
+      10: 'Personnel Cloaking'
+    };
+    return techMap[techId] || `Tech_${techId}`;
+  }
+
+  private getUpgradeName(upgradeId: number): string {
+    // Vereinfachtes Upgrade-Mapping
+    const upgradeMap: Record<number, string> = {
+      0: 'Terran Infantry Armor',
+      1: 'Terran Vehicle Plating',
+      2: 'Terran Ship Plating',
+      3: 'Zerg Carapace',
+      4: 'Zerg Flyer Carapace',
+      5: 'Protoss Armor',
+      6: 'Protoss Plating'
+    };
+    return upgradeMap[upgradeId] || `Upgrade_${upgradeId}`;
+  }
+
+  private frameToTime(frame: number): string {
+    const totalSeconds = Math.floor(frame / 24);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  }
+
+  private estimateSupply(playerId: number, frame: number): number {
+    // Einfache Supply-Schätzung basierend auf Zeit
+    const gameTime = Math.floor(frame / 24); // seconds
+    const race = this.raceMapping[playerId];
+    const startingSupply = this.getStartingSupply(race);
+    
+    // Grobe Schätzung: +1 Supply alle 30 Sekunden
+    return startingSupply + Math.floor(gameTime / 30);
+  }
+
+  private addBuildOrderEntry(playerId: number, entry: { time: string; action: string; supply: number; unitName: string; category: string }): void {
+    const buildOrder = this.buildOrders.get(playerId) || [];
+    
+    const enhancedEntry: EnhancedBuildOrderEntry = {
+      time: entry.time,
+      frame: 0,
+      gameTime: 0,
+      supply: `${entry.supply}`,
+      currentSupply: entry.supply,
+      maxSupply: entry.supply,
+      action: entry.action as 'Build' | 'Train' | 'Research' | 'Upgrade',
+      unitName: entry.unitName,
+      unitId: 0,
+      cost: { minerals: 0, gas: 0 },
+      category: entry.category as 'economy' | 'military' | 'tech' | 'supply',
+      race: this.raceMapping[playerId] || 'unknown',
+      efficiency: 'optimal',
+      description: entry.unitName
+    };
+    
+    buildOrder.push(enhancedEntry);
+    this.buildOrders.set(playerId, buildOrder);
   }
 }
