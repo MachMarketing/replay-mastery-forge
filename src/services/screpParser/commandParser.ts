@@ -116,6 +116,9 @@ export class CommandParser {
       return parameters;
     }
     
+    // Store current position for raw data extraction
+    const startPos = this.reader.getPosition();
+    
     switch (commandType) {
       case 0x0C: // Build
         if (length >= 6) {
@@ -123,6 +126,7 @@ export class CommandParser {
           parameters.x = this.reader.readUInt16LE();
           parameters.y = this.reader.readUInt16LE();
           parameters.unitName = ScrepConstants.getUnitName(parameters.unitTypeId);
+          parameters.commandType = 'build';
         }
         break;
         
@@ -130,6 +134,23 @@ export class CommandParser {
         if (length >= 2) {
           parameters.unitTypeId = this.reader.readUInt16LE();
           parameters.unitName = ScrepConstants.getUnitName(parameters.unitTypeId);
+          parameters.commandType = 'train';
+        }
+        break;
+        
+      case 0x22: // Unit Morph
+        if (length >= 2) {
+          parameters.unitTypeId = this.reader.readUInt16LE();
+          parameters.unitName = ScrepConstants.getUnitName(parameters.unitTypeId);
+          parameters.commandType = 'morph';
+        }
+        break;
+        
+      case 0x34: // Building Morph
+        if (length >= 2) {
+          parameters.unitTypeId = this.reader.readUInt16LE();
+          parameters.unitName = ScrepConstants.getUnitName(parameters.unitTypeId);
+          parameters.commandType = 'building_morph';
         }
         break;
         
@@ -137,6 +158,7 @@ export class CommandParser {
         if (length >= 2) {
           parameters.techId = this.reader.readUInt16LE();
           parameters.techName = ScrepConstants.getTechName(parameters.techId);
+          parameters.commandType = 'tech';
         }
         break;
         
@@ -144,6 +166,7 @@ export class CommandParser {
         if (length >= 2) {
           parameters.upgradeId = this.reader.readUInt16LE();
           parameters.upgradeName = ScrepConstants.getTechName(parameters.upgradeId);
+          parameters.commandType = 'upgrade';
         }
         break;
         
