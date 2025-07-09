@@ -300,9 +300,122 @@ export class JssuhParser {
   }
   
   private guessUnitName(command: any): string {
-    // This would need detailed command byte analysis
-    // For now, return generic names
-    switch (command.commandType) {
+    // Extract unit ID from command data for real unit names
+    if (command.data && command.data.length >= 2) {
+      const unitId = command.data[1]; // Usually second byte contains unit ID
+      return this.getUnitNameById(unitId) || this.getGenericName(command.commandType);
+    }
+    
+    return this.getGenericName(command.commandType);
+  }
+  
+  private getUnitNameById(unitId: number): string | null {
+    // SC:R Unit ID mapping based on BWAPI constants
+    const unitMap: Record<number, string> = {
+      // Protoss Buildings
+      0x9A: 'Nexus',
+      0x9C: 'Pylon', 
+      0x9D: 'Assimilator',
+      0x9F: 'Gateway',
+      0xA0: 'Photon Cannon',
+      0xA1: 'Citadel of Adun',
+      0xA2: 'Cybernetics Core',
+      0xA3: 'Templar Archives',
+      0xA4: 'Forge',
+      0xA5: 'Stargate',
+      0xA6: 'Fleet Beacon',
+      0xA7: 'Arbiter Tribunal',
+      0xA8: 'Robotics Support Bay',
+      0x9B: 'Robotics Facility',
+      0x9E: 'Observatory',
+      
+      // Terran Buildings
+      0x6A: 'Command Center',
+      0x6B: 'Supply Depot',
+      0x6C: 'Refinery',
+      0x6D: 'Barracks',
+      0x6E: 'Academy',
+      0x6F: 'Factory',
+      0x70: 'Starport',
+      0x71: 'Control Tower',
+      0x72: 'Science Facility',
+      0x73: 'Covert Ops',
+      0x74: 'Physics Lab',
+      0x75: 'Machine Shop',
+      0x76: 'Bunker',
+      0x77: 'Missile Turret',
+      0x78: 'Engineering Bay',
+      0x79: 'Armory',
+      
+      // Zerg Buildings
+      0x82: 'Hatchery',
+      0x83: 'Lair',
+      0x84: 'Hive',
+      0x85: 'Nydus Canal',
+      0x86: 'Hydralisk Den',
+      0x87: 'Defiler Mound',
+      0x88: 'Greater Spire',
+      0x89: 'Queens Nest',
+      0x8A: 'Evolution Chamber',
+      0x8B: 'Ultralisk Cavern',
+      0x8C: 'Spire',
+      0x8D: 'Spawning Pool',
+      0x8E: 'Creep Colony',
+      0x8F: 'Spore Colony',
+      0x90: 'Sunken Colony',
+      0x91: 'Extractor',
+      
+      // Protoss Units
+      0x40: 'Probe',
+      0x41: 'Zealot',
+      0x42: 'Dragoon',
+      0x43: 'High Templar',
+      0x44: 'Archon',
+      0x45: 'Shuttle',
+      0x46: 'Scout',
+      0x47: 'Arbiter',
+      0x48: 'Carrier',
+      0x50: 'Dark Templar',
+      0x51: 'Dark Archon',
+      0x52: 'Corsair',
+      0x53: 'Reaver',
+      0x54: 'Observer',
+      
+      // Terran Units
+      0x07: 'SCV',
+      0x00: 'Marine',
+      0x01: 'Firebat',
+      0x02: 'Medic',
+      0x03: 'Ghost',
+      0x05: 'Vulture',
+      0x06: 'Goliath',
+      0x08: 'Siege Tank',
+      0x0B: 'Wraith',
+      0x0C: 'Dropship',
+      0x0D: 'Science Vessel',
+      0x0E: 'Battlecruiser',
+      0x20: 'Valkyrie',
+      
+      // Zerg Units
+      0x25: 'Drone',
+      0x26: 'Zergling',
+      0x27: 'Hydralisk',
+      0x28: 'Ultralisk',
+      0x2A: 'Overlord',
+      0x2B: 'Mutalisk',
+      0x2C: 'Guardian',
+      0x2D: 'Queen',
+      0x2E: 'Defiler',
+      0x2F: 'Scourge',
+      0x3A: 'Lurker',
+      0x67: 'Devourer'
+    };
+    
+    return unitMap[unitId] || null;
+  }
+  
+  private getGenericName(commandType: string): string {
+    switch (commandType) {
       case 'Build': return 'Building';
       case 'Train': return 'Unit';
       case 'Research': return 'Technology';

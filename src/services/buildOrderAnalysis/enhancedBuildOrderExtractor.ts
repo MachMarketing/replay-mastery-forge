@@ -233,8 +233,8 @@ export class EnhancedBuildOrderExtractor {
     console.log('[EnhancedBuildOrderExtractor] Processing', commands.length, 'commands');
     
     for (const cmd of commands) {
-      if (cmd.effective && ['Build', 'Research', 'Upgrade', 'Morph'].includes(cmd.typeString)) {
-        console.log(`[EnhancedBuildOrderExtractor] Processing build command:`, {
+      if (cmd.effective) {
+        console.log(`[EnhancedBuildOrderExtractor] Processing command:`, {
           type: cmd.typeString,
           playerId: cmd.playerId,
           time: cmd.time,
@@ -251,7 +251,8 @@ export class EnhancedBuildOrderExtractor {
             this.processBuildCommand(cmd, playerId, playerState);
             break;
           case 'Train':
-            // Skip Train commands - build orders only show buildings, not units
+            // Only process essential supply units (Overlords), skip other units
+            this.processEssentialTrainCommand(cmd, playerId, playerState);
             break;
           case 'Research':
             this.processResearchCommand(cmd, playerId, playerState);
@@ -304,10 +305,10 @@ export class EnhancedBuildOrderExtractor {
     const race = this.raceMapping[playerId];
     const supply = playerState.currentSupply;
     
-    // Estimate building based on standard build order patterns
-    let unitName = 'Building';
-    let cost = { minerals: 100, gas: 0 };
-    let category: 'economy' | 'military' | 'tech' | 'supply' = 'military';
+    // First try to get real unit name from command parameters
+    let unitName = this.extractUnitNameFromCommand(cmd, race, supply, gameTime);
+    let cost = this.getUnitCost(unitName);
+    let category: 'economy' | 'military' | 'tech' | 'supply' = this.categorizeBuilding(unitName);
     
     // Race-specific build estimation based on professional build orders
     if (race === 'protoss') {
@@ -672,5 +673,154 @@ export class EnhancedBuildOrderExtractor {
     score -= (supplyBlocked * 10);
     
     return Math.max(0, score);
+  }
+
+  private extractUnitNameFromCommand(cmd: Command, race: string, supply: number, gameTime: number): string {
+    // Try to extract unit ID from command parameters
+    if (cmd.parameters && typeof cmd.parameters === 'object') {
+      // Check for unitType or buildingType in parameters
+      const unitType = cmd.parameters.unitType || cmd.parameters.buildingType || cmd.parameters.unit;
+      if (unitType !== undefined) {
+        const unitFromMap = this.getUnitNameFromId(unitType);
+        if (unitFromMap) return unitFromMap;
+      }
+    }
+
+    // Fallback to intelligent timing-based estimation
+    return this.estimateUnitFromTiming(race, supply, gameTime, cmd.typeString);
+  }
+
+  private getUnitNameFromId(unitId: number): string | null {
+    // Use the SC_UNITS database to find unit by ID
+    const unit = SC_UNITS[unitId];
+    return unit ? unit.name : null;
+  }
+
+  private estimateUnitFromTiming(race: string, supply: number, gameTime: number, commandType: string): string {
+    // Intelligent estimation based on professional build orders
+    if (race === 'protoss') {
+      if (commandType === 'Build') {
+        if (supply === 8 && gameTime < 60) return 'Pylon';
+        if (supply >= 10 && supply <= 12 && gameTime < 120) return 'Gateway';
+        if (supply >= 13 && supply <= 16 && gameTime < 180) return 'Assimilator';
+        if (supply >= 14 && supply <= 18 && gameTime > 120 && gameTime < 300) {
+          return gameTime < 200 ? 'Nexus' : 'Cybernetics Core';
+        }
+        if (gameTime > 180) return 'Pylon';
+      }
+      if (commandType === 'Train') {
+        if (supply <= 6 || gameTime < 30) return 'Probe';
+        if (supply >= 9 && gameTime < 180) return 'Zealot';
+        return 'Dragoon';
+      }
+    } else if (race === 'terran') {
+      if (commandType === 'Build') {
+        if (supply === 9 && gameTime < 60) return 'Supply Depot';
+        if (supply >= 10 && supply <= 14 && gameTime < 120) return 'Barracks';
+        if (supply >= 15 && supply <= 20 && gameTime > 120 && gameTime < 300) {
+          return gameTime < 180 ? 'Supply Depot' : 'Command Center';
+        }
+        return 'Factory';
+      }
+      if (commandType === 'Train') {
+        if (supply <= 8 || gameTime < 30) return 'SCV';
+        if (supply >= 10 && gameTime < 300) return 'Marine';
+        return 'Vulture';
+      }
+    } else if (race === 'zerg') {
+      if (commandType === 'Build') {
+        if (supply >= 9 && supply <= 12 && gameTime < 120) return 'Spawning Pool';
+        if (supply >= 12 && supply <= 16 && gameTime > 120 && gameTime < 300) return 'Hatchery';
+        return 'Hydralisk Den';
+      }
+      if (commandType === 'Train') {
+        if (supply <= 8 || gameTime < 30) return 'Drone';
+        if (supply >= 9 && supply <= 15 && gameTime < 300) return 'Overlord';
+        return 'Zergling';
+      }
+    }
+
+    return commandType === 'Build' ? 'Building' : 'Unit';
+  }
+
+  private getUnitCost(unitName: string): { minerals: number; gas: number } {
+    // Find unit in SC_UNITS database
+    const unit = Object.values(SC_UNITS).find(u => u.name === unitName);
+    if (unit) {
+      return { minerals: unit.cost.minerals, gas: unit.cost.gas };
+    }
+
+    // Default costs for common units
+    const defaultCosts: Record<string, { minerals: number; gas: number }> = {
+      'Pylon': { minerals: 100, gas: 0 },
+      'Gateway': { minerals: 150, gas: 0 },
+      'Nexus': { minerals: 400, gas: 0 },
+      'Assimilator': { minerals: 100, gas: 0 },
+      'Cybernetics Core': { minerals: 200, gas: 0 },
+      'Supply Depot': { minerals: 100, gas: 0 },
+      'Barracks': { minerals: 150, gas: 0 },
+      'Command Center': { minerals: 400, gas: 0 },
+      'Factory': { minerals: 200, gas: 100 },
+      'Spawning Pool': { minerals: 200, gas: 0 },
+      'Hatchery': { minerals: 300, gas: 0 },
+      'Hydralisk Den': { minerals: 100, gas: 50 },
+      'Probe': { minerals: 50, gas: 0 },
+      'Zealot': { minerals: 100, gas: 0 },
+      'Dragoon': { minerals: 125, gas: 50 },
+      'SCV': { minerals: 50, gas: 0 },
+      'Marine': { minerals: 50, gas: 0 },
+      'Vulture': { minerals: 75, gas: 0 },
+      'Drone': { minerals: 50, gas: 0 },
+      'Overlord': { minerals: 100, gas: 0 },
+      'Zergling': { minerals: 50, gas: 0 }
+    };
+
+    return defaultCosts[unitName] || { minerals: 100, gas: 0 };
+  }
+
+  private processEssentialTrainCommand(cmd: Command, playerId: number, playerState: PlayerResourceState): void {
+    const unitName = this.extractUnitNameFromCommand(cmd, this.raceMapping[playerId], playerState.currentSupply, cmd.frame / 24);
+    
+    // Only include essential supply units in build orders (Overlords for Zerg)
+    const essentialUnits = ['Overlord'];
+    
+    if (!essentialUnits.includes(unitName)) {
+      return; // Skip non-essential units
+    }
+
+    const cost = this.getUnitCost(unitName);
+    let category: 'economy' | 'military' | 'tech' | 'supply' = 'supply';
+    let supplyUsed = 0;
+    
+    if (unitName === 'Overlord') {
+      playerState.maxSupply += 8;
+      supplyUsed = 0; // Overlords don't cost supply
+    }
+
+    // Deduct costs and update supply
+    playerState.minerals = Math.max(0, playerState.minerals - cost.minerals);
+    playerState.gas = Math.max(0, playerState.gas - cost.gas);
+    playerState.currentSupply += supplyUsed;
+    playerState.units.push(unitName);
+
+    // Create build order entry for essential units only
+    const entry: EnhancedBuildOrderEntry = {
+      time: this.frameToTimeString(cmd.frame),
+      frame: cmd.frame,
+      gameTime: cmd.frame / 24,
+      supply: `${playerState.currentSupply}/${playerState.maxSupply}`,
+      currentSupply: playerState.currentSupply,
+      maxSupply: playerState.maxSupply,
+      action: 'Train',
+      unitName: `${playerState.currentSupply} ${unitName}`, // Supply format
+      unitId: 0,
+      cost: cost,
+      category: category,
+      race: this.raceMapping[playerId],
+      efficiency: this.evaluateEfficiency({ name: unitName, race: this.raceMapping[playerId] as any, category: 'military', cost: { minerals: cost.minerals, gas: cost.gas, supply: supplyUsed, buildTime: 0 }, id: 0 }, playerState, cmd.frame),
+      description: `${this.raceMapping[playerId].charAt(0).toUpperCase() + this.raceMapping[playerId].slice(1)} supply unit - ${unitName}`
+    };
+
+    this.buildOrders.get(playerId)?.push(entry);
   }
 }
