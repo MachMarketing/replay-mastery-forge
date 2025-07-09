@@ -112,7 +112,10 @@ export class JssuhParser {
       // Enhanced Build Order Extractor
       const players = JssuhParserHelpers.extractPlayersData(replayData);
       const buildOrderExtractor = new EnhancedBuildOrderExtractor(players);
+      
+      console.log('[JssuhParser] Processing', formattedCommands.length, 'commands for build order extraction');
       buildOrderExtractor.processCommands(formattedCommands);
+      console.log('[JssuhParser] Build order extraction complete');
       
       const tracker = new RealTimeTracker(replayData?.players?.length || 0, playerRaces);
       formattedCommands.forEach((cmd: any) => {
