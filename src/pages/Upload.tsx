@@ -26,20 +26,27 @@ const Upload: React.FC = () => {
       {!replayData ? (
         <ReplayUpload onParseComplete={handleParseComplete} />
       ) : (
-        <Tabs defaultValue="analysis" className="w-full">
-          <TabsList className="grid w-full grid-cols-1">
-            <TabsTrigger value="analysis">screp-core Replay Analyse</TabsTrigger>
-          </TabsList>
+        <div className="space-y-6">
+          <div className="p-6 bg-primary/5 border border-primary/20 rounded-lg">
+            <h2 className="text-xl font-bold mb-2 text-primary">Parsing Erfolgreich! ✅</h2>
+            <p className="text-muted-foreground mb-4">
+              Deine Replay wurde erfolgreich geparst. Für die vollständige Pro-Analyse gehe zur Upload-Seite.
+            </p>
+            <a 
+              href="/upload" 
+              className="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+            >
+              🚀 Pro-Analyse ansehen
+            </a>
+          </div>
           
-          <TabsContent value="analysis">
-            <div className="p-4">
-              <h2 className="text-xl font-bold mb-4">jssuh Parser Ergebnisse</h2>
-              <pre className="bg-muted p-4 rounded overflow-auto text-sm">
-                {JSON.stringify(replayData, null, 2)}
-              </pre>
-            </div>
-          </TabsContent>
-        </Tabs>
+          <details className="bg-muted/30 rounded-lg p-4">
+            <summary className="font-semibold cursor-pointer mb-4">Raw JSON Debug Data (für Entwickler)</summary>
+            <pre className="text-xs overflow-auto">
+              {JSON.stringify(replayData, null, 2)}
+            </pre>
+          </details>
+        </div>
       )}
     </div>
   );

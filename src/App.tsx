@@ -28,15 +28,11 @@ function App() {
         <Route path="/parser-test" element={<ParserTest />} />
         <Route path="/parser-debug" element={<ParserDebug />} />
         
-        {/* SC:R Parser Route */}
-        <Route path="/upload" element={<Upload />} />
+        {/* Pro SC:R Analyzer Route */}
+        <Route path="/upload" element={<UploadPage />} />
         
-        {/* Old Upload Route */}
-        <Route path="/upload-old" element={
-          <ProtectedRouteWrapper>
-            <UploadPage />
-          </ProtectedRouteWrapper>
-        } />
+        {/* Simple JSON Debug Route */}
+        <Route path="/upload-debug" element={<Upload />} />
         <Route path="/replays" element={
           <ProtectedRouteWrapper>
             <ReplaysPage />
