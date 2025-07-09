@@ -27,6 +27,7 @@ export class JssuhParserHelpers {
 
   static mapCommandType(typeName: string): string {
     const commandMap: Record<string, string> = {
+      // Original mappings
       'Select': 'Select',
       'Train': 'Train',
       'Build': 'Build',
@@ -36,7 +37,29 @@ export class JssuhParserHelpers {
       'Attack': 'Attack',
       'Stop': 'Stop',
       'Hold': 'Hold Position',
-      'Patrol': 'Patrol'
+      'Patrol': 'Patrol',
+      
+      // screparsed specific mappings
+      'TypeIDSelect121': 'Select',
+      'TypeIDTrain': 'Train',
+      'TypeIDBuild': 'Build',
+      'TypeIDResearch': 'Research',
+      'TypeIDUpgrade': 'Upgrade',
+      'TypeIDRightClick121': 'Move',
+      'TypeIDTargetedOrder121': 'Attack',
+      'TypeIDUnitMorph': 'Morph',
+      'TypeIDHotkey': 'Hotkey',
+      'TypeIDStop': 'Stop',
+      'TypeIDHold': 'Hold Position',
+      'TypeIDPatrol': 'Patrol',
+      
+      // Additional screparsed types
+      'TypeIDMove': 'Move',
+      'TypeIDAttack': 'Attack',
+      'TypeIDMorph': 'Morph',
+      'TypeIDCancel': 'Cancel',
+      'TypeIDUse': 'Use',
+      'TypeIDOrder': 'Order'
     };
     
     return commandMap[typeName] || 'Unknown';

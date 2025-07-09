@@ -233,7 +233,7 @@ export class EnhancedBuildOrderExtractor {
     console.log('[EnhancedBuildOrderExtractor] Processing', commands.length, 'commands');
     
     for (const cmd of commands) {
-      if (cmd.effective && ['Build', 'Train', 'Research', 'Upgrade'].includes(cmd.typeString)) {
+      if (cmd.effective && ['Build', 'Train', 'Research', 'Upgrade', 'Morph'].includes(cmd.typeString)) {
         console.log(`[EnhancedBuildOrderExtractor] Processing build command:`, {
           type: cmd.typeString,
           playerId: cmd.playerId,
@@ -258,6 +258,9 @@ export class EnhancedBuildOrderExtractor {
             break;
           case 'Upgrade':
             this.processUpgradeCommand(cmd, playerId, playerState);
+            break;
+          case 'Morph':
+            this.processTrainCommand(cmd, playerId, playerState); // Morph is similar to Train
             break;
         }
       }
