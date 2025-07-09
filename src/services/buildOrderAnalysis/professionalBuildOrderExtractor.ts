@@ -1,34 +1,24 @@
 /**
- * Professional Build Order Extractor
- * Directly processes screp command data to create accurate build orders
+ * Professional Build Order Extractor for StarCraft: Remastered
+ * Based on comprehensive research of screp command structure and complete unit database
  */
 
 import { ScrepConstants } from '../screpParser/constants';
-import { getUnitById } from '../nativeReplayParser/scUnitDatabase';
+import { getUnitById, SC_UNITS, COMMAND_TYPES } from '../nativeReplayParser/scUnitDatabase';
 
 export interface ProfessionalBuildOrderItem {
   supply: string;
-  action: "Research" | "Upgrade" | "Build" | "Train";
+  action: string;
   unitName: string;
   frame: number;
   timestamp: string;
-  isSupplyProvider: boolean;
+  // Additional properties for compatibility
   category: 'tech' | 'supply' | 'economy' | 'military';
-  
-  // Backward compatibility with EnhancedBuildOrderEntry
-  time: string;
-  gameTime: number;
-  currentSupply: number;
-  maxSupply: number;
-  resourceCost: number;
-  timing: string;
-  name: string;
-  buildingName: string;
-  unitId: number;
-  cost: { minerals: number; gas: number; };
-  race: string;
-  efficiency: "optimal" | "early" | "late" | "supply-blocked";
-  description: string;
+  cost: { minerals: number; gas: number };
+  efficiency: number;
+  // Backward compatibility
+  time?: string;
+  unit?: string;
 }
 
 export interface PlayerBuildOrder {
@@ -38,134 +28,74 @@ export interface PlayerBuildOrder {
   supplyHistory: { frame: number; supply: number }[];
 }
 
+/**
+ * Professional Build Order Extractor
+ * Implements complete command analysis based on screp structure research
+ */
 export class ProfessionalBuildOrderExtractor {
-  private static readonly SUPPLY_PROVIDERS: Record<string, number> = {
-    // Protoss
-    'Pylon': 8,
-    
-    // Terran  
-    'Supply Depot': 8,
-    
-    // Zerg
-    'Overlord': 8,
-    'Overmind': 200,
-    'Overmind With Shell': 200
-  };
+  
+  // Supply providing units and buildings
+  private static readonly SUPPLY_PROVIDERS = new Set([
+    0x6B, // Supply Depot
+    0x9C, // Pylon
+    0x2A  // Overlord
+  ]);
 
-  private static readonly ESSENTIAL_BUILDINGS: Record<string, boolean> = {
-    // Protoss Core Buildings
-    'Nexus': true,
-    'Pylon': true,
-    'Gateway': true,
-    'Cybernetics Core': true,
-    'Forge': true,
-    'Photon Cannon': true,
-    'Assimilator': true,
-    'Robotics Facility': true,
-    'Observatory': true,
-    'Stargate': true,
-    'Fleet Beacon': true,
-    'Citadel of Adun': true,
-    'Templar Archives': true,
-    'Arbiter Tribunal': true,
-    'Robotics Support Bay': true,
-    'Shield Battery': true,
+  // Essential buildings that should always be included
+  private static readonly ESSENTIAL_BUILDINGS = new Set([
+    0x6A, 0x6B, 0x6D, 0x6E, 0x6F, 0x70, 0x76, 0x77, // Terran buildings
+    0x9A, 0x9C, 0x9F, 0xA2, 0xA1, 0xA4, 0xA5, // Protoss buildings
+    0x82, 0x83, 0x84, 0x8D, 0x86, 0x87, 0x8A, 0x8B, 0x8C // Zerg buildings
+  ]);
 
-    // Terran Core Buildings
-    'Command Center': true,
-    'Supply Depot': true,
-    'Barracks': true,
-    'Academy': true,
-    'Engineering Bay': true,
-    'Refinery': true,
-    'Factory': true,
-    'Machine Shop': true,
-    'Starport': true,
-    'Control Tower': true,
-    'Science Facility': true,
-    'Covert Ops': true,
-    'Physics Lab': true,
-    'Armory': true,
-    'Missile Turret': true,
-    'Bunker': true,
-    'Comsat Station': true,
-    'Nuclear Silo': true,
+  // Essential units for build order tracking
+  private static readonly ESSENTIAL_UNITS = new Set([
+    0x07, 0x00, 0x01, 0x02, 0x03, 0x05, 0x20, 0x21, // Terran units
+    0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x53, 0x54, 0x61, 0x63, 0x64, // Protoss units
+    0x25, 0x26, 0x27, 0x28, 0x2A, 0x2B, 0x2C, 0x2D, 0x2E, 0x2F, 0x67, 0x68 // Zerg units
+  ]);
 
-    // Zerg Core Buildings
-    'Hatchery': true,
-    'Lair': true,
-    'Hive': true,
-    'Spawning Pool': true,
-    'Evolution Chamber': true,
-    'Hydralisk Den': true,
-    'Spire': true,
-    'Greater Spire': true,
-    'Queens Nest': true,
-    'Defiler Mound': true,
-    'Ultralisk Cavern': true,
-    'Extractor': true,
-    'Creep Colony': true,
-    'Sunken Colony': true,
-    'Spore Colony': true,
-    'Nydus Canal': true
-  };
-
-  private static readonly ESSENTIAL_UNITS: Record<string, boolean> = {
-    // Workers
-    'Probe': true,
-    'SCV': true,
-    'Drone': true,
-    
-    // Supply units
-    'Overlord': true
-  };
-
-  private static readonly ESSENTIAL_TECH: Record<string, boolean> = {
-    'Stim Packs': true,
-    'Spider Mines': true,
-    'Tank Siege Mode': true,
-    'Cloaking Field': true,
-    'Personnel Cloaking': true,
-    'Burrowing': true,
-    'Lurker Aspect': true,
-    'Psionic Storm': true,
-    'Recall': true,
-    'Stasis Field': true,
-    'Disruption Web': true,
-    'Mind Control': true
-  };
+  // Essential tech and upgrades
+  private static readonly ESSENTIAL_TECH = new Set([
+    // Add common tech/upgrade IDs here
+  ]);
 
   /**
-   * Extract professional build orders from screp command data
+   * Main extraction function - processes screp data and returns build orders
    */
-  static extractBuildOrders(screpData: any): Record<number, PlayerBuildOrder> {
-    console.log('[ProfessionalBuildOrderExtractor] Processing screparsed data for build orders');
-    console.log('[ProfessionalBuildOrderExtractor] Data structure:', JSON.stringify(screpData, null, 2));
+  public static extractBuildOrders(screpData: any): Record<number, PlayerBuildOrder> {
+    console.log('[ProfessionalBuildOrderExtractor] Starting professional extraction');
     
-    const buildOrders: Record<number, PlayerBuildOrder> = {};
-    
-    if (!screpData || !screpData.players) {
-      console.warn('[ProfessionalBuildOrderExtractor] Invalid screparsed data structure');
-      console.log('[ProfessionalBuildOrderExtractor] Available fields:', Object.keys(screpData || {}));
-      return buildOrders;
+    if (!screpData?.commands || !Array.isArray(screpData.commands)) {
+      console.warn('[ProfessionalBuildOrderExtractor] No commands found in screp data');
+      return {};
     }
 
-    // Process each player from screparsed data
-    screpData.players.forEach((player: any, index: number) => {
-      console.log('[ProfessionalBuildOrderExtractor] Processing player:', player);
-      const playerCommands = this.extractPlayerCommands(screpData, index);
-      const buildOrder = this.processPlayerCommands(playerCommands, player);
-      
-      buildOrders[index] = {
-        playerName: player.name || `Player ${index + 1}`,
-        race: player.race || 'Unknown',
-        buildOrder: buildOrder.items,
-        supplyHistory: buildOrder.supplyHistory
+    const buildOrders: Record<number, PlayerBuildOrder> = {};
+    const players = screpData.header?.players || screpData.players || [];
+    
+    // Initialize build orders for each player
+    players.forEach((player: any, index: number) => {
+      const playerId = player.id !== undefined ? player.id : index;
+      buildOrders[playerId] = {
+        playerName: player.name || `Player ${playerId + 1}`,
+        race: ScrepConstants.getRaceName(player.race || player.raceId || 0),
+        buildOrder: [],
+        supplyHistory: [{ frame: 0, supply: 4 }]
       };
-      
-      console.log('[ProfessionalBuildOrderExtractor] Build order for player', index, ':', buildOrder.items.length, 'items');
     });
 
+    // Extract and process commands for each player
+    Object.keys(buildOrders).forEach(playerIdStr => {
+      const playerId = parseInt(playerIdStr);
+      const playerCommands = this.extractPlayerCommands(screpData, playerId);
+      const processedData = this.processPlayerCommands(playerCommands, buildOrders[playerId]);
+      
+      buildOrders[playerId].buildOrder = processedData.items;
+      buildOrders[playerId].supplyHistory = processedData.supplyHistory;
+    });
+
+    console.log('[ProfessionalBuildOrderExtractor] Extraction complete:', buildOrders);
     return buildOrders;
   }
 
@@ -173,52 +103,29 @@ export class ProfessionalBuildOrderExtractor {
    * Extract commands for a specific player
    */
   private static extractPlayerCommands(screpData: any, playerId: number): any[] {
-    const playerCommands: any[] = [];
-    
-    console.log('[ProfessionalBuildOrderExtractor] Extracting commands for player', playerId);
-    console.log('[ProfessionalBuildOrderExtractor] Available commands:', screpData.commands?.length || 0);
-    
-    // Process commands from screparsed data structure
-    if (screpData.commands && Array.isArray(screpData.commands)) {
-      screpData.commands.forEach((cmd: any) => {
-        if (cmd.playerId === playerId && this.isRelevantCommand(cmd)) {
-          console.log('[ProfessionalBuildOrderExtractor] Found relevant command:', cmd);
-          playerCommands.push(cmd);
-        }
-      });
-    }
-    
-    console.log('[ProfessionalBuildOrderExtractor] Extracted', playerCommands.length, 'commands for player', playerId);
-    return playerCommands.sort((a, b) => (a.frame || 0) - (b.frame || 0));
+    const allCommands = screpData.commands || [];
+    return allCommands.filter((cmd: any) => {
+      const cmdPlayerId = cmd.playerId !== undefined ? cmd.playerId : cmd.playerID;
+      return cmdPlayerId === playerId && this.isRelevantCommand(cmd);
+    });
   }
 
   /**
-   * Check if command is relevant for build order
+   * Check if a command is relevant for build order extraction
    */
   private static isRelevantCommand(cmd: any): boolean {
-    console.log('[ProfessionalBuildOrderExtractor] Checking command relevance:', cmd);
-    
-    // Check screparsed command structure
     const commandType = cmd.commandType || cmd.typeString || cmd.typeName || cmd.kind || '';
-    const isTrainCommand = commandType.includes('Train') || commandType.includes('TypeIDTrain');
-    const isBuildCommand = commandType.includes('Build') || commandType.includes('TypeIDBuild');
-    const isMorphCommand = commandType.includes('Morph') || commandType.includes('TypeIDUnitMorph') || commandType.includes('TypeIDBuildingMorph');
-    const isTechCommand = commandType.includes('Tech') || commandType.includes('TypeIDTech');
-    const isUpgradeCommand = commandType.includes('Upgrade') || commandType.includes('TypeIDUpgrade');
     
-    // Also check if parameters exist
-    const hasParameters = cmd.parameters && Object.keys(cmd.parameters).length > 0;
-    const hasUnitId = cmd.parameters?.unitTypeId !== undefined;
-    const hasTechId = cmd.parameters?.techId !== undefined;
-    const hasUpgradeId = cmd.parameters?.upgradeId !== undefined;
-    
-    const isRelevant = isTrainCommand || isBuildCommand || isMorphCommand || isTechCommand || isUpgradeCommand || hasUnitId || hasTechId || hasUpgradeId;
-    
-    if (isRelevant) {
-      console.log('[ProfessionalBuildOrderExtractor] Command is relevant:', commandType);
-    }
-    
-    return isRelevant;
+    return commandType.includes('Build') || 
+           commandType.includes('Train') || 
+           commandType.includes('Morph') ||
+           commandType.includes('Research') ||
+           commandType.includes('Upgrade') ||
+           commandType.includes('TypeIDBuild') ||
+           commandType.includes('TypeIDTrain') ||
+           commandType.includes('TypeIDUnitMorph') ||
+           commandType.includes('TypeIDResearch') ||
+           commandType.includes('TypeIDUpgrade');
   }
 
   /**
@@ -229,392 +136,277 @@ export class ProfessionalBuildOrderExtractor {
     supplyHistory: { frame: number; supply: number }[];
   } {
     const items: ProfessionalBuildOrderItem[] = [];
-    const supplyHistory: { frame: number; supply: number }[] = [];
-    
-    let currentSupply = this.getStartingSupply(player.race);
-    supplyHistory.push({ frame: 0, supply: currentSupply });
+    const supplyHistory: { frame: number; supply: number }[] = [{ frame: 0, supply: 4 }];
+    let currentSupply = 4;
 
-    commands.forEach(cmd => {
+    console.log(`[ProfessionalBuildOrderExtractor] Processing ${commands.length} commands for ${player.playerName}`);
+
+    commands.forEach((cmd, index) => {
+      console.log(`[ProfessionalBuildOrderExtractor] Processing command ${index + 1}/${commands.length}:`, {
+        commandType: cmd.commandType || cmd.typeString || cmd.typeName,
+        frame: cmd.frame,
+        parameters: cmd.parameters
+      });
+
       const item = this.processCommand(cmd, currentSupply);
       if (item) {
-        // Update supply if this is a supply provider
-        if (item.isSupplyProvider) {
-          currentSupply += this.SUPPLY_PROVIDERS[item.unitName] || 0;
-          supplyHistory.push({ frame: cmd.frame, supply: currentSupply });
+        // Update supply tracking
+        const unitId = this.extractUnitIdFromCommand(cmd);
+        if (unitId !== undefined && this.SUPPLY_PROVIDERS.has(unitId)) {
+          currentSupply += 8; // Standard supply increase
+          supplyHistory.push({ frame: cmd.frame || 0, supply: currentSupply });
+          item.supply = `${currentSupply - 8}/${currentSupply}`;
+        } else {
+          item.supply = `${currentSupply}`;
         }
-        
+
         items.push(item);
+        console.log(`[ProfessionalBuildOrderExtractor] Added build order item:`, item);
       }
     });
 
-    // Filter to only essential items
-    const essentialItems = items.filter(item => this.isEssentialItem(item));
-    
-    return { items: essentialItems, supplyHistory };
+    return { items, supplyHistory };
   }
 
   /**
-   * Process a single command into a build order item
+   * Process a single command to create a build order item
    */
   private static processCommand(cmd: any, currentSupply: number): ProfessionalBuildOrderItem | null {
-    console.log('[ProfessionalBuildOrderExtractor] Processing command:', cmd);
-    
-    const params = cmd.parameters || {};
-    const timeString = cmd.time || this.frameToTime(cmd.frame || 0);
     const commandType = cmd.commandType || cmd.typeString || cmd.typeName || cmd.kind || '';
+    const frame = cmd.frame || 0;
+    const timestamp = this.frameToTime(frame);
     
-    // Extract unit ID from screparsed command structure
-    let unitId: number | undefined;
-    let unitName: string = '';
-    let action: string = 'Build';
+    // Extract unit ID using comprehensive method
+    const unitId = this.extractUnitIdFromCommand(cmd);
     
-    // Check if command has embedded unit ID in the command name (e.g., "TypeIDTrain121")
-    const typeIdMatch = commandType.match(/TypeID\w+(\d+)/);
-    if (typeIdMatch) {
-      unitId = parseInt(typeIdMatch[1]);
-      unitName = ScrepConstants.getUnitName(unitId);
-      console.log('[ProfessionalBuildOrderExtractor] Extracted unit ID from command name:', unitId, 'Unit:', unitName);
+    if (unitId === undefined) {
+      console.log('[ProfessionalBuildOrderExtractor] No unit ID found for command:', commandType);
+      return null;
     }
-    
-    // Also check parameters for unit IDs
-    if (params.unitTypeId !== undefined) {
-      unitId = params.unitTypeId;
-      unitName = ScrepConstants.getUnitName(unitId);
-      console.log('[ProfessionalBuildOrderExtractor] Found unit ID in parameters:', unitId, 'Unit:', unitName);
-    }
-    
-    // Handle train commands with better unit detection
+
+    // Get unit information from database
+    const unit = getUnitById(unitId);
+    let unitName = unit?.name || ScrepConstants.getUnitName(unitId) || `Unit ID ${unitId}`;
+    let action = 'Build';
+
+    // Determine action type based on command
     if (commandType.includes('Train') || commandType.includes('TypeIDTrain')) {
       action = 'Train';
-      
-      // Try to use the unit database first
-      if (unitId !== undefined) {
-        const unit = getUnitById(unitId);
-        if (unit) {
-          unitName = unit.name;
-        }
-      }
-      
-      // Fallback patterns for common units
-      if (!unitName) {
-        if (commandType.includes('SCV') || unitId === 0x07) unitName = 'SCV';
-        else if (commandType.includes('Marine') || unitId === 0x00) unitName = 'Marine';
-        else if (commandType.includes('Drone') || unitId === 0x25) unitName = 'Drone';
-        else if (commandType.includes('Probe') || unitId === 0x40) unitName = 'Probe';
-        else if (commandType.includes('Zealot') || unitId === 0x41) unitName = 'Zealot';
-        else if (commandType.includes('Zergling') || unitId === 0x26) unitName = 'Zergling';
-        else unitName = `Trained Unit`;
-      }
-    } else if (commandType.includes('Build') || commandType.includes('TypeIDBuild')) {
-      action = 'Build';
-      
-      // Try to use the unit database first
-      if (unitId !== undefined) {
-        const unit = getUnitById(unitId);
-        if (unit) {
-          unitName = unit.name;
-        }
-      }
-      
-      // Fallback patterns for common buildings
-      if (!unitName) {
-        if (commandType.includes('Depot') || unitId === 0x6B) unitName = 'Supply Depot';
-        else if (commandType.includes('Barracks') || unitId === 0x6D) unitName = 'Barracks';
-        else if (commandType.includes('Pylon') || unitId === 0x9C) unitName = 'Pylon';
-        else if (commandType.includes('Gateway') || unitId === 0x9F) unitName = 'Gateway';
-        else if (commandType.includes('Hatchery') || unitId === 0x82) unitName = 'Hatchery';
-        else if (commandType.includes('Pool') || unitId === 0x8D) unitName = 'Spawning Pool';
-        else unitName = `Building`;
-      }
     } else if (commandType.includes('Morph') || commandType.includes('TypeIDUnitMorph')) {
-      action = 'Build'; // Morph is treated as build
-      
-      // Try to use the unit database first
-      if (unitId !== undefined) {
-        const unit = getUnitById(unitId);
-        if (unit) {
-          unitName = unit.name;
-        }
-      }
-      
-      // Fallback patterns for common morphs
-      if (!unitName) {
-        if (commandType.includes('Lair') || unitId === 0x83) unitName = 'Lair';
-        else if (commandType.includes('Hive') || unitId === 0x84) unitName = 'Hive';
-        else if (commandType.includes('Lurker') || unitId === 0x67) unitName = 'Lurker';
-        else if (commandType.includes('Guardian') || unitId === 0x2C) unitName = 'Guardian';
-        else if (commandType.includes('Spore') || unitId === 0x8F) unitName = 'Spore Colony';
-        else if (commandType.includes('Sunken') || unitId === 0x90) unitName = 'Sunken Colony';
-        else unitName = `Morphed Unit`;
-      }
+      action = 'Morph';
+    } else if (commandType.includes('Research') || commandType.includes('TypeIDResearch')) {
+      action = 'Research';
+      unitName = this.getTechName(unitId) || unitName;
+    } else if (commandType.includes('Upgrade') || commandType.includes('TypeIDUpgrade')) {
+      action = 'Upgrade';
+      unitName = this.getUpgradeName(unitId) || unitName;
     }
-    
-    // Create build order item even if we don't have perfect unit names
-    if (unitId !== undefined || commandType.includes('Train') || commandType.includes('Build') || commandType.includes('Morph')) {
-      console.log('[ProfessionalBuildOrderExtractor] Creating build order item:', action, unitName);
-      
-      return {
-        supply: currentSupply.toString(),
-        action: action as "Build" | "Train",
-        unitName: unitName || 'Unknown Unit',
-        frame: cmd.frame || 0,
-        timestamp: timeString,
-        isSupplyProvider: this.SUPPLY_PROVIDERS[unitName] !== undefined,
-        category: this.getCategoryForUnit(unitName),
-        
-        // Backward compatibility fields
-        time: timeString,
-        gameTime: cmd.frame || 0,
-        currentSupply: currentSupply,
-        maxSupply: currentSupply + 200,
-        resourceCost: this.getResourceCost(unitName),
-        timing: timeString,
-        name: unitName || 'Unknown Unit',
-        buildingName: unitName || 'Unknown Building',
-        unitId: unitId || 0,
-        cost: { minerals: this.getResourceCost(unitName), gas: 0 },
-        race: 'Unknown',
-        efficiency: "optimal" as const,
-        description: `${action} ${unitName || 'Unknown Unit'} at ${timeString}`
-      };
+
+    // Only include essential items for cleaner build order
+    if (!this.isEssentialItem(unitId, action)) {
+      console.log(`[ProfessionalBuildOrderExtractor] Skipping non-essential item: ${unitName}`);
+      return null;
     }
-    
-    // Handle tech commands
-    if (params.techId !== undefined || commandType.includes('Tech')) {
-      let techId = params.techId;
-      
-      // Try to extract tech ID from command name
-      if (!techId) {
-        const techIdMatch = commandType.match(/TypeIDTech(\d+)/);
-        if (techIdMatch) {
-          techId = parseInt(techIdMatch[1]);
-        }
-      }
-      
-      if (techId !== undefined) {
-        const techName = ScrepConstants.getTechName(techId);
-        console.log('[ProfessionalBuildOrderExtractor] Creating tech item:', techName);
-        
-        return {
-          supply: currentSupply.toString(),
-          action: 'Research' as const,
-          unitName: techName,
-          frame: cmd.frame || 0,
-          timestamp: timeString,
-          isSupplyProvider: false,
-          category: 'tech',
-          
-          // Backward compatibility fields
-          time: timeString,
-          gameTime: cmd.frame || 0,
-          currentSupply: currentSupply,
-          maxSupply: currentSupply + 200,
-          resourceCost: this.getResourceCost(techName),
-          timing: timeString,
-          name: techName,
-          buildingName: techName,
-          unitId: techId,
-          cost: { minerals: this.getResourceCost(techName), gas: 0 },
-          race: 'Unknown',
-          efficiency: "optimal" as const,
-          description: `Research ${techName} at ${timeString}`
-        };
-      }
-    }
-    
-    // Handle upgrade commands
-    if (params.upgradeId !== undefined || commandType.includes('Upgrade')) {
-      let upgradeId = params.upgradeId;
-      
-      // Try to extract upgrade ID from command name
-      if (!upgradeId) {
-        const upgradeIdMatch = commandType.match(/TypeIDUpgrade(\d+)/);
-        if (upgradeIdMatch) {
-          upgradeId = parseInt(upgradeIdMatch[1]);
-        }
-      }
-      
-      if (upgradeId !== undefined) {
-        const upgradeName = ScrepConstants.getTechName(upgradeId);
-        console.log('[ProfessionalBuildOrderExtractor] Creating upgrade item:', upgradeName);
-        
-        return {
-          supply: currentSupply.toString(),
-          action: 'Upgrade' as const,
-          unitName: upgradeName,
-          frame: cmd.frame || 0,
-          timestamp: timeString,
-          isSupplyProvider: false,
-          category: 'tech',
-          
-          // Backward compatibility fields
-          time: timeString,
-          gameTime: cmd.frame || 0,
-          currentSupply: currentSupply,
-          maxSupply: currentSupply + 200,
-          resourceCost: this.getResourceCost(upgradeName),
-          timing: timeString,
-          name: upgradeName,
-          buildingName: upgradeName,
-          unitId: upgradeId,
-          cost: { minerals: this.getResourceCost(upgradeName), gas: 0 },
-          race: 'Unknown',
-          efficiency: "optimal" as const,
-          description: `Upgrade ${upgradeName} at ${timeString}`
-        };
-      }
-    }
-    
-    console.log('[ProfessionalBuildOrderExtractor] Could not process command:', commandType);
-    return null;
+
+    // Get additional properties for compatibility
+    const category = this.getCategoryForUnit(unitName);
+    const cost = unit?.cost || { minerals: this.getResourceCost(unitName), gas: 0 };
+    const efficiency = this.calculateEfficiency(unitName, frame);
+
+    return {
+      supply: `${currentSupply}`,
+      action,
+      unitName,
+      frame,
+      timestamp,
+      category,
+      cost,
+      efficiency,
+      // Backward compatibility
+      time: timestamp,
+      unit: unitName
+    };
   }
 
   /**
-   * Convert frame to time string
+   * Extract unit ID from command using comprehensive analysis
+   */
+  private static extractUnitIdFromCommand(cmd: any): number | undefined {
+    const commandType = cmd.commandType || cmd.typeString || cmd.typeName || cmd.kind || '';
+    const params = cmd.parameters || {};
+    
+    // Method 1: Check parameters for various unit ID fields
+    if (params.unitTypeId !== undefined) return params.unitTypeId;
+    if (params.unitType !== undefined) return params.unitType;
+    if (params.buildingType !== undefined) return params.buildingType;
+    if (params.unit !== undefined) return params.unit;
+    if (params.unitId !== undefined) return params.unitId;
+    if (params.type !== undefined) return params.type;
+    if (params.id !== undefined) return params.id;
+    
+    // Method 2: Extract from command type name (e.g., "TypeIDTrain121" -> 121)
+    const typeIdMatch = commandType.match(/TypeID\w+(\d+)/);
+    if (typeIdMatch) {
+      return parseInt(typeIdMatch[1]);
+    }
+    
+    // Method 3: Check for raw parameter arrays or objects
+    if (Array.isArray(params) && params.length > 0) {
+      // First element might be unit ID
+      const firstParam = params[0];
+      if (typeof firstParam === 'number') return firstParam;
+    }
+    
+    // Method 4: Check for nested parameter structures
+    if (params.data && typeof params.data === 'object') {
+      return this.extractUnitIdFromCommand({ parameters: params.data });
+    }
+    
+    console.log(`[ProfessionalBuildOrderExtractor] Could not extract unit ID from command:`, {
+      commandType,
+      parameters: params
+    });
+    
+    return undefined;
+  }
+
+  /**
+   * Get tech/research name by ID
+   */
+  private static getTechName(techId: number): string | null {
+    return ScrepConstants.getTechName(techId);
+  }
+
+  /**
+   * Get upgrade name by ID
+   */
+  private static getUpgradeName(upgradeId: number): string | null {
+    return ScrepConstants.getTechName(upgradeId); // Tech names include upgrades
+  }
+
+  /**
+   * Determine if an item should be included in the build order
+   */
+  private static isEssentialItem(unitId: number, action: string): boolean {
+    // Always include buildings
+    if (this.ESSENTIAL_BUILDINGS.has(unitId)) return true;
+    
+    // Always include essential units
+    if (this.ESSENTIAL_UNITS.has(unitId)) return true;
+    
+    // Always include supply providers
+    if (this.SUPPLY_PROVIDERS.has(unitId)) return true;
+    
+    // Include research and upgrades if they're in our essential tech set
+    if ((action === 'Research' || action === 'Upgrade') && this.ESSENTIAL_TECH.has(unitId)) {
+      return true;
+    }
+    
+    // For now, include all items to see full build order
+    // Later this can be made more restrictive
+    return true;
+  }
+
+  /**
+   * Convert frame number to time string
    */
   private static frameToTime(frame: number): string {
-    const totalSeconds = Math.floor(frame / 24);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    const seconds = Math.floor(frame / 24); // 24 FPS
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   }
 
   /**
-   * Get estimated resource cost for unit/tech
+   * Get resource cost for a unit or tech
    */
   private static getResourceCost(name: string): number {
-    // Simple cost estimation based on unit type
+    // This is a simplified cost estimation
     const costs: Record<string, number> = {
-      'Pylon': 100,
-      'Gateway': 150,
-      'Nexus': 400,
-      'Probe': 50,
-      'Supply Depot': 100,
-      'Barracks': 150,
-      'Command Center': 400,
-      'SCV': 50,
-      'Overlord': 100,
-      'Hatchery': 300,
-      'Drone': 50
+      'SCV': 50, 'Probe': 50, 'Drone': 50,
+      'Marine': 50, 'Zealot': 100, 'Zergling': 50,
+      'Supply Depot': 100, 'Pylon': 100, 'Overlord': 100,
+      'Barracks': 150, 'Gateway': 150, 'Spawning Pool': 200
     };
-    
-    return costs[name] || 150; // Default cost
+    return costs[name] || 0;
   }
 
   /**
-   * Get action name based on command type
-   */
-  private static getActionName(commandType: string, unitName: string): string {
-    if (commandType.includes('Build')) return 'Build';
-    if (commandType.includes('Train')) return 'Train';
-    if (commandType.includes('Morph')) return 'Morph';
-    return 'Build';
-  }
-
-  /**
-   * Get category for unit/building
+   * Categorize unit for analysis
    */
   private static getCategoryForUnit(unitName: string): 'tech' | 'supply' | 'economy' | 'military' {
-    if (this.SUPPLY_PROVIDERS[unitName]) return 'supply';
-    if (this.ESSENTIAL_BUILDINGS[unitName]) return 'economy';
-    if (this.ESSENTIAL_UNITS[unitName]) return 'economy';
-    return 'military';
+    if (['Supply Depot', 'Pylon', 'Overlord'].includes(unitName)) return 'supply';
+    if (['SCV', 'Probe', 'Drone', 'Command Center', 'Nexus', 'Hatchery'].includes(unitName)) return 'economy';
+    if (['Marine', 'Zealot', 'Zergling', 'Dragoon', 'Hydralisk'].includes(unitName)) return 'military';
+    return 'tech';
   }
 
   /**
-   * Check if item should be included in professional build order
+   * Calculate efficiency rating for a unit based on timing
    */
-  private static isEssentialItem(item: ProfessionalBuildOrderItem): boolean {
-    // For now, include ALL build order items to see what we're getting
-    return true;
+  private static calculateEfficiency(unitName: string, frame: number): number {
+    // Simplified efficiency calculation based on timing
+    // Earlier builds get higher efficiency scores
+    const timeInSeconds = frame / 24;
+    const baseEfficiency = 100;
     
-    // Original filtering logic (commented out for debugging)
-    // return this.ESSENTIAL_BUILDINGS[item.unitName] || 
-    //        this.ESSENTIAL_UNITS[item.unitName] || 
-    //        this.ESSENTIAL_TECH[item.unitName] ||
-    //        item.category === 'tech' || 
-    //        item.action === 'Upgrade';
+    // Efficiency decreases over time
+    if (timeInSeconds < 60) return baseEfficiency;
+    if (timeInSeconds < 300) return Math.max(80, baseEfficiency - (timeInSeconds - 60) / 10);
+    if (timeInSeconds < 600) return Math.max(60, baseEfficiency - (timeInSeconds - 60) / 20);
+    
+    return Math.max(40, baseEfficiency - timeInSeconds / 30);
   }
 
   /**
-   * Get starting supply for race
+   * Format build order for display
    */
-  private static getStartingSupply(race: string): number {
-    switch (race) {
-      case 'Protoss': return 4; // 4 Probes
-      case 'Terran': return 4;  // 4 SCVs
-      case 'Zerg': return 4;    // 4 Drones
-      default: return 4;
-    }
+  public static formatBuildOrder(buildOrder: ProfessionalBuildOrderItem[]): string[] {
+    return buildOrder.map(item => 
+      `${item.supply} ${item.timestamp} - ${item.action} ${item.unitName}`
+    );
   }
 
   /**
-   * Format build order for display (e.g., "8 Pylon")
+   * Generate build order summary with strategic analysis
    */
-  static formatBuildOrder(buildOrder: ProfessionalBuildOrderItem[]): string[] {
-    return buildOrder.map(item => {
-      if (item.isSupplyProvider || item.category === 'economy') {
-        return `${item.supply} ${item.unitName}`;
-      }
-      return `${item.action} ${item.unitName}`;
-    });
-  }
-
-  /**
-   * Get build order summary for race
-   */
-  static getBuildOrderSummary(buildOrder: ProfessionalBuildOrderItem[], race: string): {
+  public static getBuildOrderSummary(buildOrder: ProfessionalBuildOrderItem[], race: string): {
     openingStrategy: string;
     keyTimings: string[];
     techPath: string[];
   } {
-    const strategy = this.analyzeOpeningStrategy(buildOrder, race);
-    const timings = this.extractKeyTimings(buildOrder);
-    const techPath = this.extractTechPath(buildOrder);
+    const openingStrategy = this.analyzeOpeningStrategy(buildOrder, race);
+    const keyTimings = this.extractKeyTimings(buildOrder);
+    const techPath = this.analyzeTechPath(buildOrder);
 
-    return {
-      openingStrategy: strategy,
-      keyTimings: timings,
-      techPath: techPath
-    };
+    return { openingStrategy, keyTimings, techPath };
   }
 
   private static analyzeOpeningStrategy(buildOrder: ProfessionalBuildOrderItem[], race: string): string {
-    const first10 = buildOrder.slice(0, 10).map(item => item.unitName).join(' ');
-    
-    if (race === 'Protoss') {
-      if (first10.includes('Gateway') && first10.includes('Zealot')) return 'Zealot Rush';
-      if (first10.includes('Cybernetics Core')) return 'Tech Opening';
-      if (first10.includes('Forge')) return 'Forge First';
-      return 'Standard Opening';
-    } else if (race === 'Terran') {
-      if (first10.includes('Barracks') && first10.includes('Marine')) return 'Marine Rush';
-      if (first10.includes('Factory')) return 'Factory Opening';
-      return 'Standard Opening';
-    } else if (race === 'Zerg') {
-      if (first10.includes('Spawning Pool') && first10.includes('Zergling')) return 'Zergling Rush';
-      if (first10.includes('Hydralisk Den')) return 'Hydra Build';
-      return 'Standard Opening';
-    }
-    
-    return 'Unknown Strategy';
+    const first10Items = buildOrder.slice(0, 10);
+    const buildingCount = first10Items.filter(item => item.action === 'Build').length;
+    const unitCount = first10Items.filter(item => item.action === 'Train').length;
+
+    if (buildingCount > unitCount) return 'Defensive/Economic Opening';
+    if (unitCount > buildingCount * 2) return 'Aggressive Rush Opening';
+    return 'Standard Opening';
   }
 
   private static extractKeyTimings(buildOrder: ProfessionalBuildOrderItem[]): string[] {
-    const timings: string[] = [];
+    const keyTimings: string[] = [];
     
     buildOrder.forEach(item => {
-      if (item.category === 'economy' || item.category === 'tech') {
-        timings.push(`${item.timestamp} - ${item.unitName}`);
+      if (['Academy', 'Cybernetics Core', 'Spawning Pool'].includes(item.unitName)) {
+        keyTimings.push(`${item.timestamp} - ${item.unitName}`);
       }
     });
-    
-    return timings.slice(0, 5); // Top 5 key timings
+
+    return keyTimings;
   }
 
-  private static extractTechPath(buildOrder: ProfessionalBuildOrderItem[]): string[] {
+  private static analyzeTechPath(buildOrder: ProfessionalBuildOrderItem[]): string[] {
     return buildOrder
-      .filter(item => item.category === 'tech' || item.action === 'Upgrade')
-      .map(item => item.unitName);
+      .filter(item => item.action === 'Research' || item.action === 'Upgrade')
+      .map(item => `${item.timestamp} - ${item.unitName}`);
   }
 }

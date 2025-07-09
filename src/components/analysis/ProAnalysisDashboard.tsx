@@ -338,16 +338,16 @@ const ProAnalysisDashboard: React.FC<ProAnalysisDashboardProps> = ({ data }) => 
                         >
                           {entry.category}
                         </Badge>
-                        {entry.efficiency !== 'optimal' && (
+                        {entry.efficiency < 80 && (
                           <Badge 
                             variant="outline" 
                             className={`text-xs ${
-                              entry.efficiency === 'supply-blocked' ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' :
-                              entry.efficiency === 'late' ? 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300' :
+                              entry.efficiency < 60 ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' :
+                              entry.efficiency < 70 ? 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300' :
                               'bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300'
                             }`}
                           >
-                            {entry.efficiency}
+                            {entry.efficiency < 60 ? 'poor' : entry.efficiency < 70 ? 'late' : 'suboptimal'}
                           </Badge>
                         )}
                       </div>
