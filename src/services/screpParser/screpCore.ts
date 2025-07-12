@@ -160,34 +160,140 @@ export class ScrepCore {
   }
 
   /**
-   * Players parsing - KORRIGIERT für SC:R
+   * Players parsing - ERWEITERT für alle SC:R Versionen
    */
   private parsePlayers(): PlayerData[] {
     console.log('[ScrepCore] Parsing SC:R players...');
     
-    // SC:R Player Offsets (korrigiert)
-    const playerOffsets = [0x161, 0x1A1, 0x1C1];
+    // Erweiterte SC:R Player Offsets für verschiedene Versionen
+    const playerOffsets = [
+      0x161, 0x1A1, 0x1C1,     // Standard SC:R
+      0x1B1, 0x19C, 0x18E,     // Andere SC:R Versionen  
+      0x181, 0x175, 0x169,     // Varianten
+      0x1D1, 0x1E1, 0x1F1      // Neuere Versionen
+    ];
     
     for (const offset of playerOffsets) {
-      const players = this.tryParsePlayersAt(offset);
-      // Nur echte Spieler (nicht Observer, nicht empty)
-      const realPlayers = players.filter(p => 
-        p.name.length >= 2 && 
-        !p.name.includes('Observer') && 
-        p.name !== 'Computer' &&
-        p.type !== 0 // Not empty slot
-      );
-      
-      if (realPlayers.length >= 2 && realPlayers.length <= 8) {
-        console.log('[ScrepCore] Found', realPlayers.length, 'real players at offset', '0x' + offset.toString(16));
-        realPlayers.forEach((p, i) => {
-          console.log(`[ScrepCore] Player ${i}: ${p.name} (${p.race}) Team:${p.team}`);
-        });
-        return realPlayers;
+      try {
+        const players = this.tryParsePlayersAt(offset);
+        console.log(`[ScrepCore] Trying offset 0x${offset.toString(16)}: found ${players.length} players`);
+        
+        // Filtere echte Spieler  
+        const realPlayers = players.filter(p => this.isValidPlayer(p));
+        
+        if (realPlayers.length >= 1 && realPlayers.length <= 8) {
+          console.log('[ScrepCore] Found', realPlayers.length, 'valid players at offset', '0x' + offset.toString(16));
+          realPlayers.forEach((p, i) => {
+            console.log(`[ScrepCore] Player ${i}: ${p.name} (${p.race}) Team:${p.team} Type:${p.type}`);
+          });
+          return realPlayers;
+        }
+      } catch (e) {
+        console.log(`[ScrepCore] Failed at offset 0x${offset.toString(16)}: ${e.message}`);
+        continue;
       }
     }
     
+    // Fallback: Vollständiger Scan der ersten 2KB nach Spieler-Pattern
+    console.log('[ScrepCore] Trying exhaustive player scan...');
+    const scannedPlayers = this.scanForPlayers();
+    if (scannedPlayers.length > 0) {
+      return scannedPlayers;
+    }
+    
     throw new Error('No valid SC:R players found in replay');
+  }
+
+  private isValidPlayer(player: PlayerData): boolean {
+    return player.name.length >= 2 && 
+           player.name.length <= 24 &&
+           !player.name.includes('Observer') && 
+           !player.name.includes('Computer') &&
+           player.type !== 0 && // Not empty slot
+           /^[a-zA-Z0-9_\-\[\]()]+$/.test(player.name) && // Valid name chars
+           ['Terran', 'Protoss', 'Zerg'].includes(player.race);
+  }
+
+  private scanForPlayers(): PlayerData[] {
+    console.log('[ScrepCore] Scanning for player patterns...');
+    const players: PlayerData[] = [];
+    
+    // Scanne ersten 2KB nach Spieler-Namen Pattern
+    for (let pos = 0x100; pos < Math.min(0x800, this.data.byteLength - 100); pos += 4) {
+      try {
+        this.reader.setPosition(pos);
+        const possibleName = this.reader.readNullTerminatedString(24);
+        
+        if (possibleName.length >= 3 && possibleName.length <= 24 && 
+            /^[a-zA-Z0-9_\-\[\]()]+$/.test(possibleName)) {
+          
+          // Try to parse full player structure from this position
+          const player = this.tryParsePlayerAt(pos);
+          if (player && this.isValidPlayer(player)) {
+            console.log(`[ScrepCore] Found player via scan: ${player.name} at 0x${pos.toString(16)}`);
+            players.push(player);
+            
+            if (players.length >= 8) break; // Max 8 players
+          }
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    return players.slice(0, 8); // Max 8 players
+  }
+
+  private tryParsePlayerAt(offset: number): PlayerData | null {
+    try {
+      if (offset + 36 >= this.data.byteLength) return null;
+      
+      this.reader.setPosition(offset);
+      
+      // Player name (25 bytes)
+      const nameBytes = this.reader.readBytes(25);
+      const name = this.decodePlayerName(nameBytes);
+      
+      if (!this.isValidSCRPlayerName(name)) return null;
+      
+      // Race, team, color, type
+      const raceId = this.reader.readUInt8();
+      const team = this.reader.readUInt8();  
+      const color = this.reader.readUInt8();
+      const type = this.reader.readUInt8();
+      
+      if (type === 0 || raceId > 6) return null;
+      
+      return {
+        id: 0, // Will be reassigned
+        name: name.trim(),
+        race: ScrepConstants.getRaceName(raceId),
+        raceId,
+        team,
+        color,
+        type
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private isValidSCRPlayerName(name: string): boolean {
+    return name.length >= 2 && 
+           name.length <= 24 && 
+           /^[a-zA-Z0-9_\-\[\]()]+$/.test(name) &&
+           !name.includes('Observer') &&
+           !name.includes('Computer');
+  }
+
+  private decodePlayerName(nameBytes: Uint8Array): string {
+    // Find null terminator
+    let length = nameBytes.indexOf(0);
+    if (length === -1) length = nameBytes.length;
+    
+    // Decode using latin1 for SC:R compatibility
+    const decoder = new TextDecoder('latin1');
+    return decoder.decode(nameBytes.slice(0, length));
   }
 
   private tryParsePlayersAt(baseOffset: number): PlayerData[] {
@@ -236,27 +342,6 @@ export class ScrepCore {
     return players;
   }
 
-  private isValidSCRPlayerName(name: string): boolean {
-    const trimmed = name.trim();
-    // SC:R Namen sind mindestens 2 Zeichen, max 25
-    // Keine Kontrolzeichen, keine Observer
-    return trimmed.length >= 2 && 
-           trimmed.length <= 25 && 
-           !trimmed.toLowerCase().includes('observer') &&
-           !trimmed.toLowerCase().includes('computer') &&
-           /^[a-zA-Z0-9_\-\[\]`'~!@#$%^&*()+={}|\\:";'<>?,./ ]+/.test(trimmed);
-  }
-
-  private decodePlayerName(bytes: Uint8Array): string {
-    let name = '';
-    for (let i = 0; i < bytes.length && bytes[i] !== 0; i++) {
-      const byte = bytes[i];
-      if (byte >= 32 && byte <= 126) {
-        name += String.fromCharCode(byte);
-      }
-    }
-    return name.trim();
-  }
 
   /**
    * Commands parsing - nach repdecoder.go:DecodeCommands

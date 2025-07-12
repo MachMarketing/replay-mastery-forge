@@ -93,8 +93,8 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
           border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all duration-200
           ${isDragActive ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'}
           ${uploadStatus === 'parsing' ? 'cursor-not-allowed opacity-70' : ''}
-          ${uploadStatus === 'error' ? 'border-red-300 bg-red-50' : ''}
-          ${uploadStatus === 'complete' ? 'border-green-300 bg-green-50' : ''}
+          ${uploadStatus === 'error' ? 'border-destructive bg-destructive/10 text-destructive-foreground' : ''}
+          ${uploadStatus === 'complete' ? 'border-strength bg-strength/10 text-foreground' : ''}
         `}
       >
         <input {...getInputProps()} />
