@@ -91,20 +91,25 @@ export class JssuhParser {
       replayData = await parser.parse();
       console.log('[JssuhParser] screparsed parsing successful:', replayData);
     } catch (screparsedError) {
-      console.warn('[JssuhParser] screparsed failed:', screparsedError);
+      console.warn('[JssuhParser] screparsed failed, trying fallback:', screparsedError);
       console.log('[JssuhParser] Falling back to native parser...');
       dataSource = 'native';
       
       try {
         // Fallback auf nativen Parser
+        console.log('[JssuhParser] Loading NewScrepParser...');
         const { NewScrepParser } = await import('./newScrepParser');
+        console.log('[JssuhParser] NewScrepParser loaded, creating instance...');
         const parser = new NewScrepParser();
+        console.log('[JssuhParser] Parsing with native parser...');
         const nativeResult = await parser.parseReplay(file);
+        console.log('[JssuhParser] Native parsing successful:', nativeResult);
         
         // Konvertiere natives Ergebnis zu screparsed Format
         replayData = this.convertNativeToScreparsedFormat(nativeResult);
         console.log('[JssuhParser] Native parser fallback successful:', replayData);
       } catch (nativeError) {
+        console.error('[JssuhParser] Native parser also failed:', nativeError);
         console.error('[JssuhParser] Both parsers failed:', { screparsed: screparsedError, native: nativeError });
         throw new Error(`Both parsers failed. Screparsed: ${screparsedError}. Native: ${nativeError}`);
       }
