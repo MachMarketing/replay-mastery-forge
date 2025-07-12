@@ -1,5 +1,5 @@
 /**
- * ECHTER StarCraft: Remastered Parser mit screp-js (funktioniert garantiert)
+ * ECHTER StarCraft: Remastered Parser mit Fallback auf nativen Parser
  * Funktioniert mit echten .rep Dateien und extrahiert Commands korrekt
  */
 
@@ -67,7 +67,7 @@ export interface JssuhReplayResult {
   }>;
   
   dataQuality: {
-    source: 'screparsed';
+    source: 'screparsed' | 'native';
     reliability: 'high' | 'medium' | 'low';
     commandsFound: number;
     playersFound: number;
@@ -78,86 +78,113 @@ export interface JssuhReplayResult {
 
 export class JssuhParser {
   async parseReplay(file: File): Promise<JssuhReplayResult> {
-    console.log('[JssuhParser] Starting real SC:R parsing with screparsed for:', file.name);
+    console.log('[JssuhParser] Starting SC:R parsing for:', file.name);
+    
+    let replayData: any = null;
+    let dataSource: 'screparsed' | 'native' = 'screparsed';
     
     try {
-      // Verwende screparsed Parser (funktioniert garantiert)
+      // Versuche zuerst screparsed Parser
+      console.log('[JssuhParser] Trying screparsed parser...');
       const arrayBuffer = await file.arrayBuffer();
       const parser = ReplayParser.fromArrayBuffer(arrayBuffer);
-      const replayData = await parser.parse();
-      console.log('[JssuhParser] screparsed parsing complete:', replayData);
+      replayData = await parser.parse();
+      console.log('[JssuhParser] screparsed parsing successful:', replayData);
+    } catch (screparsedError) {
+      console.warn('[JssuhParser] screparsed failed:', screparsedError);
+      console.log('[JssuhParser] Falling back to native parser...');
+      dataSource = 'native';
       
-      // Initialisiere Real-Time Tracker für echte Build Orders
-      const playerRaces: Record<number, string> = {};
-      (replayData?.players || []).forEach((player: any, index: number) => {
-        if (player && player.race) {
-          playerRaces[index] = player.race;
-        }
-      });
-      
-      // Convert screparsed commands to our format first
-      const formattedCommands = (replayData?.commands || []).map((cmd: any) => {
-        const mappedType = JssuhParserHelpers.mapCommandType(cmd.typeName || cmd.kind);
-        console.log('[JssuhParser] Command mapping:', {
-          original: cmd.typeName || cmd.kind,
-          mapped: mappedType,
-          type: cmd.type,
-          playerId: cmd.playerId
-        });
+      try {
+        // Fallback auf nativen Parser
+        const { NewScrepParser } = await import('./newScrepParser');
+        const parser = new NewScrepParser();
+        const nativeResult = await parser.parseReplay(file);
         
-        return {
-          frame: cmd.frame || 0,
-          playerId: cmd.playerId || 0,
-          type: cmd.type || 0,
-          typeString: mappedType,
-          parameters: cmd.parameters || {},
-          effective: true,
-          ineffKind: '',
-          time: this.frameToTime(cmd.frame || 0),
-          rawData: new Uint8Array(),
-          data: new Uint8Array()
-        };
-      });
-
-      // Professional Build Order Extractor - verwende direkt screparsed Daten
-      const players = JssuhParserHelpers.extractPlayersData(replayData);
-      
-      console.log('[JssuhParser] Extracting professional build orders from screparsed data');
-      console.log('[JssuhParser] Available screparsed data structure:', {
-        hasCommands: !!replayData?.commands,
-        commandsLength: replayData?.commands?.length || 0,
-        firstCommand: replayData?.commands?.[0],
-        hasPlayers: !!replayData?.players,
-        playersLength: replayData?.players?.length || 0,
-        gameInfo: replayData?.gameInfo
-      });
-      
-      const buildOrders = ProfessionalBuildOrderExtractor.extractBuildOrders(replayData);
-      console.log('[JssuhParser] Professional build order extraction complete:', {
-        totalPlayers: Object.keys(buildOrders).length,
-        totalBuildOrderItems: Object.values(buildOrders).reduce((sum, playerData) => sum + (playerData.buildOrder?.length || 0), 0)
-      });
-      
-      const tracker = new RealTimeTracker(replayData?.players?.length || 0, playerRaces);
-      formattedCommands.forEach((cmd: any) => {
-        tracker.processCommand(cmd);
-      });
-      
-      const result = this.buildResult(replayData, tracker, buildOrders, formattedCommands);
-      console.log('[JssuhParser] Result built successfully');
-      return result;
-      
-    } catch (error) {
-      console.error('[JssuhParser] Parse error:', error);
-      throw new Error(`screparsed parsing failed: ${error}`);
+        // Konvertiere natives Ergebnis zu screparsed Format
+        replayData = this.convertNativeToScreparsedFormat(nativeResult);
+        console.log('[JssuhParser] Native parser fallback successful:', replayData);
+      } catch (nativeError) {
+        console.error('[JssuhParser] Both parsers failed:', { screparsed: screparsedError, native: nativeError });
+        throw new Error(`Both parsers failed. Screparsed: ${screparsedError}. Native: ${nativeError}`);
+      }
     }
+      
+    // Initialisiere Real-Time Tracker für echte Build Orders
+    const playerRaces: Record<number, string> = {};
+    (replayData?.players || []).forEach((player: any, index: number) => {
+      if (player && player.race) {
+        playerRaces[index] = player.race;
+      }
+    });
+    
+    // Convert commands to our format first
+    const formattedCommands = (replayData?.commands || []).map((cmd: any) => {
+      const mappedType = JssuhParserHelpers.mapCommandType(cmd.typeName || cmd.kind);
+      console.log('[JssuhParser] Command mapping:', {
+        original: cmd.typeName || cmd.kind,
+        mapped: mappedType,
+        type: cmd.type,
+        playerId: cmd.playerId
+      });
+      
+      return {
+        frame: cmd.frame || 0,
+        playerId: cmd.playerId || 0,
+        type: cmd.type || 0,
+        typeString: mappedType,
+        parameters: cmd.parameters || {},
+        effective: true,
+        ineffKind: '',
+        time: this.frameToTime(cmd.frame || 0),
+        rawData: new Uint8Array(),
+        data: new Uint8Array()
+      };
+    });
+
+    // Professional Build Order Extractor
+    const players = JssuhParserHelpers.extractPlayersData(replayData);
+    
+    console.log('[JssuhParser] Extracting professional build orders from data');
+    const buildOrders = ProfessionalBuildOrderExtractor.extractBuildOrders(replayData);
+    console.log('[JssuhParser] Professional build order extraction complete:', {
+      totalPlayers: Object.keys(buildOrders).length,
+      totalBuildOrderItems: Object.values(buildOrders).reduce((sum, playerData) => sum + (playerData.buildOrder?.length || 0), 0)
+    });
+    
+    const tracker = new RealTimeTracker(replayData?.players?.length || 0, playerRaces);
+    formattedCommands.forEach((cmd: any) => {
+      tracker.processCommand(cmd);
+    });
+    
+    const result = this.buildResult(replayData, tracker, buildOrders, formattedCommands, dataSource);
+    console.log('[JssuhParser] Result built successfully');
+    return result;
+  }
+
+  private convertNativeToScreparsedFormat(nativeResult: any): any {
+    // Konvertiere nativen Parser Output zu screparsed-ähnlichem Format
+    return {
+      gameInfo: {
+        map: nativeResult.header?.mapName || 'Unknown Map',
+        frames: nativeResult.header?.frames || 0,
+        startTime: nativeResult.header?.startTime || new Date()
+      },
+      players: nativeResult.players || [],
+      commands: nativeResult.commands || []
+    };
   }
   
-  private buildResult(replayData: any, tracker: RealTimeTracker, buildOrders: Record<number, import('../buildOrderAnalysis/professionalBuildOrderExtractor').PlayerBuildOrder>, formattedCommands: any[]): JssuhReplayResult {
-    console.log('[JssuhParser] Building result from screparsed data');
-    console.log('[JssuhParser] ReplayData structure:', JSON.stringify(replayData, null, 2));
+  private buildResult(
+    replayData: any, 
+    tracker: RealTimeTracker, 
+    buildOrders: Record<number, import('../buildOrderAnalysis/professionalBuildOrderExtractor').PlayerBuildOrder>, 
+    formattedCommands: any[],
+    dataSource: 'screparsed' | 'native'
+  ): JssuhReplayResult {
+    console.log('[JssuhParser] Building result from data');
     
-    // Extract header info from screparsed
+    // Extract header info
     const header = {
       mapName: replayData?.gameInfo?.map || 'Unknown Map',
       duration: this.framesToDuration(replayData?.gameInfo?.frames || 0),
@@ -165,13 +192,11 @@ export class JssuhParser {
       gameType: 'Melee',
       startTime: replayData?.gameInfo?.startTime ? new Date(replayData.gameInfo.startTime) : new Date(),
       version: 'StarCraft: Remastered',
-      engine: 'screparsed'
+      engine: dataSource
     };
     
     // Extract players 
     const players = JssuhParserHelpers.extractPlayersData(replayData);
-    
-    console.log('[JssuhParser] Found players:', players);
     
     // Convert professional build orders to the required format
     const buildOrdersFormatted: Record<number, ProfessionalBuildOrderItem[]> = {};
@@ -221,7 +246,7 @@ export class JssuhParser {
     
     // Assess data quality
     const dataQuality = {
-      source: 'screparsed' as const,
+      source: dataSource,
       reliability: this.assessReliability(formattedCommands, players),
       commandsFound: formattedCommands.length,
       playersFound: players.length,
@@ -246,7 +271,6 @@ export class JssuhParser {
     };
   }
   
-  
   private framesToDuration(frames: number): string {
     const totalSeconds = Math.floor(frames / 24); // SC frame rate
     const minutes = Math.floor(totalSeconds / 60);
@@ -259,234 +283,6 @@ export class JssuhParser {
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  }
-  
-  private getCommandTypeName(rawBytes: Uint8Array): string {
-    if (!rawBytes || rawBytes.length === 0) {
-      console.log('[JssuhParser] No rawBytes provided to getCommandTypeName');
-      return 'Unknown';
-    }
-    
-    const firstByte = rawBytes[0];
-    
-    // Basic SC command mapping (based on BWAPI)  
-    const commandMap: Record<number, string> = {
-      0x09: 'Select',
-      0x0A: 'Shift Select',
-      0x0B: 'Shift Deselect', 
-      0x0C: 'Build',
-      0x0D: 'Vision',
-      0x0E: 'Alliance',
-      0x13: 'Hotkey',
-      0x14: 'Move',
-      0x15: 'Attack',
-      0x1F: 'Train',
-      0x20: 'Cancel Train',
-      0x23: 'Research',
-      0x24: 'Upgrade',
-      0x25: 'Morph',
-      0x26: 'Stim',
-      0x27: 'Sync'
-    };
-    
-    return commandMap[firstByte] || `Command_${firstByte.toString(16).toUpperCase()}`;
-  }
-  
-  private extractBuildOrdersFromCommands(commands: any[], players: any[]): Record<number, any[]> {
-    const buildOrders: Record<number, any[]> = {};
-    
-    players.forEach(player => {
-      const playerCommands = commands.filter(cmd => cmd.playerId === player.color);
-      const buildActions = playerCommands.filter(cmd => 
-        ['Build', 'Train', 'Research', 'Upgrade', 'Morph'].includes(cmd.commandType)
-      );
-      
-      buildOrders[player.color] = buildActions.map((cmd, index) => ({
-        time: cmd.timestamp,
-        action: cmd.commandType,
-        supply: 9 + (index * 2), // Rough estimate
-        unitName: this.guessUnitName(cmd),
-        category: this.categorizeCommand(cmd.commandType)
-      }));
-    });
-    
-    return buildOrders;
-  }
-  
-  private guessUnitName(command: any): string {
-    // Extract unit ID from command data for real unit names
-    if (command.data && command.data.length >= 2) {
-      const unitId = command.data[1]; // Usually second byte contains unit ID
-      return this.getUnitNameById(unitId) || this.getGenericName(command.commandType);
-    }
-    
-    return this.getGenericName(command.commandType);
-  }
-  
-  private getUnitNameById(unitId: number): string | null {
-    // SC:R Unit ID mapping based on BWAPI constants
-    const unitMap: Record<number, string> = {
-      // Protoss Buildings
-      0x9A: 'Nexus',
-      0x9C: 'Pylon', 
-      0x9D: 'Assimilator',
-      0x9F: 'Gateway',
-      0xA0: 'Photon Cannon',
-      0xA1: 'Citadel of Adun',
-      0xA2: 'Cybernetics Core',
-      0xA3: 'Templar Archives',
-      0xA4: 'Forge',
-      0xA5: 'Stargate',
-      0xA6: 'Fleet Beacon',
-      0xA7: 'Arbiter Tribunal',
-      0xA8: 'Robotics Support Bay',
-      0x9B: 'Robotics Facility',
-      0x9E: 'Observatory',
-      
-      // Terran Buildings
-      0x6A: 'Command Center',
-      0x6B: 'Supply Depot',
-      0x6C: 'Refinery',
-      0x6D: 'Barracks',
-      0x6E: 'Academy',
-      0x6F: 'Factory',
-      0x70: 'Starport',
-      0x71: 'Control Tower',
-      0x72: 'Science Facility',
-      0x73: 'Covert Ops',
-      0x74: 'Physics Lab',
-      0x75: 'Machine Shop',
-      0x76: 'Bunker',
-      0x77: 'Missile Turret',
-      0x78: 'Engineering Bay',
-      0x79: 'Armory',
-      
-      // Zerg Buildings
-      0x82: 'Hatchery',
-      0x83: 'Lair',
-      0x84: 'Hive',
-      0x85: 'Nydus Canal',
-      0x86: 'Hydralisk Den',
-      0x87: 'Defiler Mound',
-      0x88: 'Greater Spire',
-      0x89: 'Queens Nest',
-      0x8A: 'Evolution Chamber',
-      0x8B: 'Ultralisk Cavern',
-      0x8C: 'Spire',
-      0x8D: 'Spawning Pool',
-      0x8E: 'Creep Colony',
-      0x8F: 'Spore Colony',
-      0x90: 'Sunken Colony',
-      0x91: 'Extractor',
-      
-      // Protoss Units
-      0x40: 'Probe',
-      0x41: 'Zealot',
-      0x42: 'Dragoon',
-      0x43: 'High Templar',
-      0x44: 'Archon',
-      0x45: 'Shuttle',
-      0x46: 'Scout',
-      0x47: 'Arbiter',
-      0x48: 'Carrier',
-      0x50: 'Dark Templar',
-      0x51: 'Dark Archon',
-      0x52: 'Corsair',
-      0x53: 'Reaver',
-      0x54: 'Observer',
-      
-      // Terran Units
-      0x07: 'SCV',
-      0x00: 'Marine',
-      0x01: 'Firebat',
-      0x02: 'Medic',
-      0x03: 'Ghost',
-      0x05: 'Vulture',
-      0x06: 'Goliath',
-      0x08: 'Siege Tank',
-      0x0B: 'Wraith',
-      0x0C: 'Dropship',
-      0x0D: 'Science Vessel',
-      0x0E: 'Battlecruiser',
-      0x20: 'Valkyrie',
-      
-      // Zerg Units
-      0x25: 'Drone',
-      0x26: 'Zergling',
-      0x27: 'Hydralisk',
-      0x28: 'Ultralisk',
-      0x2A: 'Overlord',
-      0x2B: 'Mutalisk',
-      0x2C: 'Guardian',
-      0x2D: 'Queen',
-      0x2E: 'Defiler',
-      0x2F: 'Scourge',
-      0x3A: 'Lurker',
-      0x67: 'Devourer'
-    };
-    
-    return unitMap[unitId] || null;
-  }
-  
-  private getGenericName(commandType: string): string {
-    switch (commandType) {
-      case 'Build': return 'Building';
-      case 'Train': return 'Unit';
-      case 'Research': return 'Technology';
-      case 'Upgrade': return 'Upgrade';
-      default: return 'Unknown';
-    }
-  }
-  
-  private categorizeCommand(commandType: string): 'build' | 'train' | 'tech' | 'upgrade' {
-    switch (commandType) {
-      case 'Build': return 'build';
-      case 'Train': return 'train';
-      case 'Research': return 'tech';
-      case 'Upgrade': return 'upgrade';
-      default: return 'build';
-    }
-  }
-  
-  private generateGameplayAnalysis(players: any[], commands: any[]): Record<number, any> {
-    const analysis: Record<number, any> = {};
-    
-    players.forEach(player => {
-      const playerCommands = commands.filter(cmd => cmd.playerId === player.color);
-      
-      analysis[player.color] = {
-        playstyle: this.determinePlaystyle(player.apm, player.eapm, player.efficiency),
-        apmBreakdown: {
-          economic: Math.round(player.eapm * 0.4),
-          micro: Math.round(player.eapm * 0.3),
-          selection: Math.round(player.eapm * 0.2),
-          spam: Math.round(player.apm - player.eapm),
-          effective: player.eapm
-        },
-        microEvents: playerCommands
-          .filter(cmd => ['Attack', 'Move'].includes(cmd.commandType))
-          .slice(0, 5)
-          .map(cmd => ({
-            time: cmd.timestamp,
-            action: cmd.commandType,
-            intensity: Math.floor(Math.random() * 5) + 1
-          })),
-        economicEfficiency: player.efficiency,
-        strengths: this.generateStrengths(player),
-        weaknesses: this.generateWeaknesses(player),
-        recommendations: this.generateRecommendations(player)
-      };
-    });
-    
-    return analysis;
-  }
-  
-  private determinePlaystyle(apm: number, eapm: number, efficiency: number): string {
-    if (eapm > 150) return 'aggressive';
-    if (efficiency > 80) return 'economic';
-    if (apm > 200) return 'micro-intensive';
-    if (efficiency < 50) return 'defensive';
-    return 'balanced';
   }
   
   private generateStrengths(player: any): string[] {
@@ -517,24 +313,5 @@ export class JssuhParser {
     if (actions.length > 1000 && players.length >= 2) return 'high';
     if (actions.length > 500 && players.length >= 1) return 'medium';
     return 'low';
-  }
-
-  private generateBuildOrderAnalysis(buildOrders: Record<number, any[]>, players: any[]): Record<number, any> {
-    const analysis: Record<number, any> = {};
-    
-    players.forEach(player => {
-      const playerBuildOrder = buildOrders[player.color] || [];
-      const buildings = playerBuildOrder.filter(item => item.category === 'build').length;
-      const units = playerBuildOrder.filter(item => item.category === 'train').length;
-      
-      analysis[player.color] = {
-        totalBuildings: buildings,
-        totalUnits: units,
-        economicEfficiency: Math.min(100, Math.round((buildings + units) * 5)),
-        strategicAssessment: buildings > units ? 'Economic Focus' : units > buildings ? 'Military Focus' : 'Balanced'
-      };
-    });
-    
-    return analysis;
   }
 }
