@@ -78,56 +78,69 @@ export interface JssuhReplayResult {
 
 export class JssuhParser {
   async parseReplay(file: File): Promise<JssuhReplayResult> {
-    console.log('[JssuhParser] Starting mobile-optimized SC:R parsing for:', file.name);
+    console.log('[JssuhParser] 🚀 Starting production-grade SC:R parsing for:', file.name);
     
     let replayData: any = null;
-    let dataSource: 'screparsed' | 'native' = 'native'; // Start with mobile-safe parser
+    let dataSource: 'screparsed' | 'native' = 'native'; // Start with production parser
     
     try {
-      // Primary: Browser-safe parser for mobile compatibility
-      console.log('[JssuhParser] Trying browser-safe parser...');
-      const { BrowserSafeParser } = await import('./browserSafeParser');
-      const parser = new BrowserSafeParser();
-      const browserResult = await parser.parseReplay(file);
-      console.log('[JssuhParser] Browser-safe parsing successful:', browserResult);
+      // Primary: Production-grade parser with full SC:R knowledge
+      console.log('[JssuhParser] 🎯 Trying production parser...');
+      const { ProductionReplayParser } = await import('./productionReplayParser');
+      const parser = new ProductionReplayParser();
+      const productionResult = await parser.parseReplay(file);
+      console.log('[JssuhParser] ✅ Production parsing successful:', productionResult);
       
-      // Convert to screparsed-like format
-      replayData = this.convertBrowserResultToScreparsedFormat(browserResult);
+      // Convert to JssuhReplayResult format
+      return this.convertProductionResult(productionResult);
       
-    } catch (browserError) {
-      console.warn('[JssuhParser] Browser-safe parser failed, trying screparsed:', browserError);
-      dataSource = 'screparsed';
+    } catch (productionError) {
+      console.warn('[JssuhParser] ⚠️ Production parser failed, trying browser-safe:', productionError);
       
       try {
-        // Fallback: Try screparsed if browser parser fails
-        console.log('[JssuhParser] Trying screparsed parser...');
-        const arrayBuffer = await file.arrayBuffer();
-        const parser = ReplayParser.fromArrayBuffer(arrayBuffer);
-        replayData = await parser.parse();
-        console.log('[JssuhParser] screparsed parsing successful:', replayData);
-      } catch (screparsedError) {
-        console.error('[JssuhParser] screparsed also failed, trying final fallback:', screparsedError);
+        // Fallback 1: Browser-safe parser
+        console.log('[JssuhParser] 🌐 Trying browser-safe parser...');
+        const { BrowserSafeParser } = await import('./browserSafeParser');
+        const parser = new BrowserSafeParser();
+        const browserResult = await parser.parseReplay(file);
+        console.log('[JssuhParser] ✅ Browser-safe parsing successful:', browserResult);
+        
+        // Convert to screparsed-like format
+        replayData = this.convertBrowserResultToScreparsedFormat(browserResult);
+        
+      } catch (browserError) {
+        console.warn('[JssuhParser] ⚠️ Browser parser failed, trying screparsed:', browserError);
+        dataSource = 'screparsed';
         
         try {
-          // Final fallback: Native parser
-          console.log('[JssuhParser] Loading NewScrepParser...');
-          const { NewScrepParser } = await import('./newScrepParser');
-          console.log('[JssuhParser] NewScrepParser loaded, creating instance...');
-          const parser = new NewScrepParser();
-          console.log('[JssuhParser] Parsing with native parser...');
-          const nativeResult = await parser.parseReplay(file);
-          console.log('[JssuhParser] Native parsing successful:', nativeResult);
+          // Fallback 2: Try screparsed
+          console.log('[JssuhParser] 📚 Trying screparsed parser...');
+          const arrayBuffer = await file.arrayBuffer();
+          const parser = ReplayParser.fromArrayBuffer(arrayBuffer);
+          replayData = await parser.parse();
+          console.log('[JssuhParser] ✅ screparsed parsing successful:', replayData);
+        } catch (screparsedError) {
+          console.error('[JssuhParser] ❌ screparsed also failed, trying final fallback:', screparsedError);
           
-          // Convert to standard format
-          replayData = this.convertNativeToScreparsedFormat(nativeResult);
-          console.log('[JssuhParser] Native parser fallback successful:', replayData);
-        } catch (nativeError) {
-          console.error('[JssuhParser] All parsers failed:', { 
-            browser: browserError, 
-            screparsed: screparsedError, 
-            native: nativeError 
-          });
-          throw new Error(`All parsers failed. Browser: ${browserError}. Screparsed: ${screparsedError}. Native: ${nativeError}`);
+          try {
+            // Final fallback: Native parser
+            console.log('[JssuhParser] 🔧 Loading NewScrepParser...');
+            const { NewScrepParser } = await import('./newScrepParser');
+            const parser = new NewScrepParser();
+            const nativeResult = await parser.parseReplay(file);
+            console.log('[JssuhParser] ✅ Native parsing successful:', nativeResult);
+            
+            // Convert to standard format
+            replayData = this.convertNativeToScreparsedFormat(nativeResult);
+          } catch (nativeError) {
+            console.error('[JssuhParser] ❌ All parsers failed:', { 
+              production: productionError, 
+              browser: browserError, 
+              screparsed: screparsedError, 
+              native: nativeError 
+            });
+            throw new Error(`All parsers failed. Production: ${productionError}. Browser: ${browserError}. Screparsed: ${screparsedError}. Native: ${nativeError}`);
+          }
         }
       }
     }
@@ -184,13 +197,65 @@ export class JssuhParser {
     return result;
   }
 
+  private convertProductionResult(productionResult: any): JssuhReplayResult {
+    // Convert production parser result to JssuhReplayResult format
+    const buildOrders: Record<number, ProfessionalBuildOrderItem[]> = {};
+    Object.entries(productionResult.buildOrders).forEach(([playerId, buildOrder]) => {
+      buildOrders[Number(playerId)] = buildOrder as ProfessionalBuildOrderItem[];
+    });
+
+    return {
+      header: {
+        mapName: productionResult.mapName,
+        duration: productionResult.gameLength,
+        frames: productionResult.totalFrames,
+        gameType: 'Melee',
+        startTime: new Date(),
+        version: 'StarCraft: Remastered',
+        engine: 'ProductionParser'
+      },
+      players: productionResult.players,
+      commands: productionResult.commands.map((cmd: any) => ({
+        frame: cmd.frame,
+        playerId: cmd.playerId,
+        commandType: cmd.type,
+        rawBytes: new Uint8Array(),
+        timestamp: cmd.timestamp
+      })),
+      buildOrders,
+      buildOrderAnalysis: this.convertGameplayAnalysisForBuildOrder(productionResult.gameplayAnalysis),
+      gameplayAnalysis: productionResult.gameplayAnalysis,
+      dataQuality: {
+        source: 'native',
+        reliability: productionResult.dataQuality.reliability,
+        commandsFound: productionResult.dataQuality.commandsFound,
+        playersFound: productionResult.dataQuality.playersFound,
+        apmCalculated: true,
+        eapmCalculated: true
+      }
+    };
+  }
+
+  private convertGameplayAnalysisForBuildOrder(gameplayAnalysis: any): Record<number, any> {
+    const buildOrderAnalysis: Record<number, any> = {};
+    Object.entries(gameplayAnalysis).forEach(([playerId, analysis]: [string, any]) => {
+      buildOrderAnalysis[Number(playerId)] = {
+        totalBuildings: 0, // Will be calculated from build orders
+        totalUnits: 0, // Will be calculated from build orders
+        economicEfficiency: analysis.economicRating || 50,
+        strategicAssessment: analysis.opening || 'Standard'
+      };
+    });
+    return buildOrderAnalysis;
+  }
+
   private convertBrowserResultToScreparsedFormat(browserResult: any): any {
     // Convert browser parser result to screparsed-like format
     return {
       gameInfo: {
-        map: browserResult.header?.mapName || 'Unknown Map',
-        frames: browserResult.header?.frames || browserResult.frameCount || 0,
-        startTime: browserResult.header?.startTime || new Date()
+        map: browserResult.mapName || 'Unknown Map',
+        frames: browserResult.totalFrames || 0,
+        startTime: new Date()
       },
       players: browserResult.players || [],
       commands: browserResult.commands || []
