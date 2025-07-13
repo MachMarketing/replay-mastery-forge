@@ -78,40 +78,57 @@ export interface JssuhReplayResult {
 
 export class JssuhParser {
   async parseReplay(file: File): Promise<JssuhReplayResult> {
-    console.log('[JssuhParser] Starting SC:R parsing for:', file.name);
+    console.log('[JssuhParser] Starting mobile-optimized SC:R parsing for:', file.name);
     
     let replayData: any = null;
-    let dataSource: 'screparsed' | 'native' = 'screparsed';
+    let dataSource: 'screparsed' | 'native' = 'native'; // Start with mobile-safe parser
     
     try {
-      // Versuche zuerst screparsed Parser
-      console.log('[JssuhParser] Trying screparsed parser...');
-      const arrayBuffer = await file.arrayBuffer();
-      const parser = ReplayParser.fromArrayBuffer(arrayBuffer);
-      replayData = await parser.parse();
-      console.log('[JssuhParser] screparsed parsing successful:', replayData);
-    } catch (screparsedError) {
-      console.warn('[JssuhParser] screparsed failed, trying fallback:', screparsedError);
-      console.log('[JssuhParser] Falling back to native parser...');
-      dataSource = 'native';
+      // Primary: Browser-safe parser for mobile compatibility
+      console.log('[JssuhParser] Trying browser-safe parser...');
+      const { BrowserSafeParser } = await import('./browserSafeParser');
+      const parser = new BrowserSafeParser();
+      const browserResult = await parser.parseReplay(file);
+      console.log('[JssuhParser] Browser-safe parsing successful:', browserResult);
+      
+      // Convert to screparsed-like format
+      replayData = this.convertBrowserResultToScreparsedFormat(browserResult);
+      
+    } catch (browserError) {
+      console.warn('[JssuhParser] Browser-safe parser failed, trying screparsed:', browserError);
+      dataSource = 'screparsed';
       
       try {
-        // Fallback auf nativen Parser
-        console.log('[JssuhParser] Loading NewScrepParser...');
-        const { NewScrepParser } = await import('./newScrepParser');
-        console.log('[JssuhParser] NewScrepParser loaded, creating instance...');
-        const parser = new NewScrepParser();
-        console.log('[JssuhParser] Parsing with native parser...');
-        const nativeResult = await parser.parseReplay(file);
-        console.log('[JssuhParser] Native parsing successful:', nativeResult);
+        // Fallback: Try screparsed if browser parser fails
+        console.log('[JssuhParser] Trying screparsed parser...');
+        const arrayBuffer = await file.arrayBuffer();
+        const parser = ReplayParser.fromArrayBuffer(arrayBuffer);
+        replayData = await parser.parse();
+        console.log('[JssuhParser] screparsed parsing successful:', replayData);
+      } catch (screparsedError) {
+        console.error('[JssuhParser] screparsed also failed, trying final fallback:', screparsedError);
         
-        // Konvertiere natives Ergebnis zu screparsed Format
-        replayData = this.convertNativeToScreparsedFormat(nativeResult);
-        console.log('[JssuhParser] Native parser fallback successful:', replayData);
-      } catch (nativeError) {
-        console.error('[JssuhParser] Native parser also failed:', nativeError);
-        console.error('[JssuhParser] Both parsers failed:', { screparsed: screparsedError, native: nativeError });
-        throw new Error(`Both parsers failed. Screparsed: ${screparsedError}. Native: ${nativeError}`);
+        try {
+          // Final fallback: Native parser
+          console.log('[JssuhParser] Loading NewScrepParser...');
+          const { NewScrepParser } = await import('./newScrepParser');
+          console.log('[JssuhParser] NewScrepParser loaded, creating instance...');
+          const parser = new NewScrepParser();
+          console.log('[JssuhParser] Parsing with native parser...');
+          const nativeResult = await parser.parseReplay(file);
+          console.log('[JssuhParser] Native parsing successful:', nativeResult);
+          
+          // Convert to standard format
+          replayData = this.convertNativeToScreparsedFormat(nativeResult);
+          console.log('[JssuhParser] Native parser fallback successful:', replayData);
+        } catch (nativeError) {
+          console.error('[JssuhParser] All parsers failed:', { 
+            browser: browserError, 
+            screparsed: screparsedError, 
+            native: nativeError 
+          });
+          throw new Error(`All parsers failed. Browser: ${browserError}. Screparsed: ${screparsedError}. Native: ${nativeError}`);
+        }
       }
     }
       
@@ -167,8 +184,21 @@ export class JssuhParser {
     return result;
   }
 
+  private convertBrowserResultToScreparsedFormat(browserResult: any): any {
+    // Convert browser parser result to screparsed-like format
+    return {
+      gameInfo: {
+        map: browserResult.header?.mapName || 'Unknown Map',
+        frames: browserResult.header?.frames || browserResult.frameCount || 0,
+        startTime: browserResult.header?.startTime || new Date()
+      },
+      players: browserResult.players || [],
+      commands: browserResult.commands || []
+    };
+  }
+
   private convertNativeToScreparsedFormat(nativeResult: any): any {
-    // Konvertiere nativen Parser Output zu screparsed-ähnlichem Format
+    // Convert native parser output to screparsed-like format
     return {
       gameInfo: {
         map: nativeResult.header?.mapName || 'Unknown Map',
