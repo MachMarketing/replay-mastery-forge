@@ -33,7 +33,7 @@ export interface ScrepJsReplayResult {
     unitId: number;
     frame: number;
     timestamp: string;
-    category: 'economy' | 'military' | 'tech' | 'supply';
+    category: 'economy' | 'military' | 'tech' | 'supply' | 'defense' | 'special';
     cost: { minerals: number; gas: number; supply: number };
     efficiency: number;
     confidence: number;
@@ -164,10 +164,20 @@ export class ScrepJsParser {
       data: cmd.data || {}
     }));
 
-    // Generate build orders from commands
+    // Generate REAL build orders from commands - Phase 3 Implementation
     const buildOrders: Record<number, any[]> = {};
     players.forEach((player, index) => {
-      buildOrders[index] = this.extractBuildOrder(commands.filter(c => c.playerId === index));
+      const playerCommands = commands.filter(c => c.playerId === index);
+      console.log(`[ScrepJsParser] Processing ${playerCommands.length} commands for ${player.name} (${player.race})`);
+      
+      buildOrders[index] = this.extractBuildOrder(playerCommands, player, index);
+      
+      console.log(`[ScrepJsParser] Build order for ${player.name}: ${buildOrders[index].length} items`);
+      buildOrders[index].forEach((item, idx) => {
+        if (idx < 5) { // Log first 5 items
+          console.log(`[ScrepJsParser]   ${item.time}: ${item.unitName} (${item.action})`);
+        }
+      });
     });
 
     // Generate analysis for each player
@@ -248,39 +258,41 @@ export class ScrepJsParser {
     return types[type] || 'Unknown';
   }
 
-  private extractBuildOrder(commands: any[]): any[] {
-    // Extract meaningful build order items from commands
-    return commands.slice(0, 20).map((cmd, index) => ({
-      supply: `${12 + index * 2}/200`,
-      action: 'Build' as const,
-      unitName: this.getUnitName(index),
-      unitId: index,
-      frame: cmd.frame,
-      timestamp: this.framesToTime(cmd.frame),
-      category: this.getCategory(index),
-      cost: { minerals: 50, gas: 0, supply: 1 },
-      efficiency: 85,
-      confidence: 90,
-      extractionMethod: 'screparsed',
-      strategic: {
-        priority: 'important' as const,
-        timing: this.getTiming(cmd.frame),
-        purpose: 'Strategic development'
-      },
-      time: this.framesToTime(cmd.frame),
-      unit: this.getUnitName(index)
+  private extractBuildOrder(commands: any[], playerInfo: any, playerId: number): any[] {
+    console.log(`[ScrepJsParser] Extracting REAL build order for ${playerInfo.race} player ${playerId}`);
+    
+    // Import the real build order extractor
+    const { RealBuildOrderExtractor } = require('../buildOrderAnalysis/realBuildOrderExtractor');
+    
+    // Extract real build order from commands
+    const realBuildOrder = RealBuildOrderExtractor.extractRealBuildOrder(
+      commands, 
+      playerInfo.race, 
+      playerId
+    );
+    
+    console.log(`[ScrepJsParser] Real build order extracted: ${realBuildOrder.length} actions`);
+    
+    // Convert to expected format
+    return realBuildOrder.map(action => ({
+      supply: action.supply,
+      action: action.action,
+      unitName: action.unitName,
+      unitId: action.unitId,
+      frame: action.frame,
+      timestamp: action.time,
+      category: action.category,
+      cost: action.cost,
+      efficiency: action.efficiency,
+      confidence: action.confidence,
+      extractionMethod: action.extractionMethod,
+      strategic: action.strategic,
+      time: action.time,
+      unit: action.unitName
     }));
   }
 
-  private getUnitName(index: number): string {
-    const units = ['SCV', 'Marine', 'Supply Depot', 'Barracks', 'Drone', 'Zergling', 'Overlord', 'Spawning Pool', 'Probe', 'Zealot', 'Pylon', 'Gateway'];
-    return units[index % units.length];
-  }
-
-  private getCategory(index: number): 'economy' | 'military' | 'tech' | 'supply' {
-    const categories = ['economy', 'military', 'supply', 'tech'];
-    return categories[index % 4] as any;
-  }
+  // Removed mock data functions - now using real data extraction
 
   private getTiming(frame: number): 'opening' | 'early' | 'mid' | 'late' {
     if (frame < 1440) return 'opening';

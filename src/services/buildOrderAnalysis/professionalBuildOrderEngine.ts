@@ -14,7 +14,7 @@ export interface ProfessionalBuildOrderItem {
   unitId: number;
   frame: number;
   timestamp: string;
-  category: 'economy' | 'military' | 'tech' | 'supply';
+  category: 'economy' | 'military' | 'tech' | 'supply' | 'defense' | 'special';
   cost: { minerals: number; gas: number; supply: number };
   efficiency: number;
   confidence: number;

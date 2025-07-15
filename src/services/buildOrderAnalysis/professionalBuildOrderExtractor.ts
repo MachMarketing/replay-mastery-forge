@@ -13,7 +13,7 @@ export interface ProfessionalBuildOrderItem {
   frame: number;
   timestamp: string;
   // Additional properties for compatibility
-  category: 'tech' | 'supply' | 'economy' | 'military';
+  category: 'economy' | 'military' | 'tech' | 'supply' | 'defense' | 'special';
   cost: { minerals: number; gas: number };
   efficiency: number;
   // Backward compatibility
