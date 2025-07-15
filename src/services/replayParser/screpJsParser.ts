@@ -113,7 +113,7 @@ export class ScrepJsParser {
       });
 
       // Convert to our standardized format
-      const result = this.convertScrepJsResult(screpResult);
+      const result = await this.convertScrepJsResult(screpResult);
       
       console.log('[ScrepJsParser] Final result ready:', {
         map: result.header.mapName,
@@ -131,7 +131,7 @@ export class ScrepJsParser {
     }
   }
 
-  private convertScrepJsResult(screpResult: any): ScrepJsReplayResult {
+  private async convertScrepJsResult(screpResult: any): Promise<ScrepJsReplayResult> {
     console.log('[ScrepJsParser] Converting screparsed result to our format');
     
     // Extract header information
@@ -166,11 +166,11 @@ export class ScrepJsParser {
 
     // Generate REAL build orders from commands - Phase 3 Implementation
     const buildOrders: Record<number, any[]> = {};
-    players.forEach((player, index) => {
+    for (const [index, player] of players.entries()) {
       const playerCommands = commands.filter(c => c.playerId === index);
       console.log(`[ScrepJsParser] Processing ${playerCommands.length} commands for ${player.name} (${player.race})`);
       
-      buildOrders[index] = this.extractBuildOrder(playerCommands, player, index);
+      buildOrders[index] = await this.extractBuildOrder(playerCommands, player, index);
       
       console.log(`[ScrepJsParser] Build order for ${player.name}: ${buildOrders[index].length} items`);
       buildOrders[index].forEach((item, idx) => {
@@ -178,7 +178,7 @@ export class ScrepJsParser {
           console.log(`[ScrepJsParser]   ${item.time}: ${item.unitName} (${item.action})`);
         }
       });
-    });
+    }
 
     // Generate analysis for each player
     const buildOrderAnalysis: Record<number, any> = {};
@@ -258,11 +258,11 @@ export class ScrepJsParser {
     return types[type] || 'Unknown';
   }
 
-  private extractBuildOrder(commands: any[], playerInfo: any, playerId: number): any[] {
+  private async extractBuildOrder(commands: any[], playerInfo: any, playerId: number): Promise<any[]> {
     console.log(`[ScrepJsParser] Extracting REAL build order for ${playerInfo.race} player ${playerId}`);
     
-    // Import the real build order extractor
-    const { RealBuildOrderExtractor } = require('../buildOrderAnalysis/realBuildOrderExtractor');
+    // Import the real build order extractor  
+    const { RealBuildOrderExtractor } = await import('../buildOrderAnalysis/realBuildOrderExtractor');
     
     // Extract real build order from commands
     const realBuildOrder = RealBuildOrderExtractor.extractRealBuildOrder(
