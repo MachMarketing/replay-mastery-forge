@@ -15,6 +15,18 @@ import { ensureBufferPolyfills } from '@/services/nativeReplayParser/bufferUtils
 // Setup polyfills for Node.js modules in browser
 ensureBufferPolyfills();
 
+// Ensure process.nextTick is available for jssuh
+if (typeof window !== 'undefined' && typeof global === 'undefined') {
+  (globalThis as any).global = globalThis;
+}
+
+// Add process.nextTick polyfill if it's missing
+if (typeof process !== 'undefined' && !process.nextTick) {
+  process.nextTick = (fn: Function, ...args: any[]) => {
+    setTimeout(() => fn(...args), 0);
+  };
+}
+
 // Create a client
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -64,8 +64,8 @@ export default defineConfig(({ mode }) => ({
         }) as any,
       ],
     },
-    // Include screparsed and its dependencies in the optimization
-    include: ['screparsed', 'react', 'react-dom', 'stream-browserify', 'process/browser', 'events'],
+    // Include jssuh and its dependencies in the optimization
+    include: ['screparsed', 'jssuh', 'react', 'react-dom', 'stream-browserify', 'process/browser', 'events', 'util'],
   },
   build: {
     commonjsOptions: {
