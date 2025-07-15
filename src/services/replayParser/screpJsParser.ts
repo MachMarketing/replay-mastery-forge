@@ -89,6 +89,7 @@ export interface ScrepJsReplayResult {
     playersFound: number;
     apmCalculated: boolean;
     eapmCalculated: boolean;
+    buildOrdersExtracted: number;
   };
 }
 
@@ -225,13 +226,15 @@ export class ScrepJsParser {
     });
 
     // Assess data quality
+    const totalBuildOrders = Object.values(buildOrders).reduce((sum, orders) => sum + orders.length, 0);
     const dataQuality = {
       source: 'screparsed' as const,
       reliability: this.assessReliability(screpResult, players, commands),
       commandsFound: commands.length,
       playersFound: players.length,
       apmCalculated: players.some(p => p.apm > 0),
-      eapmCalculated: players.some(p => p.eapm > 0)
+      eapmCalculated: players.some(p => p.eapm > 0),
+      buildOrdersExtracted: totalBuildOrders
     };
 
     return {
