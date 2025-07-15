@@ -206,33 +206,37 @@ export class RealBuildOrderExtractor {
   }
   
   /**
-   * Infer building type from context and race
+   * Infer building type from context and race - FIXED case sensitivity
    */
   private static inferBuildingFromContext(command: any, playerRace: string): SCUnitData | null {
-    const raceUnits = CompleteUnitDatabase.getUnitsByRace(playerRace as any);
+    // Fix case sensitivity: capitalize race name for database lookup
+    const capitalizedRace = playerRace.charAt(0).toUpperCase() + playerRace.slice(1).toLowerCase();
+    const raceUnits = CompleteUnitDatabase.getUnitsByRace(capitalizedRace as any);
     const frame = command.frame || 0;
     const gameMinutes = frame / (24 * 60);
     
+    console.log(`[RealBuildOrderExtractor] Looking for ${capitalizedRace} buildings, found ${raceUnits.length} units in database`);
+    
     // Early game buildings based on race
     if (gameMinutes < 3) {
-      switch (playerRace.toLowerCase()) {
-        case 'protoss':
+      switch (capitalizedRace) {
+        case 'Protoss':
           return raceUnits.find(u => u.name === 'Pylon') || null;
-        case 'terran':
+        case 'Terran':
           return raceUnits.find(u => u.name === 'Supply Depot') || null;
-        case 'zerg':
+        case 'Zerg':
           return raceUnits.find(u => u.name === 'Spawning Pool') || null;
       }
     }
     
     // Mid game buildings
     if (gameMinutes < 8) {
-      switch (playerRace.toLowerCase()) {
-        case 'protoss':
+      switch (capitalizedRace) {
+        case 'Protoss':
           return raceUnits.find(u => u.name === 'Gateway') || null;
-        case 'terran':
+        case 'Terran':
           return raceUnits.find(u => u.name === 'Barracks') || null;
-        case 'zerg':
+        case 'Zerg':
           return raceUnits.find(u => u.name === 'Hydralisk Den') || null;
       }
     }
@@ -242,20 +246,22 @@ export class RealBuildOrderExtractor {
   }
   
   /**
-   * Infer unit type from training commands
+   * Infer unit type from training commands - FIXED case sensitivity
    */
   private static inferUnitFromTraining(command: any, playerRace: string): SCUnitData | null {
-    const raceUnits = CompleteUnitDatabase.getUnitsByRace(playerRace as any);
+    // Fix case sensitivity
+    const capitalizedRace = playerRace.charAt(0).toUpperCase() + playerRace.slice(1).toLowerCase();
+    const raceUnits = CompleteUnitDatabase.getUnitsByRace(capitalizedRace as any);
     
     // Basic unit training based on race
-    switch (playerRace.toLowerCase()) {
-      case 'protoss':
+    switch (capitalizedRace) {
+      case 'Protoss':
         return raceUnits.find(u => u.name === 'Probe') || 
                raceUnits.find(u => u.name === 'Zealot') || null;
-      case 'terran':
+      case 'Terran':
         return raceUnits.find(u => u.name === 'SCV') || 
                raceUnits.find(u => u.name === 'Marine') || null;
-      case 'zerg':
+      case 'Zerg':
         return raceUnits.find(u => u.name === 'Drone') || 
                raceUnits.find(u => u.name === 'Zergling') || null;
       default:
@@ -331,7 +337,8 @@ export class RealBuildOrderExtractor {
    * Ensure units match player race
    */
   private static isValidForRace(unitName: string, playerRace: string): boolean {
-    const raceUnits = CompleteUnitDatabase.getUnitsByRace(playerRace as any);
+    const capitalizedRace = playerRace.charAt(0).toUpperCase() + playerRace.slice(1).toLowerCase();
+    const raceUnits = CompleteUnitDatabase.getUnitsByRace(capitalizedRace as any);
     return raceUnits.some(unit => unit.name === unitName);
   }
   
