@@ -1,4 +1,4 @@
-import * as jssuh from 'jssuh';
+import ReplayParser from 'jssuh';
 import { Readable } from 'stream';
 
 export interface JssuhAction {
@@ -62,7 +62,7 @@ export class JssuhParser {
       const buffer = Buffer.from(arrayBuffer);
       
       return new Promise((resolve, reject) => {
-        const parser = new jssuh.ReplayParser();
+        const parser = new ReplayParser();
         const actions: JssuhAction[] = [];
         let header: JssuhHeader | null = null;
         
