@@ -6,10 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useEnhancedReplayParser } from '@/hooks/useEnhancedReplayParser';
 import { useToast } from '@/hooks/use-toast';
-import { JssuhReplayResult } from '@/services/nativeReplayParser/jssuhParser';
+import { ScrepJsReplayResult } from '@/services/replayParser/screpJsParser';
 
 interface UploadBoxProps {
-  onUploadComplete: (file: File, replayData: JssuhReplayResult) => void;
+  onUploadComplete: (file: File, replayData: ScrepJsReplayResult) => void;
 }
 
 const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
@@ -75,7 +75,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
   const getStatusText = () => {
     switch (uploadStatus) {
       case 'parsing':
-        return 'Enhanced Replay-Analyse läuft...';
+        return 'Production Parser arbeitet...';
       case 'complete':
         return 'Analyse abgeschlossen!';
       case 'error':
@@ -109,7 +109,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
             
             {uploadStatus === 'idle' && (
               <p className="text-sm text-muted-foreground">
-                Unterstützte Formate: .rep (StarCraft: Remastered mit Enhanced Parser)
+                Unterstützte Formate: .rep (StarCraft: Remastered mit screp-js Parser)
               </p>
             )}
             
@@ -124,7 +124,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
             <div className="w-full max-w-xs">
               <Progress value={progress} className="h-2" />
               <p className="text-xs text-muted-foreground mt-1">
-                Enhanced Parser: {Math.round(progress)}%
+                screp-js Parser: {Math.round(progress)}%
               </p>
             </div>
           )}
@@ -153,7 +153,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
       {uploadStatus === 'idle' && (
         <div className="mt-6 text-center">
           <p className="text-sm text-muted-foreground">
-            Enhanced Parser kombiniert screp-js mit Hex-Analyse für echte StarCraft: Remastered Command-Daten
+            Production-ready screp-js Parser für echte StarCraft: Remastered Datenanalyse
           </p>
         </div>
       )}

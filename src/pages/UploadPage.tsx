@@ -4,21 +4,21 @@ import { useEnhancedReplayParser } from '@/hooks/useEnhancedReplayParser';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import UploadBox from '@/components/UploadBox';
-import { JssuhReplayResult } from '@/services/nativeReplayParser/jssuhParser';
+import { ScrepJsReplayResult } from '@/services/replayParser/screpJsParser';
 import ProAnalysisDashboard from '@/components/analysis/ProAnalysisDashboard';
 import ReplayComparisonTool from '@/components/analysis/ReplayComparisonTool';
 
 const UploadPage: React.FC = () => {
-  const [analysisData, setAnalysisData] = useState<JssuhReplayResult | null>(null);
+  const [analysisData, setAnalysisData] = useState<ScrepJsReplayResult | null>(null);
 
-  const handleUploadComplete = async (file: File, replayData: JssuhReplayResult) => {
-    console.log('[UploadPage] Received screp-core replay data:', {
+  const handleUploadComplete = async (file: File, replayData: ScrepJsReplayResult) => {
+    console.log('[UploadPage] Received screp-js replay data:', {
       playerCount: replayData.players.length,
       mapName: replayData.header.mapName,
       dataQuality: replayData.dataQuality.reliability,
       extractionMethod: replayData.dataQuality.source,
       commandsExtracted: replayData.dataQuality.commandsFound,
-      buildOrdersCount: Object.values(replayData.buildOrders).reduce((sum, bo) => sum + bo.length, 0)
+      buildOrdersCount: replayData.dataQuality.buildOrdersExtracted
     });
     
     setAnalysisData(replayData);
@@ -36,7 +36,7 @@ const UploadPage: React.FC = () => {
             Von Beginner zu Pro • Echte SC:R Datenanalyse • KI-gestützte Verbesserungen
           </p>
           <p className="text-center text-sm text-muted-foreground mb-8">
-            Analysiere deine StarCraft: Remastered Replays mit professioneller screp-core Engine
+            Analysiere deine StarCraft: Remastered Replays mit bewährter screp-js Engine
           </p>
           
           {analysisData ? (
