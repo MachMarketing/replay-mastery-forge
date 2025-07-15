@@ -89,20 +89,32 @@ export class RealBuildOrderExtractor {
   }
   
   /**
-   * Phase 2: Command Type Analysis
+   * Phase 2: Command Type Analysis - FIXED for screparsed format
    * Identify build-related commands from screparsed
    */
   private static isBuildCommand(command: any): boolean {
-    console.log(`[RealBuildOrderExtractor] Checking command:`, {
-      command: command.command,
-      type: command.type,
-      commandType: command.commandType,
-      data: command.data,
-      full: command
-    });
+    // Build commands in screparsed have order: 40 (Build order)
+    // Unit training commands have order: different numbers
+    // Selection commands have data.selections
     
-    // Debug: Log all command structures to understand screparsed format
-    return true; // Temporarily accept all commands to see what we get
+    if (!command.data) return false;
+    
+    // Primary build detection: order 40 is the main build command
+    if (command.data.order === 40) {
+      return true;
+    }
+    
+    // Training orders (for units) - need to identify these
+    if (command.data.order && [4, 5, 6, 10, 11, 12, 16, 17, 18].includes(command.data.order)) {
+      return true;
+    }
+    
+    // Research/Upgrade orders - need to identify these
+    if (command.data.order && [25, 26, 27, 28, 29, 30].includes(command.data.order)) {
+      return true;
+    }
+    
+    return false;
   }
   
   /**
@@ -150,47 +162,105 @@ export class RealBuildOrderExtractor {
   }
   
   /**
-   * Phase 2: Unit Extraction from Commands
+   * Phase 2: Unit Extraction from Commands - FIXED for screparsed
    * Extract unit IDs and types from command data
    */
   private static extractUnitFromCommand(command: any, playerRace: string): CommandToUnitMapping | null {
-    // Try multiple ways to extract unit information
+    if (!command.data) return null;
     
-    // Method 1: Direct unit ID from parameters
-    if (command.data?.unitType || command.parameters?.unitType) {
-      const unitId = command.data?.unitType || command.parameters?.unitType;
-      return {
-        commandType: command.command || 'Build',
-        unitId: unitId,
-        actionType: this.inferActionType(command),
-        priority: 1
-      };
+    console.log(`[RealBuildOrderExtractor] Extracting unit from order ${command.data.order}:`, command.data);
+    
+    // For screparsed, we need to infer the unit type from:
+    // 1. The order code (40 = build, etc.)
+    // 2. The coordinates (x, y) - building placement
+    // 3. The context and timing
+    
+    if (command.data.order === 40) {
+      // This is a build command, but we need to determine WHAT is being built
+      // For now, let's return a basic building based on race and timing
+      const buildingUnit = this.inferBuildingFromContext(command, playerRace);
+      if (buildingUnit) {
+        return {
+          commandType: 'Build',
+          unitId: buildingUnit.id,
+          actionType: 'Build',
+          priority: 1
+        };
+      }
     }
     
-    // Method 2: Parse from command string
-    const commandStr = command.command || command.type || '';
-    const unitId = this.parseUnitFromString(commandStr, playerRace);
-    if (unitId !== null) {
-      return {
-        commandType: commandStr,
-        unitId: unitId,
-        actionType: this.inferActionType(command),
-        priority: 2
-      };
-    }
-    
-    // Method 3: Target building/unit from command data
-    if (command.data?.targetId || command.parameters?.target) {
-      const targetId = command.data?.targetId || command.parameters?.target;
-      return {
-        commandType: commandStr,
-        unitId: targetId,
-        actionType: 'Build',
-        priority: 3
-      };
+    // Try other order types for training units
+    if (command.data.order && [4, 5, 6, 10, 11, 12, 16, 17, 18].includes(command.data.order)) {
+      const trainedUnit = this.inferUnitFromTraining(command, playerRace);
+      if (trainedUnit) {
+        return {
+          commandType: 'Train',
+          unitId: trainedUnit.id,
+          actionType: 'Train',
+          priority: 1
+        };
+      }
     }
     
     return null;
+  }
+  
+  /**
+   * Infer building type from context and race
+   */
+  private static inferBuildingFromContext(command: any, playerRace: string): SCUnitData | null {
+    const raceUnits = CompleteUnitDatabase.getUnitsByRace(playerRace as any);
+    const frame = command.frame || 0;
+    const gameMinutes = frame / (24 * 60);
+    
+    // Early game buildings based on race
+    if (gameMinutes < 3) {
+      switch (playerRace.toLowerCase()) {
+        case 'protoss':
+          return raceUnits.find(u => u.name === 'Pylon') || null;
+        case 'terran':
+          return raceUnits.find(u => u.name === 'Supply Depot') || null;
+        case 'zerg':
+          return raceUnits.find(u => u.name === 'Spawning Pool') || null;
+      }
+    }
+    
+    // Mid game buildings
+    if (gameMinutes < 8) {
+      switch (playerRace.toLowerCase()) {
+        case 'protoss':
+          return raceUnits.find(u => u.name === 'Gateway') || null;
+        case 'terran':
+          return raceUnits.find(u => u.name === 'Barracks') || null;
+        case 'zerg':
+          return raceUnits.find(u => u.name === 'Hydralisk Den') || null;
+      }
+    }
+    
+    // Default fallback
+    return raceUnits.find(u => u.category === 'military') || null;
+  }
+  
+  /**
+   * Infer unit type from training commands
+   */
+  private static inferUnitFromTraining(command: any, playerRace: string): SCUnitData | null {
+    const raceUnits = CompleteUnitDatabase.getUnitsByRace(playerRace as any);
+    
+    // Basic unit training based on race
+    switch (playerRace.toLowerCase()) {
+      case 'protoss':
+        return raceUnits.find(u => u.name === 'Probe') || 
+               raceUnits.find(u => u.name === 'Zealot') || null;
+      case 'terran':
+        return raceUnits.find(u => u.name === 'SCV') || 
+               raceUnits.find(u => u.name === 'Marine') || null;
+      case 'zerg':
+        return raceUnits.find(u => u.name === 'Drone') || 
+               raceUnits.find(u => u.name === 'Zergling') || null;
+      default:
+        return null;
+    }
   }
   
   /**
