@@ -89,28 +89,34 @@ export class RealBuildOrderExtractor {
   }
   
   /**
-   * Phase 2: Command Type Analysis - FIXED for screparsed format
+   * Phase 2: Command Type Analysis - FIXED for all build orders
    * Identify build-related commands from screparsed
    */
   private static isBuildCommand(command: any): boolean {
-    // Build commands in screparsed have order: 40 (Build order)
-    // Unit training commands have order: different numbers
-    // Selection commands have data.selections
-    
     if (!command.data) return false;
     
-    // Primary build detection: order 40 is the main build command
+    // Multiple order types for different commands:
+    // order: 30 = Build commands with unit names!
+    // order: 40 = Placement commands
+    // order: 4-18 = Training commands
+    // order: 25-30 = Research/Upgrade commands
+    
+    if (command.data.order === 30 && command.data.unit) {
+      console.log(`[RealBuildOrderExtractor] Found build command with unit: ${command.data.unit}`);
+      return true;
+    }
+    
     if (command.data.order === 40) {
       return true;
     }
     
-    // Training orders (for units) - need to identify these
+    // Training orders (for units)
     if (command.data.order && [4, 5, 6, 10, 11, 12, 16, 17, 18].includes(command.data.order)) {
       return true;
     }
     
-    // Research/Upgrade orders - need to identify these
-    if (command.data.order && [25, 26, 27, 28, 29, 30].includes(command.data.order)) {
+    // Research/Upgrade orders
+    if (command.data.order && [25, 26, 27, 28, 29].includes(command.data.order)) {
       return true;
     }
     
@@ -162,7 +168,7 @@ export class RealBuildOrderExtractor {
   }
   
   /**
-   * Phase 2: Unit Extraction from Commands - FIXED for screparsed
+   * Phase 2: Unit Extraction from Commands - FIXED for real unit names
    * Extract unit IDs and types from command data
    */
   private static extractUnitFromCommand(command: any, playerRace: string): CommandToUnitMapping | null {
@@ -170,14 +176,25 @@ export class RealBuildOrderExtractor {
     
     console.log(`[RealBuildOrderExtractor] Extracting unit from order ${command.data.order}:`, command.data);
     
-    // For screparsed, we need to infer the unit type from:
-    // 1. The order code (40 = build, etc.)
-    // 2. The coordinates (x, y) - building placement
-    // 3. The context and timing
+    // NEW: Direct unit name extraction from order 30!
+    if (command.data.order === 30 && command.data.unit) {
+      const unitName = command.data.unit;
+      console.log(`[RealBuildOrderExtractor] Found direct unit name: ${unitName}`);
+      
+      // Find unit in database by name
+      const unitData = this.findUnitByName(unitName, playerRace);
+      if (unitData) {
+        return {
+          commandType: 'Build',
+          unitId: unitData.id,
+          actionType: 'Build',
+          priority: 1
+        };
+      }
+    }
     
+    // Legacy order 40 handling
     if (command.data.order === 40) {
-      // This is a build command, but we need to determine WHAT is being built
-      // For now, let's return a basic building based on race and timing
       const buildingUnit = this.inferBuildingFromContext(command, playerRace);
       if (buildingUnit) {
         return {
@@ -189,7 +206,7 @@ export class RealBuildOrderExtractor {
       }
     }
     
-    // Try other order types for training units
+    // Training units
     if (command.data.order && [4, 5, 6, 10, 11, 12, 16, 17, 18].includes(command.data.order)) {
       const trainedUnit = this.inferUnitFromTraining(command, playerRace);
       if (trainedUnit) {
@@ -202,6 +219,35 @@ export class RealBuildOrderExtractor {
       }
     }
     
+    return null;
+  }
+  
+  /**
+   * Find unit by exact name in database
+   */
+  private static findUnitByName(unitName: string, playerRace: string): SCUnitData | null {
+    const capitalizedRace = playerRace.charAt(0).toUpperCase() + playerRace.slice(1).toLowerCase();
+    const raceUnits = CompleteUnitDatabase.getUnitsByRace(capitalizedRace as any);
+    
+    // Direct name match
+    const directMatch = raceUnits.find(unit => unit.name === unitName);
+    if (directMatch) {
+      console.log(`[RealBuildOrderExtractor] Found exact match: ${unitName} -> ID ${directMatch.id}`);
+      return directMatch;
+    }
+    
+    // Fuzzy matching for common variations
+    const fuzzyMatch = raceUnits.find(unit => 
+      unit.name.toLowerCase().includes(unitName.toLowerCase()) ||
+      unitName.toLowerCase().includes(unit.name.toLowerCase())
+    );
+    
+    if (fuzzyMatch) {
+      console.log(`[RealBuildOrderExtractor] Found fuzzy match: ${unitName} -> ${fuzzyMatch.name} (ID ${fuzzyMatch.id})`);
+      return fuzzyMatch;
+    }
+    
+    console.warn(`[RealBuildOrderExtractor] No match found for unit: ${unitName} in race ${capitalizedRace}`);
     return null;
   }
   
