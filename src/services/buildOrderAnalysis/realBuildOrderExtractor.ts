@@ -93,15 +93,16 @@ export class RealBuildOrderExtractor {
    * Identify build-related commands from screparsed
    */
   private static isBuildCommand(command: any): boolean {
-    const buildKeywords = [
-      'build', 'train', 'morph', 'research', 'upgrade',
-      'make', 'create', 'produce', 'construct'
-    ];
+    console.log(`[RealBuildOrderExtractor] Checking command:`, {
+      command: command.command,
+      type: command.type,
+      commandType: command.commandType,
+      data: command.data,
+      full: command
+    });
     
-    const commandStr = (command.command || command.type || '').toLowerCase();
-    return buildKeywords.some(keyword => commandStr.includes(keyword)) ||
-           command.commandType?.includes('Build') ||
-           command.commandType?.includes('Train');
+    // Debug: Log all command structures to understand screparsed format
+    return true; // Temporarily accept all commands to see what we get
   }
   
   /**
