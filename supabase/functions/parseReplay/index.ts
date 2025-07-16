@@ -284,8 +284,8 @@ async function parseWithJssuhStream(data: Uint8Array, filePath: string) {
     let replayEvents = [];
     
     try {
-      // Create jssuh transform stream
-      const replayStream = jssuh();
+      // Create jssuh parser instance
+      const replayStream = new jssuh();
       
       // Set up event handlers
       replayStream.on('replayHeader', (headerData) => {
@@ -445,10 +445,24 @@ async function parseWithJssuhStream(data: Uint8Array, filePath: string) {
         reject(error);
       });
       
-      // Write data to stream
-      console.log('[ParseReplay] Writing data to jssuh stream');
-      replayStream.write(data);
+      // Process data with jssuh
+      console.log('[ParseReplay] Processing data with jssuh');
+      
+      // Set a timeout to ensure we don't hang forever
+      const timeout = setTimeout(() => {
+        console.warn('[ParseReplay] jssuh processing timeout, using fallback data');
+        replayStream.emit('end');
+      }, 5000);
+      
+      // Convert Uint8Array to Buffer for jssuh
+      const buffer = Buffer.from(data);
+      replayStream.write(buffer);
       replayStream.end();
+      
+      // Clear timeout when processing completes
+      replayStream.on('end', () => {
+        clearTimeout(timeout);
+      });
       
     } catch (error) {
       console.error('[ParseReplay] jssuh stream setup error:', error);
