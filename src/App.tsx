@@ -1,7 +1,6 @@
 
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider } from "./components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
 import Index from './pages/Index';
 import LoginPage from './pages/LoginPage';
@@ -18,7 +17,7 @@ import { useAuth } from './context/AuthContext';
 
 function App() {
   return (
-    <ThemeProvider defaultTheme="light" storageKey="ui-theme">
+    <>
       <Routes>
         <Route path="/" element={<Index />} />
         <Route path="/login" element={<LoginPage />} />
@@ -42,7 +41,7 @@ function App() {
         <Route path="*" element={<NotFound />} />
       </Routes>
       <Toaster />
-    </ThemeProvider>
+    </>
   );
 }
 
