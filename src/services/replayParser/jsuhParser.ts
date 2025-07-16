@@ -66,6 +66,16 @@ export class JssuhParser {
         const actions: JssuhAction[] = [];
         let header: JssuhHeader | null = null;
         
+        // Add timeout to prevent hanging
+        const timeout = setTimeout(() => {
+          console.error('[JssuhParser] Parse timeout after 10 seconds');
+          reject(new Error('Parse timeout - jssuh parsing took too long'));
+        }, 10000);
+        
+        const cleanup = () => {
+          clearTimeout(timeout);
+        };
+        
         // Listen for header
         parser.on('replayHeader', (headerData: any) => {
           console.log('[JssuhParser] Received header:', headerData);
@@ -75,10 +85,14 @@ export class JssuhParser {
         // Listen for actions
         parser.on('data', (action: JssuhAction) => {
           actions.push(action);
+          if (actions.length % 1000 === 0) {
+            console.log(`[JssuhParser] Processed ${actions.length} actions...`);
+          }
         });
         
         // Handle completion
         parser.on('end', () => {
+          cleanup();
           console.log(`[JssuhParser] Parsing complete. ${actions.length} actions found`);
           
           if (!header) {
@@ -104,20 +118,29 @@ export class JssuhParser {
         
         // Handle errors
         parser.on('error', (error: Error) => {
+          cleanup();
           console.error('[JssuhParser] Parse error:', error);
           reject(error);
         });
         
-        // Create readable stream from buffer
-        const readable = new Readable({
-          read() {
-            this.push(buffer);
-            this.push(null);
-          }
-        });
-        
-        // Start parsing
-        readable.pipe(parser);
+        try {
+          // Try direct buffer parsing first
+          console.log('[JssuhParser] Writing buffer directly to parser...');
+          parser.write(buffer);
+          parser.end();
+        } catch (streamError) {
+          console.warn('[JssuhParser] Direct write failed, trying stream approach:', streamError);
+          
+          // Fallback to stream approach
+          const readable = new Readable({
+            read() {
+              this.push(buffer);
+              this.push(null);
+            }
+          });
+          
+          readable.pipe(parser);
+        }
       });
       
     } catch (error) {
