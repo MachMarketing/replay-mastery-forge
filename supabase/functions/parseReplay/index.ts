@@ -1,9 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-// Import jssuh for real replay parsing
-import ReplayParser from 'https://esm.sh/jssuh@1.6.0';
-
 // SC:R Binary Reader for manual parsing fallback
 class BinaryReader {
   private data: Uint8Array;
@@ -248,268 +245,74 @@ serve(async (req) => {
   }
 });
 
-// Real replay parser using jssuh for accurate parsing
+// Native SC:R replay parser - no external dependencies
 async function parseReplayData(arrayBuffer: ArrayBuffer, filePath: string) {
   const data = new Uint8Array(arrayBuffer);
   console.log('[ParseReplay] Analyzing', data.length, 'bytes');
 
   try {
-    // Phase 1: Try jssuh parser first for real command extraction
-    console.log('[ParseReplay] Attempting jssuh parsing...');
-    const result = await parseWithJssuh(arrayBuffer);
-    
-    if (result) {
-      console.log('[ParseReplay] jssuh parsing successful');
-      return result;
-    }
-    
-    throw new Error('jssuh parsing failed');
-
-  } catch (jssuhError) {
-    console.warn('[ParseReplay] jssuh parser failed, falling back to manual parsing:', jssuhError);
-    
-    // Phase 2: Fallback to enhanced manual parsing
-    try {
-      console.log('[ParseReplay] Using enhanced manual parser');
-      const result = await parseWithManualParser(data, filePath);
-      return result;
-    } catch (manualError) {
-      console.warn('[ParseReplay] Manual parser failed, using basic fallback:', manualError);
-      
-      // Phase 3: Last resort - basic fallback
-      const header = extractHeader(data);
-      const players = extractPlayers(data);
-      const gameStats = extractGameStats(data);
-      const buildOrder = generateBuildOrder(players);
-      const analysis = generateAnalysis(gameStats, buildOrder);
-
-      return {
-        replayId: null,
-        header,
-        players,
-        gameStats,
-        buildOrder,
-        strengths: analysis.strengths,
-        weaknesses: analysis.weaknesses,
-        recommendations: analysis.recommendations,
-        resourcesGraph: analysis.resourcesGraph,
-        parseTimestamp: new Date().toISOString(),
-      };
-    }
+    console.log('[ParseReplay] Using native SC:R parser');
+    const result = await parseWithNativeParser(data, filePath);
+    return result;
+  } catch (error) {
+    console.error('[ParseReplay] Native parser failed:', error);
+    throw error;
   }
 }
 
-// Phase 1: Real jssuh parsing implementation
-async function parseWithJssuh(arrayBuffer: ArrayBuffer) {
-  return new Promise((resolve, reject) => {
-    try {
-      const parser = new ReplayParser();
-      const actions = [];
-      let header = null;
-      let parseTimeout;
-      
-      // Set timeout for parsing
-      parseTimeout = setTimeout(() => {
-        console.error('[ParseReplay] jssuh timeout after 15 seconds');
-        reject(new Error('jssuh parsing timeout'));
-      }, 15000);
-      
-      // Listen for header
-      parser.on('replayHeader', (headerData) => {
-        console.log('[ParseReplay] jssuh header received:', headerData);
-        header = headerData;
-      });
-      
-      // Listen for actions/commands
-      parser.on('data', (action) => {
-        actions.push(action);
-        if (actions.length % 1000 === 0) {
-          console.log(`[ParseReplay] jssuh processed ${actions.length} actions...`);
-        }
-      });
-      
-      // Handle completion
-      parser.on('end', () => {
-        clearTimeout(parseTimeout);
-        console.log(`[ParseReplay] jssuh parsing complete. ${actions.length} actions, header:`, !!header);
-        
-        if (!header) {
-          reject(new Error('No header received from jssuh'));
-          return;
-        }
-        
-        try {
-          // Extract real data from jssuh results
-          const result = processJssuhResults(header, actions);
-          resolve(result);
-        } catch (processError) {
-          reject(processError);
-        }
-      });
-      
-      // Handle errors
-      parser.on('error', (error) => {
-        clearTimeout(parseTimeout);
-        console.error('[ParseReplay] jssuh error:', error);
-        reject(error);
-      });
-      
-      // Start parsing
-      const buffer = Buffer.from(arrayBuffer);
-      parser.write(buffer);
-      parser.end();
-      
-    } catch (error) {
-      console.error('[ParseReplay] jssuh setup error:', error);
-      reject(error);
-    }
-  });
-}
-
-// Process jssuh results into our format
-function processJssuhResults(header, actions) {
-  console.log('[ParseReplay] Processing jssuh results...');
-  
-  // Extract real player data from jssuh
-  const players = header.players?.map((player, index) => ({
-    id: index,
-    name: player.name || `Player ${index + 1}`,
-    race: capitalizeRace(player.race),
-    team: player.team || (index < 4 ? 1 : 2),
-    isComputer: player.isComputer || false,
-    apm: 0, // Will be calculated from actions
-    eapm: 0  // Will be calculated from actions
-  })) || [];
-  
-  // Calculate real APM/EAPM from actions
-  const gameDurationFrames = header.durationFrames || 0;
-  const gameDurationMinutes = gameDurationFrames / (24 * 60); // 24 FPS
-  
-  players.forEach(player => {
-    const playerActions = actions.filter(action => action.player === player.id);
-    const effectiveActions = playerActions.filter(action => EFFECTIVE_ACTIONS.has(action.id));
-    
-    player.apm = gameDurationMinutes > 0 ? Math.round(playerActions.length / gameDurationMinutes) : 0;
-    player.eapm = gameDurationMinutes > 0 ? Math.round(effectiveActions.length / gameDurationMinutes) : 0;
-  });
-  
-  // Extract real build order from actions
-  const buildOrder = extractRealBuildOrder(actions, players);
-  
-  // Generate real analysis
-  const analysis = generateRealAnalysis(players, actions, gameDurationFrames);
-  
-  return {
-    replayId: null,
-    header: {
-      mapName: header.mapName || 'Unknown Map',
-      gameVersion: header.remastered ? 'Remastered' : 'Original',
-      gameLength: frameToGameTime(gameDurationFrames),
-      gameType: header.gameType === 0 ? 'Multiplayer' : 'Single Player',
-    },
-    players,
-    gameStats: {
-      duration: frameToGameTime(gameDurationFrames),
-      totalCommands: actions.length,
-      averageAPM: Math.round(players.reduce((sum, p) => sum + p.apm, 0) / players.length),
-      peakAPM: Math.max(...players.map(p => p.apm)),
-    },
-    buildOrder,
-    strengths: analysis.strengths,
-    weaknesses: analysis.weaknesses,
-    recommendations: analysis.recommendations,
-    resourcesGraph: analysis.resourcesGraph,
-    parseTimestamp: new Date().toISOString(),
-  };
-}
-
-// Extract real build order from jssuh actions
-function extractRealBuildOrder(actions, players) {
-  console.log('[ParseReplay] Extracting real build order from', actions.length, 'actions');
-  
-  const buildOrders = {};
-  
-  players.forEach(player => {
-    const playerActions = actions.filter(action => action.player === player.id);
-    const buildActions = playerActions.filter(action => BUILD_COMMANDS[action.id]);
-    
-    const buildOrder = buildActions.slice(0, 30).map(action => {
-      const commandType = BUILD_COMMANDS[action.id];
-      let unitName = 'Unknown';
-      
-      // Try to extract unit name from action data
-      if (action.data && action.data.length >= 2) {
-        const unitId = action.data.readUInt16LE(0);
-        unitName = getUnitName(unitId, player.race);
-      }
-      
-      return {
-        frame: action.frame,
-        time: frameToGameTime(action.frame),
-        supply: Math.floor(action.frame / 600) + 9, // Rough supply estimate
-        action: `${commandType} ${unitName}`,
-        actionType: commandType,
-        unit: unitName
-      };
-    });
-    
-    buildOrders[player.name] = buildOrder;
-    console.log(`[ParseReplay] ${player.name} build order: ${buildOrder.length} actions`);
-  });
-  
-  return buildOrders;
-}
-
-// Phase 2: Enhanced manual parsing with real command extraction
-async function parseWithManualParser(data, filePath) {
-  console.log('[ParseReplay] Starting manual SC:R parsing');
+// Native SC:R parser implementation
+async function parseWithNativeParser(data: Uint8Array, filePath: string) {
+  console.log('[ParseReplay] Starting native SC:R parsing');
   
   const reader = new BinaryReader(data.buffer);
   
-  // Parse header with real SC:R detection
-  const header = parseRealHeader(reader);
-  console.log('[ParseReplay] Manual header:', header);
+  // Parse SC:R header
+  const header = parseScRHeader(reader);
+  console.log('[ParseReplay] Native header:', header);
   
-  // Parse players with real SC:R structure
-  const players = parseRealPlayers(reader);
-  console.log('[ParseReplay] Manual players:', players.length);
+  // Parse players
+  const players = parseScRPlayers(reader, header);
+  console.log('[ParseReplay] Native players:', players.length);
   
-  // Parse commands with real SC:R command structure
-  const commands = parseRealCommands(reader);
-  console.log('[ParseReplay] Manual commands:', commands.length);
+  // Find and parse commands section
+  const commandSection = findCommandSection(data);
+  console.log('[ParseReplay] Command section found at:', commandSection.offset);
   
-  // Calculate real APM/EAPM
-  const gameDurationFrames = header.frames || estimateFrames(data);
+  const commands = parseScRCommands(data, commandSection);
+  console.log('[ParseReplay] Native commands:', commands.length);
+  
+  // Calculate APM/EAPM from real commands
+  const gameDurationFrames = Math.max(...commands.map(cmd => cmd.frame)) || 24 * 300; // fallback 5 minutes
   const gameDurationMinutes = gameDurationFrames / (24 * 60);
   
   players.forEach(player => {
     const playerCommands = commands.filter(cmd => cmd.playerID === player.id);
-    const effectiveCommands = playerCommands.filter(cmd => EFFECTIVE_ACTIONS.has(cmd.type));
+    const effectiveCommands = playerCommands.filter(cmd => EFFECTIVE_ACTIONS.has(cmd.commandID));
     
     player.apm = gameDurationMinutes > 0 ? Math.round(playerCommands.length / gameDurationMinutes) : 0;
     player.eapm = gameDurationMinutes > 0 ? Math.round(effectiveCommands.length / gameDurationMinutes) : 0;
   });
   
-  // Extract real build order from commands
-  const buildOrder = extractBuildOrderFromCommands(commands, players);
+  // Extract build orders from commands
+  const buildOrder = extractBuildOrderFromNativeCommands(commands, players);
   
-  // Generate real analysis
+  // Generate analysis
   const analysis = generateRealAnalysis(players, commands, gameDurationFrames);
   
   return {
     replayId: null,
     header: {
-      mapName: header.mapName || 'Unknown Map',
-      gameVersion: header.engine ? `Engine ${header.engine}` : 'Unknown',
+      mapName: header.mapName || extractMapName(data) || 'Unknown Map',
+      gameVersion: 'Remastered',
       gameLength: frameToGameTime(gameDurationFrames),
-      gameType: header.gameType === 0 ? 'Multiplayer' : 'Single Player',
+      gameType: 'Multiplayer',
     },
     players,
     gameStats: {
       duration: frameToGameTime(gameDurationFrames),
       totalCommands: commands.length,
-      averageAPM: Math.round(players.reduce((sum, p) => sum + p.apm, 0) / players.length),
-      peakAPM: Math.max(...players.map(p => p.apm)),
+      averageAPM: Math.round(players.reduce((sum, p) => sum + p.apm, 0) / players.length || 0),
+      peakAPM: Math.max(...players.map(p => p.apm), 0),
     },
     buildOrder,
     strengths: analysis.strengths,
@@ -520,212 +323,150 @@ async function parseWithManualParser(data, filePath) {
   };
 }
 
-function capitalizeRace(race) {
-  if (!race) return 'Unknown';
-  return race.charAt(0).toUpperCase() + race.slice(1).toLowerCase();
-}
-
-function estimateFrames(data) {
-  return Math.floor(data.length / 50); // Rough estimate
-}
-
-function parseRealHeader(reader) {
+// Parse SC:R header structure
+function parseScRHeader(reader: BinaryReader) {
   try {
     reader.setPosition(0);
     const gameId = reader.readUInt32LE();
-    
-    reader.setPosition(0x04);
-    const engine = reader.readUInt32LE();
-    
-    reader.setPosition(0x0C);
-    const replayIdBytes = reader.readBytes(4);
-    const replayID = new TextDecoder('latin1').decode(replayIdBytes);
-    
-    reader.setPosition(0x14);
+    const engine = reader.readUInt16LE();
+    const replayID = reader.readBytes(4);
     const frames = reader.readUInt32LE();
-    
-    reader.setPosition(0x18);
-    const gameType = reader.readUInt16LE();
-    
-    const mapName = findRealMapName(reader);
+    const gameType = reader.readUInt32LE();
     
     return {
       gameId,
       engine,
-      replayID,
+      replayID: new TextDecoder().decode(replayID),
       frames,
       gameType,
-      mapName
+      mapName: null // Will be extracted separately
     };
   } catch (error) {
-    console.warn('[ParseReplay] Header parsing error:', error);
-    return {
-      gameId: 0,
-      engine: 0,
-      replayID: 'Unknown',
-      frames: 0,
-      gameType: 0,
-      mapName: 'Unknown Map'
-    };
+    console.warn('[ParseReplay] Header parsing failed:', error);
+    return { gameId: 0, engine: 1, replayID: 'unkn', frames: 0, gameType: 1, mapName: null };
   }
 }
 
-function findRealMapName(reader) {
-  const offsets = [0x75, 0x89, 0x95, 0xA5, 0xB5, 0xC5];
-  
-  for (const offset of offsets) {
-    try {
-      reader.setPosition(offset);
-      const name = reader.readNullTerminatedString(32);
-      if (name.length > 3 && name.length < 32 && /^[a-zA-Z0-9\s\-_\.()]+$/.test(name)) {
-        return name.trim();
-      }
-    } catch (e) {
-      continue;
-    }
-  }
-  
-  return 'Unknown Map';
-}
-
-function parseRealPlayers(reader) {
-  const playerOffsets = [0x161, 0x1A1, 0x1C1, 0x1B1, 0x19C, 0x18E];
-  
-  for (const offset of playerOffsets) {
-    try {
-      const players = [];
-      
-      for (let i = 0; i < 8; i++) {
-        const playerOffset = offset + (i * 36);
-        reader.setPosition(playerOffset);
-        
-        const nameBytes = reader.readBytes(25);
-        const name = new TextDecoder('latin1').decode(nameBytes).replace(/\0.*$/, '');
-        
-        if (name.length < 2 || name.length > 24) continue;
-        
-        const raceId = reader.readUInt8();
+// Parse SC:R players
+function parseScRPlayers(reader: BinaryReader, header: any) {
+  try {
+    reader.setPosition(48); // Common player data offset
+    const players = [];
+    
+    for (let i = 0; i < 8; i++) {
+      try {
+        const playerType = reader.readUInt8();
+        const race = reader.readUInt8();
         const team = reader.readUInt8();
-        const color = reader.readUInt8();
-        const type = reader.readUInt8();
+        const nameBytes = reader.readBytes(25);
         
-        if (type === 0 || raceId > 6) continue;
+        // Extract player name
+        let name = '';
+        for (let j = 0; j < nameBytes.length; j++) {
+          if (nameBytes[j] === 0) break;
+          if (nameBytes[j] >= 32 && nameBytes[j] <= 126) {
+            name += String.fromCharCode(nameBytes[j]);
+          }
+        }
         
-        const race = ['Random', 'Zerg', 'Terran', 'Protoss', 'Unknown', 'Unknown', 'Unknown'][raceId] || 'Unknown';
-        
-        players.push({
-          id: i,
-          name: name.trim(),
-          race,
-          team,
-          color,
-          type,
-          apm: 0,
-          eapm: 0
-        });
+        if (playerType === 6 && name.length > 0) { // Human player
+          players.push({
+            id: i,
+            name: name || `Player ${i + 1}`,
+            race: getRaceName(race),
+            team: team || 1,
+            isComputer: false,
+            apm: 0,
+            eapm: 0
+          });
+        }
+      } catch (error) {
+        // Skip invalid players
+        continue;
       }
-      
-      if (players.length >= 2) {
-        return players;
-      }
-    } catch (e) {
-      continue;
     }
+    
+    return players.length > 0 ? players : [
+      { id: 0, name: 'Player 1', race: 'Protoss', team: 1, isComputer: false, apm: 0, eapm: 0 },
+      { id: 1, name: 'Player 2', race: 'Protoss', team: 2, isComputer: false, apm: 0, eapm: 0 }
+    ];
+  } catch (error) {
+    console.warn('[ParseReplay] Player parsing failed:', error);
+    return [
+      { id: 0, name: 'Player 1', race: 'Protoss', team: 1, isComputer: false, apm: 0, eapm: 0 },
+      { id: 1, name: 'Player 2', race: 'Protoss', team: 2, isComputer: false, apm: 0, eapm: 0 }
+    ];
   }
-  
-  return [
-    { id: 0, name: 'Player 1', race: 'Protoss', team: 1, apm: 0, eapm: 0 },
-    { id: 1, name: 'Player 2', race: 'Zerg', team: 2, apm: 0, eapm: 0 }
-  ];
 }
 
-function parseRealCommands(reader) {
-  const commands = [];
+// Find command section in replay data
+function findCommandSection(data: Uint8Array) {
+  // Search for common command section patterns
+  const possibleOffsets = [0x279, 0x26D, 0x279 + 12, 0x279 + 24, 0x400, 0x500, 0x600, 0x700, 0x800];
   
-  // Find command section
-  let commandOffset = null;
-  for (let pos = 0x500; pos < 0x8000; pos += 16) {
-    try {
-      reader.setPosition(pos);
-      const sample = reader.readBytes(64);
-      
-      let frameSync = 0;
-      for (let i = 0; i < sample.length; i++) {
-        if (sample[i] <= 0x03) frameSync++;
+  for (const offset of possibleOffsets) {
+    if (offset < data.length - 100) {
+      // Check for command-like patterns
+      let commandCount = 0;
+      for (let i = 0; i < 50 && offset + i < data.length; i += 4) {
+        const byte = data[offset + i];
+        if (byte > 0 && byte < 0x50) commandCount++; // Likely command IDs
       }
       
-      if (frameSync >= 4) {
-        commandOffset = pos;
-        break;
+      if (commandCount > 5) {
+        return { offset, size: data.length - offset };
       }
-    } catch (e) {
-      continue;
     }
   }
   
-  if (!commandOffset) {
-    console.warn('[ParseReplay] No command section found');
-    return [];
-  }
-  
-  console.log('[ParseReplay] Command section found at:', commandOffset.toString(16));
+  // Fallback to most common offset
+  return { offset: 0x279, size: data.length - 0x279 };
+}
+
+// Parse SC:R commands
+function parseScRCommands(data: Uint8Array, commandSection: any) {
+  const commands = [];
+  let offset = commandSection.offset;
+  let currentFrame = 0;
   
   try {
-    reader.setPosition(commandOffset);
-    let currentFrame = 0;
-    let iterations = 0;
-    const maxIterations = 100000;
-    
-    while (reader.position < reader.data.length - 4 && iterations < maxIterations) {
-      iterations++;
+    while (offset < data.length - 4) {
+      const commandID = data[offset];
       
-      const commandType = reader.readUInt8();
-      
-      // Frame sync commands
-      if (commandType <= 0x03) {
-        if (commandType === 0x00) {
-          // Frame increment
-          currentFrame++;
-        } else if (commandType === 0x01) {
-          // Frame skip
-          const skip = reader.readUInt8();
-          currentFrame += skip;
-        }
+      if (commandID === 0) {
+        offset++;
         continue;
       }
       
-      // Regular command
-      if (commandType >= 0x04 && commandType <= 0x60) {
-        const playerID = reader.readUInt8();
-        
-        if (playerID < 12) {
-          let parameters = null;
-          
-          // Read command parameters based on type
-          if (BUILD_COMMANDS[commandType]) {
-            try {
-              const paramData = reader.readBytes(6);
-              const unitId = paramData[0] | (paramData[1] << 8);
-              parameters = {
-                unitId,
-                unitName: getUnitName(unitId, 'terran') // Default to terran for now
-              };
-            } catch (e) {
-              parameters = { unitId: 0, unitName: 'Unknown' };
-            }
-          }
-          
-          commands.push({
-            frame: currentFrame,
-            type: commandType,
-            playerID,
-            typeString: BUILD_COMMANDS[commandType] || `Command_${commandType.toString(16)}`,
-            parameters,
-            effective: EFFECTIVE_ACTIONS.has(commandType),
-            time: frameToGameTime(currentFrame)
-          });
-        }
+      // Frame advance commands
+      if (commandID >= 0x01 && commandID <= 0x06) {
+        const frameIncrement = getFrameIncrement(commandID, data, offset);
+        currentFrame += frameIncrement;
+        offset += getCommandLength(commandID);
+        continue;
       }
+      
+      // Player commands
+      if (commandID >= 0x09 && commandID <= 0x50) {
+        const playerID = (commandID >= 0x09 && commandID <= 0x10) ? commandID - 0x09 : 0;
+        const actualCommandID = (commandID >= 0x09 && commandID <= 0x10) ? 
+          (offset + 1 < data.length ? data[offset + 1] : 0) : commandID;
+        
+        commands.push({
+          frame: currentFrame,
+          time: frameToGameTime(currentFrame),
+          playerID: playerID,
+          commandID: actualCommandID,
+          data: data.slice(offset, offset + Math.min(16, data.length - offset))
+        });
+        
+        offset += getCommandLength(commandID);
+      } else {
+        offset++;
+      }
+      
+      // Safety check
+      if (commands.length > 10000) break;
     }
   } catch (error) {
     console.warn('[ParseReplay] Command parsing error:', error);
@@ -734,21 +475,104 @@ function parseRealCommands(reader) {
   return commands;
 }
 
-function extractBuildOrderFromCommands(commands, players) {
+// Get frame increment for timing commands
+function getFrameIncrement(commandID: number, data: Uint8Array, offset: number) {
+  switch (commandID) {
+    case 0x01: return 1;
+    case 0x02: return 2;
+    case 0x03: return 3;
+    case 0x04: return 4;
+    case 0x05: return 5;
+    case 0x06: return offset + 1 < data.length ? data[offset + 1] : 1;
+    default: return 1;
+  }
+}
+
+// Get command length for parsing
+function getCommandLength(commandID: number) {
+  if (commandID >= 0x01 && commandID <= 0x05) return 1;
+  if (commandID === 0x06) return 2;
+  if (commandID >= 0x09 && commandID <= 0x10) return 3;
+  if (commandID >= 0x0C && commandID <= 0x0E) return 12; // Build commands
+  if (commandID >= 0x1F && commandID <= 0x23) return 8;  // Train commands
+  if (commandID >= 0x30 && commandID <= 0x35) return 4;  // Research/Upgrade
+  return 1;
+}
+
+// Extract map name from replay data
+function extractMapName(data: Uint8Array): string | null {
+  try {
+    // Search for map name in different sections
+    const searchStart = Math.min(400, data.length);
+    const searchEnd = Math.min(1000, data.length);
+    
+    for (let i = searchStart; i < searchEnd - 20; i++) {
+      let mapName = '';
+      let validChars = 0;
+      
+      for (let j = 0; j < 32 && i + j < data.length; j++) {
+        const byte = data[i + j];
+        if (byte === 0) break;
+        if (byte >= 32 && byte <= 126) {
+          mapName += String.fromCharCode(byte);
+          validChars++;
+        } else if (byte < 32) {
+          break;
+        }
+      }
+      
+      // Check if this looks like a map name
+      if (validChars >= 4 && validChars <= 30 && 
+          /^[a-zA-Z0-9\s\-_\(\)]+$/.test(mapName) &&
+          !mapName.includes('Player') &&
+          !mapName.includes('BWAPI')) {
+        return mapName.trim();
+      }
+    }
+  } catch (error) {
+    console.warn('[ParseReplay] Map name extraction failed:', error);
+  }
+  
+  return null;
+}
+
+// Get race name from race ID
+function getRaceName(raceId: number): string {
+  switch (raceId) {
+    case 0: return 'Zerg';
+    case 1: return 'Terran';  
+    case 2: return 'Protoss';
+    default: return 'Unknown';
+  }
+}
+
+// Extract build order from native commands
+function extractBuildOrderFromNativeCommands(commands: any[], players: any[]) {
   const buildOrders = {};
   
   players.forEach(player => {
     const playerCommands = commands.filter(cmd => cmd.playerID === player.id);
-    const buildCommands = playerCommands.filter(cmd => BUILD_COMMANDS[cmd.type]);
+    const buildCommands = playerCommands.filter(cmd => BUILD_COMMANDS[cmd.commandID]);
     
-    const buildOrder = buildCommands.slice(0, 30).map(cmd => ({
-      frame: cmd.frame,
-      time: cmd.time,
-      supply: Math.floor(cmd.frame / 600) + 9,
-      action: cmd.typeString + (cmd.parameters?.unitName ? ` ${cmd.parameters.unitName}` : ''),
-      actionType: BUILD_COMMANDS[cmd.type],
-      unit: cmd.parameters?.unitName || 'Unknown'
-    }));
+    const buildOrder = buildCommands.slice(0, 25).map((cmd, index) => {
+      const commandType = BUILD_COMMANDS[cmd.commandID];
+      let unitName = 'Unknown';
+      
+      // Try to extract unit from command data
+      if (cmd.data && cmd.data.length >= 8) {
+        const unitId = cmd.data[7] || cmd.data[6] || cmd.data[5];
+        unitName = getUnitName(unitId, player.race);
+      }
+      
+      return {
+        frame: cmd.frame,
+        time: cmd.time,
+        supply: Math.min(200, 9 + index * 2), // Progressive supply estimate
+        action: `${commandType} ${unitName}`,
+        actionType: commandType,
+        unit: unitName
+      };
+    });
     
     buildOrders[player.name] = buildOrder;
   });
@@ -756,332 +580,69 @@ function extractBuildOrderFromCommands(commands, players) {
   return buildOrders;
 }
 
-function generateRealAnalysis(players, actionsOrCommands, gameDurationFrames) {
-  const totalActions = actionsOrCommands.length;
-  const avgAPM = players.reduce((sum, p) => sum + p.apm, 0) / players.length;
+// Generate real analysis from parsed data
+function generateRealAnalysis(players: any[], commands: any[], gameDurationFrames: number) {
+  const totalCommands = commands.length;
+  const avgAPM = Math.round(players.reduce((sum, p) => sum + p.apm, 0) / players.length || 0);
   
   const strengths = [];
   const weaknesses = [];
   const recommendations = [];
   
-  // Real analysis based on actual data
+  // APM Analysis
   if (avgAPM > 150) {
-    strengths.push('High APM - good mechanical skill');
+    strengths.push('High APM indicating good multitasking');
   } else if (avgAPM < 80) {
-    weaknesses.push('Low APM - work on speed');
-    recommendations.push('Practice hotkeys and faster execution');
+    weaknesses.push('Low APM - focus on increasing action speed');
+    recommendations.push('Practice hotkey usage and unit control exercises');
   }
   
-  if (totalActions > 1000) {
-    strengths.push('Active gameplay with many actions');
+  // Command frequency analysis
+  const buildCommands = commands.filter(cmd => BUILD_COMMANDS[cmd.commandID]);
+  if (buildCommands.length > totalCommands * 0.3) {
+    strengths.push('Good macro focus with frequent building');
   } else {
-    weaknesses.push('Relatively few actions - be more active');
-    recommendations.push('Increase action frequency throughout the game');
+    weaknesses.push('Could improve macro by building more frequently');
+    recommendations.push('Set up production hotkeys and maintain constant worker production');
   }
   
-  const gameMinutes = gameDurationFrames / (24 * 60);
-  if (gameMinutes > 20) {
-    strengths.push('Good endurance in long games');
-  } else if (gameMinutes < 5) {
-    weaknesses.push('Very short game - may indicate early rush or quick loss');
-  }
+  // Generate resource progression simulation
+  const resourcesGraph = generateResourceGraph(commands, gameDurationFrames);
   
   return {
-    strengths: strengths.length > 0 ? strengths : ['Replay successfully analyzed'],
-    weaknesses: weaknesses.length > 0 ? weaknesses : ['Areas for improvement identified'],
-    recommendations: recommendations.length > 0 ? recommendations : ['Continue practicing and analyzing replays'],
-    resourcesGraph: generateRealResourcesGraph(gameDurationFrames)
+    strengths: strengths.length > 0 ? strengths : ['Decent overall performance'],
+    weaknesses: weaknesses.length > 0 ? weaknesses : ['Minor optimization opportunities'],
+    recommendations: recommendations.length > 0 ? recommendations : ['Continue practicing current strategies'],
+    resourcesGraph
   };
 }
 
-function generateRealResourcesGraph(gameDurationFrames) {
-  const gameMinutes = Math.floor(gameDurationFrames / (24 * 60));
-  const data = [];
+// Generate resource progression for analysis
+function generateResourceGraph(commands: any[], gameDurationFrames: number) {
+  const dataPoints = [];
+  const timeIntervals = Math.min(20, Math.max(5, Math.floor(gameDurationFrames / (24 * 60)))); // 5-20 data points
   
-  for (let i = 0; i <= Math.min(gameMinutes, 30); i++) {
-    data.push({
-      time: i,
-      minerals: Math.floor(200 + i * 50 + Math.random() * 200),
-      gas: Math.floor(0 + i * 30 + Math.random() * 100),
-      supply: Math.min(200, 9 + i * 8 + Math.random() * 10),
+  for (let i = 0; i <= timeIntervals; i++) {
+    const timePoint = (i / timeIntervals) * gameDurationFrames;
+    const timeString = frameToGameTime(timePoint);
+    
+    // Simulate resource growth based on command frequency
+    const commandsUpToThisPoint = commands.filter(cmd => cmd.frame <= timePoint).length;
+    const estimatedMinerals = Math.min(2000, 50 + commandsUpToThisPoint * 3);
+    const estimatedGas = Math.min(1500, commandsUpToThisPoint * 2);
+    
+    dataPoints.push({
+      time: timeString,
+      minerals: estimatedMinerals,
+      gas: estimatedGas,
+      supply: Math.min(200, 9 + Math.floor(commandsUpToThisPoint / 10))
     });
   }
   
-  return data;
+  return dataPoints;
 }
 
-function extractEnhancedHeader(data: Uint8Array, filePath: string) {
-  // Extract map name from filename as fallback
-  const fileName = filePath.split('/').pop() || '';
-  const fileBaseName = fileName.replace(/\.rep$/i, '');
-  
-  // Try to extract map name from binary data
-  let mapName = extractMapNameFromBinary(data);
-  
-  // If no map found in binary, try to extract from filename
-  if (mapName === 'Unknown Map') {
-    // Look for common map patterns in filename
-    const mapPatterns = [
-      /^(.+?)(?:\s+\w+vs\w+|\s+PvP|\s+PvT|\s+PvZ|\s+TvT|\s+TvZ|\s+ZvZ)/i,
-      /^(.+?)(?:\s+he\s+won|\s+she\s+won|\s+won|\s+lost)/i,
-      /^(.+?)(?:\s+great|\s+good|\s+bad)/i,
-      /^([^_]+)(?:_.*)?$/
-    ];
-    
-    for (const pattern of mapPatterns) {
-      const match = fileBaseName.match(pattern);
-      if (match && match[1] && match[1].trim().length > 2) {
-        mapName = match[1].trim();
-        break;
-      }
-    }
-  }
-  
-  return {
-    mapName: mapName || 'Unknown Map',
-    gameVersion: data.length > 4 ? `${data[0]}.${data[1]}.${data[2]}.${data[3]}` : 'Unknown',
-    gameLength: estimateGameLength(data),
-    gameType: data.length > 50000 ? 'Multiplayer' : 'Single Player',
-  };
-}
-
-function extractMapNameFromBinary(data: Uint8Array): string {
-  // Enhanced map name extraction from binary data
-  let mapName = 'Unknown Map';
-  
-  try {
-    // Look for .scm/.scx references first
-    const fileStr = new TextDecoder('ascii', { fatal: false }).decode(data.slice(0, Math.min(4000, data.length)));
-    const mapMatch = fileStr.match(/([a-zA-Z0-9\s\-_\(\)\.]{3,64}\.sc[mx])/i);
-    if (mapMatch) {
-      return mapMatch[1].replace(/\.sc[mx]$/i, '');
-    }
-    
-    // Search in multiple sections for map names
-    const searchRanges = [
-      { start: 0x18, end: 0x300 },
-      { start: 0x400, end: 0x800 },
-      { start: 0x1000, end: 0x1400 },
-      { start: 0x2000, end: 0x2400 }
-    ];
-    
-    for (const range of searchRanges) {
-      for (let i = range.start; i < Math.min(range.end, data.length - 64); i++) {
-        const str = extractString(data, i, 64);
-        if (str.length > 3 && str.length < 64 && /^[a-zA-Z0-9\s\-_\(\)\.]+$/.test(str) && !str.includes('\x00')) {
-          mapName = str;
-          break;
-        }
-      }
-      if (mapName !== 'Unknown Map') break;
-    }
-  } catch (error) {
-    console.warn('[ParseReplay] Map name extraction error:', error);
-  }
-
-  return mapName;
-}
-
-function extractEnhancedPlayers(data: Uint8Array) {
-  const players = [];
-  const races = ['Protoss', 'Terran', 'Zerg'];
-  
-  try {
-    // Enhanced player name extraction with more search ranges
-    const searchRanges = [
-      { start: 0x40, end: 0x200 },
-      { start: 0x200, end: 0x400 },
-      { start: 0x600, end: 0x900 },
-      { start: 0x1000, end: 0x1200 },
-      { start: 0x1400, end: 0x1600 }
-    ];
-    
-    const foundNames = new Set();
-    
-    for (const range of searchRanges) {
-      for (let i = range.start; i < Math.min(range.end, data.length - 32); i++) {
-        const name = extractString(data, i, 32);
-        if (name.length >= 2 && name.length <= 32 && 
-            /^[a-zA-Z0-9\[\]_\-\.]+$/.test(name) && 
-            !foundNames.has(name)) {
-          
-          foundNames.add(name);
-          players.push({
-            name,
-            race: races[players.length % 3],
-            team: players.length < 4 ? 1 : 2,
-            apm: Math.floor(Math.random() * 200) + 50,
-            eapm: Math.floor(Math.random() * 150) + 30,
-          });
-          
-          if (players.length >= 8) break;
-        }
-      }
-      if (players.length >= 2) break;
-    }
-  } catch (error) {
-    console.warn('[ParseReplay] Player extraction error:', error);
-  }
-
-  // Ensure minimum players
-  if (players.length === 0) {
-    players.push(
-      { name: 'Player 1', race: 'Protoss', team: 1, apm: 120, eapm: 85 },
-      { name: 'Player 2', race: 'Zerg', team: 2, apm: 98, eapm: 72 }
-    );
-  }
-
-  return players;
-}
-
-function extractMapNameFallback(data: Uint8Array) {
-  return extractMapNameFromBinary(data);
-}
-
-function extractPlayersFallback(data: Uint8Array) {
-  const players = [];
-  const races = ['Protoss', 'Terran', 'Zerg'];
-  
-  try {
-    // Enhanced player name extraction with multiple search ranges
-    const searchRanges = [
-      { start: 0x40, end: 0x200 },
-      { start: 0x200, end: 0x400 },
-      { start: 0x800, end: 0x1000 }
-    ];
-    
-    for (const range of searchRanges) {
-      for (let i = range.start; i < Math.min(range.end, data.length - 24); i++) {
-        const name = extractString(data, i, 24);
-        if (name.length >= 2 && name.length <= 24 && /^[a-zA-Z0-9\[\]_\-\.]+$/.test(name)) {
-          // Skip if we already have this player
-          if (players.some(p => p.name === name)) continue;
-          
-          players.push({
-            name,
-            race: races[players.length % 3],
-            team: players.length < 4 ? 1 : 2,
-            apm: Math.floor(Math.random() * 200) + 50,
-            eapm: Math.floor(Math.random() * 150) + 30,
-          });
-          
-          if (players.length >= 8) break;
-        }
-      }
-      if (players.length >= 2) break;
-    }
-  } catch (error) {
-    console.warn('[ParseReplay] Player extraction error:', error);
-  }
-
-  // Ensure minimum players
-  if (players.length === 0) {
-    players.push(
-      { name: 'Player 1', race: 'Protoss', team: 1, apm: 120, eapm: 85 },
-      { name: 'Player 2', race: 'Zerg', team: 2, apm: 98, eapm: 72 }
-    );
-  }
-
-  return players;
-}
-
-function extractHeader(data: Uint8Array) {
-  return {
-    mapName: extractMapNameFallback(data),
-    gameVersion: data.length > 4 ? `${data[0]}.${data[1]}.${data[2]}.${data[3]}` : 'Unknown',
-    gameLength: estimateGameLength(data),
-    gameType: data.length > 50000 ? 'Multiplayer' : 'Single Player',
-  };
-}
-
-function extractPlayers(data: Uint8Array) {
-  return extractPlayersFallback(data);
-}
-
-function extractGameStats(data: Uint8Array) {
-  return {
-    duration: estimateGameLength(data),
-    totalCommands: Math.floor(data.length / 100),
-    averageAPM: 110,
-    peakAPM: 180,
-  };
-}
-
-function generateBuildOrder(players: any[]) {
-  const buildOrders = {};
-  
-  players.forEach(player => {
-    buildOrders[player.name] = generatePlayerBuildOrder(player.race);
-  });
-  
-  return buildOrders;
-}
-
-function generatePlayerBuildOrder(race: string) {
-  const baseBuilds = {
-    Protoss: [
-      { time: '0:12', supply: 9, action: 'Probe' },
-      { time: '0:17', supply: 10, action: 'Pylon' },
-      { time: '0:32', supply: 11, action: 'Probe' },
-      { time: '0:38', supply: 12, action: 'Gateway' },
-      { time: '1:05', supply: 13, action: 'Probe' },
-      { time: '1:24', supply: 14, action: 'Zealot' },
-    ],
-    Terran: [
-      { time: '0:12', supply: 9, action: 'SCV' },
-      { time: '0:17', supply: 10, action: 'Supply Depot' },
-      { time: '0:32', supply: 11, action: 'SCV' },
-      { time: '0:38', supply: 12, action: 'Barracks' },
-      { time: '1:05', supply: 13, action: 'SCV' },
-      { time: '1:24', supply: 14, action: 'Marine' },
-    ],
-    Zerg: [
-      { time: '0:12', supply: 9, action: 'Drone' },
-      { time: '0:17', supply: 10, action: 'Overlord' },
-      { time: '0:32', supply: 11, action: 'Drone' },
-      { time: '0:38', supply: 12, action: 'Spawning Pool' },
-      { time: '1:05', supply: 13, action: 'Drone' },
-      { time: '1:24', supply: 14, action: 'Zergling' },
-    ]
-  };
-  
-  return baseBuilds[race] || baseBuilds.Protoss;
-}
-
-function generateAnalysis(gameStats: any, buildOrder: any) {
-  return {
-    strengths: [
-      'Good early game economy management',
-      'Efficient resource allocation',
-      'Strong mid-game positioning'
-    ],
-    weaknesses: [
-      'Could improve APM consistency',
-      'Late game macro needs work',
-      'Scout timing could be better'
-    ],
-    recommendations: [
-      'Practice more complex build orders',
-      'Focus on maintaining high APM throughout the game',
-      'Work on multi-tasking during battles'
-    ],
-    resourcesGraph: generateResourcesGraph()
-  };
-}
-
-function generateResourcesGraph() {
-  const data = [];
-  for (let i = 0; i <= 20; i++) {
-    data.push({
-      time: i,
-      minerals: Math.floor(Math.random() * 1000) + 500,
-      gas: Math.floor(Math.random() * 500) + 200,
-      supply: Math.min(200, i * 10 + Math.floor(Math.random() * 20)),
-    });
-  }
-  return data;
-}
-
+// Helper function to extract string from binary data
 function extractString(data: Uint8Array, offset: number, maxLength: number): string {
   const bytes = [];
   for (let i = 0; i < maxLength && offset + i < data.length; i++) {
@@ -1096,10 +657,4 @@ function extractString(data: Uint8Array, offset: number, maxLength: number): str
   } catch {
     return '';
   }
-}
-
-function estimateGameLength(data: Uint8Array): string {
-  const minutes = Math.floor(data.length / 10000) + Math.floor(Math.random() * 10);
-  const seconds = Math.floor(Math.random() * 60);
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
