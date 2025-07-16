@@ -502,33 +502,74 @@ function getCommandLength(commandID: number) {
 // Extract map name from replay data
 function extractMapName(data: Uint8Array): string | null {
   try {
-    // Search for map name in different sections
-    const searchStart = Math.min(400, data.length);
-    const searchEnd = Math.min(1000, data.length);
+    // Try multiple search strategies
     
-    for (let i = searchStart; i < searchEnd - 20; i++) {
-      let mapName = '';
-      let validChars = 0;
+    // Strategy 1: Search for .scm/.scx file extensions
+    const dataStr = Array.from(data.slice(0, 2048)).map(b => String.fromCharCode(b)).join('');
+    const scmMatch = dataStr.match(/([a-zA-Z0-9\s\-_\(\)\[\]\.\\\/\+\&\!\@\#\$\%\^\*\=\?\:\;\,\<\>\~\`\|\{\}]{3,50})\.scm/i);
+    const scxMatch = dataStr.match(/([a-zA-Z0-9\s\-_\(\)\[\]\.\\\/\+\&\!\@\#\$\%\^\*\=\?\:\;\,\<\>\~\`\|\{\}]{3,50})\.scx/i);
+    
+    if (scmMatch) return scmMatch[1].trim();
+    if (scxMatch) return scxMatch[1].trim();
+    
+    // Strategy 2: Search in multiple known map name locations
+    const searchRanges = [
+      [0x65, 0x120],    // Common SC:R map location
+      [0x150, 0x200],   // Alternative location
+      [0x250, 0x350],   // Another common location
+      [0x400, 0x500],   // Extended search
+      [0x500, 0x600],   // More extended search
+      [0x600, 0x800],   // Even more extended
+    ];
+    
+    for (const [start, end] of searchRanges) {
+      if (start >= data.length) continue;
+      const actualEnd = Math.min(end, data.length);
       
-      for (let j = 0; j < 32 && i + j < data.length; j++) {
-        const byte = data[i + j];
-        if (byte === 0) break;
-        if (byte >= 32 && byte <= 126) {
-          mapName += String.fromCharCode(byte);
-          validChars++;
-        } else if (byte < 32) {
-          break;
+      for (let i = start; i < actualEnd - 10; i++) {
+        let mapName = '';
+        let validChars = 0;
+        let consecutive = 0;
+        
+        for (let j = 0; j < 64 && i + j < data.length; j++) {
+          const byte = data[i + j];
+          if (byte === 0) break;
+          
+          if (byte >= 32 && byte <= 126) {
+            mapName += String.fromCharCode(byte);
+            validChars++;
+            consecutive++;
+          } else if (byte < 32) {
+            if (consecutive < 3) {
+              mapName = '';
+              validChars = 0;
+              consecutive = 0;
+            } else {
+              break;
+            }
+          }
+        }
+        
+        // Check if this looks like a map name
+        if (validChars >= 3 && validChars <= 50 && 
+            consecutive >= 3 &&
+            /^[a-zA-Z0-9\s\-_\(\)\[\]\.\\\/\+\&\!\@\#\$\%\^\*\=\?\:\;\,\<\>\~\`\|\{\}]+$/.test(mapName) &&
+            !mapName.match(/^[0-9\s\x00-\x1F]*$/) &&
+            !mapName.includes('Player') &&
+            !mapName.includes('BWAPI') &&
+            !mapName.includes('StarCraft') &&
+            !mapName.includes('Brood War') &&
+            !mapName.includes('Replay')) {
+          return mapName.trim();
         }
       }
-      
-      // Check if this looks like a map name
-      if (validChars >= 4 && validChars <= 30 && 
-          /^[a-zA-Z0-9\s\-_\(\)]+$/.test(mapName) &&
-          !mapName.includes('Player') &&
-          !mapName.includes('BWAPI')) {
-        return mapName.trim();
-      }
     }
+    
+    // Strategy 3: Look for patterns like "maps\mapname"
+    const mapPattern = /maps[\\/]([a-zA-Z0-9\s\-_\(\)\[\]\.]{3,40})/i;
+    const mapMatch = dataStr.match(mapPattern);
+    if (mapMatch) return mapMatch[1].trim();
+    
   } catch (error) {
     console.warn('[ParseReplay] Map name extraction failed:', error);
   }
