@@ -4,21 +4,19 @@ import { useEnhancedReplayParser } from '@/hooks/useEnhancedReplayParser';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import UploadBox from '@/components/UploadBox';
-import { ScrepJsReplayResult } from '@/services/replayParser/screpJsParser';
+import { HybridParsingResult } from '@/hooks/useHybridReplayParser';
 import ProAnalysisDashboard from '@/components/analysis/ProAnalysisDashboard';
 import ReplayComparisonTool from '@/components/analysis/ReplayComparisonTool';
 
 const UploadPage: React.FC = () => {
-  const [analysisData, setAnalysisData] = useState<ScrepJsReplayResult | null>(null);
+  const [analysisData, setAnalysisData] = useState<HybridParsingResult | null>(null);
 
-  const handleUploadComplete = async (file: File, replayData: ScrepJsReplayResult) => {
-    console.log('[UploadPage] Received screp-js replay data:', {
-      playerCount: replayData.players.length,
-      mapName: replayData.header.mapName,
-      dataQuality: replayData.dataQuality.reliability,
-      extractionMethod: replayData.dataQuality.source,
-      commandsExtracted: replayData.dataQuality.commandsFound,
-      buildOrdersCount: replayData.dataQuality.buildOrdersExtracted
+  const handleUploadComplete = async (file: File, replayData: HybridParsingResult) => {
+    console.log('[UploadPage] Received hybrid parsing result:', {
+      playerCount: replayData.metadata.players.length,
+      mapName: replayData.metadata.header.mapName,
+      hasServerAnalysis: !!replayData.serverAnalysis,
+      replayId: replayData.replayId
     });
     
     setAnalysisData(replayData);
@@ -41,11 +39,27 @@ const UploadPage: React.FC = () => {
           
           {analysisData ? (
             <div className="space-y-8">
-              {/* Pro Analysis Dashboard */}
-              <ProAnalysisDashboard data={analysisData} />
-              
-              {/* Replay Comparison Tool */}
-              <ReplayComparisonTool currentReplay={analysisData} />
+              <div className="bg-card p-6 rounded-lg border">
+                <h2 className="text-2xl font-bold mb-4">Analyse Ergebnis</h2>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <h3 className="font-semibold">Map:</h3>
+                    <p>{analysisData.metadata.header.mapName}</p>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Spieler:</h3>
+                    <p>{analysisData.metadata.players.map(p => `${p.name} (${p.race})`).join(' vs ')}</p>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Server Analyse:</h3>
+                    <p>{analysisData.serverAnalysis ? 'Verfügbar' : 'Nur Metadaten'}</p>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Replay ID:</h3>
+                    <p className="text-sm text-muted-foreground">{analysisData.replayId}</p>
+                  </div>
+                </div>
+              </div>
               
               <div className="text-center pt-6 border-t">
                 <button 

@@ -4,19 +4,18 @@ import { useDropzone } from 'react-dropzone';
 import { Upload, FileText, AlertCircle, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { useEnhancedReplayParser } from '@/hooks/useEnhancedReplayParser';
+import { useHybridReplayParser, type HybridParsingResult } from '@/hooks/useHybridReplayParser';
 import { useToast } from '@/hooks/use-toast';
-import { ScrepJsReplayResult } from '@/services/replayParser/screpJsParser';
 
 interface UploadBoxProps {
-  onUploadComplete: (file: File, replayData: ScrepJsReplayResult) => void;
+  onUploadComplete: (file: File, replayData: HybridParsingResult) => void;
 }
 
 const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'parsing' | 'complete' | 'error'>('idle');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   
-  const { parseReplay, isLoading, error, progress } = useEnhancedReplayParser();
+  const { parseReplay, isLoading, progress } = useHybridReplayParser();
   const { toast } = useToast();
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
@@ -33,7 +32,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
       
       toast({
         title: "Replay erfolgreich analysiert",
-        description: `${replayData.players[0]?.name || 'Unknown'} vs ${replayData.players[1]?.name || 'Unknown'} | Datenqualität: ${replayData.dataQuality.reliability}`,
+        description: `${replayData.metadata.players[0]?.name || 'Unknown'} vs ${replayData.metadata.players[1]?.name || 'Unknown'} | Map: ${replayData.metadata.header.mapName}`,
       });
 
       onUploadComplete(file, replayData);
@@ -75,11 +74,11 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
   const getStatusText = () => {
     switch (uploadStatus) {
       case 'parsing':
-        return 'Production Parser arbeitet...';
+        return progress.message || 'Analysiere Replay...';
       case 'complete':
         return 'Analyse abgeschlossen!';
       case 'error':
-        return error || 'Fehler beim Verarbeiten der Datei';
+        return progress.message || 'Fehler beim Verarbeiten der Datei';
       default:
         return isDragActive ? 'Datei hier ablegen...' : 'StarCraft: Remastered Replay hochladen';
     }
@@ -109,7 +108,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
             
             {uploadStatus === 'idle' && (
               <p className="text-sm text-muted-foreground">
-                Unterstützte Formate: .rep (StarCraft: Remastered mit screp-js Parser)
+                Unterstützte Formate: .rep (Hybrid Parser: Client + Server)
               </p>
             )}
             
@@ -122,9 +121,9 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
           
           {uploadStatus === 'parsing' && (
             <div className="w-full max-w-xs">
-              <Progress value={progress} className="h-2" />
+              <Progress value={progress.progress} className="h-2" />
               <p className="text-xs text-muted-foreground mt-1">
-                screp-js Parser: {Math.round(progress)}%
+                {progress.stage}: {Math.round(progress.progress)}%
               </p>
             </div>
           )}
@@ -153,7 +152,7 @@ const UploadBox: React.FC<UploadBoxProps> = ({ onUploadComplete }) => {
       {uploadStatus === 'idle' && (
         <div className="mt-6 text-center">
           <p className="text-sm text-muted-foreground">
-            Production-ready screp-js Parser für echte StarCraft: Remastered Datenanalyse
+            Hybrid-Parser: Sofortige Metadaten + detaillierte Server-Analyse
           </p>
         </div>
       )}
