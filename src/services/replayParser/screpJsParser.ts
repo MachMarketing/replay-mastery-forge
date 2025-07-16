@@ -96,35 +96,21 @@ export interface ScrepJsReplayResult {
 
 export class ScrepJsParser {
   async parseReplay(file: File): Promise<ScrepJsReplayResult> {
-    console.log('[ScrepJsParser] Starting HYBRID parsing with jssuh + screparsed for:', file.name);
+    console.log('[ScrepJsParser] Starting SCREPARSED-ONLY parsing for:', file.name);
 
     try {
-      // Use JSSUH as primary parser for better build order extraction
-      const jsuhParser = new JssuhParser();
-      const jsuhResult = await jsuhParser.parseReplay(file);
-      
-      console.log('[ScrepJsParser] JSSUH result:', {
-        playerCount: jsuhResult.header.players.length,
-        buildOrderCount: jsuhResult.buildOrder.length,
-        totalActions: jsuhResult.actions.length
-      });
-
-      // Also try screparsed for additional metadata
+      // Skip jssuh for now due to process.nextTick issues
+      // Use screparsed directly as primary parser
       const buffer = await file.arrayBuffer();
-      let screpResult: any = null;
+      const parser = ReplayParser.fromArrayBuffer(buffer);
+      const screpResult = await parser.parse();
       
-      try {
-        const parser = ReplayParser.fromArrayBuffer(buffer);
-        screpResult = await parser.parse();
-        console.log('[ScrepJsParser] Screparsed supplementary data available');
-      } catch (screpError) {
-        console.warn('[ScrepJsParser] Screparsed failed, using jssuh only:', screpError);
-      }
-
-      // Convert hybrid result to our format
-      const result = this.convertHybridResult(jsuhResult, screpResult);
+      console.log('[ScrepJsParser] Screparsed parsing successful');
       
-      console.log('[ScrepJsParser] Final hybrid result ready:', {
+      // Convert screparsed result to our format
+      const result = await this.convertScrepJsResult(screpResult);
+      
+      console.log('[ScrepJsParser] Final result ready:', {
         map: result.header.mapName,
         players: result.players.map(p => `${p.name} (${p.race}) - APM: ${p.apm}`),
         commands: result.dataQuality.commandsFound,
@@ -135,8 +121,8 @@ export class ScrepJsParser {
       return result;
 
     } catch (error) {
-      console.error('[ScrepJsParser] Hybrid parsing failed:', error);
-      throw new Error(`Hybrid parser failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('[ScrepJsParser] Screparsed parsing failed:', error);
+      throw new Error(`Screparsed parser failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
