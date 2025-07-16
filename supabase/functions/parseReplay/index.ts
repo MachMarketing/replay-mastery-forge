@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { jssuh } from 'https://esm.sh/jssuh@1.6.0';
+import jssuh from 'https://esm.sh/jssuh@1.6.0';
 
 // SC:R Binary Reader for manual parsing fallback
 class BinaryReader {
