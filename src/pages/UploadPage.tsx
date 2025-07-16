@@ -39,27 +39,7 @@ const UploadPage: React.FC = () => {
           
           {analysisData ? (
             <div className="space-y-8">
-              <div className="bg-card p-6 rounded-lg border">
-                <h2 className="text-2xl font-bold mb-4">Analyse Ergebnis</h2>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <h3 className="font-semibold">Map:</h3>
-                    <p>{analysisData.metadata.header.mapName}</p>
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">Spieler:</h3>
-                    <p>{analysisData.metadata.players.map(p => `${p.name} (${p.race})`).join(' vs ')}</p>
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">Server Analyse:</h3>
-                    <p>{analysisData.serverAnalysis ? 'Verfügbar' : 'Nur Metadaten'}</p>
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">Replay ID:</h3>
-                    <p className="text-sm text-muted-foreground">{analysisData.replayId}</p>
-                  </div>
-                </div>
-              </div>
+              <ProAnalysisDashboard data={analysisData} />
               
               <div className="text-center pt-6 border-t">
                 <button 

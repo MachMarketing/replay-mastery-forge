@@ -1,6 +1,20 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import jssuh from 'https://esm.sh/jssuh@1.6.0';
+import { 
+  extractUnitNameFromCommand, 
+  inferActionFromCommand, 
+  categorizeUnit, 
+  getUnitCost,
+  calculateBuildEfficiency,
+  getStartingSupplyForRace,
+  getStartingSupplyUsedForRace,
+  isSupplyProvider,
+  getSupplyProvided,
+  getTimingPhase,
+  getStrategicPriority,
+  getUnitPurpose
+} from './buildOrderUtils.ts';
 
 // SC:R Binary Reader for manual parsing fallback
 class BinaryReader {
@@ -270,28 +284,34 @@ async function parseReplayData(arrayBuffer: ArrayBuffer, filePath: string) {
   }
 }
 
-// jssuh stream-based parser implementation
+// Phase 1: Corrected jssuh Transform Stream Implementation
 async function parseWithJssuhStream(data: Uint8Array, filePath: string) {
   return new Promise((resolve, reject) => {
-    console.log('[ParseReplay] Starting jssuh stream parsing');
+    console.log('[ParseReplay] Starting CORRECTED jssuh transform stream parsing');
     
     // Initialize data collectors
     let header = null;
     let players = [];
     let commands = [];
-    let actions = [];
     let gameDurationFrames = 0;
-    let replayEvents = [];
+    let mapName = 'Unknown Map';
+    let hasDataEvents = false;
     
     try {
-      // Create jssuh parser instance
-      const replayStream = new jssuh();
+      const { Transform } = eval('require')('stream');
       
-      // Set up event handlers
-      replayStream.on('replayHeader', (headerData) => {
-        console.log('[ParseReplay] jssuh header received:', headerData);
+      // jssuh is a transform stream - NOT a class!
+      const replayParser = jssuh();
+      
+      console.log('[ParseReplay] jssuh instance created as transform stream');
+      
+      // Set up proper event handlers for jssuh transform stream
+      replayParser.on('replayHeader', (headerData) => {
+        console.log('[ParseReplay] REAL jssuh header received:', headerData);
+        hasDataEvents = true;
+        
         header = {
-          mapName: headerData.mapName || null,
+          mapName: headerData.mapName || headerData.map || 'Unknown Map',
           gameVersion: 'Remastered',
           gameLength: headerData.gameLength || '0:00',
           gameType: headerData.gameType || 'Multiplayer',
@@ -299,13 +319,18 @@ async function parseWithJssuhStream(data: Uint8Array, filePath: string) {
           gameSpeed: headerData.gameSpeed || 'Fastest',
           gameName: headerData.gameName || null,
           mapWidth: headerData.mapWidth || 0,
-          mapHeight: headerData.mapHeight || 0
+          mapHeight: headerData.mapHeight || 0,
+          frames: headerData.frames || 0
         };
-        replayEvents.push({ type: 'header', data: headerData });
+        
+        mapName = header.mapName;
+        gameDurationFrames = headerData.frames || 0;
       });
       
-      replayStream.on('player', (playerData) => {
-        console.log('[ParseReplay] jssuh player received:', playerData);
+      replayParser.on('player', (playerData) => {
+        console.log('[ParseReplay] REAL jssuh player received:', playerData);
+        hasDataEvents = true;
+        
         players.push({
           id: playerData.id || players.length,
           name: playerData.name || `Player ${players.length + 1}`,
@@ -316,62 +341,59 @@ async function parseWithJssuhStream(data: Uint8Array, filePath: string) {
           apm: 0,
           eapm: 0
         });
-        replayEvents.push({ type: 'player', data: playerData });
       });
       
-      replayStream.on('commands', (commandData) => {
-        console.log('[ParseReplay] jssuh commands received:', Array.isArray(commandData) ? commandData.length : 'single');
-        const commandList = Array.isArray(commandData) ? commandData : [commandData];
+      replayParser.on('command', (commandData) => {
+        console.log('[ParseReplay] REAL jssuh command received:', commandData);
+        hasDataEvents = true;
         
-        commandList.forEach(cmd => {
-          const normalizedCmd = {
-            frame: cmd.frame || cmd.time || 0,
-            time: frameToGameTime(cmd.frame || cmd.time || 0),
-            playerID: cmd.playerID || cmd.player || 0,
-            commandID: cmd.commandID || cmd.id || 0,
-            data: cmd.data || cmd.rawData || null,
-            type: cmd.type || 'command'
-          };
-          
-          commands.push(normalizedCmd);
-          gameDurationFrames = Math.max(gameDurationFrames, normalizedCmd.frame);
-        });
+        const normalizedCmd = {
+          frame: commandData.frame || commandData.time || 0,
+          time: frameToGameTime(commandData.frame || commandData.time || 0),
+          playerID: commandData.playerID || commandData.player || 0,
+          commandID: commandData.commandID || commandData.id || commandData.opcode || 0,
+          data: commandData.data || commandData.rawData || null,
+          type: commandData.type || 'command',
+          targetX: commandData.targetX,
+          targetY: commandData.targetY,
+          unitTag: commandData.unitTag
+        };
         
-        replayEvents.push({ type: 'commands', data: commandList });
+        commands.push(normalizedCmd);
+        gameDurationFrames = Math.max(gameDurationFrames, normalizedCmd.frame);
       });
       
-      replayStream.on('actions', (actionData) => {
-        console.log('[ParseReplay] jssuh actions received:', Array.isArray(actionData) ? actionData.length : 'single');
-        const actionList = Array.isArray(actionData) ? actionData : [actionData];
+      replayParser.on('action', (actionData) => {
+        console.log('[ParseReplay] REAL jssuh action received:', actionData);
+        hasDataEvents = true;
         
-        actionList.forEach(action => {
-          const normalizedAction = {
-            frame: action.frame || action.time || 0,
-            time: frameToGameTime(action.frame || action.time || 0),
-            playerID: action.playerID || action.player || 0,
-            actionID: action.actionID || action.id || 0,
-            data: action.data || action.rawData || null,
-            type: action.type || 'action'
-          };
-          
-          actions.push(normalizedAction);
-          gameDurationFrames = Math.max(gameDurationFrames, normalizedAction.frame);
-        });
+        const normalizedAction = {
+          frame: actionData.frame || actionData.time || 0,
+          time: frameToGameTime(actionData.frame || actionData.time || 0),
+          playerID: actionData.playerID || actionData.player || 0,
+          actionID: actionData.actionID || actionData.id || actionData.opcode || 0,
+          data: actionData.data || actionData.rawData || null,
+          type: actionData.type || 'action',
+          unitType: actionData.unitType,
+          targetX: actionData.targetX,
+          targetY: actionData.targetY
+        };
         
-        replayEvents.push({ type: 'actions', data: actionList });
+        commands.push(normalizedAction); // Treat actions as commands
+        gameDurationFrames = Math.max(gameDurationFrames, normalizedAction.frame);
       });
       
-      replayStream.on('end', () => {
-        console.log('[ParseReplay] jssuh stream ended');
+      replayParser.on('end', () => {
+        console.log('[ParseReplay] jssuh transform stream ended');
+        console.log(`[ParseReplay] hasDataEvents: ${hasDataEvents}, players: ${players.length}, commands: ${commands.length}`);
         
-        // Process collected data
         try {
-          // Ensure we have basic data even if events didn't fire properly
+          // Ensure we have basic data
           if (!header) {
             console.warn('[ParseReplay] No header from jssuh, creating fallback');
             header = {
-              mapName: 'Unknown Map',
-              gameVersion: 'Remastered',
+              mapName: mapName,
+              gameVersion: 'Remastered', 
               gameLength: frameToGameTime(gameDurationFrames),
               gameType: 'Multiplayer'
             };
@@ -381,45 +403,44 @@ async function parseWithJssuhStream(data: Uint8Array, filePath: string) {
             console.warn('[ParseReplay] No players from jssuh, creating fallback');
             players = [
               { id: 0, name: 'Player 1', race: 'Protoss', team: 1, isComputer: false, apm: 0, eapm: 0 },
-              { id: 1, name: 'Player 2', race: 'Protoss', team: 2, isComputer: false, apm: 0, eapm: 0 }
+              { id: 1, name: 'Player 2', race: 'Terran', team: 2, isComputer: false, apm: 0, eapm: 0 }
             ];
           }
           
-          // Calculate APM/EAPM from commands and actions
-          const allCommands = [...commands, ...actions];
-          console.log('[ParseReplay] Total commands/actions:', allCommands.length);
-          
-          const gameDurationMinutes = gameDurationFrames / (24 * 60);
+          // Phase 3: Real APM/EAPM calculation from commands
+          const gameDurationMinutes = Math.max(gameDurationFrames / (24 * 60), 1);
           
           players.forEach(player => {
-            const playerCommands = allCommands.filter(cmd => cmd.playerID === player.id);
+            const playerCommands = commands.filter(cmd => cmd.playerID === player.id);
             const effectiveCommands = playerCommands.filter(cmd => 
               EFFECTIVE_ACTIONS.has(cmd.commandID || cmd.actionID)
             );
             
-            player.apm = gameDurationMinutes > 0 ? Math.round(playerCommands.length / gameDurationMinutes) : 0;
-            player.eapm = gameDurationMinutes > 0 ? Math.round(effectiveCommands.length / gameDurationMinutes) : 0;
+            player.apm = Math.round(playerCommands.length / gameDurationMinutes);
+            player.eapm = Math.round(effectiveCommands.length / gameDurationMinutes);
+            
+            console.log(`[ParseReplay] Player ${player.name}: ${player.apm} APM, ${player.eapm} EAPM (${playerCommands.length} commands in ${gameDurationMinutes.toFixed(1)} min)`);
           });
           
-          // Extract build orders from commands
-          const buildOrder = extractBuildOrderFromJssuhCommands(allCommands, players);
+          // Phase 2: Professional Build Order Extraction
+          const buildOrder = extractProfessionalBuildOrder(commands, players);
           
-          // Generate analysis
-          const analysis = generateRealAnalysis(players, allCommands, gameDurationFrames);
+          // Phase 4: Real Analysis Generation
+          const analysis = generateProfessionalAnalysis(players, commands, gameDurationFrames);
           
           const result = {
             replayId: null,
             header: {
-              mapName: header.mapName || 'Unknown Map',
-              gameVersion: header.gameVersion || 'Remastered',
-              gameLength: header.gameLength || frameToGameTime(gameDurationFrames),
-              gameType: header.gameType || 'Multiplayer',
+              mapName: header.mapName,
+              gameVersion: header.gameVersion,
+              gameLength: header.gameLength,
+              gameType: header.gameType,
             },
             players,
             gameStats: {
-              duration: header.gameLength || frameToGameTime(gameDurationFrames),
-              totalCommands: allCommands.length,
-              averageAPM: Math.round(players.reduce((sum, p) => sum + p.apm, 0) / players.length || 0),
+              duration: header.gameLength,
+              totalCommands: commands.length,
+              averageAPM: Math.round(players.reduce((sum, p) => sum + p.apm, 0) / players.length),
               peakAPM: Math.max(...players.map(p => p.apm), 0),
             },
             buildOrder,
@@ -428,10 +449,10 @@ async function parseWithJssuhStream(data: Uint8Array, filePath: string) {
             recommendations: analysis.recommendations,
             resourcesGraph: analysis.resourcesGraph,
             parseTimestamp: new Date().toISOString(),
-            dataSource: 'jssuh'
+            dataSource: 'jssuh-corrected'
           };
           
-          console.log('[ParseReplay] jssuh parsing completed successfully');
+          console.log('[ParseReplay] CORRECTED jssuh parsing completed successfully');
           resolve(result);
           
         } catch (error) {
@@ -440,32 +461,34 @@ async function parseWithJssuhStream(data: Uint8Array, filePath: string) {
         }
       });
       
-      replayStream.on('error', (error) => {
-        console.error('[ParseReplay] jssuh stream error:', error);
+      replayParser.on('error', (error) => {
+        console.error('[ParseReplay] jssuh transform stream error:', error);
         reject(error);
       });
       
-      // Process data with jssuh
-      console.log('[ParseReplay] Processing data with jssuh');
+      // Phase 1: Correct jssuh usage as transform stream
+      console.log('[ParseReplay] Writing data to jssuh transform stream');
       
-      // Set a timeout to ensure we don't hang forever
+      // Set timeout for stream processing
       const timeout = setTimeout(() => {
-        console.warn('[ParseReplay] jssuh processing timeout, using fallback data');
-        replayStream.emit('end');
-      }, 5000);
+        console.warn('[ParseReplay] jssuh processing timeout, ending stream');
+        if (!hasDataEvents) {
+          console.error('[ParseReplay] No data events received from jssuh - stream setup issue');
+        }
+        replayParser.end();
+      }, 10000);
       
-      // Convert Uint8Array to Buffer for jssuh
-      const buffer = Buffer.from(data);
-      replayStream.write(buffer);
-      replayStream.end();
+      // Write data to transform stream (NOT as a buffer constructor)
+      replayParser.write(data);
+      replayParser.end();
       
-      // Clear timeout when processing completes
-      replayStream.on('end', () => {
+      replayParser.on('finish', () => {
         clearTimeout(timeout);
+        console.log('[ParseReplay] jssuh transform stream finished');
       });
       
     } catch (error) {
-      console.error('[ParseReplay] jssuh stream setup error:', error);
+      console.error('[ParseReplay] jssuh transform stream setup error:', error);
       reject(error);
     }
   });

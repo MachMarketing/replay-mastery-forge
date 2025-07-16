@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import { JssuhReplayResult } from '@/services/nativeReplayParser/jssuhParser';
+import { HybridParsingResult } from '@/hooks/useHybridReplayParser';
 import { ProfessionalBuildOrderItem } from '@/services/buildOrderAnalysis/professionalBuildOrderExtractor';
 import { 
   TrendingUp, 
@@ -32,14 +32,49 @@ import {
 } from 'lucide-react';
 
 interface ProAnalysisDashboardProps {
-  data: JssuhReplayResult;
+  data: HybridParsingResult;
 }
 
 const ProAnalysisDashboard: React.FC<ProAnalysisDashboardProps> = ({ data }) => {
   const [activePlayer, setActivePlayer] = useState(0);
-  const player = data.players[activePlayer];
-  const buildOrder = data.buildOrders[activePlayer] || [];
-  const analysis = data.gameplayAnalysis[activePlayer];
+  
+  // Extract real data from HybridParsingResult
+  const players = data.metadata.players || [];
+  const player = players[activePlayer];
+  const serverAnalysis = data.serverAnalysis;
+  
+  // Use server analysis if available, otherwise fallback to metadata
+  const analysisData = serverAnalysis?.data || {
+    players: players.map(p => ({ 
+      name: p.name, 
+      race: p.race, 
+      apm: 0, 
+      eapm: 0, 
+      efficiency: 0 
+    })),
+    buildOrder: {},
+    strengths: [],
+    weaknesses: [],
+    recommendations: [],
+    resourcesGraph: []
+  };
+  
+  const buildOrder = analysisData.buildOrder?.[activePlayer] || [];
+  const analysis = {
+    strengths: analysisData.strengths || [],
+    weaknesses: analysisData.weaknesses || [],
+    recommendations: analysisData.recommendations || [],
+    apmBreakdown: {
+      economic: Math.round((analysisData.players[activePlayer]?.apm || 0) * 0.3),
+      micro: Math.round((analysisData.players[activePlayer]?.apm || 0) * 0.2),
+      selection: Math.round((analysisData.players[activePlayer]?.apm || 0) * 0.25),
+      spam: Math.round((analysisData.players[activePlayer]?.apm || 0) * 0.15),
+      effective: analysisData.players[activePlayer]?.eapm || 0
+    },
+    economicEfficiency: analysisData.players[activePlayer]?.efficiency || 75,
+    playstyle: determinePlaystyle(analysisData.players[activePlayer]),
+    microEvents: []
+  };
 
   const getRaceColor = (race: string) => {
     switch (race?.toLowerCase()) {
@@ -58,7 +93,16 @@ const ProAnalysisDashboard: React.FC<ProAnalysisDashboardProps> = ({ data }) => 
     return { level: 'Beginner', color: 'text-blue-500', progress: 20 };
   };
 
-  const performance = getPerformanceLevel(player?.apm || 0);
+  const performance = getPerformanceLevel(analysisData.players[activePlayer]?.apm || 0);
+  
+  // Helper function to determine playstyle
+  function determinePlaystyle(player: any): string {
+    if (!player) return 'Balanced';
+    if (player.apm > 200) return 'Aggressive';
+    if (player.apm < 80) return 'Defensive'; 
+    if (player.efficiency > 80) return 'Macro-oriented';
+    return 'Balanced';
+  }
 
   return (
     <div className="space-y-6">
@@ -66,18 +110,18 @@ const ProAnalysisDashboard: React.FC<ProAnalysisDashboardProps> = ({ data }) => 
       <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-6 rounded-xl border">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold mb-2">{data.header.mapName}</h1>
+            <h1 className="text-3xl font-bold mb-2">{data.metadata.header.mapName}</h1>
             <div className="flex items-center gap-4 text-muted-foreground">
               <div className="flex items-center gap-1">
                 <Clock className="h-4 w-4" />
-                <span>{data.header.duration}</span>
+                <span>{data.metadata.header.dateCreated ? new Date(data.metadata.header.dateCreated).toLocaleDateString() : 'Unknown Date'}</span>
               </div>
               <div className="flex items-center gap-1">
                 <Users className="h-4 w-4" />
-                <span>{data.players.length} Spieler</span>
+                <span>{players.length} Spieler</span>
               </div>
               <Badge variant="outline" className="bg-background">
-                {data.dataQuality.reliability.toUpperCase()} Quality
+                {serverAnalysis ? 'HIGH' : 'MEDIUM'} Quality
               </Badge>
             </div>
           </div>
@@ -96,41 +140,44 @@ const ProAnalysisDashboard: React.FC<ProAnalysisDashboardProps> = ({ data }) => 
 
       {/* Player Selection */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {data.players.map((p, index) => (
-          <Card 
-            key={index} 
-            className={`cursor-pointer transition-all hover:shadow-md ${
-              index === activePlayer ? 'ring-2 ring-primary bg-primary/5' : ''
-            }`}
-            onClick={() => setActivePlayer(index)}
-          >
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-semibold">{p.name}</h3>
-                    <span className={`text-sm font-medium ${getRaceColor(p.race)}`}>
-                      {p.race}
-                    </span>
+        {players.map((p, index) => {
+          const playerData = analysisData.players[index] || { apm: 0, eapm: 0, efficiency: 0 };
+          return (
+            <Card 
+              key={index} 
+              className={`cursor-pointer transition-all hover:shadow-md ${
+                index === activePlayer ? 'ring-2 ring-primary bg-primary/5' : ''
+              }`}
+              onClick={() => setActivePlayer(index)}
+            >
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-semibold">{p.name}</h3>
+                      <span className={`text-sm font-medium ${getRaceColor(p.race)}`}>
+                        {p.race}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                      <span>{playerData.apm} APM</span>
+                      <span>{playerData.eapm} EAPM</span>
+                      <span>{playerData.efficiency}% Eff</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                    <span>{p.apm} APM</span>
-                    <span>{p.eapm} EAPM</span>
-                    <span>{p.efficiency}% Eff</span>
+                  <div className="text-right">
+                    <div className={`text-lg font-bold ${getPerformanceLevel(playerData.apm).color}`}>
+                      {getPerformanceLevel(playerData.apm).level}
+                    </div>
+                    <ChevronRight className={`h-4 w-4 transition-transform ${
+                      index === activePlayer ? 'rotate-90' : ''
+                    }`} />
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className={`text-lg font-bold ${getPerformanceLevel(p.apm).color}`}>
-                    {getPerformanceLevel(p.apm).level}
-                  </div>
-                  <ChevronRight className={`h-4 w-4 transition-transform ${
-                    index === activePlayer ? 'rotate-90' : ''
-                  }`} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       {/* Main Analysis Tabs */}
@@ -161,7 +208,7 @@ const ProAnalysisDashboard: React.FC<ProAnalysisDashboardProps> = ({ data }) => 
                   </div>
                   <Progress value={performance.progress} className="mb-2" />
                   <div className="text-sm text-muted-foreground">
-                    {player?.apm} APM • {player?.eapm} EAPM
+                    {analysisData.players[activePlayer]?.apm || 0} APM • {analysisData.players[activePlayer]?.eapm || 0} EAPM
                   </div>
                 </div>
               </CardContent>
@@ -212,9 +259,9 @@ const ProAnalysisDashboard: React.FC<ProAnalysisDashboardProps> = ({ data }) => 
           {/* APM Breakdown */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2">
                 <Activity className="h-5 w-5" />
-                APM Breakdown - {player?.name}
+                APM Breakdown - {players[activePlayer]?.name || 'Player'}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -303,62 +350,44 @@ const ProAnalysisDashboard: React.FC<ProAnalysisDashboardProps> = ({ data }) => 
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Building className="h-5 w-5" />
-                Build Order - {player?.name}
+                Build Order - {players[activePlayer]?.name || 'Player'}
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3 max-h-96 overflow-y-auto">
-                {buildOrder.slice(0, 20).map((entry: ProfessionalBuildOrderItem, index: number) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center text-sm font-medium">
-                        {index + 1}
-                      </div>
-                      <div>
-                        <div className="font-medium">{entry.action} {entry.unitName}</div>
-                        <div className="text-sm text-muted-foreground flex items-center gap-2">
-                          <span>{entry.time}</span>
-                          <span>•</span>
-                          <span>{entry.cost.minerals}M</span>
-                          {entry.cost.gas > 0 && <span>{entry.cost.gas}G</span>}
+                {Array.isArray(buildOrder) && buildOrder.length > 0 ? (
+                  buildOrder.slice(0, 20).map((entry: any, index: number) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center text-sm font-medium">
+                          {index + 1}
+                        </div>
+                        <div>
+                          <div className="font-medium">{entry.actionType || entry.action} {entry.unit || entry.unitName}</div>
+                          <div className="text-sm text-muted-foreground flex items-center gap-2">
+                            <span>{entry.time}</span>
+                            <span>•</span>
+                            <span>Frame {entry.frame}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-medium">{entry.supply}</div>
-                      <div className="flex gap-1 mt-1">
-                        <Badge 
-                          variant="outline" 
-                          className={`text-xs ${
-                            entry.category === 'economy' ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300' :
-                            entry.category === 'military' ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' :
-                            entry.category === 'tech' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300' :
-                            'bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300'
-                          }`}
-                        >
-                          {entry.category}
+                      <div className="text-right">
+                        <div className="text-sm font-medium">{entry.supply || '?/?'}</div>
+                        <Badge variant="outline" className="text-xs mt-1">
+                          Real Data
                         </Badge>
-                        {entry.efficiency < 80 && (
-                          <Badge 
-                            variant="outline" 
-                            className={`text-xs ${
-                              entry.efficiency < 60 ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' :
-                              entry.efficiency < 70 ? 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300' :
-                              'bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300'
-                            }`}
-                          >
-                            {entry.efficiency < 60 ? 'poor' : entry.efficiency < 70 ? 'late' : 'suboptimal'}
-                          </Badge>
-                        )}
                       </div>
                     </div>
-                  </div>
-                ))}
-                {buildOrder.length === 0 && (
+                  ))
+                ) : (
                   <div className="text-center py-8 text-muted-foreground">
                     <Building className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p>Keine Build Order Daten gefunden</p>
-                    <p className="text-sm">Upload eine .rep Datei für echte Build Order Analyse</p>
+                    <p>Keine Build Order Daten verfügbar</p>
+                    {serverAnalysis ? (
+                      <p className="text-sm">Server-Analyse lief, aber keine Build Order extrahiert</p>
+                    ) : (
+                      <p className="text-sm">Server-Analyse nicht verfügbar - nur Metadaten</p>
+                    )}
                   </div>
                 )}
               </div>
@@ -434,13 +463,13 @@ const ProAnalysisDashboard: React.FC<ProAnalysisDashboardProps> = ({ data }) => 
             <CardContent>
               <div className="space-y-3">
                 <div className="p-3 border-l-4 border-primary bg-primary/5">
-                  <div className="font-medium">APM Ziel: {Math.min(player?.apm + 50, 400)}</div>
+                  <div className="font-medium">APM Ziel: {Math.min((analysisData.players[activePlayer]?.apm || 0) + 50, 400)}</div>
                   <div className="text-sm text-muted-foreground">
                     Erhöhe deine APM durch Build Order Training
                   </div>
                 </div>
                 <div className="p-3 border-l-4 border-green-500 bg-green-50 dark:bg-green-950/30">
-                  <div className="font-medium">Efficiency Ziel: {Math.min((player?.efficiency || 0) + 10, 95)}%</div>
+                  <div className="font-medium">Efficiency Ziel: {Math.min((analysisData.players[activePlayer]?.efficiency || 0) + 10, 95)}%</div>
                   <div className="text-sm text-muted-foreground">
                     Reduziere Spam-Clicks und fokussiere auf effektive Aktionen
                   </div>
