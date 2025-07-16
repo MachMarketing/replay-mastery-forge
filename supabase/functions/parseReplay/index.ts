@@ -49,12 +49,26 @@ serve(async (req) => {
     
     console.log('[ParseReplay] Parsing completed successfully');
     
-    // Save analysis results to database
+    // Find the replay record by filename to get the correct replay_id
+    const fileName = filePath.split('/').pop();
+    const { data: replayRecord, error: replayError } = await supabase
+      .from('replays')
+      .select('id')
+      .eq('filename', fileName)
+      .eq('user_id', userId)
+      .single();
+
+    if (replayError || !replayRecord) {
+      console.error('[ParseReplay] Could not find replay record:', replayError);
+      throw new Error('Replay record not found in database');
+    }
+
+    // Save analysis results to database using the correct replay_id
     const { data: analysisData, error: saveError } = await supabase
       .from('analysis_results')
       .insert({
         user_id: userId,
-        replay_id: parsedReplay.replayId,
+        replay_id: replayRecord.id,
         build_order: parsedReplay.buildOrder,
         strengths: parsedReplay.strengths,
         weaknesses: parsedReplay.weaknesses,
@@ -96,8 +110,8 @@ async function parseReplayData(arrayBuffer: ArrayBuffer, filePath: string) {
   const data = new Uint8Array(arrayBuffer);
   console.log('[ParseReplay] Analyzing', data.length, 'bytes');
 
-  // Generate a unique replay ID based on file path
-  const replayId = crypto.randomUUID();
+  // We'll use the replay ID from the database, not generate a new one
+  const replayId = null; // Will be set from database lookup
 
   // Extract enhanced information
   const header = extractHeader(data);

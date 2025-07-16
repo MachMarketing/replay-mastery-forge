@@ -67,13 +67,22 @@ export class MetadataParser {
     let gameType = '';
     
     try {
-      // Try to find map name in typical locations
-      // Map names are usually stored around offset 0x18-0x40
-      for (let searchOffset = 0x18; searchOffset < Math.min(0x100, data.length - 32); searchOffset++) {
-        const potentialString = this.extractNullTerminatedString(data, searchOffset, 32);
-        if (potentialString.length > 3 && potentialString.length < 32 && this.isValidMapName(potentialString)) {
+      // Try multiple approaches to find map name
+      // Approach 1: Look for map names in the typical header section
+      for (let searchOffset = 0x18; searchOffset < Math.min(0x200, data.length - 32); searchOffset++) {
+        const potentialString = this.extractNullTerminatedString(data, searchOffset, 64);
+        if (potentialString.length > 3 && potentialString.length < 64 && this.isValidMapName(potentialString)) {
           mapName = potentialString;
           break;
+        }
+      }
+      
+      // Approach 2: Look for .scm or .scx file references
+      if (mapName === '') {
+        const fileStr = new TextDecoder('ascii', { fatal: false }).decode(data.slice(0, Math.min(1000, data.length)));
+        const mapMatch = fileStr.match(/([a-zA-Z0-9\s\-_\(\)\.]{3,32}\.sc[mx])/i);
+        if (mapMatch) {
+          mapName = mapMatch[1].replace(/\.sc[mx]$/i, '');
         }
       }
       
@@ -113,23 +122,36 @@ export class MetadataParser {
       // Look for player names (null-terminated strings of reasonable length)
       const races = ['Zerg', 'Terran', 'Protoss', 'Random'];
       
-      for (let searchOffset = startOffset; searchOffset < Math.min(startOffset + 500, data.length - 16); searchOffset++) {
-        const potentialName = this.extractNullTerminatedString(data, searchOffset, 16);
-        
-        if (potentialName.length >= 2 && potentialName.length <= 12 && this.isValidPlayerName(potentialName)) {
-          // Try to determine race from nearby bytes
-          const raceIndex = data[searchOffset + potentialName.length + 1] % races.length;
+      // Look in multiple sections for player names
+      const searchRanges = [
+        { start: startOffset, end: startOffset + 300 },
+        { start: 0x80, end: 0x180 },
+        { start: 0x200, end: 0x400 }
+      ];
+      
+      for (const range of searchRanges) {
+        for (let searchOffset = range.start; searchOffset < Math.min(range.end, data.length - 16); searchOffset++) {
+          const potentialName = this.extractNullTerminatedString(data, searchOffset, 24);
           
-          players.push({
-            name: potentialName,
-            race: races[raceIndex] || 'Unknown',
-            team: players.length < 4 ? 1 : 2, // Simple team assignment
-            color: players.length % 8
-          });
-          
-          // Stop after finding reasonable number of players
-          if (players.length >= 8) break;
+          if (potentialName.length >= 2 && potentialName.length <= 24 && this.isValidPlayerName(potentialName)) {
+            // Skip if we already have this player
+            if (players.some(p => p.name === potentialName)) continue;
+            
+            // Try to determine race from nearby bytes or use cycling
+            const raceIndex = data[searchOffset + potentialName.length + 1] % races.length;
+            
+            players.push({
+              name: potentialName,
+              race: races[raceIndex] || races[players.length % races.length],
+              team: players.length < 4 ? 1 : 2,
+              color: players.length % 8
+            });
+            
+            // Stop after finding reasonable number of players
+            if (players.length >= 8) break;
+          }
         }
+        if (players.length >= 2) break; // Stop searching if we found enough
       }
       
       // If no players found, create defaults
