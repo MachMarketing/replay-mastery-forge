@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useEnhancedReplayParser, type EnhancedReplayData } from '@/hooks/useEnhancedReplayParser';
 import Navbar from '@/components/Navbar';
@@ -41,7 +40,7 @@ const UploadPage: React.FC = () => {
             Von Beginner zu Pro • Echte SC:R Datenanalyse • KI-gestützte Verbesserungen
           </p>
           <p className="text-center text-sm text-muted-foreground mb-8">
-            Analysiere deine StarCraft: Remastered Replays mit bewährter screp-js Engine
+            Analysiere deine StarCraft: Remastered Replays mit unserem nativen Parser
           </p>
           
           {analysisData ? (
