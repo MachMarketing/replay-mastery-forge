@@ -1,0 +1,11 @@
+# Test Replays Directory
+
+This directory contains .rep files for automated testing of the SC:BW Remastered parser.
+
+## Test Files Required:
+- 150037,(4)Fighting_Spirit 1.4.rep
+- Additional international replays (KR, EN, etc.)
+- Various map types and game lengths
+
+## Usage:
+Run `npm run test:replays` to validate all replay files against expected output.
