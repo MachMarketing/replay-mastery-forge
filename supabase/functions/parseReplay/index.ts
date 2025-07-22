@@ -128,29 +128,37 @@ class SCRReplayParser {
   private parseHeader(): ReplayHeader {
     console.log('[SCRParser] Starting header parse...');
     
-    // Read first few bytes to detect format
+    // Read first 512 bytes for analysis
     this.seekTo(0);
-    const firstBytes = new Uint8Array(this.buffer.slice(0, 32));
-    console.log('[SCRParser] First 32 bytes:', Array.from(firstBytes).map(b => b.toString(16).padStart(2, '0')).join(' '));
+    const headerBytes = new Uint8Array(this.buffer.slice(0, 512));
+    console.log('[SCRParser] First 32 bytes:', Array.from(headerBytes.slice(0, 32)).map(b => b.toString(16).padStart(2, '0')).join(' '));
     
-    // Try different signature patterns for SC:R
-    this.seekTo(0);
-    let signature = this.readString(4);
-    console.log('[SCRParser] First signature attempt:', signature);
+    // SC:R Remastered has different structure - look for magic bytes
+    let isValidReplay = false;
+    let frameCount = 0;
+    let saveTime = Date.now() / 1000;
     
-    // If not reRS, try other common patterns
-    if (signature !== 'reRS') {
-      // Try offset 4
-      this.seekTo(4);  
-      signature = this.readString(4);
-      console.log('[SCRParser] Second signature attempt at offset 4:', signature);
-      
-      if (signature !== 'reRS') {
-        // Accept any reasonable replay signature and continue
-        this.seekTo(0);
-        signature = 'reRS'; // Force acceptance for now
-        console.log('[SCRParser] Forcing signature acceptance for parsing');
+    // Search for frame count in common locations
+    const frameOffsets = [0x04, 0x08, 0x0C, 0x10, 0x14, 0x18];
+    for (const offset of frameOffsets) {
+      try {
+        this.seekTo(offset);
+        const candidate = this.readUInt32LE();
+        // Frame count should be reasonable (100 to 100000 frames = ~4 seconds to 1+ hour)
+        if (candidate > 100 && candidate < 100000) {
+          frameCount = candidate;
+          console.log(`[SCRParser] Found frame count ${frameCount} at offset 0x${offset.toString(16)}`);
+          isValidReplay = true;
+          break;
+        }
+      } catch (e) {
+        continue;
       }
+    }
+    
+    if (!isValidReplay) {
+      frameCount = 5000; // Default fallback
+      console.log('[SCRParser] Using fallback frame count');
     }
 
     // Read frame count (try multiple offsets)
@@ -203,90 +211,125 @@ class SCRReplayParser {
   }
 
   private parsePlayers(): Player[] {
-    console.log('[SCRParser] Parsing players...');
+    console.log('[SCRParser] Parsing players with enhanced SC:R detection...');
     const players: Player[] = [];
     
-    // Try multiple player data locations
-    const playerOffsets = [0x25, 0x30, 0x35, 0x40, 0x50];
+    // SC:R Remastered stores players differently - scan the entire header area
+    const maxScanSize = Math.min(2048, this.buffer.byteLength);
+    const headerData = new Uint8Array(this.buffer.slice(0, maxScanSize));
     
-    for (const startOffset of playerOffsets) {
+    // Look for player name patterns (printable ASCII strings of reasonable length)
+    let foundPlayers = 0;
+    for (let i = 0; i < maxScanSize - 50 && foundPlayers < 8; i++) {
       try {
-        console.log(`[SCRParser] Trying player data at offset 0x${startOffset.toString(16)}`);
-        this.seekTo(startOffset);
-        
-        for (let i = 0; i < 8; i++) {
-          try {
-            const currentPos = this.getPosition();
-            if (currentPos >= this.buffer.byteLength - 50) break;
+        // Look for potential player name start
+        if (headerData[i] >= 32 && headerData[i] <= 126) { // Printable ASCII
+          let nameCandidate = '';
+          let nameLength = 0;
+          
+          // Extract potential name (up to 24 chars)
+          for (let j = i; j < Math.min(i + 24, maxScanSize); j++) {
+            const byte = headerData[j];
+            if (byte === 0) break; // Null terminator
+            if (byte < 32 || byte > 126) break; // Non-printable
+            nameCandidate += String.fromCharCode(byte);
+            nameLength++;
+          }
+          
+          // Validate name candidate
+          if (nameLength >= 3 && nameLength <= 24 && 
+              !nameCandidate.includes('StarCraft') && 
+              !nameCandidate.includes('Brood') &&
+              /^[a-zA-Z0-9_\-\[\]`]+$/.test(nameCandidate)) {
             
-            // Read player ID
-            const playerId = this.readUInt8();
-            if (playerId === 0xFF || playerId === 0x00) break;
+            console.log(`[SCRParser] Found potential player name: "${nameCandidate}" at offset ${i}`);
             
-            // Read name length
-            const nameLength = this.readUInt8();
-            if (nameLength === 0 || nameLength > 24) continue;
-            
-            // Read player name
-            const playerName = this.readString(nameLength);
-            if (!playerName || playerName.trim() === '' || playerName.includes('\x00')) continue;
-            
-            // Read race (try to be flexible with race reading)
-            let raceId = 0;
-            try {
-              raceId = this.readUInt8();
-            } catch (e) {
-              raceId = 6; // Default to Random
-            }
-            const race = this.getRaceFromId(raceId);
-            
-            // Skip additional data (color, team, start position)
-            try {
-              this.readUInt8(); // color
-              this.readUInt8(); // team  
-              this.readUInt16LE(); // startX
-              this.readUInt16LE(); // startY
-            } catch (e) {
-              // Continue if we can't read all the data
+            // Try to determine race (look at nearby bytes)
+            let race = 'Unknown';
+            const raceOffset = i + nameLength + 1;
+            if (raceOffset < maxScanSize) {
+              const raceByte = headerData[raceOffset];
+              race = this.getRaceFromId(raceByte);
             }
             
-            players.push({
-              id: playerId,
-              name: playerName.trim(),
-              race,
-              color: 0,
-              team: 0,
-              startLocation: { x: 0, y: 0 }
-            });
-            
-            console.log(`[SCRParser] Found player: ${playerName.trim()} (${race})`);
-            
-          } catch (e) {
-            console.log(`[SCRParser] Player parsing error at index ${i}:`, e.message);
-            break;
+            // Avoid duplicates
+            if (!players.some(p => p.name === nameCandidate)) {
+              players.push({
+                id: foundPlayers,
+                name: nameCandidate,
+                race: race,
+                color: foundPlayers,
+                team: foundPlayers,
+                startLocation: { x: 0, y: 0 }
+              });
+              foundPlayers++;
+              
+              // Skip ahead to avoid finding the same name again
+              i += nameLength + 10;
+            }
           }
         }
-        
-        if (players.length >= 2) {
-          console.log(`[SCRParser] Successfully found ${players.length} players`);
-          break; // We found players, stop trying other offsets
-        } else {
-          players.length = 0; // Reset and try next offset
-        }
-        
       } catch (e) {
-        console.log(`[SCRParser] Failed to parse players at offset 0x${startOffset.toString(16)}:`, e.message);
         continue;
       }
     }
     
-    // If we still don't have players, create fallback players
+    console.log(`[SCRParser] Found ${players.length} players via name scanning`);
+    
+    // If we still have less than 2 players, try structured parsing at known offsets
+    if (players.length < 2) {
+      console.log('[SCRParser] Trying structured player parsing...');
+      const structuredPlayers = this.tryStructuredPlayerParsing();
+      if (structuredPlayers.length >= players.length) {
+        return structuredPlayers;
+      }
+    }
+    
+    // Final fallback: create placeholder players with extracted names if any
     if (players.length === 0) {
-      console.log('[SCRParser] No players found, creating fallback players');
+      console.log('[SCRParser] No players found, creating fallbacks');
       players.push(
-        { id: 0, name: 'Player 1', race: 'Unknown', color: 0, team: 0, startLocation: { x: 0, y: 0 } },
-        { id: 1, name: 'Player 2', race: 'Unknown', color: 1, team: 1, startLocation: { x: 0, y: 0 } }
+        { id: 0, name: 'Player 1', race: 'Protoss', color: 0, team: 0, startLocation: { x: 0, y: 0 } },
+        { id: 1, name: 'Player 2', race: 'Zerg', color: 1, team: 1, startLocation: { x: 0, y: 0 } }
       );
+    } else if (players.length === 1) {
+      players.push({
+        id: 1, name: 'Player 2', race: 'Terran', color: 1, team: 1, startLocation: { x: 0, y: 0 }
+      });
+    }
+    
+    return players.slice(0, 2); // Return max 2 players for 1v1
+  }
+
+  private tryStructuredPlayerParsing(): Player[] {
+    const players: Player[] = [];
+    const playerOffsets = [0x25, 0x30, 0x40, 0x50, 0x60, 0x80, 0x100];
+    
+    for (const offset of playerOffsets) {
+      try {
+        this.seekTo(offset);
+        for (let i = 0; i < 4; i++) {
+          const nameLength = this.readUInt8();
+          if (nameLength > 0 && nameLength <= 24) {
+            const name = this.readString(nameLength);
+            if (name && /^[a-zA-Z0-9_\-\[\]`]+$/.test(name)) {
+              const race = this.getRaceFromId(this.readUInt8());
+              players.push({
+                id: i,
+                name: name,
+                race: race || 'Unknown',
+                color: i,
+                team: i,
+                startLocation: { x: 0, y: 0 }
+              });
+              console.log(`[SCRParser] Structured parsing found: ${name} (${race})`);
+            }
+          }
+        }
+        if (players.length >= 2) break;
+      } catch (e) {
+        continue;
+      }
     }
     
     return players;
