@@ -1,789 +1,749 @@
-
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-// Import jssuh for SC:R replay parsing
-import * as jssuh from 'https://esm.sh/jssuh@1.6.0'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// StarCraft Remastered Unit Database
-const UNIT_DATABASE = {
-  // Terran Units
-  0: { name: 'Marine', race: 'Terran', category: 'military', cost: { minerals: 50, gas: 0 } },
-  1: { name: 'Ghost', race: 'Terran', category: 'military', cost: { minerals: 25, gas: 75 } },
-  2: { name: 'Vulture', race: 'Terran', category: 'military', cost: { minerals: 75, gas: 0 } },
-  3: { name: 'Goliath', race: 'Terran', category: 'military', cost: { minerals: 100, gas: 50 } },
-  5: { name: 'Siege Tank', race: 'Terran', category: 'military', cost: { minerals: 150, gas: 100 } },
-  7: { name: 'SCV', race: 'Terran', category: 'worker', cost: { minerals: 50, gas: 0 } },
-  8: { name: 'Wraith', race: 'Terran', category: 'military', cost: { minerals: 150, gas: 100 } },
-  9: { name: 'Science Vessel', race: 'Terran', category: 'military', cost: { minerals: 100, gas: 225 } },
-  11: { name: 'Dropship', race: 'Terran', category: 'military', cost: { minerals: 100, gas: 100 } },
-  12: { name: 'Battlecruiser', race: 'Terran', category: 'military', cost: { minerals: 400, gas: 300 } },
-  32: { name: 'Firebat', race: 'Terran', category: 'military', cost: { minerals: 50, gas: 25 } },
-  33: { name: 'Medic', race: 'Terran', category: 'military', cost: { minerals: 50, gas: 25 } },
-  34: { name: 'Valkyrie', race: 'Terran', category: 'military', cost: { minerals: 250, gas: 125 } },
-  
-  // Protoss Units
-  64: { name: 'Probe', race: 'Protoss', category: 'worker', cost: { minerals: 50, gas: 0 } },
-  65: { name: 'Zealot', race: 'Protoss', category: 'military', cost: { minerals: 100, gas: 0 } },
-  66: { name: 'Dragoon', race: 'Protoss', category: 'military', cost: { minerals: 125, gas: 50 } },
-  67: { name: 'High Templar', race: 'Protoss', category: 'military', cost: { minerals: 50, gas: 150 } },
-  68: { name: 'Archon', race: 'Protoss', category: 'military', cost: { minerals: 100, gas: 300 } },
-  69: { name: 'Shuttle', race: 'Protoss', category: 'military', cost: { minerals: 200, gas: 0 } },
-  70: { name: 'Scout', race: 'Protoss', category: 'military', cost: { minerals: 275, gas: 125 } },
-  71: { name: 'Arbiter', race: 'Protoss', category: 'military', cost: { minerals: 100, gas: 350 } },
-  72: { name: 'Carrier', race: 'Protoss', category: 'military', cost: { minerals: 350, gas: 250 } },
-  73: { name: 'Interceptor', race: 'Protoss', category: 'military', cost: { minerals: 25, gas: 0 } },
-  74: { name: 'Dark Templar', race: 'Protoss', category: 'military', cost: { minerals: 125, gas: 100 } },
-  75: { name: 'Reaver', race: 'Protoss', category: 'military', cost: { minerals: 200, gas: 100 } },
-  76: { name: 'Observer', race: 'Protoss', category: 'military', cost: { minerals: 25, gas: 75 } },
-  77: { name: 'Scarab', race: 'Protoss', category: 'military', cost: { minerals: 15, gas: 0 } },
-  83: { name: 'Corsair', race: 'Protoss', category: 'military', cost: { minerals: 150, gas: 100 } },
-  84: { name: 'Dark Archon', race: 'Protoss', category: 'military', cost: { minerals: 250, gas: 200 } },
-  
-  // Zerg Units
-  37: { name: 'Drone', race: 'Zerg', category: 'worker', cost: { minerals: 50, gas: 0 } },
-  38: { name: 'Zergling', race: 'Zerg', category: 'military', cost: { minerals: 50, gas: 0 } },
-  39: { name: 'Hydralisk', race: 'Zerg', category: 'military', cost: { minerals: 75, gas: 25 } },
-  40: { name: 'Ultralisk', race: 'Zerg', category: 'military', cost: { minerals: 200, gas: 200 } },
-  41: { name: 'Broodling', race: 'Zerg', category: 'military', cost: { minerals: 0, gas: 0 } },
-  42: { name: 'Overlord', race: 'Zerg', category: 'supply', cost: { minerals: 100, gas: 0 } },
-  43: { name: 'Mutalisk', race: 'Zerg', category: 'military', cost: { minerals: 100, gas: 100 } },
-  44: { name: 'Guardian', race: 'Zerg', category: 'military', cost: { minerals: 100, gas: 100 } },
-  45: { name: 'Queen', race: 'Zerg', category: 'military', cost: { minerals: 100, gas: 100 } },
-  46: { name: 'Defiler', race: 'Zerg', category: 'military', cost: { minerals: 50, gas: 150 } },
-  47: { name: 'Scourge', race: 'Zerg', category: 'military', cost: { minerals: 25, gas: 75 } },
-  62: { name: 'Lurker', race: 'Zerg', category: 'military', cost: { minerals: 75, gas: 25 } },
-  103: { name: 'Devourer', race: 'Zerg', category: 'military', cost: { minerals: 100, gas: 100 } },
-  
-  // Buildings
-  106: { name: 'Command Center', race: 'Terran', category: 'building', cost: { minerals: 400, gas: 0 } },
-  107: { name: 'Supply Depot', race: 'Terran', category: 'building', cost: { minerals: 100, gas: 0 } },
-  108: { name: 'Refinery', race: 'Terran', category: 'building', cost: { minerals: 100, gas: 0 } },
-  109: { name: 'Barracks', race: 'Terran', category: 'building', cost: { minerals: 150, gas: 0 } },
-  110: { name: 'Academy', race: 'Terran', category: 'building', cost: { minerals: 150, gas: 0 } },
-  111: { name: 'Factory', race: 'Terran', category: 'building', cost: { minerals: 200, gas: 100 } },
-  112: { name: 'Starport', race: 'Terran', category: 'building', cost: { minerals: 150, gas: 100 } },
-  113: { name: 'Control Tower', race: 'Terran', category: 'building', cost: { minerals: 50, gas: 50 } },
-  154: { name: 'Nexus', race: 'Protoss', category: 'building', cost: { minerals: 400, gas: 0 } },
-  155: { name: 'Robotics Facility', race: 'Protoss', category: 'building', cost: { minerals: 200, gas: 200 } },
-  156: { name: 'Pylon', race: 'Protoss', category: 'building', cost: { minerals: 100, gas: 0 } },
-  157: { name: 'Assimilator', race: 'Protoss', category: 'building', cost: { minerals: 100, gas: 0 } },
-  159: { name: 'Gateway', race: 'Protoss', category: 'building', cost: { minerals: 150, gas: 0 } },
-  160: { name: 'Photon Cannon', race: 'Protoss', category: 'building', cost: { minerals: 150, gas: 0 } },
-  161: { name: 'Citadel of Adun', race: 'Protoss', category: 'building', cost: { minerals: 150, gas: 100 } },
-  162: { name: 'Cybernetics Core', race: 'Protoss', category: 'building', cost: { minerals: 200, gas: 0 } },
-  163: { name: 'Templar Archives', race: 'Protoss', category: 'building', cost: { minerals: 150, gas: 200 } },
-  164: { name: 'Forge', race: 'Protoss', category: 'building', cost: { minerals: 150, gas: 0 } },
-  165: { name: 'Stargate', race: 'Protoss', category: 'building', cost: { minerals: 150, gas: 150 } },
-  131: { name: 'Hatchery', race: 'Zerg', category: 'building', cost: { minerals: 300, gas: 0 } },
-  132: { name: 'Lair', race: 'Zerg', category: 'building', cost: { minerals: 150, gas: 100 } },
-  133: { name: 'Hive', race: 'Zerg', category: 'building', cost: { minerals: 200, gas: 150 } },
-  134: { name: 'Nydus Canal', race: 'Zerg', category: 'building', cost: { minerals: 150, gas: 0 } },
-  135: { name: 'Hydralisk Den', race: 'Zerg', category: 'building', cost: { minerals: 100, gas: 50 } },
-  136: { name: 'Defiler Mound', race: 'Zerg', category: 'building', cost: { minerals: 100, gas: 100 } },
-  137: { name: 'Greater Spire', race: 'Zerg', category: 'building', cost: { minerals: 100, gas: 150 } },
-  138: { name: 'Queen\'s Nest', race: 'Zerg', category: 'building', cost: { minerals: 150, gas: 100 } },
-  139: { name: 'Evolution Chamber', race: 'Zerg', category: 'building', cost: { minerals: 75, gas: 0 } },
-  140: { name: 'Ultralisk Cavern', race: 'Zerg', category: 'building', cost: { minerals: 150, gas: 200 } },
-  141: { name: 'Spire', race: 'Zerg', category: 'building', cost: { minerals: 200, gas: 150 } },
-  142: { name: 'Spawning Pool', race: 'Zerg', category: 'building', cost: { minerals: 200, gas: 0 } },
-  143: { name: 'Creep Colony', race: 'Zerg', category: 'building', cost: { minerals: 75, gas: 0 } },
-  144: { name: 'Spore Colony', race: 'Zerg', category: 'building', cost: { minerals: 75, gas: 0 } },
-  146: { name: 'Extractor', race: 'Zerg', category: 'building', cost: { minerals: 50, gas: 0 } }
-};
+// ================= SC:R REPLAY PARSER CORE =================
 
-// Command Type Database
-const COMMAND_TYPES = {
-  0x09: { name: 'Select', category: 'select' },
-  0x0A: { name: 'Shift Select', category: 'select' },
-  0x0C: { name: 'Build', category: 'build' },
-  0x0D: { name: 'Vision', category: 'other' },
-  0x13: { name: 'Hotkey', category: 'select' },
-  0x14: { name: 'Move', category: 'move' },
-  0x15: { name: 'Attack', category: 'attack' },
-  0x16: { name: 'Cancel', category: 'other' },
-  0x18: { name: 'Stop', category: 'other' },
-  0x1D: { name: 'Train', category: 'train' },
-  0x1E: { name: 'Cancel Train', category: 'other' },
-  0x21: { name: 'Unit Morph', category: 'build' },
-  0x2F: { name: 'Research', category: 'tech' },
-  0x31: { name: 'Upgrade', category: 'tech' },
-  0x34: { name: 'Building Morph', category: 'build' }
-};
+interface ReplayHeader {
+  signature: string;
+  frameCount: number;
+  saveTime: number;
+  players: Player[];
+  mapName: string;
+  gameSpeed: number;
+  gameType: number;
+}
 
-// Race names mapping
-const RACE_NAMES = ['Zerg', 'Terran', 'Protoss', 'Unknown', 'Unknown', 'Unknown', 'Random'];
+interface Player {
+  id: number;
+  name: string;
+  race: string;
+  color: number;
+  team: number;
+  startLocation: { x: number; y: number };
+}
 
-class SCRemasteredParser {
-  private data: Uint8Array;
+interface Action {
+  frame: number;
+  playerId: number;
+  actionType: string;
+  data: any;
+}
+
+interface BuildOrderItem {
+  frame: number;
+  gameTime: string;
+  supply: string;
+  action: string;
+  unitOrBuilding: string;
+}
+
+interface ParsedReplay {
+  success: boolean;
+  metadata: {
+    playerName: string;
+    playerRace: string;
+    opponentName: string;
+    opponentRace: string;
+    mapName: string;
+    matchDurationSeconds: number;
+    apm: number;
+    eapm: number;
+    gameSpeed: number;
+    date: string;
+  };
+  buildOrder: BuildOrderItem[];
+  keyMoments: string[];
+  actions: Action[];
+  analysis: {
+    strengths: string[];
+    weaknesses: string[];
+    recommendations: string[];
+  };
+}
+
+class SCRReplayParser {
+  private buffer: ArrayBuffer;
+  private view: DataView;
   private position: number = 0;
 
   constructor(buffer: ArrayBuffer) {
-    this.data = new Uint8Array(buffer);
+    this.buffer = buffer;
+    this.view = new DataView(buffer);
   }
 
-  readUInt8(): number {
-    return this.data[this.position++];
+  // ============= CORE BINARY READING METHODS =============
+  
+  private readUInt8(): number {
+    const value = this.view.getUint8(this.position);
+    this.position += 1;
+    return value;
   }
 
-  readUInt16LE(): number {
-    const value = this.data[this.position] | (this.data[this.position + 1] << 8);
+  private readUInt16LE(): number {
+    const value = this.view.getUint16(this.position, true);
     this.position += 2;
     return value;
   }
 
-  readUInt32LE(): number {
-    const value = this.data[this.position] | 
-                 (this.data[this.position + 1] << 8) |
-                 (this.data[this.position + 2] << 16) |
-                 (this.data[this.position + 3] << 24);
+  private readUInt32LE(): number {
+    const value = this.view.getUint32(this.position, true);
     this.position += 4;
-    return value >>> 0; // Convert to unsigned
+    return value;
   }
 
-  readString(length: number): string {
-    let str = '';
-    for (let i = 0; i < length; i++) {
-      const byte = this.data[this.position++];
-      if (byte === 0) break;
-      if (byte >= 32 && byte <= 126) {
-        str += String.fromCharCode(byte);
-      }
-    }
-    return str.trim();
-  }
-
-  readNullTerminatedString(maxLength: number = 256): string {
-    let str = '';
-    let length = 0;
-    while (length < maxLength && this.position < this.data.length) {
-      const byte = this.data[this.position++];
-      length++;
-      if (byte === 0) break;
-      if (byte >= 32 && byte <= 126) {
-        str += String.fromCharCode(byte);
-      }
-    }
-    return str.trim();
-  }
-
-  setPosition(pos: number): void {
-    this.position = pos;
-  }
-
-  canRead(bytes: number): boolean {
-    return this.position + bytes <= this.data.length;
-  }
-
-  parseHeader() {
-    console.log('[SCRemasteredParser] Parsing header from binary data...');
+  private readString(length: number): string {
+    const bytes = new Uint8Array(this.buffer, this.position, length);
+    this.position += length;
     
-    // Check for SC:R signature
-    this.setPosition(12);
-    const replayId = this.readString(4);
-    console.log('[SCRemasteredParser] Replay ID:', replayId);
+    // Handle UTF-8 and null-terminated strings
+    let str = '';
+    for (let i = 0; i < bytes.length; i++) {
+      if (bytes[i] === 0) break;
+      str += String.fromCharCode(bytes[i]);
+    }
     
-    if (replayId !== 'reRS' && replayId !== 'seRS') {
-      throw new Error(`Invalid SC:R replay. Expected 'reRS' or 'seRS', got: '${replayId}'`);
+    // Try to decode as UTF-8 for Korean/special characters
+    try {
+      return new TextDecoder('utf-8').decode(bytes.slice(0, str.length));
+    } catch {
+      return str;
+    }
+  }
+
+  private seekTo(position: number): void {
+    this.position = position;
+  }
+
+  private getPosition(): number {
+    return this.position;
+  }
+
+  // ============= SC:R HEADER PARSING =============
+
+  private parseHeader(): ReplayHeader {
+    console.log('[SCRParser] Starting header parse...');
+    
+    // Read signature
+    this.seekTo(0);
+    const signature = this.readString(4);
+    console.log('[SCRParser] Signature:', signature);
+
+    if (signature !== 'reRS') {
+      throw new Error(`Invalid replay signature: ${signature}. Expected 'reRS' for SC:R`);
     }
 
-    // Get frame count
-    this.setPosition(20);
-    const frames = this.readUInt32LE();
-    console.log('[SCRemasteredParser] Total frames:', frames);
+    // Read frame count (varies by version)
+    this.seekTo(8);
+    const frameCount = this.readUInt32LE();
+    console.log('[SCRParser] Frame count:', frameCount);
 
-    // Find map name
-    const mapName = this.findMapName();
-    console.log('[SCRemasteredParser] Map name:', mapName);
+    // Read save time
+    this.seekTo(12);
+    const saveTime = this.readUInt32LE();
+    
+    // Parse players section
+    const players = this.parsePlayers();
+    
+    // Parse map name
+    const mapName = this.parseMapName();
+    
+    // Read game settings
+    this.seekTo(0x1A);
+    const gameSpeed = this.readUInt8();
+    const gameType = this.readUInt8();
 
     return {
-      replayId,
-      frames,
+      signature,
+      frameCount,
+      saveTime,
+      players,
       mapName,
-      duration: this.framesToDuration(frames)
+      gameSpeed,
+      gameType
     };
   }
 
-  findMapName(): string {
-    // Try multiple offsets where map names are typically stored
-    const mapOffsets = [0x61, 0x75, 0x89, 0x95, 0xB5, 0xC5, 0xE1];
+  private parsePlayers(): Player[] {
+    console.log('[SCRParser] Parsing players...');
+    const players: Player[] = [];
     
-    for (const offset of mapOffsets) {
-      if (offset + 32 >= this.data.length) continue;
-      
-      this.setPosition(offset);
-      const mapName = this.readNullTerminatedString(32);
-      
-      if (this.isValidMapName(mapName)) {
-        console.log(`[SCRemasteredParser] Found map name at offset ${offset}: "${mapName}"`);
-        return mapName;
-      }
-    }
-
-    // Advanced search through the file
-    for (let pos = 0x50; pos < Math.min(0x400, this.data.length - 32); pos += 4) {
-      this.setPosition(pos);
-      const testName = this.readNullTerminatedString(32);
-      
-      if (this.isValidMapName(testName) && testName.length > 5) {
-        console.log(`[SCRemasteredParser] Found map name via search at ${pos}: "${testName}"`);
-        return testName;
-      }
-    }
-
-    return 'Unknown Map';
-  }
-
-  isValidMapName(name: string): boolean {
-    if (!name || name.length < 3 || name.length > 32) return false;
+    // Player data typically starts around offset 0x25
+    this.seekTo(0x25);
     
-    // Check for printable characters
-    let printableCount = 0;
-    for (let i = 0; i < name.length; i++) {
-      const char = name.charCodeAt(i);
-      if ((char >= 32 && char <= 126) || (char >= 160 && char <= 255)) {
-        printableCount++;
-      }
-    }
-    
-    if (printableCount / name.length < 0.7) return false;
-    
-    // Common invalid patterns
-    const invalidPatterns = [
-      /^\s*$/, /StarCraft/i, /Blizzard/i, /\.exe$/i, /^[0-9]+$/
-    ];
-    
-    return !invalidPatterns.some(pattern => pattern.test(name));
-  }
-
-  parsePlayers() {
-    console.log('[SCRemasteredParser] Parsing players...');
-    const players = [];
-    
-    // Try different player section offsets
-    const playerOffsets = [0x161, 0x1A1, 0x1B1, 0x181, 0x1C1, 0x19C];
-    
-    for (const offset of playerOffsets) {
-      try {
-        this.setPosition(offset);
-        const foundPlayers = this.parsePlayersAtOffset(offset);
-        
-        if (foundPlayers.length >= 2) {
-          console.log(`[SCRemasteredParser] Found ${foundPlayers.length} players at offset ${offset}`);
-          return foundPlayers;
-        }
-      } catch (error) {
-        continue;
-      }
-    }
-
-    // Fallback: create default players
-    return [
-      { name: 'Player 1', race: 'Terran', id: 0 },
-      { name: 'Player 2', race: 'Protoss', id: 1 }
-    ];
-  }
-
-  parsePlayersAtOffset(baseOffset: number) {
-    const players = [];
-    
+    // SC:R supports up to 8 players, but we'll scan for actual players
     for (let i = 0; i < 8; i++) {
-      const offset = baseOffset + (i * 36);
-      if (offset + 36 >= this.data.length) break;
-      
-      this.setPosition(offset);
-      const name = this.readString(25);
-      
-      if (this.isValidPlayerName(name)) {
+      try {
+        const playerId = this.readUInt8();
+        if (playerId === 0xFF) break; // End of players marker
+        
+        const nameLength = this.readUInt8();
+        if (nameLength === 0 || nameLength > 24) continue;
+        
+        const playerName = this.readString(nameLength);
+        if (!playerName || playerName.trim() === '') continue;
+        
+        // Read race (0=Zerg, 1=Terran, 2=Protoss, 6=Random)
         const raceId = this.readUInt8();
-        const team = this.readUInt8();
+        const race = this.getRaceFromId(raceId);
+        
+        // Read additional player data
         const color = this.readUInt8();
+        const team = this.readUInt8();
+        const startX = this.readUInt16LE();
+        const startY = this.readUInt16LE();
         
         players.push({
-          id: i,
-          name: name.trim(),
-          race: RACE_NAMES[raceId] || 'Unknown',
-          raceId,
+          id: playerId,
+          name: playerName.trim(),
+          race,
+          color,
           team,
-          color
+          startLocation: { x: startX, y: startY }
         });
+        
+        console.log(`[SCRParser] Found player: ${playerName} (${race})`);
+        
+      } catch (e) {
+        console.log(`[SCRParser] Player parsing ended at index ${i}`);
+        break;
       }
     }
     
     return players;
   }
 
-  isValidPlayerName(name: string): boolean {
-    return name && 
-           name.length >= 2 && 
-           name.length <= 24 && 
-           /^[a-zA-Z0-9_\-\[\]()]+$/.test(name) &&
-           !name.includes('Observer');
-  }
-
-  parseCommands() {
-    console.log('[SCRemasteredParser] Parsing commands...');
-    const commands = [];
+  private parseMapName(): string {
+    console.log('[SCRParser] Parsing map name...');
     
-    // Find command section
-    const commandOffset = this.findCommandSection();
-    if (!commandOffset) {
-      console.log('[SCRemasteredParser] No command section found');
-      return [];
-    }
-
-    this.setPosition(commandOffset);
-    let currentFrame = 0;
-    let commandCount = 0;
+    // Try multiple common map name locations in SC:R replays
+    const mapOffsets = [0x61, 0x65, 0x69, 0x75, 0x81];
     
-    while (this.position < this.data.length - 10 && commandCount < 10000) {
+    for (const offset of mapOffsets) {
       try {
-        // Check for frame sync
-        if (this.data[this.position] <= 0x03) {
-          const frameIncrement = this.data[this.position + 1] | (this.data[this.position + 2] << 8);
-          currentFrame += frameIncrement;
-          this.position += 3;
-          continue;
-        }
-
-        const commandId = this.readUInt8();
-        const commandInfo = COMMAND_TYPES[commandId];
+        this.seekTo(offset);
+        const nameLength = this.readUInt8();
         
-        if (commandInfo) {
-          const playerId = this.readUInt8();
-          
-          if (playerId < 12) {
-            const command = {
-              frame: currentFrame,
-              playerId,
-              commandId,
-              commandName: commandInfo.name,
-              category: commandInfo.category,
-              timestamp: this.framesToTime(currentFrame)
-            };
-
-            // Parse specific command data
-            if (commandInfo.category === 'build' || commandInfo.category === 'train') {
-              if (this.canRead(2)) {
-                const unitId = this.readUInt16LE();
-                const unit = UNIT_DATABASE[unitId];
-                if (unit) {
-                  command.unitId = unitId;
-                  command.unitName = unit.name;
-                  command.unitRace = unit.race;
-                  command.cost = unit.cost;
-                }
-              }
-            }
-
-            commands.push(command);
-            commandCount++;
+        if (nameLength > 0 && nameLength < 64) {
+          const mapName = this.readString(nameLength);
+          if (mapName && mapName.trim() && !mapName.includes('\x00')) {
+            console.log(`[SCRParser] Map found at offset ${offset}: ${mapName}`);
+            return mapName.trim();
           }
-        } else {
-          this.position++;
         }
-      } catch (error) {
-        this.position++;
+      } catch (e) {
+        continue;
       }
     }
-
-    console.log(`[SCRemasteredParser] Parsed ${commands.length} commands`);
-    return commands;
+    
+    // Fallback: scan for common map name patterns
+    return this.scanForMapName();
   }
 
-  findCommandSection(): number | null {
-    // Look for command patterns in typical locations
-    for (let pos = 0x500; pos < Math.min(this.data.length - 1000, 0x8000); pos += 16) {
-      if (this.looksLikeCommandSection(pos)) {
-        return pos;
+  private scanForMapName(): string {
+    console.log('[SCRParser] Scanning for map name...');
+    
+    // Common SC:R map names for pattern matching
+    const knownMaps = [
+      'Fighting Spirit', 'Polypoid', 'Circuit Breaker', 'Tau Cross',
+      'Jade', 'Neo Moon Glaive', 'Crossing Field', 'Gladiator',
+      'Blue Storm', 'Lost Temple', 'Big Game Hunters'
+    ];
+    
+    const searchBuffer = new Uint8Array(this.buffer.slice(0, 1024));
+    const searchString = new TextDecoder('utf-8', { fatal: false }).decode(searchBuffer);
+    
+    for (const mapName of knownMaps) {
+      if (searchString.includes(mapName)) {
+        console.log(`[SCRParser] Found known map: ${mapName}`);
+        return mapName;
       }
     }
-    return null;
+    
+    // If no known map found, try to extract any reasonable string
+    const matches = searchString.match(/[A-Za-z\s]{4,32}/g);
+    if (matches && matches.length > 0) {
+      const candidate = matches[0].trim();
+      if (candidate.length > 3) {
+        console.log(`[SCRParser] Map candidate: ${candidate}`);
+        return candidate;
+      }
+    }
+    
+    return 'Unknown Map';
   }
 
-  looksLikeCommandSection(offset: number): boolean {
-    if (offset + 128 >= this.data.length) return false;
+  private getRaceFromId(raceId: number): string {
+    switch (raceId) {
+      case 0: return 'Zerg';
+      case 1: return 'Terran';  
+      case 2: return 'Protoss';
+      case 6: return 'Random';
+      default: return 'Unknown';
+    }
+  }
+
+  // ============= ACTION STREAM PARSING =============
+
+  private parseActions(header: ReplayHeader): Action[] {
+    console.log('[SCRParser] Parsing action stream...');
+    const actions: Action[] = [];
     
-    let frameSync = 0;
-    let validCommands = 0;
+    // Find action data section (usually after header + player data)
+    let actionStart = 0x200; // Common starting point
     
-    for (let i = 0; i < 128; i++) {
-      const byte = this.data[offset + i];
+    try {
+      this.seekTo(actionStart);
+      let currentFrame = 0;
       
-      if (byte <= 0x03) frameSync++;
-      if (COMMAND_TYPES[byte]) validCommands++;
+      while (this.position < this.buffer.byteLength - 10) {
+        try {
+          const actionLength = this.readUInt8();
+          if (actionLength === 0) break;
+          if (actionLength > 50) break; // Sanity check
+          
+          const playerId = this.readUInt8();
+          const actionType = this.readUInt8();
+          
+          // Read action data
+          const actionData = new Uint8Array(actionLength - 3);
+          for (let i = 0; i < actionData.length; i++) {
+            actionData[i] = this.readUInt8();
+          }
+          
+          // Parse specific action types
+          const parsedAction = this.parseActionType(actionType, actionData);
+          
+          actions.push({
+            frame: currentFrame,
+            playerId,
+            actionType: parsedAction.type,
+            data: parsedAction.data
+          });
+          
+          // Some actions include frame increments
+          if (actionType === 0x00) {
+            currentFrame += actionData[0] || 1;
+          }
+          
+        } catch (e) {
+          break;
+        }
+      }
+      
+    } catch (e) {
+      console.log('[SCRParser] Action parsing ended:', e.message);
     }
     
-    return frameSync >= 3 && validCommands >= 2;
+    console.log(`[SCRParser] Parsed ${actions.length} actions`);
+    return actions;
   }
 
-  framesToDuration(frames: number): string {
-    const seconds = Math.floor(frames / 24); // 24 FPS for SC:R
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  private parseActionType(actionType: number, data: Uint8Array): { type: string; data: any } {
+    switch (actionType) {
+      case 0x09: // Build unit/building
+        return {
+          type: 'build',
+          data: { unitId: data[0], x: data[1], y: data[2] }
+        };
+      case 0x0A: // Train unit
+        return {
+          type: 'train',
+          data: { unitId: data[0] }
+        };
+      case 0x0C: // Move/Attack
+        return {
+          type: 'move',
+          data: { x: data[0] | (data[1] << 8), y: data[2] | (data[3] << 8) }
+        };
+      case 0x13: // Hotkey assignment
+        return {
+          type: 'hotkey',
+          data: { group: data[0], action: data[1] }
+        };
+      case 0x14: // Selection
+        return {
+          type: 'select',
+          data: { count: data[0] }
+        };
+      default:
+        return {
+          type: `unknown_${actionType.toString(16)}`,
+          data: Array.from(data)
+        };
+    }
   }
 
-  framesToTime(frame: number): string {
-    const seconds = Math.floor(frame / 24);
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  }
-}
+  // ============= BUILD ORDER EXTRACTION =============
 
-// Professional Build Order Engine
-class BuildOrderEngine {
-  static extractBuildOrder(commands: any[], players: any[]): any {
-    console.log('[BuildOrderEngine] Extracting professional build orders...');
+  private extractBuildOrder(actions: Action[], players: Player[]): BuildOrderItem[] {
+    console.log('[SCRParser] Extracting build order...');
+    const buildOrder: BuildOrderItem[] = [];
     
-    const buildOrders = {};
-    const supplyTracking = {};
-    
-    players.forEach(player => {
-      buildOrders[player.id] = [];
-      supplyTracking[player.id] = { current: 4, max: 9 }; // Starting supply
-    });
-
-    // Filter meaningful build commands
-    const buildCommands = commands.filter(cmd => 
-      ['build', 'train', 'tech'].includes(cmd.category) && 
-      cmd.unitName && 
-      !cmd.commandName.includes('Cancel')
+    const buildActions = actions.filter(a => 
+      a.actionType === 'build' || a.actionType === 'train'
     );
-
-    buildCommands.forEach(cmd => {
-      const playerId = cmd.playerId;
-      if (!buildOrders[playerId]) return;
-
-      const supply = supplyTracking[playerId];
-      const buildItem = {
-        supply: `${supply.current}/${supply.max}`,
-        timestamp: cmd.timestamp,
-        action: cmd.commandName,
-        unitName: cmd.unitName,
-        category: this.categorizeUnit(cmd.unitName),
-        cost: cmd.cost || { minerals: 0, gas: 0 },
-        frame: cmd.frame
-      };
-
-      // Update supply tracking
-      if (this.isSupplyProvider(cmd.unitName)) {
-        supply.max += 8;
-      } else if (this.consumesSupply(cmd.unitName)) {
-        supply.current += this.getSupplyConsumption(cmd.unitName);
-      }
-
-      buildOrders[playerId].push(buildItem);
-    });
-
-    return buildOrders;
-  }
-
-  static categorizeUnit(unitName: string): string {
-    const categories = {
-      worker: ['SCV', 'Probe', 'Drone'],
-      supply: ['Supply Depot', 'Pylon', 'Overlord'],
-      military: ['Marine', 'Zealot', 'Zergling', 'Dragoon', 'Hydralisk'],
-      tech: ['Academy', 'Cybernetics Core', 'Spawning Pool', 'Factory', 'Stargate'],
-      economy: ['Command Center', 'Nexus', 'Hatchery', 'Refinery', 'Assimilator', 'Extractor']
-    };
-
-    for (const [category, units] of Object.entries(categories)) {
-      if (units.includes(unitName)) return category;
-    }
-    return 'other';
-  }
-
-  static isSupplyProvider(unitName: string): boolean {
-    return ['Supply Depot', 'Pylon', 'Overlord'].includes(unitName);
-  }
-
-  static consumesSupply(unitName: string): boolean {
-    const workers = ['SCV', 'Probe', 'Drone'];
-    const military = ['Marine', 'Zealot', 'Zergling', 'Dragoon', 'Hydralisk'];
-    return workers.includes(unitName) || military.includes(unitName);
-  }
-
-  static getSupplyConsumption(unitName: string): number {
-    const supplyMap = {
-      'SCV': 1, 'Probe': 1, 'Drone': 1,
-      'Marine': 1, 'Zealot': 2, 'Zergling': 1,
-      'Dragoon': 2, 'Hydralisk': 1
-    };
-    return supplyMap[unitName] || 1;
-  }
-}
-
-// AI Coaching Engine
-class CoachingEngine {
-  static analyzePerformance(buildOrders: any, commands: any[], players: any[]): any {
-    console.log('[CoachingEngine] Analyzing performance for coaching insights...');
     
-    const analysis = {};
+    let supply = 4; // Starting supply for most races
     
-    players.forEach(player => {
-      const playerId = player.id;
-      const playerCommands = commands.filter(cmd => cmd.playerId === playerId);
-      const playerBuildOrder = buildOrders[playerId] || [];
+    for (const action of buildActions) {
+      const gameTime = this.framesToGameTime(action.frame);
+      const unit = this.getUnitName(action.data.unitId);
       
-      analysis[playerId] = {
-        playerName: player.name,
-        race: player.race,
-        apm: this.calculateAPM(playerCommands),
-        eapm: this.calculateEAPM(playerCommands),
-        buildOrderAnalysis: this.analyzeBuildOrder(playerBuildOrder, player.race),
-        strengths: this.identifyStrengths(playerCommands, playerBuildOrder),
-        weaknesses: this.identifyWeaknesses(playerCommands, playerBuildOrder),
-        recommendations: this.generateRecommendations(playerCommands, playerBuildOrder, player.race)
-      };
-    });
+      if (unit !== 'Unknown') {
+        const supplyString = `${supply}`;
+        
+        buildOrder.push({
+          frame: action.frame,
+          gameTime,
+          supply: supplyString,
+          action: action.actionType,
+          unitOrBuilding: unit
+        });
+        
+        // Update supply count (simplified)
+        if (unit.includes('Pylon')) supply += 8;
+        if (unit.includes('Supply Depot')) supply += 8;
+        if (unit.includes('Overlord')) supply += 8;
+      }
+    }
     
+    return buildOrder.slice(0, 20); // First 20 build orders
+  }
+
+  private getUnitName(unitId: number): string {
+    const units: { [key: number]: string } = {
+      // Protoss
+      64: 'Probe',
+      65: 'Zealot', 
+      66: 'Dragoon',
+      71: 'Arbiter',
+      72: 'Carrier',
+      106: 'Pylon',
+      107: 'Gateway',
+      108: 'Forge',
+      
+      // Terran
+      7: 'SCV',
+      0: 'Marine',
+      2: 'Vulture',
+      3: 'Goliath',
+      106: 'Supply Depot',
+      109: 'Barracks',
+      110: 'Engineering Bay',
+      
+      // Zerg
+      37: 'Drone',
+      38: 'Zergling',
+      39: 'Hydralisk',
+      40: 'Ultralisk',
+      131: 'Hatchery',
+      132: 'Spawning Pool',
+      133: 'Evolution Chamber'
+    };
+    
+    return units[unitId] || 'Unknown';
+  }
+
+  private framesToGameTime(frames: number): string {
+    // SC:R runs at ~23.81 FPS
+    const seconds = Math.floor(frames / 23.81);
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  }
+
+  // ============= ANALYSIS ENGINE =============
+
+  private analyzeReplay(header: ReplayHeader, buildOrder: BuildOrderItem[], actions: Action[]): ParsedReplay['analysis'] {
+    const analysis = {
+      strengths: [] as string[],
+      weaknesses: [] as string[],
+      recommendations: [] as string[]
+    };
+
+    // APM Analysis
+    const totalActions = actions.length;
+    const gameDuration = header.frameCount / 23.81 / 60; // minutes
+    const apm = Math.round(totalActions / gameDuration);
+
+    if (apm > 200) {
+      analysis.strengths.push('Excellent APM - sehr hohe Aktionsrate');
+    } else if (apm < 100) {
+      analysis.weaknesses.push('Niedrige APM - mehr Aktionen pro Minute benötigt');
+      analysis.recommendations.push('Übe Hotkeys und schnellere Kommandoeingabe');
+    }
+
+    // Build Order Analysis
+    if (buildOrder.length > 0) {
+      const firstBuild = buildOrder[0];
+      if (firstBuild.supply === '9' && firstBuild.unitOrBuilding.includes('Pylon')) {
+        analysis.strengths.push('Guter früher Pylon-Timing');
+      }
+      
+      if (buildOrder.length < 8) {
+        analysis.weaknesses.push('Unvollständige Build Order erkannt');
+        analysis.recommendations.push('Plane deine Baustruktur im Voraus');
+      }
+    }
+
+    // Action Diversity
+    const actionTypes = [...new Set(actions.map(a => a.actionType))];
+    if (actionTypes.length > 5) {
+      analysis.strengths.push('Gute Aktionsvielfalt');
+    } else {
+      analysis.weaknesses.push('Begrenzte Aktionsvielfalt');
+      analysis.recommendations.push('Nutze mehr verschiedene Kommandos und Strategien');
+    }
+
     return analysis;
   }
 
-  static calculateAPM(commands: any[]): number {
-    if (commands.length === 0) return 0;
-    const maxFrame = Math.max(...commands.map(c => c.frame));
-    const gameMinutes = maxFrame / 24 / 60;
-    return Math.round(commands.length / gameMinutes);
+  // ============= MAIN PARSE METHOD =============
+
+  public parse(): ParsedReplay {
+    try {
+      console.log('[SCRParser] Starting complete replay analysis...');
+      
+      // Parse header and basic info
+      const header = this.parseHeader();
+      
+      // Extract players (assume 1v1 for now)
+      const players = header.players.filter(p => p.name && p.name.trim() !== '');
+      if (players.length < 2) {
+        throw new Error('Invalid replay: Less than 2 players found');
+      }
+
+      const player1 = players[0];
+      const player2 = players[1];
+      
+      // Parse actions
+      const actions = this.parseActions(header);
+      
+      // Extract build order
+      const buildOrder = this.extractBuildOrder(actions, players);
+      
+      // Generate analysis
+      const analysis = this.analyzeReplay(header, buildOrder, actions);
+      
+      // Calculate game metrics
+      const gameDurationSeconds = Math.round(header.frameCount / 23.81);
+      const totalActions = actions.length;
+      const apm = Math.round((totalActions / gameDurationSeconds) * 60);
+      const eapm = Math.round(apm * 0.85); // Estimated effective APM
+      
+      // Generate key moments
+      const keyMoments = this.generateKeyMoments(actions, buildOrder);
+      
+      const result: ParsedReplay = {
+        success: true,
+        metadata: {
+          playerName: player1.name,
+          playerRace: player1.race,
+          opponentName: player2.name,
+          opponentRace: player2.race,
+          mapName: header.mapName,
+          matchDurationSeconds: gameDurationSeconds,
+          apm,
+          eapm,
+          gameSpeed: header.gameSpeed,
+          date: new Date(header.saveTime * 1000).toISOString()
+        },
+        buildOrder,
+        keyMoments,
+        actions: actions.slice(0, 100), // Limit for response size
+        analysis
+      };
+      
+      console.log('[SCRParser] Parse completed successfully');
+      console.log('[SCRParser] Extracted data:', {
+        players: players.map(p => `${p.name} (${p.race})`),
+        map: header.mapName,
+        duration: `${Math.floor(gameDurationSeconds/60)}:${(gameDurationSeconds%60).toString().padStart(2, '0')}`,
+        apm,
+        buildOrderLength: buildOrder.length
+      });
+      
+      return result;
+      
+    } catch (error) {
+      console.error('[SCRParser] Parse failed:', error);
+      
+      return {
+        success: false,
+        metadata: {
+          playerName: 'Parse Error',
+          playerRace: 'Unknown',
+          opponentName: 'Parse Error', 
+          opponentRace: 'Unknown',
+          mapName: 'Parse Failed',
+          matchDurationSeconds: 0,
+          apm: 0,
+          eapm: 0,
+          gameSpeed: 0,
+          date: new Date().toISOString()
+        },
+        buildOrder: [],
+        keyMoments: [`Parse Error: ${error.message}`],
+        actions: [],
+        analysis: {
+          strengths: [],
+          weaknesses: ['Replay konnte nicht geparst werden'],
+          recommendations: ['Überprüfe die .rep-Datei auf Kompatibilität']
+        }
+      };
+    }
   }
 
-  static calculateEAPM(commands: any[]): number {
-    const effectiveCommands = commands.filter(cmd => 
-      !cmd.commandName.includes('Cancel') && 
-      !['Select', 'Shift Select'].includes(cmd.commandName)
+  private generateKeyMoments(actions: Action[], buildOrder: BuildOrderItem[]): string[] {
+    const moments: string[] = [];
+    
+    // First build
+    if (buildOrder.length > 0) {
+      const first = buildOrder[0];
+      moments.push(`Erstes ${first.unitOrBuilding} bei ${first.gameTime}`);
+    }
+    
+    // Early game actions
+    const earlyActions = actions.filter(a => a.frame < 2000); // First ~90 seconds
+    if (earlyActions.length > 50) {
+      moments.push('Aktive frühe Spielphase');
+    }
+    
+    // Mid game detection
+    const midGameBuilds = buildOrder.filter(b => 
+      b.unitOrBuilding.includes('Core') || 
+      b.unitOrBuilding.includes('Factory') ||
+      b.unitOrBuilding.includes('Lair')
     );
     
-    if (effectiveCommands.length === 0) return 0;
-    const maxFrame = Math.max(...commands.map(c => c.frame));
-    const gameMinutes = maxFrame / 24 / 60;
-    return Math.round(effectiveCommands.length / gameMinutes);
-  }
-
-  static analyzeBuildOrder(buildOrder: any[], race: string): any {
-    if (buildOrder.length === 0) return { strategy: 'Unknown', timing: 'Unknown' };
-
-    const first10 = buildOrder.slice(0, 10);
-    const strategy = this.identifyStrategy(first10, race);
-    const timing = this.analyzeTiming(buildOrder);
-    
-    return { strategy, timing, efficiency: this.calculateBuildEfficiency(buildOrder) };
-  }
-
-  static identifyStrategy(earlyBuild: any[], race: string): string {
-    const buildNames = earlyBuild.map(item => item.unitName);
-    
-    if (race === 'Protoss') {
-      if (buildNames.includes('Forge') && buildNames.indexOf('Forge') < 5) return 'Forge Fast Expand';
-      if (buildNames.filter(name => name === 'Gateway').length >= 2) return '2-Gate Rush';
-      if (buildNames.includes('Cybernetics Core')) return 'Tech Build';
-    } else if (race === 'Terran') {
-      if (buildNames.includes('Barracks') && buildNames.indexOf('Barracks') < 4) return 'Barracks First';
-      if (buildNames.includes('Factory')) return 'Factory Build';
-    } else if (race === 'Zerg') {
-      if (buildNames.includes('Spawning Pool') && buildNames.indexOf('Spawning Pool') < 4) return 'Pool First';
-      if (buildNames.includes('Hatchery') && buildNames.indexOf('Hatchery') < 4) return 'Hatch First';
+    if (midGameBuilds.length > 0) {
+      moments.push(`Tech-Ausbau erkannt bei ${midGameBuilds[0].gameTime}`);
     }
     
-    return 'Standard';
-  }
-
-  static analyzeTiming(buildOrder: any[]): string {
-    if (buildOrder.length === 0) return 'No data';
-    
-    const firstMilitary = buildOrder.find(item => item.category === 'military');
-    if (firstMilitary) {
-      const timing = this.parseTimestamp(firstMilitary.timestamp);
-      if (timing < 180) return 'Rush timing';
-      if (timing < 300) return 'Standard timing';
-      return 'Late timing';
-    }
-    
-    return 'Economic focus';
-  }
-
-  static calculateBuildEfficiency(buildOrder: any[]): number {
-    if (buildOrder.length === 0) return 0;
-    
-    // Simple efficiency based on resource usage and timing
-    let efficiency = 100;
-    let previousTime = 0;
-    
-    buildOrder.forEach(item => {
-      const currentTime = this.parseTimestamp(item.timestamp);
-      const timeDiff = currentTime - previousTime;
-      
-      // Penalize large gaps in build order
-      if (timeDiff > 30) efficiency -= 5;
-      
-      previousTime = currentTime;
-    });
-    
-    return Math.max(0, efficiency);
-  }
-
-  static identifyStrengths(commands: any[], buildOrder: any[]): string[] {
-    const strengths = [];
-    
-    const apm = this.calculateAPM(commands);
-    if (apm > 150) strengths.push('High APM');
-    
-    const eapm = this.calculateEAPM(commands);
-    if (eapm > 100) strengths.push('Good action efficiency');
-    
-    if (buildOrder.length > 15) strengths.push('Consistent macro');
-    
-    const earlyWorkers = buildOrder.filter(item => 
-      item.category === 'worker' && this.parseTimestamp(item.timestamp) < 300
-    );
-    if (earlyWorkers.length >= 5) strengths.push('Good early economy');
-    
-    return strengths;
-  }
-
-  static identifyWeaknesses(commands: any[], buildOrder: any[]): string[] {
-    const weaknesses = [];
-    
-    const apm = this.calculateAPM(commands);
-    if (apm < 80) weaknesses.push('Low APM - practice faster execution');
-    
-    const cancelCommands = commands.filter(cmd => cmd.commandName.includes('Cancel'));
-    if (cancelCommands.length > commands.length * 0.1) {
-      weaknesses.push('Too many cancelled actions - improve decision making');
-    }
-    
-    const supplyItems = buildOrder.filter(item => item.category === 'supply');
-    if (supplyItems.length < buildOrder.length * 0.15) {
-      weaknesses.push('Insufficient supply buildings - avoid supply blocks');
-    }
-    
-    return weaknesses;
-  }
-
-  static generateRecommendations(commands: any[], buildOrder: any[], race: string): string[] {
-    const recommendations = [];
-    
-    const apm = this.calculateAPM(commands);
-    if (apm < 100) recommendations.push('Practice hotkeys and faster unit production');
-    
-    const workerCount = buildOrder.filter(item => item.category === 'worker').length;
-    if (workerCount < 20) recommendations.push('Build more workers for better economy');
-    
-    const firstMilitary = buildOrder.find(item => item.category === 'military');
-    if (firstMilitary && this.parseTimestamp(firstMilitary.timestamp) > 300) {
-      recommendations.push('Consider earlier military production for map control');
-    }
-    
-    if (race === 'Protoss') {
-      const pylons = buildOrder.filter(item => item.unitName === 'Pylon').length;
-      if (pylons < 3) recommendations.push('Build more Pylons to avoid supply blocks');
-    }
-    
-    return recommendations;
-  }
-
-  static parseTimestamp(timestamp: string): number {
-    const [minutes, seconds] = timestamp.split(':').map(Number);
-    return minutes * 60 + seconds;
+    return moments;
   }
 }
 
+// ================= EDGE FUNCTION HANDLER =================
+
 serve(async (req) => {
-  // Handle CORS preflight requests
+  console.log('[parseReplay] Starting SC:R replay analysis...');
+  
+  // Handle CORS
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log('[parseReplay] Starting SC:R replay analysis...');
-    
+    // Get file from request
     const formData = await req.formData();
     const file = formData.get('file') as File;
+    const fileName = formData.get('fileName') as string || 'unknown.rep';
     
     if (!file) {
       throw new Error('No file provided');
     }
 
-    console.log('[parseReplay] File received:', file.name, file.size, 'bytes');
+    console.log(`[parseReplay] Processing file: ${fileName} (${file.size} bytes)`);
     
-    // Read file buffer
+    // Validate file
+    if (!fileName.toLowerCase().endsWith('.rep')) {
+      throw new Error('Invalid file type. Only .rep files are supported.');
+    }
+    
+    if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      throw new Error('File too large. Maximum size is 5MB.');
+    }
+    
+    // Read file as ArrayBuffer
     const buffer = await file.arrayBuffer();
-    console.log('[parseReplay] Buffer size:', buffer.byteLength);
+    console.log(`[parseReplay] File loaded, buffer size: ${buffer.byteLength} bytes`);
     
-    // Parse with enhanced SC:R parser
-    const parser = new SCRemasteredParser(buffer);
+    // Parse replay using our custom SC:R parser
+    const parser = new SCRReplayParser(buffer);
+    const parseResult = parser.parse();
     
-    // Parse header
-    const header = parser.parseHeader();
-    console.log('[parseReplay] Header:', header);
+    if (!parseResult.success) {
+      throw new Error('Failed to parse replay file');
+    }
     
-    // Parse players
-    const players = parser.parsePlayers();
-    console.log('[parseReplay] Players:', players);
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Parse commands
-    const commands = parser.parseCommands();
-    console.log('[parseReplay] Commands:', commands.length);
-    
-    // Extract build orders
-    const buildOrders = BuildOrderEngine.extractBuildOrder(commands, players);
-    console.log('[parseReplay] Build orders extracted');
-    
-    // Generate coaching analysis
-    const analysis = CoachingEngine.analyzePerformance(buildOrders, commands, players);
-    console.log('[parseReplay] Performance analysis complete');
-    
-    // Format response
-    const result = {
-      success: true,
-      data: {
-        // Basic match info
-        map_name: header.mapName,
-        duration: header.duration,
-        total_frames: header.frames,
-        
-        // Players
-        players: players.map(p => ({
-          name: p.name,
-          race: p.race,
-          id: p.id
-        })),
-        
-        // Analysis data for each player
-        analysis: Object.entries(analysis).reduce((acc, [playerId, data]: [string, any]) => {
-          acc[playerId] = {
-            player_name: data.playerName,
-            race: data.race,
-            apm: data.apm,
-            eapm: data.eapm,
-            build_order: buildOrders[playerId] || [],
-            strengths: data.strengths,
-            weaknesses: data.weaknesses,
-            recommendations: data.recommendations,
-            build_analysis: data.buildOrderAnalysis
-          };
-          return acc;
-        }, {} as any),
-        
-        // Raw data for debugging
-        raw_commands: commands.slice(0, 100), // First 100 commands for debug
-        parsing_stats: {
-          commands_parsed: commands.length,
-          players_found: players.length,
-          build_items_extracted: Object.values(buildOrders).reduce((sum: number, bo: any) => sum + bo.length, 0)
-        }
-      }
-    };
+    // Store replay in database
+    const { data: replayData, error: replayError } = await supabase
+      .from('replays')
+      .insert({
+        filename: fileName,
+        original_filename: fileName,
+        player_name: parseResult.metadata.playerName,
+        opponent_name: parseResult.metadata.opponentName,
+        player_race: parseResult.metadata.playerRace,
+        opponent_race: parseResult.metadata.opponentRace,
+        map: parseResult.metadata.mapName,
+        duration: `${Math.floor(parseResult.metadata.matchDurationSeconds/60)}:${(parseResult.metadata.matchDurationSeconds%60).toString().padStart(2, '0')}`,
+        apm: parseResult.metadata.apm,
+        eapm: parseResult.metadata.eapm,
+        matchup: `${parseResult.metadata.playerRace} vs ${parseResult.metadata.opponentRace}`,
+        result: 'Unknown', // Would need game outcome parsing
+        date: parseResult.metadata.date,
+        user_id: '00000000-0000-0000-0000-000000000000' // Placeholder
+      })
+      .select()
+      .single();
 
-    console.log('[parseReplay] Analysis complete, returning structured data');
+    if (replayError) {
+      console.log('[parseReplay] Database insert failed:', replayError);
+    } else {
+      console.log('[parseReplay] Replay stored in database:', replayData?.id);
+    }
     
-    return new Response(JSON.stringify(result), {
+    // Store analysis results
+    if (replayData?.id) {
+      const { error: analysisError } = await supabase
+        .from('analysis_results')
+        .insert({
+          replay_id: replayData.id,
+          user_id: '00000000-0000-0000-0000-000000000000',
+          build_order: parseResult.buildOrder,
+          strengths: parseResult.analysis.strengths,
+          weaknesses: parseResult.analysis.weaknesses,
+          recommendations: parseResult.analysis.recommendations
+        });
+        
+      if (analysisError) {
+        console.log('[parseReplay] Analysis storage failed:', analysisError);
+      }
+    }
+    
+    // Return complete analysis
+    const response = {
+      success: true,
+      replayId: replayData?.id || 'temp-id',
+      playerName: parseResult.metadata.playerName,
+      playerRace: parseResult.metadata.playerRace,
+      opponentName: parseResult.metadata.opponentName,
+      opponentRace: parseResult.metadata.opponentRace,
+      mapName: parseResult.metadata.mapName,
+      matchDurationSeconds: parseResult.metadata.matchDurationSeconds,
+      apm: parseResult.metadata.apm,
+      eapm: parseResult.metadata.eapm,
+      buildOrder: parseResult.buildOrder,
+      keyMoments: parseResult.keyMoments,
+      analysis: parseResult.analysis,
+      message: 'SC:R Replay erfolgreich analysiert!'
+    };
+    
+    console.log('[parseReplay] Analysis complete, returning results');
+    
+    return new Response(JSON.stringify(response), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
@@ -793,7 +753,20 @@ serve(async (req) => {
     return new Response(JSON.stringify({
       success: false,
       error: error.message,
-      details: 'Failed to parse SC:R replay file'
+      playerName: 'Parse Error',
+      playerRace: 'Unknown',
+      opponentName: 'Parse Error',
+      opponentRace: 'Unknown', 
+      mapName: 'Parse Failed',
+      apm: 0,
+      eapm: 0,
+      buildOrder: [],
+      keyMoments: [`Fehler: ${error.message}`],
+      analysis: {
+        strengths: [],
+        weaknesses: ['Replay konnte nicht verarbeitet werden'],
+        recommendations: ['Überprüfe die .rep-Datei und versuche es erneut']
+      }
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

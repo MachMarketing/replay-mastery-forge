@@ -1,25 +1,32 @@
 
 import React, { useState } from 'react';
-import { useEnhancedReplayParser } from '@/hooks/useEnhancedReplayParser';
+import { useEnhancedReplayParser, type EnhancedReplayData } from '@/hooks/useEnhancedReplayParser';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import UploadBox from '@/components/UploadBox';
-import { HybridParsingResult } from '@/hooks/useHybridReplayParser';
 import ProAnalysisDashboard from '@/components/analysis/ProAnalysisDashboard';
-import ReplayComparisonTool from '@/components/analysis/ReplayComparisonTool';
 
 const UploadPage: React.FC = () => {
-  const [analysisData, setAnalysisData] = useState<HybridParsingResult | null>(null);
+  const [analysisData, setAnalysisData] = useState<EnhancedReplayData | null>(null);
+  const { parseReplay, isLoading } = useEnhancedReplayParser();
 
-  const handleUploadComplete = async (file: File, replayData: HybridParsingResult) => {
-    console.log('[UploadPage] Received hybrid parsing result:', {
-      playerCount: replayData.metadata.players.length,
-      mapName: replayData.metadata.header.mapName,
-      hasServerAnalysis: !!replayData.serverAnalysis,
-      replayId: replayData.replayId
+  const handleUploadComplete = async (file: File) => {
+    console.log('[UploadPage] Starting enhanced replay analysis for:', file.name);
+    
+    const result = await parseReplay(file);
+    
+    console.log('[UploadPage] Enhanced parsing result:', {
+      success: result.success,
+      playerName: result.playerName,
+      playerRace: result.playerRace,
+      opponentName: result.opponentName,
+      opponentRace: result.opponentRace,
+      mapName: result.mapName,
+      apm: result.apm,
+      buildOrderLength: result.buildOrder.length
     });
     
-    setAnalysisData(replayData);
+    setAnalysisData(result);
   };
 
   return (
@@ -51,7 +58,7 @@ const UploadPage: React.FC = () => {
               </div>
             </div>
           ) : (
-            <UploadBox onUploadComplete={handleUploadComplete} />
+            <UploadBox onUploadComplete={handleUploadComplete} isLoading={isLoading} />
           )}
         </div>
       </div>
