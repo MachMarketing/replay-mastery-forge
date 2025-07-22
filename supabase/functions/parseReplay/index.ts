@@ -1,204 +1,695 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-// Note: jssuh has CommonJS dependencies that don't work in Deno Edge Functions
-// We'll use the manual parser as primary method
-import { 
-  extractUnitNameFromCommand, 
-  inferActionFromCommand, 
-  categorizeUnit, 
-  getUnitCost,
-  calculateBuildEfficiency,
-  getStartingSupplyForRace,
-  getStartingSupplyUsedForRace,
-  isSupplyProvider,
-  getSupplyProvided,
-  getTimingPhase,
-  getStrategicPriority,
-  getUnitPurpose
-} from './buildOrderUtils.ts';
 
-// SC:R Binary Reader for manual parsing fallback
-class BinaryReader {
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+// StarCraft Remastered Unit Database
+const UNIT_DATABASE = {
+  // Terran Units
+  0: { name: 'Marine', race: 'Terran', category: 'military', cost: { minerals: 50, gas: 0 } },
+  1: { name: 'Ghost', race: 'Terran', category: 'military', cost: { minerals: 25, gas: 75 } },
+  2: { name: 'Vulture', race: 'Terran', category: 'military', cost: { minerals: 75, gas: 0 } },
+  3: { name: 'Goliath', race: 'Terran', category: 'military', cost: { minerals: 100, gas: 50 } },
+  5: { name: 'Siege Tank', race: 'Terran', category: 'military', cost: { minerals: 150, gas: 100 } },
+  7: { name: 'SCV', race: 'Terran', category: 'worker', cost: { minerals: 50, gas: 0 } },
+  8: { name: 'Wraith', race: 'Terran', category: 'military', cost: { minerals: 150, gas: 100 } },
+  9: { name: 'Science Vessel', race: 'Terran', category: 'military', cost: { minerals: 100, gas: 225 } },
+  11: { name: 'Dropship', race: 'Terran', category: 'military', cost: { minerals: 100, gas: 100 } },
+  12: { name: 'Battlecruiser', race: 'Terran', category: 'military', cost: { minerals: 400, gas: 300 } },
+  32: { name: 'Firebat', race: 'Terran', category: 'military', cost: { minerals: 50, gas: 25 } },
+  33: { name: 'Medic', race: 'Terran', category: 'military', cost: { minerals: 50, gas: 25 } },
+  34: { name: 'Valkyrie', race: 'Terran', category: 'military', cost: { minerals: 250, gas: 125 } },
+  
+  // Protoss Units
+  64: { name: 'Probe', race: 'Protoss', category: 'worker', cost: { minerals: 50, gas: 0 } },
+  65: { name: 'Zealot', race: 'Protoss', category: 'military', cost: { minerals: 100, gas: 0 } },
+  66: { name: 'Dragoon', race: 'Protoss', category: 'military', cost: { minerals: 125, gas: 50 } },
+  67: { name: 'High Templar', race: 'Protoss', category: 'military', cost: { minerals: 50, gas: 150 } },
+  68: { name: 'Archon', race: 'Protoss', category: 'military', cost: { minerals: 100, gas: 300 } },
+  69: { name: 'Shuttle', race: 'Protoss', category: 'military', cost: { minerals: 200, gas: 0 } },
+  70: { name: 'Scout', race: 'Protoss', category: 'military', cost: { minerals: 275, gas: 125 } },
+  71: { name: 'Arbiter', race: 'Protoss', category: 'military', cost: { minerals: 100, gas: 350 } },
+  72: { name: 'Carrier', race: 'Protoss', category: 'military', cost: { minerals: 350, gas: 250 } },
+  73: { name: 'Interceptor', race: 'Protoss', category: 'military', cost: { minerals: 25, gas: 0 } },
+  74: { name: 'Dark Templar', race: 'Protoss', category: 'military', cost: { minerals: 125, gas: 100 } },
+  75: { name: 'Reaver', race: 'Protoss', category: 'military', cost: { minerals: 200, gas: 100 } },
+  76: { name: 'Observer', race: 'Protoss', category: 'military', cost: { minerals: 25, gas: 75 } },
+  77: { name: 'Scarab', race: 'Protoss', category: 'military', cost: { minerals: 15, gas: 0 } },
+  83: { name: 'Corsair', race: 'Protoss', category: 'military', cost: { minerals: 150, gas: 100 } },
+  84: { name: 'Dark Archon', race: 'Protoss', category: 'military', cost: { minerals: 250, gas: 200 } },
+  
+  // Zerg Units
+  37: { name: 'Drone', race: 'Zerg', category: 'worker', cost: { minerals: 50, gas: 0 } },
+  38: { name: 'Zergling', race: 'Zerg', category: 'military', cost: { minerals: 50, gas: 0 } },
+  39: { name: 'Hydralisk', race: 'Zerg', category: 'military', cost: { minerals: 75, gas: 25 } },
+  40: { name: 'Ultralisk', race: 'Zerg', category: 'military', cost: { minerals: 200, gas: 200 } },
+  41: { name: 'Broodling', race: 'Zerg', category: 'military', cost: { minerals: 0, gas: 0 } },
+  42: { name: 'Overlord', race: 'Zerg', category: 'supply', cost: { minerals: 100, gas: 0 } },
+  43: { name: 'Mutalisk', race: 'Zerg', category: 'military', cost: { minerals: 100, gas: 100 } },
+  44: { name: 'Guardian', race: 'Zerg', category: 'military', cost: { minerals: 100, gas: 100 } },
+  45: { name: 'Queen', race: 'Zerg', category: 'military', cost: { minerals: 100, gas: 100 } },
+  46: { name: 'Defiler', race: 'Zerg', category: 'military', cost: { minerals: 50, gas: 150 } },
+  47: { name: 'Scourge', race: 'Zerg', category: 'military', cost: { minerals: 25, gas: 75 } },
+  62: { name: 'Lurker', race: 'Zerg', category: 'military', cost: { minerals: 75, gas: 25 } },
+  103: { name: 'Devourer', race: 'Zerg', category: 'military', cost: { minerals: 100, gas: 100 } },
+  
+  // Buildings
+  106: { name: 'Command Center', race: 'Terran', category: 'building', cost: { minerals: 400, gas: 0 } },
+  107: { name: 'Supply Depot', race: 'Terran', category: 'building', cost: { minerals: 100, gas: 0 } },
+  108: { name: 'Refinery', race: 'Terran', category: 'building', cost: { minerals: 100, gas: 0 } },
+  109: { name: 'Barracks', race: 'Terran', category: 'building', cost: { minerals: 150, gas: 0 } },
+  110: { name: 'Academy', race: 'Terran', category: 'building', cost: { minerals: 150, gas: 0 } },
+  111: { name: 'Factory', race: 'Terran', category: 'building', cost: { minerals: 200, gas: 100 } },
+  112: { name: 'Starport', race: 'Terran', category: 'building', cost: { minerals: 150, gas: 100 } },
+  113: { name: 'Control Tower', race: 'Terran', category: 'building', cost: { minerals: 50, gas: 50 } },
+  154: { name: 'Nexus', race: 'Protoss', category: 'building', cost: { minerals: 400, gas: 0 } },
+  155: { name: 'Robotics Facility', race: 'Protoss', category: 'building', cost: { minerals: 200, gas: 200 } },
+  156: { name: 'Pylon', race: 'Protoss', category: 'building', cost: { minerals: 100, gas: 0 } },
+  157: { name: 'Assimilator', race: 'Protoss', category: 'building', cost: { minerals: 100, gas: 0 } },
+  159: { name: 'Gateway', race: 'Protoss', category: 'building', cost: { minerals: 150, gas: 0 } },
+  160: { name: 'Photon Cannon', race: 'Protoss', category: 'building', cost: { minerals: 150, gas: 0 } },
+  161: { name: 'Citadel of Adun', race: 'Protoss', category: 'building', cost: { minerals: 150, gas: 100 } },
+  162: { name: 'Cybernetics Core', race: 'Protoss', category: 'building', cost: { minerals: 200, gas: 0 } },
+  163: { name: 'Templar Archives', race: 'Protoss', category: 'building', cost: { minerals: 150, gas: 200 } },
+  164: { name: 'Forge', race: 'Protoss', category: 'building', cost: { minerals: 150, gas: 0 } },
+  165: { name: 'Stargate', race: 'Protoss', category: 'building', cost: { minerals: 150, gas: 150 } },
+  131: { name: 'Hatchery', race: 'Zerg', category: 'building', cost: { minerals: 300, gas: 0 } },
+  132: { name: 'Lair', race: 'Zerg', category: 'building', cost: { minerals: 150, gas: 100 } },
+  133: { name: 'Hive', race: 'Zerg', category: 'building', cost: { minerals: 200, gas: 150 } },
+  134: { name: 'Nydus Canal', race: 'Zerg', category: 'building', cost: { minerals: 150, gas: 0 } },
+  135: { name: 'Hydralisk Den', race: 'Zerg', category: 'building', cost: { minerals: 100, gas: 50 } },
+  136: { name: 'Defiler Mound', race: 'Zerg', category: 'building', cost: { minerals: 100, gas: 100 } },
+  137: { name: 'Greater Spire', race: 'Zerg', category: 'building', cost: { minerals: 100, gas: 150 } },
+  138: { name: 'Queen\'s Nest', race: 'Zerg', category: 'building', cost: { minerals: 150, gas: 100 } },
+  139: { name: 'Evolution Chamber', race: 'Zerg', category: 'building', cost: { minerals: 75, gas: 0 } },
+  140: { name: 'Ultralisk Cavern', race: 'Zerg', category: 'building', cost: { minerals: 150, gas: 200 } },
+  141: { name: 'Spire', race: 'Zerg', category: 'building', cost: { minerals: 200, gas: 150 } },
+  142: { name: 'Spawning Pool', race: 'Zerg', category: 'building', cost: { minerals: 200, gas: 0 } },
+  143: { name: 'Creep Colony', race: 'Zerg', category: 'building', cost: { minerals: 75, gas: 0 } },
+  144: { name: 'Spore Colony', race: 'Zerg', category: 'building', cost: { minerals: 75, gas: 0 } },
+  146: { name: 'Extractor', race: 'Zerg', category: 'building', cost: { minerals: 50, gas: 0 } }
+};
+
+// Command Type Database
+const COMMAND_TYPES = {
+  0x09: { name: 'Select', category: 'select' },
+  0x0A: { name: 'Shift Select', category: 'select' },
+  0x0C: { name: 'Build', category: 'build' },
+  0x0D: { name: 'Vision', category: 'other' },
+  0x13: { name: 'Hotkey', category: 'select' },
+  0x14: { name: 'Move', category: 'move' },
+  0x15: { name: 'Attack', category: 'attack' },
+  0x16: { name: 'Cancel', category: 'other' },
+  0x18: { name: 'Stop', category: 'other' },
+  0x1D: { name: 'Train', category: 'train' },
+  0x1E: { name: 'Cancel Train', category: 'other' },
+  0x21: { name: 'Unit Morph', category: 'build' },
+  0x2F: { name: 'Research', category: 'tech' },
+  0x31: { name: 'Upgrade', category: 'tech' },
+  0x34: { name: 'Building Morph', category: 'build' }
+};
+
+// Race names mapping
+const RACE_NAMES = ['Zerg', 'Terran', 'Protoss', 'Unknown', 'Unknown', 'Unknown', 'Random'];
+
+class SCRemasteredParser {
   private data: Uint8Array;
   private position: number = 0;
 
-  constructor(data: ArrayBuffer) {
-    this.data = new Uint8Array(data);
-  }
-
-  setPosition(pos: number): void {
-    this.position = pos;
+  constructor(buffer: ArrayBuffer) {
+    this.data = new Uint8Array(buffer);
   }
 
   readUInt8(): number {
-    if (this.position >= this.data.length) throw new Error('End of buffer');
     return this.data[this.position++];
   }
 
   readUInt16LE(): number {
-    if (this.position + 2 > this.data.length) throw new Error('End of buffer');
     const value = this.data[this.position] | (this.data[this.position + 1] << 8);
     this.position += 2;
     return value;
   }
 
   readUInt32LE(): number {
-    if (this.position + 4 > this.data.length) throw new Error('End of buffer');
     const value = this.data[this.position] | 
-                  (this.data[this.position + 1] << 8) |
-                  (this.data[this.position + 2] << 16) |
-                  (this.data[this.position + 3] << 24);
+                 (this.data[this.position + 1] << 8) |
+                 (this.data[this.position + 2] << 16) |
+                 (this.data[this.position + 3] << 24);
     this.position += 4;
-    return value >>> 0; // Ensure unsigned
+    return value >>> 0; // Convert to unsigned
   }
 
-  readBytes(length: number): Uint8Array {
-    if (this.position + length > this.data.length) throw new Error('End of buffer');
-    const result = this.data.slice(this.position, this.position + length);
-    this.position += length;
-    return result;
-  }
-
-  readNullTerminatedString(maxLength: number): string {
-    const bytes = [];
-    let count = 0;
-    while (count < maxLength && this.position < this.data.length) {
+  readString(length: number): string {
+    let str = '';
+    for (let i = 0; i < length; i++) {
       const byte = this.data[this.position++];
       if (byte === 0) break;
-      if (byte >= 32 && byte <= 126) bytes.push(byte);
-      count++;
+      if (byte >= 32 && byte <= 126) {
+        str += String.fromCharCode(byte);
+      }
     }
-    return new TextDecoder('latin1').decode(new Uint8Array(bytes));
+    return str.trim();
   }
-  
-  getPosition(): number {
-    return this.position;
+
+  readNullTerminatedString(maxLength: number = 256): string {
+    let str = '';
+    let length = 0;
+    while (length < maxLength && this.position < this.data.length) {
+      const byte = this.data[this.position++];
+      length++;
+      if (byte === 0) break;
+      if (byte >= 32 && byte <= 126) {
+        str += String.fromCharCode(byte);
+      }
+    }
+    return str.trim();
   }
-  
-  getSize(): number {
-    return this.data.length;
+
+  setPosition(pos: number): void {
+    this.position = pos;
+  }
+
+  canRead(bytes: number): boolean {
+    return this.position + bytes <= this.data.length;
+  }
+
+  parseHeader() {
+    console.log('[SCRemasteredParser] Parsing header from binary data...');
+    
+    // Check for SC:R signature
+    this.setPosition(12);
+    const replayId = this.readString(4);
+    console.log('[SCRemasteredParser] Replay ID:', replayId);
+    
+    if (replayId !== 'reRS' && replayId !== 'seRS') {
+      throw new Error(`Invalid SC:R replay. Expected 'reRS' or 'seRS', got: '${replayId}'`);
+    }
+
+    // Get frame count
+    this.setPosition(20);
+    const frames = this.readUInt32LE();
+    console.log('[SCRemasteredParser] Total frames:', frames);
+
+    // Find map name
+    const mapName = this.findMapName();
+    console.log('[SCRemasteredParser] Map name:', mapName);
+
+    return {
+      replayId,
+      frames,
+      mapName,
+      duration: this.framesToDuration(frames)
+    };
+  }
+
+  findMapName(): string {
+    // Try multiple offsets where map names are typically stored
+    const mapOffsets = [0x61, 0x75, 0x89, 0x95, 0xB5, 0xC5, 0xE1];
+    
+    for (const offset of mapOffsets) {
+      if (offset + 32 >= this.data.length) continue;
+      
+      this.setPosition(offset);
+      const mapName = this.readNullTerminatedString(32);
+      
+      if (this.isValidMapName(mapName)) {
+        console.log(`[SCRemasteredParser] Found map name at offset ${offset}: "${mapName}"`);
+        return mapName;
+      }
+    }
+
+    // Advanced search through the file
+    for (let pos = 0x50; pos < Math.min(0x400, this.data.length - 32); pos += 4) {
+      this.setPosition(pos);
+      const testName = this.readNullTerminatedString(32);
+      
+      if (this.isValidMapName(testName) && testName.length > 5) {
+        console.log(`[SCRemasteredParser] Found map name via search at ${pos}: "${testName}"`);
+        return testName;
+      }
+    }
+
+    return 'Unknown Map';
+  }
+
+  isValidMapName(name: string): boolean {
+    if (!name || name.length < 3 || name.length > 32) return false;
+    
+    // Check for printable characters
+    let printableCount = 0;
+    for (let i = 0; i < name.length; i++) {
+      const char = name.charCodeAt(i);
+      if ((char >= 32 && char <= 126) || (char >= 160 && char <= 255)) {
+        printableCount++;
+      }
+    }
+    
+    if (printableCount / name.length < 0.7) return false;
+    
+    // Common invalid patterns
+    const invalidPatterns = [
+      /^\s*$/, /StarCraft/i, /Blizzard/i, /\.exe$/i, /^[0-9]+$/
+    ];
+    
+    return !invalidPatterns.some(pattern => pattern.test(name));
+  }
+
+  parsePlayers() {
+    console.log('[SCRemasteredParser] Parsing players...');
+    const players = [];
+    
+    // Try different player section offsets
+    const playerOffsets = [0x161, 0x1A1, 0x1B1, 0x181, 0x1C1, 0x19C];
+    
+    for (const offset of playerOffsets) {
+      try {
+        this.setPosition(offset);
+        const foundPlayers = this.parsePlayersAtOffset(offset);
+        
+        if (foundPlayers.length >= 2) {
+          console.log(`[SCRemasteredParser] Found ${foundPlayers.length} players at offset ${offset}`);
+          return foundPlayers;
+        }
+      } catch (error) {
+        continue;
+      }
+    }
+
+    // Fallback: create default players
+    return [
+      { name: 'Player 1', race: 'Terran', id: 0 },
+      { name: 'Player 2', race: 'Protoss', id: 1 }
+    ];
+  }
+
+  parsePlayersAtOffset(baseOffset: number) {
+    const players = [];
+    
+    for (let i = 0; i < 8; i++) {
+      const offset = baseOffset + (i * 36);
+      if (offset + 36 >= this.data.length) break;
+      
+      this.setPosition(offset);
+      const name = this.readString(25);
+      
+      if (this.isValidPlayerName(name)) {
+        const raceId = this.readUInt8();
+        const team = this.readUInt8();
+        const color = this.readUInt8();
+        
+        players.push({
+          id: i,
+          name: name.trim(),
+          race: RACE_NAMES[raceId] || 'Unknown',
+          raceId,
+          team,
+          color
+        });
+      }
+    }
+    
+    return players;
+  }
+
+  isValidPlayerName(name: string): boolean {
+    return name && 
+           name.length >= 2 && 
+           name.length <= 24 && 
+           /^[a-zA-Z0-9_\-\[\]()]+$/.test(name) &&
+           !name.includes('Observer');
+  }
+
+  parseCommands() {
+    console.log('[SCRemasteredParser] Parsing commands...');
+    const commands = [];
+    
+    // Find command section
+    const commandOffset = this.findCommandSection();
+    if (!commandOffset) {
+      console.log('[SCRemasteredParser] No command section found');
+      return [];
+    }
+
+    this.setPosition(commandOffset);
+    let currentFrame = 0;
+    let commandCount = 0;
+    
+    while (this.position < this.data.length - 10 && commandCount < 10000) {
+      try {
+        // Check for frame sync
+        if (this.data[this.position] <= 0x03) {
+          const frameIncrement = this.data[this.position + 1] | (this.data[this.position + 2] << 8);
+          currentFrame += frameIncrement;
+          this.position += 3;
+          continue;
+        }
+
+        const commandId = this.readUInt8();
+        const commandInfo = COMMAND_TYPES[commandId];
+        
+        if (commandInfo) {
+          const playerId = this.readUInt8();
+          
+          if (playerId < 12) {
+            const command = {
+              frame: currentFrame,
+              playerId,
+              commandId,
+              commandName: commandInfo.name,
+              category: commandInfo.category,
+              timestamp: this.framesToTime(currentFrame)
+            };
+
+            // Parse specific command data
+            if (commandInfo.category === 'build' || commandInfo.category === 'train') {
+              if (this.canRead(2)) {
+                const unitId = this.readUInt16LE();
+                const unit = UNIT_DATABASE[unitId];
+                if (unit) {
+                  command.unitId = unitId;
+                  command.unitName = unit.name;
+                  command.unitRace = unit.race;
+                  command.cost = unit.cost;
+                }
+              }
+            }
+
+            commands.push(command);
+            commandCount++;
+          }
+        } else {
+          this.position++;
+        }
+      } catch (error) {
+        this.position++;
+      }
+    }
+
+    console.log(`[SCRemasteredParser] Parsed ${commands.length} commands`);
+    return commands;
+  }
+
+  findCommandSection(): number | null {
+    // Look for command patterns in typical locations
+    for (let pos = 0x500; pos < Math.min(this.data.length - 1000, 0x8000); pos += 16) {
+      if (this.looksLikeCommandSection(pos)) {
+        return pos;
+      }
+    }
+    return null;
+  }
+
+  looksLikeCommandSection(offset: number): boolean {
+    if (offset + 128 >= this.data.length) return false;
+    
+    let frameSync = 0;
+    let validCommands = 0;
+    
+    for (let i = 0; i < 128; i++) {
+      const byte = this.data[offset + i];
+      
+      if (byte <= 0x03) frameSync++;
+      if (COMMAND_TYPES[byte]) validCommands++;
+    }
+    
+    return frameSync >= 3 && validCommands >= 2;
+  }
+
+  framesToDuration(frames: number): string {
+    const seconds = Math.floor(frames / 24); // 24 FPS for SC:R
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  }
+
+  framesToTime(frame: number): string {
+    const seconds = Math.floor(frame / 24);
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   }
 }
 
-// Enhanced SC:R Unit Database - Real Starcraft unit IDs
-const UNIT_DATABASE = {
-  // Workers
-  7: { terran: 'SCV', protoss: 'Probe', zerg: 'Drone' },
-  
-  // Basic military units
-  0: { terran: 'Marine', protoss: 'Zealot', zerg: 'Zergling' },
-  1: { terran: 'Ghost', protoss: 'Dragoon', zerg: 'Hydralisk' },
-  2: { terran: 'Vulture', protoss: 'High Templar', zerg: 'Ultralisk' },
-  3: { terran: 'Goliath', protoss: 'Dark Templar', zerg: 'Mutalisk' },
-  4: { terran: 'Siege Tank', protoss: 'Archon', zerg: 'Guardian' },
-  5: { terran: 'Wraith', protoss: 'Shuttle', zerg: 'Queen' },
-  6: { terran: 'Dropship', protoss: 'Scout', zerg: 'Defiler' },
-  8: { terran: 'Battlecruiser', protoss: 'Carrier', zerg: 'Scourge' },
-  9: { terran: 'Firebat', protoss: 'Interceptor', zerg: 'Overlord' },
-  10: { terran: 'Science Vessel', protoss: 'Reaver', zerg: 'Lurker' },
-  11: { terran: 'Medic', protoss: 'Observer', zerg: 'Broodling' },
-  
-  // Buildings - Common building types
-  106: { terran: 'Command Center', protoss: 'Nexus', zerg: 'Hatchery' },
-  107: { terran: 'Supply Depot', protoss: 'Pylon', zerg: 'Overlord' },
-  108: { terran: 'Refinery', protoss: 'Assimilator', zerg: 'Extractor' },
-  109: { terran: 'Barracks', protoss: 'Gateway', zerg: 'Spawning Pool' },
-  110: { terran: 'Academy', protoss: 'Forge', zerg: 'Evolution Chamber' },
-  111: { terran: 'Factory', protoss: 'Cybernetics Core', zerg: 'Hydralisk Den' },
-  112: { terran: 'Starport', protoss: 'Stargate', zerg: 'Spire' },
-  113: { terran: 'Engineering Bay', protoss: 'Robotics Facility', zerg: 'Queens Nest' },
-  
-  // Advanced buildings
-  114: { terran: 'Science Facility', protoss: 'Fleet Beacon', zerg: 'Greater Spire' },
-  115: { terran: 'Armory', protoss: 'Observatory', zerg: 'Ultralisk Cavern' },
-  116: { terran: 'Missile Turret', protoss: 'Photon Cannon', zerg: 'Sunken Colony' },
-  117: { terran: 'Bunker', protoss: 'Shield Battery', zerg: 'Spore Colony' },
-  
-  // Special units
-  37: { terran: 'Larva', protoss: 'Larva', zerg: 'Larva' },
-  38: { terran: 'Egg', protoss: 'Egg', zerg: 'Egg' },
-  39: { terran: 'Cocoon', protoss: 'Cocoon', zerg: 'Cocoon' },
-  
-  // Additional Protoss units
-  64: { terran: 'Marine', protoss: 'Probe', zerg: 'Drone' },
-  65: { terran: 'Marine', protoss: 'Zealot', zerg: 'Zergling' },
-  66: { terran: 'Marine', protoss: 'Dragoon', zerg: 'Hydralisk' },
-  67: { terran: 'Marine', protoss: 'High Templar', zerg: 'Mutalisk' },
-  68: { terran: 'Marine', protoss: 'Archon', zerg: 'Guardian' },
-  69: { terran: 'Marine', protoss: 'Shuttle', zerg: 'Queen' },
-  70: { terran: 'Marine', protoss: 'Scout', zerg: 'Defiler' },
-  71: { terran: 'Marine', protoss: 'Arbiter', zerg: 'Scourge' },
-  72: { terran: 'Marine', protoss: 'Carrier', zerg: 'Lurker' },
-  73: { terran: 'Marine', protoss: 'Interceptor', zerg: 'Broodling' },
-  74: { terran: 'Marine', protoss: 'Dark Templar', zerg: 'Defiler' },
-  75: { terran: 'Marine', protoss: 'Reaver', zerg: 'Queen' },
-  76: { terran: 'Marine', protoss: 'Observer', zerg: 'Overlord' },
-  77: { terran: 'Marine', protoss: 'Scarab', zerg: 'Scourge' },
-  78: { terran: 'Marine', protoss: 'Corsair', zerg: 'Ultralisk' }
-};
+// Professional Build Order Engine
+class BuildOrderEngine {
+  static extractBuildOrder(commands: any[], players: any[]): any {
+    console.log('[BuildOrderEngine] Extracting professional build orders...');
+    
+    const buildOrders = {};
+    const supplyTracking = {};
+    
+    players.forEach(player => {
+      buildOrders[player.id] = [];
+      supplyTracking[player.id] = { current: 4, max: 9 }; // Starting supply
+    });
 
-// Enhanced command types for build order extraction
-const BUILD_COMMANDS = {
-  // Build commands
-  0x0C: 'Build',
-  0x0D: 'Build Addon', 
-  0x0E: 'Build Protoss',
-  0x1F: 'Train',
-  0x23: 'Train Unit',
-  0x35: 'Morph',
-  
-  // Research and upgrades
-  0x30: 'Research',
-  0x32: 'Upgrade',
-  
-  // Movement and actions
-  0x14: 'Move',
-  0x15: 'Attack',
-  0x16: 'Attack Move',
-  0x17: 'Hold Position',
-  0x18: 'Patrol',
-  
-  // Selection
-  0x09: 'Select Units',
-  0x0A: 'Select Building',
-  0x0B: 'Add to Selection',
-  
-  // Cancel commands (for filtering)
-  0x19: 'Cancel Build',
-  0x1A: 'Cancel Train', 
-  0x34: 'Cancel Construction'
-};
+    // Filter meaningful build commands
+    const buildCommands = commands.filter(cmd => 
+      ['build', 'train', 'tech'].includes(cmd.category) && 
+      cmd.unitName && 
+      !cmd.commandName.includes('Cancel')
+    );
 
-// Action effectiveness for EAPM calculation
-const EFFECTIVE_ACTIONS = new Set([
-  0x0C, 0x0D, 0x0E, // Build commands
-  0x1F, 0x23, 0x35, // Train/Morph commands
-  0x30, 0x32, // Research/Upgrade
-  0x14, 0x15, 0x16, 0x17, 0x18, // Move commands
-  0x19, 0x1A, 0x1B, 0x1C, 0x1D, // Attack commands
-  0x21, 0x22, // Special abilities
-  0x09, 0x0A, 0x0B, // Select commands
-]);
+    buildCommands.forEach(cmd => {
+      const playerId = cmd.playerId;
+      if (!buildOrders[playerId]) return;
 
-function getUnitName(unitId: number, race: string): string {
-  const unit = UNIT_DATABASE[unitId];
-  if (unit && unit[race.toLowerCase()]) {
-    return unit[race.toLowerCase()];
+      const supply = supplyTracking[playerId];
+      const buildItem = {
+        supply: `${supply.current}/${supply.max}`,
+        timestamp: cmd.timestamp,
+        action: cmd.commandName,
+        unitName: cmd.unitName,
+        category: this.categorizeUnit(cmd.unitName),
+        cost: cmd.cost || { minerals: 0, gas: 0 },
+        frame: cmd.frame
+      };
+
+      // Update supply tracking
+      if (this.isSupplyProvider(cmd.unitName)) {
+        supply.max += 8;
+      } else if (this.consumesSupply(cmd.unitName)) {
+        supply.current += this.getSupplyConsumption(cmd.unitName);
+      }
+
+      buildOrders[playerId].push(buildItem);
+    });
+
+    return buildOrders;
   }
-  return `Unit_${unitId}`;
+
+  static categorizeUnit(unitName: string): string {
+    const categories = {
+      worker: ['SCV', 'Probe', 'Drone'],
+      supply: ['Supply Depot', 'Pylon', 'Overlord'],
+      military: ['Marine', 'Zealot', 'Zergling', 'Dragoon', 'Hydralisk'],
+      tech: ['Academy', 'Cybernetics Core', 'Spawning Pool', 'Factory', 'Stargate'],
+      economy: ['Command Center', 'Nexus', 'Hatchery', 'Refinery', 'Assimilator', 'Extractor']
+    };
+
+    for (const [category, units] of Object.entries(categories)) {
+      if (units.includes(unitName)) return category;
+    }
+    return 'other';
+  }
+
+  static isSupplyProvider(unitName: string): boolean {
+    return ['Supply Depot', 'Pylon', 'Overlord'].includes(unitName);
+  }
+
+  static consumesSupply(unitName: string): boolean {
+    const workers = ['SCV', 'Probe', 'Drone'];
+    const military = ['Marine', 'Zealot', 'Zergling', 'Dragoon', 'Hydralisk'];
+    return workers.includes(unitName) || military.includes(unitName);
+  }
+
+  static getSupplyConsumption(unitName: string): number {
+    const supplyMap = {
+      'SCV': 1, 'Probe': 1, 'Drone': 1,
+      'Marine': 1, 'Zealot': 2, 'Zergling': 1,
+      'Dragoon': 2, 'Hydralisk': 1
+    };
+    return supplyMap[unitName] || 1;
+  }
 }
 
-function frameToGameTime(frame: number): string {
-  const seconds = Math.floor(frame / 24); // SC runs at 24 FPS
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-}
+// AI Coaching Engine
+class CoachingEngine {
+  static analyzePerformance(buildOrders: any, commands: any[], players: any[]): any {
+    console.log('[CoachingEngine] Analyzing performance for coaching insights...');
+    
+    const analysis = {};
+    
+    players.forEach(player => {
+      const playerId = player.id;
+      const playerCommands = commands.filter(cmd => cmd.playerId === playerId);
+      const playerBuildOrder = buildOrders[playerId] || [];
+      
+      analysis[playerId] = {
+        playerName: player.name,
+        race: player.race,
+        apm: this.calculateAPM(playerCommands),
+        eapm: this.calculateEAPM(playerCommands),
+        buildOrderAnalysis: this.analyzeBuildOrder(playerBuildOrder, player.race),
+        strengths: this.identifyStrengths(playerCommands, playerBuildOrder),
+        weaknesses: this.identifyWeaknesses(playerCommands, playerBuildOrder),
+        recommendations: this.generateRecommendations(playerCommands, playerBuildOrder, player.race)
+      };
+    });
+    
+    return analysis;
+  }
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+  static calculateAPM(commands: any[]): number {
+    if (commands.length === 0) return 0;
+    const maxFrame = Math.max(...commands.map(c => c.frame));
+    const gameMinutes = maxFrame / 24 / 60;
+    return Math.round(commands.length / gameMinutes);
+  }
+
+  static calculateEAPM(commands: any[]): number {
+    const effectiveCommands = commands.filter(cmd => 
+      !cmd.commandName.includes('Cancel') && 
+      !['Select', 'Shift Select'].includes(cmd.commandName)
+    );
+    
+    if (effectiveCommands.length === 0) return 0;
+    const maxFrame = Math.max(...commands.map(c => c.frame));
+    const gameMinutes = maxFrame / 24 / 60;
+    return Math.round(effectiveCommands.length / gameMinutes);
+  }
+
+  static analyzeBuildOrder(buildOrder: any[], race: string): any {
+    if (buildOrder.length === 0) return { strategy: 'Unknown', timing: 'Unknown' };
+
+    const first10 = buildOrder.slice(0, 10);
+    const strategy = this.identifyStrategy(first10, race);
+    const timing = this.analyzeTiming(buildOrder);
+    
+    return { strategy, timing, efficiency: this.calculateBuildEfficiency(buildOrder) };
+  }
+
+  static identifyStrategy(earlyBuild: any[], race: string): string {
+    const buildNames = earlyBuild.map(item => item.unitName);
+    
+    if (race === 'Protoss') {
+      if (buildNames.includes('Forge') && buildNames.indexOf('Forge') < 5) return 'Forge Fast Expand';
+      if (buildNames.filter(name => name === 'Gateway').length >= 2) return '2-Gate Rush';
+      if (buildNames.includes('Cybernetics Core')) return 'Tech Build';
+    } else if (race === 'Terran') {
+      if (buildNames.includes('Barracks') && buildNames.indexOf('Barracks') < 4) return 'Barracks First';
+      if (buildNames.includes('Factory')) return 'Factory Build';
+    } else if (race === 'Zerg') {
+      if (buildNames.includes('Spawning Pool') && buildNames.indexOf('Spawning Pool') < 4) return 'Pool First';
+      if (buildNames.includes('Hatchery') && buildNames.indexOf('Hatchery') < 4) return 'Hatch First';
+    }
+    
+    return 'Standard';
+  }
+
+  static analyzeTiming(buildOrder: any[]): string {
+    if (buildOrder.length === 0) return 'No data';
+    
+    const firstMilitary = buildOrder.find(item => item.category === 'military');
+    if (firstMilitary) {
+      const timing = this.parseTimestamp(firstMilitary.timestamp);
+      if (timing < 180) return 'Rush timing';
+      if (timing < 300) return 'Standard timing';
+      return 'Late timing';
+    }
+    
+    return 'Economic focus';
+  }
+
+  static calculateBuildEfficiency(buildOrder: any[]): number {
+    if (buildOrder.length === 0) return 0;
+    
+    // Simple efficiency based on resource usage and timing
+    let efficiency = 100;
+    let previousTime = 0;
+    
+    buildOrder.forEach(item => {
+      const currentTime = this.parseTimestamp(item.timestamp);
+      const timeDiff = currentTime - previousTime;
+      
+      // Penalize large gaps in build order
+      if (timeDiff > 30) efficiency -= 5;
+      
+      previousTime = currentTime;
+    });
+    
+    return Math.max(0, efficiency);
+  }
+
+  static identifyStrengths(commands: any[], buildOrder: any[]): string[] {
+    const strengths = [];
+    
+    const apm = this.calculateAPM(commands);
+    if (apm > 150) strengths.push('High APM');
+    
+    const eapm = this.calculateEAPM(commands);
+    if (eapm > 100) strengths.push('Good action efficiency');
+    
+    if (buildOrder.length > 15) strengths.push('Consistent macro');
+    
+    const earlyWorkers = buildOrder.filter(item => 
+      item.category === 'worker' && this.parseTimestamp(item.timestamp) < 300
+    );
+    if (earlyWorkers.length >= 5) strengths.push('Good early economy');
+    
+    return strengths;
+  }
+
+  static identifyWeaknesses(commands: any[], buildOrder: any[]): string[] {
+    const weaknesses = [];
+    
+    const apm = this.calculateAPM(commands);
+    if (apm < 80) weaknesses.push('Low APM - practice faster execution');
+    
+    const cancelCommands = commands.filter(cmd => cmd.commandName.includes('Cancel'));
+    if (cancelCommands.length > commands.length * 0.1) {
+      weaknesses.push('Too many cancelled actions - improve decision making');
+    }
+    
+    const supplyItems = buildOrder.filter(item => item.category === 'supply');
+    if (supplyItems.length < buildOrder.length * 0.15) {
+      weaknesses.push('Insufficient supply buildings - avoid supply blocks');
+    }
+    
+    return weaknesses;
+  }
+
+  static generateRecommendations(commands: any[], buildOrder: any[], race: string): string[] {
+    const recommendations = [];
+    
+    const apm = this.calculateAPM(commands);
+    if (apm < 100) recommendations.push('Practice hotkeys and faster unit production');
+    
+    const workerCount = buildOrder.filter(item => item.category === 'worker').length;
+    if (workerCount < 20) recommendations.push('Build more workers for better economy');
+    
+    const firstMilitary = buildOrder.find(item => item.category === 'military');
+    if (firstMilitary && this.parseTimestamp(firstMilitary.timestamp) > 300) {
+      recommendations.push('Consider earlier military production for map control');
+    }
+    
+    if (race === 'Protoss') {
+      const pylons = buildOrder.filter(item => item.unitName === 'Pylon').length;
+      if (pylons < 3) recommendations.push('Build more Pylons to avoid supply blocks');
+    }
+    
+    return recommendations;
+  }
+
+  static parseTimestamp(timestamp: string): number {
+    const [minutes, seconds] = timestamp.split(':').map(Number);
+    return minutes * 60 + seconds;
+  }
+}
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -207,1136 +698,102 @@ serve(async (req) => {
   }
 
   try {
-    console.log('[ParseReplay] Starting server-side replay parsing');
+    console.log('[parseReplay] Starting SC:R replay analysis...');
     
-    const { filePath, userId } = await req.json();
+    const formData = await req.formData();
+    const file = formData.get('file') as File;
     
-    if (!filePath || !userId) {
-      throw new Error('Missing filePath or userId');
+    if (!file) {
+      throw new Error('No file provided');
     }
 
-    // Initialize Supabase client
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
-    console.log('[ParseReplay] Downloading file from storage:', filePath);
+    console.log('[parseReplay] File received:', file.name, file.size, 'bytes');
     
-    // Download the replay file from Supabase Storage
-    const { data: fileData, error: downloadError } = await supabase.storage
-      .from('replays')
-      .download(filePath);
-
-    if (downloadError) {
-      console.error('[ParseReplay] Download error:', downloadError);
-      throw new Error(`Failed to download file: ${downloadError.message}`);
-    }
-
-    console.log('[ParseReplay] File downloaded, starting parsing...');
+    // Read file buffer
+    const buffer = await file.arrayBuffer();
+    console.log('[parseReplay] Buffer size:', buffer.byteLength);
     
-    // Convert file to ArrayBuffer for parsing
-    const arrayBuffer = await fileData.arrayBuffer();
+    // Parse with enhanced SC:R parser
+    const parser = new SCRemasteredParser(buffer);
     
-    // Parse the replay using enhanced parser
-    const parsedReplay = await parseReplayData(arrayBuffer, filePath);
+    // Parse header
+    const header = parser.parseHeader();
+    console.log('[parseReplay] Header:', header);
     
-    console.log('[ParseReplay] Parsing completed successfully');
+    // Parse players
+    const players = parser.parsePlayers();
+    console.log('[parseReplay] Players:', players);
     
-    // Find the replay record by filename to get the correct replay_id
-    const fileName = filePath.split('/').pop();
-    const { data: replayRecord, error: replayError } = await supabase
-      .from('replays')
-      .select('id')
-      .eq('filename', fileName)
-      .eq('user_id', userId)
-      .single();
-
-    if (replayError || !replayRecord) {
-      console.error('[ParseReplay] Could not find replay record:', replayError);
-      throw new Error('Replay record not found in database');
-    }
-
-    // Save analysis results to database using the correct replay_id
-    const { data: analysisData, error: saveError } = await supabase
-      .from('analysis_results')
-      .insert({
-        user_id: userId,
-        replay_id: replayRecord.id,
-        build_order: parsedReplay.buildOrder,
-        strengths: parsedReplay.strengths,
-        weaknesses: parsedReplay.weaknesses,
-        recommendations: parsedReplay.recommendations,
-        resources_graph: parsedReplay.resourcesGraph,
-      })
-      .select()
-      .single();
-
-    if (saveError) {
-      console.warn('[ParseReplay] Failed to save analysis:', saveError);
-      // Don't throw error, still return parsing results
-    }
-
-    console.log('[ParseReplay] Analysis saved to database');
-
-    return new Response(JSON.stringify({
+    // Parse commands
+    const commands = parser.parseCommands();
+    console.log('[parseReplay] Commands:', commands.length);
+    
+    // Extract build orders
+    const buildOrders = BuildOrderEngine.extractBuildOrder(commands, players);
+    console.log('[parseReplay] Build orders extracted');
+    
+    // Generate coaching analysis
+    const analysis = CoachingEngine.analyzePerformance(buildOrders, commands, players);
+    console.log('[parseReplay] Performance analysis complete');
+    
+    // Format response
+    const result = {
       success: true,
-      data: parsedReplay,
-      analysisId: analysisData?.id
-    }), {
+      data: {
+        // Basic match info
+        map_name: header.mapName,
+        duration: header.duration,
+        total_frames: header.frames,
+        
+        // Players
+        players: players.map(p => ({
+          name: p.name,
+          race: p.race,
+          id: p.id
+        })),
+        
+        // Analysis data for each player
+        analysis: Object.entries(analysis).reduce((acc, [playerId, data]: [string, any]) => {
+          acc[playerId] = {
+            player_name: data.playerName,
+            race: data.race,
+            apm: data.apm,
+            eapm: data.eapm,
+            build_order: buildOrders[playerId] || [],
+            strengths: data.strengths,
+            weaknesses: data.weaknesses,
+            recommendations: data.recommendations,
+            build_analysis: data.buildOrderAnalysis
+          };
+          return acc;
+        }, {} as any),
+        
+        // Raw data for debugging
+        raw_commands: commands.slice(0, 100), // First 100 commands for debug
+        parsing_stats: {
+          commands_parsed: commands.length,
+          players_found: players.length,
+          build_items_extracted: Object.values(buildOrders).reduce((sum: number, bo: any) => sum + bo.length, 0)
+        }
+      }
+    };
+
+    console.log('[parseReplay] Analysis complete, returning structured data');
+    
+    return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error('[ParseReplay] Error:', error);
+    console.error('[parseReplay] Error:', error);
+    
     return new Response(JSON.stringify({
       success: false,
-      error: error.message || 'Unknown parsing error'
+      error: error.message,
+      details: 'Failed to parse SC:R replay file'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });
-
-// Parse replay using jssuh stream-based parser
-async function parseReplayData(arrayBuffer: ArrayBuffer, filePath: string) {
-  const data = new Uint8Array(arrayBuffer);
-  console.log('[ParseReplay] Analyzing', data.length, 'bytes');
-
-  // Use enhanced manual parser as primary method
-  console.log('[ParseReplay] Using enhanced manual parser');
-  try {
-    const result = await parseWithEnhancedNativeParser(data, filePath);
-    return result;
-  } catch (error) {
-    console.error('[ParseReplay] Enhanced parser failed:', error);
-    
-    // Ultimate fallback with basic data
-    console.log('[ParseReplay] Using fallback parser');
-    try {
-      const fallbackResult = await createFallbackResult(data, filePath);
-      return fallbackResult;
-    } catch (fallbackError) {
-      console.error('[ParseReplay] All parsers failed:', fallbackError);
-      throw error;
-    }
-  }
-}
-
-// Phase 1: Enhanced Manual Parser - Primary parsing method
-async function parseWithEnhancedNativeParser(data: Uint8Array, filePath: string) {
-  console.log('[ParseReplay] Starting enhanced native SC:R parsing');
-  
-  const reader = new BinaryReader(data.buffer);
-  let header = null;
-  let players = [];
-  let commands = [];
-  let mapName = 'Unknown Map';
-  let gameDurationFrames = 0;
-  
-  try {
-    // Phase 1: Enhanced Header Parsing
-    header = parseEnhancedHeader(reader);
-    mapName = header.mapName;
-    console.log('[ParseReplay] Enhanced header:', header);
-    
-    // Phase 2: Enhanced Player Parsing
-    players = parseEnhancedPlayers(reader, data);
-    console.log('[ParseReplay] Enhanced players:', players.length);
-    
-    // Phase 3: Enhanced Command Parsing  
-    const commandResult = parseEnhancedCommands(reader, data);
-    commands = commandResult.commands;
-    gameDurationFrames = commandResult.maxFrame;
-    
-    console.log('[ParseReplay] Enhanced commands:', commands.length);
-    console.log('[ParseReplay] Game duration frames:', gameDurationFrames);
-    
-    // Phase 4: Calculate Real APM/EAPM
-    const gameDurationMinutes = Math.max(gameDurationFrames / (24 * 60), 1);
-    
-    players.forEach((player, index) => {
-      const playerCommands = commands.filter(cmd => cmd.playerID === index);
-      const effectiveCommands = playerCommands.filter(cmd => 
-        EFFECTIVE_ACTIONS.has(cmd.commandID) && 
-        !BUILD_COMMANDS[cmd.commandID]?.includes('Cancel')
-      );
-      
-      player.apm = Math.round(playerCommands.length / gameDurationMinutes);
-      player.eapm = Math.round(effectiveCommands.length / gameDurationMinutes);
-      
-      console.log(`[ParseReplay] Player ${player.name}: ${player.apm} APM, ${player.eapm} EAPM`);
-    });
-    
-    // Phase 5: Enhanced Build Order Extraction
-    const buildOrder = extractEnhancedBuildOrder(commands, players);
-    
-    // Phase 6: Enhanced Analysis Generation
-    const analysis = generateEnhancedAnalysis(players, commands, gameDurationFrames, buildOrder);
-    
-    const result = {
-      replayId: null,
-      header: {
-        mapName: header.mapName,
-        gameVersion: 'Remastered',
-        gameLength: frameToGameTime(gameDurationFrames),
-        gameType: header.gameType,
-      },
-      players,
-      gameStats: {
-        duration: frameToGameTime(gameDurationFrames),
-        totalCommands: commands.length,
-        averageAPM: Math.round(players.reduce((sum, p) => sum + p.apm, 0) / players.length),
-        peakAPM: Math.max(...players.map(p => p.apm), 0),
-      },
-      buildOrder,
-      strengths: analysis.strengths,
-      weaknesses: analysis.weaknesses,
-      recommendations: analysis.recommendations,
-      resourcesGraph: analysis.resourcesGraph,
-      parseTimestamp: new Date().toISOString(),
-      dataSource: 'enhanced-native'
-    };
-    
-    console.log('[ParseReplay] Enhanced parsing completed successfully');
-    return result;
-    
-  } catch (error) {
-    console.error('[ParseReplay] Enhanced parser error:', error);
-    throw error;
-  }
-}
-
-// Extract build order from jssuh commands
-function extractBuildOrderFromJssuhCommands(commands: any[], players: any[]) {
-  const buildOrders = {};
-  
-  players.forEach(player => {
-    const playerCommands = commands.filter(cmd => cmd.playerID === player.id);
-    const buildCommands = playerCommands.filter(cmd => 
-      BUILD_COMMANDS[cmd.commandID || cmd.actionID]
-    );
-    
-    const buildOrder = buildCommands.slice(0, 25).map((cmd, index) => {
-      const commandType = BUILD_COMMANDS[cmd.commandID || cmd.actionID];
-      let unitName = 'Unknown';
-      
-      // Try to extract unit from command data
-      if (cmd.data && cmd.data.length >= 8) {
-        const unitId = cmd.data[7] || cmd.data[6] || cmd.data[5];
-        unitName = getUnitName(unitId, player.race);
-      }
-      
-      return {
-        frame: cmd.frame,
-        time: cmd.time,
-        supply: Math.min(200, 9 + index * 2), // Progressive supply estimate
-        action: `${commandType} ${unitName}`,
-        actionType: commandType,
-        unit: unitName
-      };
-    });
-    
-    buildOrders[player.name] = buildOrder;
-  });
-  
-  return buildOrders;
-}
-
-// Native SC:R parser implementation
-async function parseWithNativeParser(data: Uint8Array, filePath: string) {
-  console.log('[ParseReplay] Starting native SC:R parsing');
-  
-  const reader = new BinaryReader(data.buffer);
-  
-  // Parse SC:R header
-  const header = parseScRHeader(reader);
-  console.log('[ParseReplay] Native header:', header);
-  
-  // Parse players
-  const players = parseScRPlayers(reader, header);
-  console.log('[ParseReplay] Native players:', players.length);
-  
-  // Find and parse commands section
-  const commandSection = findCommandSection(data);
-  console.log('[ParseReplay] Command section found at:', commandSection.offset);
-  
-  const commands = parseScRCommands(data, commandSection);
-  console.log('[ParseReplay] Native commands:', commands.length);
-  
-  // Calculate APM/EAPM from real commands
-  const gameDurationFrames = Math.max(...commands.map(cmd => cmd.frame)) || 24 * 300; // fallback 5 minutes
-  const gameDurationMinutes = gameDurationFrames / (24 * 60);
-  
-  players.forEach(player => {
-    const playerCommands = commands.filter(cmd => cmd.playerID === player.id);
-    const effectiveCommands = playerCommands.filter(cmd => EFFECTIVE_ACTIONS.has(cmd.commandID));
-    
-    player.apm = gameDurationMinutes > 0 ? Math.round(playerCommands.length / gameDurationMinutes) : 0;
-    player.eapm = gameDurationMinutes > 0 ? Math.round(effectiveCommands.length / gameDurationMinutes) : 0;
-  });
-  
-  // Extract build orders from commands
-  const buildOrder = extractBuildOrderFromNativeCommands(commands, players);
-  
-  // Generate analysis
-  const analysis = generateRealAnalysis(players, commands, gameDurationFrames);
-  
-  return {
-    replayId: null,
-    header: {
-      mapName: header.mapName || extractMapName(data) || 'Unknown Map',
-      gameVersion: 'Remastered',
-      gameLength: frameToGameTime(gameDurationFrames),
-      gameType: 'Multiplayer',
-    },
-    players,
-    gameStats: {
-      duration: frameToGameTime(gameDurationFrames),
-      totalCommands: commands.length,
-      averageAPM: Math.round(players.reduce((sum, p) => sum + p.apm, 0) / players.length || 0),
-      peakAPM: Math.max(...players.map(p => p.apm), 0),
-    },
-    buildOrder,
-    strengths: analysis.strengths,
-    weaknesses: analysis.weaknesses,
-    recommendations: analysis.recommendations,
-    resourcesGraph: analysis.resourcesGraph,
-    parseTimestamp: new Date().toISOString(),
-  };
-}
-
-// Parse SC:R header structure
-function parseScRHeader(reader: BinaryReader) {
-  try {
-    reader.setPosition(0);
-    const gameId = reader.readUInt32LE();
-    const engine = reader.readUInt16LE();
-    const replayID = reader.readBytes(4);
-    const frames = reader.readUInt32LE();
-    const gameType = reader.readUInt32LE();
-    
-    return {
-      gameId,
-      engine,
-      replayID: new TextDecoder().decode(replayID),
-      frames,
-      gameType,
-      mapName: null // Will be extracted separately
-    };
-  } catch (error) {
-    console.warn('[ParseReplay] Header parsing failed:', error);
-    return { gameId: 0, engine: 1, replayID: 'unkn', frames: 0, gameType: 1, mapName: null };
-  }
-}
-
-// Parse SC:R players
-function parseScRPlayers(reader: BinaryReader, header: any) {
-  try {
-    reader.setPosition(48); // Common player data offset
-    const players = [];
-    
-    for (let i = 0; i < 8; i++) {
-      try {
-        const playerType = reader.readUInt8();
-        const race = reader.readUInt8();
-        const team = reader.readUInt8();
-        const nameBytes = reader.readBytes(25);
-        
-        // Extract player name
-        let name = '';
-        for (let j = 0; j < nameBytes.length; j++) {
-          if (nameBytes[j] === 0) break;
-          if (nameBytes[j] >= 32 && nameBytes[j] <= 126) {
-            name += String.fromCharCode(nameBytes[j]);
-          }
-        }
-        
-        if (playerType === 6 && name.length > 0) { // Human player
-          players.push({
-            id: i,
-            name: name || `Player ${i + 1}`,
-            race: getRaceName(race),
-            team: team || 1,
-            isComputer: false,
-            apm: 0,
-            eapm: 0
-          });
-        }
-      } catch (error) {
-        // Skip invalid players
-        continue;
-      }
-    }
-    
-    return players.length > 0 ? players : [
-      { id: 0, name: 'Player 1', race: 'Protoss', team: 1, isComputer: false, apm: 0, eapm: 0 },
-      { id: 1, name: 'Player 2', race: 'Protoss', team: 2, isComputer: false, apm: 0, eapm: 0 }
-    ];
-  } catch (error) {
-    console.warn('[ParseReplay] Player parsing failed:', error);
-    return [
-      { id: 0, name: 'Player 1', race: 'Protoss', team: 1, isComputer: false, apm: 0, eapm: 0 },
-      { id: 1, name: 'Player 2', race: 'Protoss', team: 2, isComputer: false, apm: 0, eapm: 0 }
-    ];
-  }
-}
-
-// Find command section in replay data
-function findCommandSection(data: Uint8Array) {
-  // Search for common command section patterns
-  const possibleOffsets = [0x279, 0x26D, 0x279 + 12, 0x279 + 24, 0x400, 0x500, 0x600, 0x700, 0x800];
-  
-  for (const offset of possibleOffsets) {
-    if (offset < data.length - 100) {
-      // Check for command-like patterns
-      let commandCount = 0;
-      for (let i = 0; i < 50 && offset + i < data.length; i += 4) {
-        const byte = data[offset + i];
-        if (byte > 0 && byte < 0x50) commandCount++; // Likely command IDs
-      }
-      
-      if (commandCount > 5) {
-        return { offset, size: data.length - offset };
-      }
-    }
-  }
-  
-  // Fallback to most common offset
-  return { offset: 0x279, size: data.length - 0x279 };
-}
-
-// Parse SC:R commands
-function parseScRCommands(data: Uint8Array, commandSection: any) {
-  const commands = [];
-  let offset = commandSection.offset;
-  let currentFrame = 0;
-  
-  try {
-    while (offset < data.length - 4) {
-      const commandID = data[offset];
-      
-      if (commandID === 0) {
-        offset++;
-        continue;
-      }
-      
-      // Frame advance commands
-      if (commandID >= 0x01 && commandID <= 0x06) {
-        const frameIncrement = getFrameIncrement(commandID, data, offset);
-        currentFrame += frameIncrement;
-        offset += getCommandLength(commandID);
-        continue;
-      }
-      
-      // Player commands
-      if (commandID >= 0x09 && commandID <= 0x50) {
-        const playerID = (commandID >= 0x09 && commandID <= 0x10) ? commandID - 0x09 : 0;
-        const actualCommandID = (commandID >= 0x09 && commandID <= 0x10) ? 
-          (offset + 1 < data.length ? data[offset + 1] : 0) : commandID;
-        
-        commands.push({
-          frame: currentFrame,
-          time: frameToGameTime(currentFrame),
-          playerID: playerID,
-          commandID: actualCommandID,
-          data: data.slice(offset, offset + Math.min(16, data.length - offset))
-        });
-        
-        offset += getCommandLength(commandID);
-      } else {
-        offset++;
-      }
-      
-      // Safety check
-      if (commands.length > 10000) break;
-    }
-  } catch (error) {
-    console.warn('[ParseReplay] Command parsing error:', error);
-  }
-  
-  return commands;
-}
-
-// Get frame increment for timing commands
-function getFrameIncrement(commandID: number, data: Uint8Array, offset: number) {
-  switch (commandID) {
-    case 0x01: return 1;
-    case 0x02: return 2;
-    case 0x03: return 3;
-    case 0x04: return 4;
-    case 0x05: return 5;
-    case 0x06: return offset + 1 < data.length ? data[offset + 1] : 1;
-    default: return 1;
-  }
-}
-
-// Get command length for parsing
-function getCommandLength(commandID: number) {
-  if (commandID >= 0x01 && commandID <= 0x05) return 1;
-  if (commandID === 0x06) return 2;
-  if (commandID >= 0x09 && commandID <= 0x10) return 3;
-  if (commandID >= 0x0C && commandID <= 0x0E) return 12; // Build commands
-  if (commandID >= 0x1F && commandID <= 0x23) return 8;  // Train commands
-  if (commandID >= 0x30 && commandID <= 0x35) return 4;  // Research/Upgrade
-  return 1;
-}
-
-// Extract map name from replay data
-function extractMapName(data: Uint8Array): string | null {
-  try {
-    // Try multiple search strategies
-    
-    // Strategy 1: Search for .scm/.scx file extensions
-    const dataStr = Array.from(data.slice(0, 2048)).map(b => String.fromCharCode(b)).join('');
-    const scmMatch = dataStr.match(/([a-zA-Z0-9\s\-_\(\)\[\]\.\\\/\+\&\!\@\#\$\%\^\*\=\?\:\;\,\<\>\~\`\|\{\}]{3,50})\.scm/i);
-    const scxMatch = dataStr.match(/([a-zA-Z0-9\s\-_\(\)\[\]\.\\\/\+\&\!\@\#\$\%\^\*\=\?\:\;\,\<\>\~\`\|\{\}]{3,50})\.scx/i);
-    
-    if (scmMatch) return scmMatch[1].trim();
-    if (scxMatch) return scxMatch[1].trim();
-    
-    // Strategy 2: Search in multiple known map name locations
-    const searchRanges = [
-      [0x65, 0x120],    // Common SC:R map location
-      [0x150, 0x200],   // Alternative location
-      [0x250, 0x350],   // Another common location
-      [0x400, 0x500],   // Extended search
-      [0x500, 0x600],   // More extended search
-      [0x600, 0x800],   // Even more extended
-    ];
-    
-    for (const [start, end] of searchRanges) {
-      if (start >= data.length) continue;
-      const actualEnd = Math.min(end, data.length);
-      
-      for (let i = start; i < actualEnd - 10; i++) {
-        let mapName = '';
-        let validChars = 0;
-        let consecutive = 0;
-        
-        for (let j = 0; j < 64 && i + j < data.length; j++) {
-          const byte = data[i + j];
-          if (byte === 0) break;
-          
-          if (byte >= 32 && byte <= 126) {
-            mapName += String.fromCharCode(byte);
-            validChars++;
-            consecutive++;
-          } else if (byte < 32) {
-            if (consecutive < 3) {
-              mapName = '';
-              validChars = 0;
-              consecutive = 0;
-            } else {
-              break;
-            }
-          }
-        }
-        
-        // Check if this looks like a map name
-        if (validChars >= 3 && validChars <= 50 && 
-            consecutive >= 3 &&
-            /^[a-zA-Z0-9\s\-_\(\)\[\]\.\\\/\+\&\!\@\#\$\%\^\*\=\?\:\;\,\<\>\~\`\|\{\}]+$/.test(mapName) &&
-            !mapName.match(/^[0-9\s\x00-\x1F]*$/) &&
-            !mapName.includes('Player') &&
-            !mapName.includes('BWAPI') &&
-            !mapName.includes('StarCraft') &&
-            !mapName.includes('Brood War') &&
-            !mapName.includes('Replay')) {
-          return mapName.trim();
-        }
-      }
-    }
-    
-    // Strategy 3: Look for patterns like "maps\mapname"
-    const mapPattern = /maps[\\/]([a-zA-Z0-9\s\-_\(\)\[\]\.]{3,40})/i;
-    const mapMatch = dataStr.match(mapPattern);
-    if (mapMatch) return mapMatch[1].trim();
-    
-  } catch (error) {
-    console.warn('[ParseReplay] Map name extraction failed:', error);
-  }
-  
-  return null;
-}
-
-// Get race name from race ID
-function getRaceName(raceId: number): string {
-  switch (raceId) {
-    case 0: return 'Zerg';
-    case 1: return 'Terran';  
-    case 2: return 'Protoss';
-    default: return 'Unknown';
-  }
-}
-
-// Extract build order from native commands
-function extractBuildOrderFromNativeCommands(commands: any[], players: any[]) {
-  const buildOrders = {};
-  
-  players.forEach(player => {
-    const playerCommands = commands.filter(cmd => cmd.playerID === player.id);
-    const buildCommands = playerCommands.filter(cmd => BUILD_COMMANDS[cmd.commandID]);
-    
-    const buildOrder = buildCommands.slice(0, 25).map((cmd, index) => {
-      const commandType = BUILD_COMMANDS[cmd.commandID];
-      let unitName = 'Unknown';
-      
-      // Try to extract unit from command data
-      if (cmd.data && cmd.data.length >= 8) {
-        const unitId = cmd.data[7] || cmd.data[6] || cmd.data[5];
-        unitName = getUnitName(unitId, player.race);
-      }
-      
-      return {
-        frame: cmd.frame,
-        time: cmd.time,
-        supply: Math.min(200, 9 + index * 2), // Progressive supply estimate
-        action: `${commandType} ${unitName}`,
-        actionType: commandType,
-        unit: unitName
-      };
-    });
-    
-    buildOrders[player.name] = buildOrder;
-  });
-  
-  return buildOrders;
-}
-
-// Generate real analysis from parsed data
-function generateRealAnalysis(players: any[], commands: any[], gameDurationFrames: number) {
-  const totalCommands = commands.length;
-  const avgAPM = Math.round(players.reduce((sum, p) => sum + p.apm, 0) / players.length || 0);
-  
-  const strengths = [];
-  const weaknesses = [];
-  const recommendations = [];
-  
-  // APM Analysis
-  if (avgAPM > 150) {
-    strengths.push('High APM indicating good multitasking');
-  } else if (avgAPM < 80) {
-    weaknesses.push('Low APM - focus on increasing action speed');
-    recommendations.push('Practice hotkey usage and unit control exercises');
-  }
-  
-  // Command frequency analysis
-  const buildCommands = commands.filter(cmd => BUILD_COMMANDS[cmd.commandID]);
-  if (buildCommands.length > totalCommands * 0.3) {
-    strengths.push('Good macro focus with frequent building');
-  } else {
-    weaknesses.push('Could improve macro by building more frequently');
-    recommendations.push('Set up production hotkeys and maintain constant worker production');
-  }
-  
-  // Generate resource progression simulation
-  const resourcesGraph = generateResourceGraph(commands, gameDurationFrames);
-  
-  return {
-    strengths: strengths.length > 0 ? strengths : ['Decent overall performance'],
-    weaknesses: weaknesses.length > 0 ? weaknesses : ['Minor optimization opportunities'],
-    recommendations: recommendations.length > 0 ? recommendations : ['Continue practicing current strategies'],
-    resourcesGraph
-  };
-}
-
-// Generate resource progression for analysis
-function generateResourceGraph(commands: any[], gameDurationFrames: number) {
-  const dataPoints = [];
-  const timeIntervals = Math.min(20, Math.max(5, Math.floor(gameDurationFrames / (24 * 60)))); // 5-20 data points
-  
-  for (let i = 0; i <= timeIntervals; i++) {
-    const timePoint = (i / timeIntervals) * gameDurationFrames;
-    const timeString = frameToGameTime(timePoint);
-    
-    // Simulate resource growth based on command frequency
-    const commandsUpToThisPoint = commands.filter(cmd => cmd.frame <= timePoint).length;
-    const estimatedMinerals = Math.min(2000, 50 + commandsUpToThisPoint * 3);
-    const estimatedGas = Math.min(1500, commandsUpToThisPoint * 2);
-    
-    dataPoints.push({
-      time: timeString,
-      minerals: estimatedMinerals,
-      gas: estimatedGas,
-      supply: Math.min(200, 9 + Math.floor(commandsUpToThisPoint / 10))
-    });
-  }
-  
-  return dataPoints;
-}
-
-// Enhanced Header Parser
-function parseEnhancedHeader(reader: BinaryReader): any {
-  reader.setPosition(0);
-  
-  // Look for map name in multiple locations
-  let mapName = 'Unknown Map';
-  
-  // Try different offsets for map name
-  const mapOffsets = [0x18, 0x1A, 0x30, 0x48, 0x60, 0x80];
-  
-  for (const offset of mapOffsets) {
-    try {
-      reader.setPosition(offset);
-      const potentialMapName = reader.readNullTerminatedString(32);
-      if (potentialMapName.length > 3 && potentialMapName.length < 32 && 
-          !potentialMapName.includes('\x00') && /^[a-zA-Z0-9\s\-_()]+$/.test(potentialMapName)) {
-        mapName = potentialMapName;
-        console.log(`[ParseReplay] Found map name at offset ${offset}: ${mapName}`);
-        break;
-      }
-    } catch (e) {
-      // Continue to next offset
-    }
-  }
-  
-  // Try to find game type and other header info
-  reader.setPosition(0x08);
-  let gameId = 0;
-  let engine = 0;
-  
-  try {
-    gameId = reader.readUInt32LE();
-    engine = reader.readUInt32LE();
-  } catch (e) {
-    console.warn('[ParseReplay] Could not read game ID/engine');
-  }
-  
-  return {
-    gameId,
-    engine,
-    mapName,
-    gameType: 'Multiplayer',
-    gameVersion: 'Remastered'
-  };
-}
-
-// Enhanced Player Parser
-function parseEnhancedPlayers(reader: BinaryReader, data: Uint8Array): any[] {
-  const players = [];
-  
-  // Look for player data at multiple offsets
-  const playerOffsets = [0x25, 0x30, 0x40, 0x48, 0x50, 0x60];
-  
-  for (const baseOffset of playerOffsets) {
-    try {
-      reader.setPosition(baseOffset);
-      
-      for (let i = 0; i < 8; i++) {
-        const offset = baseOffset + (i * 36); // Standard player record size
-        if (offset + 36 > data.length) break;
-        
-        reader.setPosition(offset);
-        
-        try {
-          const playerType = reader.readUInt8();
-          const race = reader.readUInt8();
-          const team = reader.readUInt8();
-          const nameBytes = reader.readBytes(25);
-          
-          // Extract clean player name
-          let name = '';
-          for (let j = 0; j < nameBytes.length; j++) {
-            if (nameBytes[j] === 0) break;
-            if (nameBytes[j] >= 32 && nameBytes[j] <= 126) {
-              name += String.fromCharCode(nameBytes[j]);
-            }
-          }
-          
-          // Check if this is a valid human player
-          if (playerType === 6 && name.length > 0 && name.length < 25) {
-            const raceNames = ['Zerg', 'Terran', 'Protoss'];
-            players.push({
-              id: players.length,
-              name: name.trim(),
-              race: raceNames[race] || 'Unknown',
-              team: team || 1,
-              isComputer: false,
-              apm: 0,
-              eapm: 0
-            });
-          }
-        } catch (e) {
-          continue;
-        }
-      }
-      
-      if (players.length > 0) {
-        console.log(`[ParseReplay] Found ${players.length} players at offset ${baseOffset}`);
-        break;
-      }
-    } catch (e) {
-      continue;
-    }
-  }
-  
-  // Fallback players if none found
-  if (players.length === 0) {
-    return [
-      { id: 0, name: 'Player 1', race: 'Protoss', team: 1, isComputer: false, apm: 0, eapm: 0 },
-      { id: 1, name: 'Player 2', race: 'Terran', team: 2, isComputer: false, apm: 0, eapm: 0 }
-    ];
-  }
-  
-  return players;
-}
-
-// Enhanced Command Parser
-function parseEnhancedCommands(reader: BinaryReader, data: Uint8Array): { commands: any[], maxFrame: number } {
-  const commands = [];
-  let maxFrame = 0;
-  let currentFrame = 0;
-  
-  // Find command section using enhanced detection
-  const commandOffsets = [0x279, 0x26D, 0x290, 0x300, 0x400, 0x500];
-  let commandSectionOffset = 0x279; // Default
-  
-  for (const offset of commandOffsets) {
-    if (offset < data.length - 100) {
-      let commandLikeBytes = 0;
-      for (let i = 0; i < 50 && offset + i < data.length; i++) {
-        const byte = data[offset + i];
-        if (byte > 0 && byte < 0x60 && BUILD_COMMANDS[byte]) {
-          commandLikeBytes++;
-        }
-      }
-      
-      if (commandLikeBytes > 3) {
-        commandSectionOffset = offset;
-        console.log(`[ParseReplay] Using command section at offset: ${offset}`);
-        break;
-      }
-    }
-  }
-  
-  reader.setPosition(commandSectionOffset);
-  
-  try {
-    while (reader.getPosition() < data.length - 4) {
-      const commandID = reader.readUInt8();
-      
-      if (commandID === 0) continue;
-      
-      // Frame timing commands
-      if (commandID >= 0x01 && commandID <= 0x06) {
-        if (commandID === 0x06 && reader.getPosition() < data.length) {
-          const frameIncrement = reader.readUInt8();
-          currentFrame += frameIncrement;
-        } else {
-          currentFrame += commandID;
-        }
-        continue;
-      }
-      
-      // Player command prefix (0x09-0x10)
-      let playerID = 0;
-      let actualCommandID = commandID;
-      
-      if (commandID >= 0x09 && commandID <= 0x10) {
-        playerID = commandID - 0x09;
-        if (reader.getPosition() < data.length) {
-          actualCommandID = reader.readUInt8();
-        }
-      }
-      
-      // Only record meaningful commands
-      if (BUILD_COMMANDS[actualCommandID] || EFFECTIVE_ACTIONS.has(actualCommandID)) {
-        const commandData = [];
-        const maxDataLength = Math.min(16, data.length - reader.getPosition());
-        
-        for (let i = 0; i < maxDataLength; i++) {
-          if (reader.getPosition() < data.length) {
-            commandData.push(reader.readUInt8());
-          }
-        }
-        
-        commands.push({
-          frame: currentFrame,
-          time: frameToGameTime(currentFrame),
-          playerID: playerID,
-          commandID: actualCommandID,
-          data: commandData,
-          rawData: new Uint8Array(commandData)
-        });
-        
-        maxFrame = Math.max(maxFrame, currentFrame);
-      }
-      
-      // Skip remaining command data
-      const commandLength = getEnhancedCommandLength(actualCommandID);
-      for (let i = 0; i < commandLength - 1; i++) {
-        if (reader.getPosition() < data.length) {
-          reader.readUInt8();
-        }
-      }
-      
-      // Safety limit
-      if (commands.length > 15000) break;
-    }
-  } catch (error) {
-    console.warn('[ParseReplay] Command parsing stopped:', error);
-  }
-  
-  console.log(`[ParseReplay] Parsed ${commands.length} commands, max frame: ${maxFrame}`);
-  return { commands, maxFrame };
-}
-
-// Get enhanced command length
-function getEnhancedCommandLength(commandID: number): number {
-  if (commandID >= 0x0C && commandID <= 0x0E) return 12; // Build commands
-  if (commandID >= 0x1F && commandID <= 0x23) return 8;  // Train commands
-  if (commandID >= 0x30 && commandID <= 0x35) return 4;  // Research/Upgrade
-  if (commandID >= 0x14 && commandID <= 0x18) return 6;  // Move commands
-  return 2; // Default
-}
-
-// Enhanced Build Order Extractor
-function extractEnhancedBuildOrder(commands: any[], players: any[]): any {
-  const buildOrders = {};
-  
-  players.forEach(player => {
-    const playerCommands = commands
-      .filter(cmd => cmd.playerID === player.id)
-      .filter(cmd => BUILD_COMMANDS[cmd.commandID] && !BUILD_COMMANDS[cmd.commandID].includes('Cancel'))
-      .slice(0, 30); // Limit to first 30 build actions
-    
-    const buildOrder = playerCommands.map((cmd, index) => {
-      const commandType = BUILD_COMMANDS[cmd.commandID] || 'Action';
-      let unitName = extractUnitNameFromCommand(cmd, player.race);
-      
-      // Use professional unit database for better names
-      if (unitName.startsWith('Unit_')) {
-        const unitId = parseInt(unitName.split('_')[1]);
-        unitName = getUnitName(unitId, player.race);
-      }
-      
-      const unitCost = getUnitCost(unitName, player.race);
-      const efficiency = calculateBuildEfficiency(cmd.frame, unitName, player.race);
-      
-      return {
-        frame: cmd.frame,
-        time: cmd.time,
-        supply: Math.min(200, getStartingSupplyForRace(player.race) + index * 2),
-        action: `${commandType} ${unitName}`,
-        actionType: commandType,
-        unit: unitName,
-        cost: unitCost,
-        efficiency: efficiency,
-        category: categorizeUnit(unitName, commandType),
-        priority: getStrategicPriority(unitName, categorizeUnit(unitName, commandType)),
-        purpose: getUnitPurpose(unitName, categorizeUnit(unitName, commandType))
-      };
-    });
-    
-    buildOrders[player.name] = buildOrder;
-  });
-  
-  return buildOrders;
-}
-
-// Enhanced Analysis Generator
-function generateEnhancedAnalysis(players: any[], commands: any[], gameDurationFrames: number, buildOrder: any): any {
-  const totalCommands = commands.length;
-  const avgAPM = Math.round(players.reduce((sum, p) => sum + p.apm, 0) / players.length || 0);
-  const gameDurationMinutes = gameDurationFrames / (24 * 60);
-  
-  const strengths = [];
-  const weaknesses = [];
-  const recommendations = [];
-  
-  // APM Analysis
-  if (avgAPM > 180) {
-    strengths.push('Excellent APM indicating superb multitasking and micro management');
-  } else if (avgAPM > 120) {
-    strengths.push('Good APM showing solid multitasking abilities');
-  } else if (avgAPM < 80) {
-    weaknesses.push('Low APM - focus on increasing action speed and efficiency');
-    recommendations.push('Practice hotkey usage, unit control exercises, and macro cycles');
-  }
-  
-  // Build Order Analysis
-  const firstPlayerBO = Object.values(buildOrder)[0] as any[];
-  if (firstPlayerBO && firstPlayerBO.length > 0) {
-    const economyActions = firstPlayerBO.filter(action => action.category === 'economy').length;
-    const militaryActions = firstPlayerBO.filter(action => action.category === 'military').length;
-    const supplyActions = firstPlayerBO.filter(action => action.category === 'supply').length;
-    
-    if (economyActions > militaryActions * 1.5) {
-      strengths.push('Strong economic focus in early game - good macro foundation');
-    }
-    
-    if (supplyActions < 3 && firstPlayerBO.length > 10) {
-      weaknesses.push('Potential supply blocks - insufficient supply management');
-      recommendations.push('Build supply providers more proactively to avoid supply blocks');
-    }
-    
-    const avgEfficiency = firstPlayerBO.reduce((sum, action) => sum + action.efficiency, 0) / firstPlayerBO.length;
-    if (avgEfficiency > 85) {
-      strengths.push('Excellent build timing and efficiency');
-    } else if (avgEfficiency < 70) {
-      weaknesses.push('Build timing could be optimized for better efficiency');
-      recommendations.push('Study professional build orders and timing benchmarks');
-    }
-  }
-  
-  // Command Frequency Analysis
-  const buildCommands = commands.filter(cmd => BUILD_COMMANDS[cmd.commandID] && !BUILD_COMMANDS[cmd.commandID].includes('Cancel'));
-  if (buildCommands.length > totalCommands * 0.25) {
-    strengths.push('Excellent macro focus with consistent building activity');
-  } else if (buildCommands.length < totalCommands * 0.1) {
-    weaknesses.push('Could improve macro by building more frequently');
-    recommendations.push('Set up production hotkeys and maintain constant worker production');
-  }
-  
-  // EAPM Analysis
-  const avgEAPM = Math.round(players.reduce((sum, p) => sum + p.eapm, 0) / players.length || 0);
-  const apmEfficiency = avgEAPM / Math.max(avgAPM, 1);
-  
-  if (apmEfficiency > 0.7) {
-    strengths.push('High action efficiency - low spam, high impact actions');
-  } else if (apmEfficiency < 0.4) {
-    weaknesses.push('Action efficiency could be improved - reduce unnecessary actions');
-    recommendations.push('Focus on meaningful actions: building, attacking, and positioning');
-  }
-  
-  // Generate enhanced resource progression
-  const resourcesGraph = generateEnhancedResourceGraph(commands, gameDurationFrames, buildOrder);
-  
-  return {
-    strengths: strengths.length > 0 ? strengths : ['Solid overall gameplay with room for growth'],
-    weaknesses: weaknesses.length > 0 ? weaknesses : ['Minor optimization opportunities available'],
-    recommendations: recommendations.length > 0 ? recommendations : ['Continue practicing and studying professional gameplay'],
-    resourcesGraph
-  };
-}
-
-// Enhanced Resource Graph Generation
-function generateEnhancedResourceGraph(commands: any[], gameDurationFrames: number, buildOrder: any): any[] {
-  const dataPoints = [];
-  const timeIntervals = Math.min(25, Math.max(8, Math.floor(gameDurationFrames / (24 * 60)))); // More data points
-  
-  for (let i = 0; i <= timeIntervals; i++) {
-    const timePoint = (i / timeIntervals) * gameDurationFrames;
-    const timeString = frameToGameTime(timePoint);
-    
-    // Enhanced resource simulation based on build order analysis
-    const commandsUpToThisPoint = commands.filter(cmd => cmd.frame <= timePoint);
-    const buildCommandsCount = commandsUpToThisPoint.filter(cmd => 
-      BUILD_COMMANDS[cmd.commandID] && !BUILD_COMMANDS[cmd.commandID].includes('Cancel')
-    ).length;
-    
-    // More realistic resource calculation
-    const baseResourceRate = 8; // per minute per worker
-    const timeMinutes = timePoint / (24 * 60);
-    const estimatedWorkers = Math.min(70, 4 + Math.floor(timeMinutes * 8)); // Workers over time
-    
-    const totalMineralsGenerated = baseResourceRate * estimatedWorkers * timeMinutes;
-    const mineralsSpent = buildCommandsCount * 75; // Average cost
-    const currentMinerals = Math.max(0, Math.min(2000, totalMineralsGenerated - mineralsSpent));
-    
-    const gasRate = baseResourceRate * 0.6; // Gas is slower
-    const totalGasGenerated = gasRate * Math.max(0, estimatedWorkers - 8) * Math.max(0, timeMinutes - 2);
-    const gasSpent = buildCommandsCount * 30; // Average gas cost
-    const currentGas = Math.max(0, Math.min(1500, totalGasGenerated - gasSpent));
-    
-    const currentSupply = Math.min(200, 9 + Math.floor(buildCommandsCount / 3) * 8);
-    
-    dataPoints.push({
-      time: timeString,
-      minerals: Math.round(currentMinerals),
-      gas: Math.round(currentGas),
-      supply: currentSupply
-    });
-  }
-  
-  return dataPoints;
-}
-
-// Fallback result creator
-async function createFallbackResult(data: Uint8Array, filePath: string): Promise<any> {
-  console.log('[ParseReplay] Creating fallback result with basic data');
-  
-  return {
-    replayId: null,
-    header: {
-      mapName: 'Unknown Map',
-      gameVersion: 'Remastered',
-      gameLength: '5:00',
-      gameType: 'Multiplayer',
-    },
-    players: [
-      { id: 0, name: 'Player 1', race: 'Protoss', team: 1, isComputer: false, apm: 100, eapm: 75 },
-      { id: 1, name: 'Player 2', race: 'Terran', team: 2, isComputer: false, apm: 95, eapm: 70 }
-    ],
-    gameStats: {
-      duration: '5:00',
-      totalCommands: 500,
-      averageAPM: 98,
-      peakAPM: 120,
-    },
-    buildOrder: {
-      'Player 1': [
-        {
-          frame: 24,
-          time: '0:01',
-          supply: 9,
-          action: 'Build Probe',
-          actionType: 'Train',
-          unit: 'Probe',
-          cost: { minerals: 50, gas: 0, supply: 1 },
-          efficiency: 95,
-          category: 'economy',
-          priority: 'essential',
-          purpose: 'Economic development and resource gathering'
-        }
-      ],
-      'Player 2': [
-        {
-          frame: 24,
-          time: '0:01',
-          supply: 10,
-          action: 'Build SCV',
-          actionType: 'Train',
-          unit: 'SCV',
-          cost: { minerals: 50, gas: 0, supply: 1 },
-          efficiency: 95,
-          category: 'economy',
-          priority: 'essential',
-          purpose: 'Economic development and resource gathering'
-        }
-      ]
-    },
-    strengths: ['Basic gameplay structure maintained', 'Continuous production evident'],
-    weaknesses: ['Parsing incomplete - limited analysis available'],
-    recommendations: ['Upload a complete .rep file for detailed analysis', 'Ensure replay is from StarCraft: Remastered'],
-    resourcesGraph: [
-      { time: '0:00', minerals: 50, gas: 0, supply: 9 },
-      { time: '1:00', minerals: 200, gas: 0, supply: 17 },
-      { time: '2:00', minerals: 400, gas: 100, supply: 25 },
-      { time: '3:00', minerals: 600, gas: 200, supply: 33 },
-      { time: '4:00', minerals: 800, gas: 300, supply: 41 },
-      { time: '5:00', minerals: 1000, gas: 400, supply: 49 }
-    ],
-    parseTimestamp: new Date().toISOString(),
-    dataSource: 'fallback'
-  };
-}
-
-// Helper function to extract string from binary data
-function extractString(data: Uint8Array, offset: number, maxLength: number): string {
-  const bytes = [];
-  for (let i = 0; i < maxLength && offset + i < data.length; i++) {
-    const byte = data[offset + i];
-    if (byte === 0) break;
-    if (byte < 32 || byte > 126) return '';
-    bytes.push(byte);
-  }
-  
-  try {
-    return new TextDecoder('ascii').decode(new Uint8Array(bytes));
-  } catch {
-    return '';
-  }
-}
