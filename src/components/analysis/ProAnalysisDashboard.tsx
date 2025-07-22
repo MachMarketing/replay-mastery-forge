@@ -1,490 +1,302 @@
-/**
- * Professional SC:R Analysis Dashboard
- * Designed for pro-level gameplay improvement and recurring usage
- */
-
-import React, { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import React from 'react';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import { HybridParsingResult } from '@/hooks/useHybridReplayParser';
-import { ProfessionalBuildOrderItem } from '@/services/buildOrderAnalysis/professionalBuildOrderExtractor';
-import { 
-  TrendingUp, 
-  Zap, 
-  Target, 
-  Trophy, 
-  Activity, 
-  Clock,
-  Users,
-  Building,
-  Sword,
-  Brain,
-  BarChart3,
-  LineChart,
-  PieChart,
-  Star,
-  ChevronRight,
-  Download,
-  Share2
-} from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TrendingUp, Target, AlertTriangle, CheckCircle, Clock, Zap } from 'lucide-react';
+import type { EnhancedReplayData } from '@/hooks/useEnhancedReplayParser';
 
 interface ProAnalysisDashboardProps {
-  data: HybridParsingResult;
+  data: EnhancedReplayData;
 }
 
 const ProAnalysisDashboard: React.FC<ProAnalysisDashboardProps> = ({ data }) => {
-  const [activePlayer, setActivePlayer] = useState(0);
-  
-  // Extract real data from HybridParsingResult
-  const players = data.metadata.players || [];
-  const player = players[activePlayer];
-  const serverAnalysis = data.serverAnalysis;
-  
-  // Use server analysis if available, otherwise fallback to metadata
-  const analysisData = serverAnalysis?.data || {
-    players: players.map(p => ({ 
-      name: p.name, 
-      race: p.race, 
-      apm: 0, 
-      eapm: 0, 
-      efficiency: 0 
-    })),
-    buildOrder: {},
-    strengths: [],
-    weaknesses: [],
-    recommendations: [],
-    resourcesGraph: []
-  };
-  
-  const buildOrder = analysisData.buildOrder?.[activePlayer] || [];
-  const analysis = {
-    strengths: analysisData.strengths || [],
-    weaknesses: analysisData.weaknesses || [],
-    recommendations: analysisData.recommendations || [],
-    apmBreakdown: {
-      economic: Math.round((analysisData.players[activePlayer]?.apm || 0) * 0.3),
-      micro: Math.round((analysisData.players[activePlayer]?.apm || 0) * 0.2),
-      selection: Math.round((analysisData.players[activePlayer]?.apm || 0) * 0.25),
-      spam: Math.round((analysisData.players[activePlayer]?.apm || 0) * 0.15),
-      effective: analysisData.players[activePlayer]?.eapm || 0
-    },
-    economicEfficiency: analysisData.players[activePlayer]?.efficiency || 75,
-    playstyle: determinePlaystyle(analysisData.players[activePlayer]),
-    microEvents: []
-  };
-
-  const getRaceColor = (race: string) => {
-    switch (race?.toLowerCase()) {
-      case 'protoss': return 'text-yellow-500';
-      case 'terran': return 'text-blue-500';
-      case 'zerg': return 'text-purple-500';
-      default: return 'text-muted-foreground';
-    }
-  };
-
-  const getPerformanceLevel = (apm: number) => {
-    if (apm >= 300) return { level: 'Pro', color: 'text-red-500', progress: 100 };
-    if (apm >= 200) return { level: 'Expert', color: 'text-orange-500', progress: 80 };
-    if (apm >= 120) return { level: 'Advanced', color: 'text-yellow-500', progress: 60 };
-    if (apm >= 80) return { level: 'Intermediate', color: 'text-green-500', progress: 40 };
-    return { level: 'Beginner', color: 'text-blue-500', progress: 20 };
-  };
-
-  const performance = getPerformanceLevel(analysisData.players[activePlayer]?.apm || 0);
-  
-  // Helper function to determine playstyle
-  function determinePlaystyle(player: any): string {
-    if (!player) return 'Balanced';
-    if (player.apm > 200) return 'Aggressive';
-    if (player.apm < 80) return 'Defensive'; 
-    if (player.efficiency > 80) return 'Macro-oriented';
-    return 'Balanced';
+  if (!data.success) {
+    return (
+      <div className="max-w-6xl mx-auto p-6">
+        <Card className="border-destructive">
+          <CardHeader>
+            <CardTitle className="text-destructive flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" />
+              Parsing-Fehler
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground mb-4">
+              {data.error || 'Die Replay-Datei konnte nicht analysiert werden.'}
+            </p>
+            <div className="space-y-2">
+              {data.analysis.recommendations.map((rec, index) => (
+                <div key={index} className="flex items-start gap-2">
+                  <Target className="w-4 h-4 text-primary mt-0.5" />
+                  <span className="text-sm">{rec}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
 
+  const formatDuration = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
+  const getRaceIcon = (race: string) => {
+    const colors = {
+      'Protoss': 'bg-yellow-500',
+      'Terran': 'bg-blue-500', 
+      'Zerg': 'bg-purple-500',
+      'Random': 'bg-gray-500'
+    };
+    return colors[race as keyof typeof colors] || 'bg-gray-500';
+  };
+
   return (
-    <div className="space-y-6">
-      {/* Header with Game Overview */}
-      <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-6 rounded-xl border">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">{data.metadata.header.mapName}</h1>
-            <div className="flex items-center gap-4 text-muted-foreground">
-              <div className="flex items-center gap-1">
-                <Clock className="h-4 w-4" />
-                <span>{data.metadata.header.dateCreated ? new Date(data.metadata.header.dateCreated).toLocaleDateString() : 'Unknown Date'}</span>
+    <div className="max-w-6xl mx-auto p-6 space-y-6">
+      {/* Header Section */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-green-500" />
+              Match Details
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className={`w-3 h-3 rounded-full ${getRaceIcon(data.playerRace)}`}></div>
+                <span className="font-semibold">{data.playerName}</span>
+                <Badge variant="secondary">{data.playerRace}</Badge>
               </div>
-              <div className="flex items-center gap-1">
-                <Users className="h-4 w-4" />
-                <span>{players.length} Spieler</span>
+              <span className="text-sm text-muted-foreground">vs</span>
+              <div className="flex items-center gap-3">
+                <Badge variant="secondary">{data.opponentRace}</Badge>
+                <span className="font-semibold">{data.opponentName}</span>
+                <div className={`w-3 h-3 rounded-full ${getRaceIcon(data.opponentRace)}`}></div>
               </div>
-              <Badge variant="outline" className="bg-background">
-                {serverAnalysis ? 'HIGH' : 'MEDIUM'} Quality
-              </Badge>
             </div>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm">
-              <Download className="h-4 w-4 mr-2" />
-              Export
-            </Button>
-            <Button variant="outline" size="sm">
-              <Share2 className="h-4 w-4 mr-2" />
-              Teilen
-            </Button>
-          </div>
-        </div>
+            
+            <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+              <div>
+                <p className="text-sm text-muted-foreground">Map</p>
+                <p className="font-medium">{data.mapName}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Dauer</p>
+                <p className="font-medium">{formatDuration(data.matchDurationSeconds)}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Zap className="w-5 h-5 text-primary" />
+              Performance Metriken
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-muted-foreground">APM</p>
+                <p className="text-2xl font-bold text-primary">{data.apm}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">EAPM</p>
+                <p className="text-2xl font-bold text-primary">{data.eapm}</p>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-sm">APM Rating</span>
+                <span className="text-sm font-medium">
+                  {data.apm > 200 ? 'Excellent' : data.apm > 150 ? 'Good' : data.apm > 100 ? 'Average' : 'Needs Work'}
+                </span>
+              </div>
+              <Progress 
+                value={Math.min((data.apm / 300) * 100, 100)} 
+                className="h-2"
+              />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Player Selection */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {players.map((p, index) => {
-          const playerData = analysisData.players[index] || { apm: 0, eapm: 0, efficiency: 0 };
-          return (
-            <Card 
-              key={index} 
-              className={`cursor-pointer transition-all hover:shadow-md ${
-                index === activePlayer ? 'ring-2 ring-primary bg-primary/5' : ''
-              }`}
-              onClick={() => setActivePlayer(index)}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-semibold">{p.name}</h3>
-                      <span className={`text-sm font-medium ${getRaceColor(p.race)}`}>
-                        {p.race}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span>{playerData.apm} APM</span>
-                      <span>{playerData.eapm} EAPM</span>
-                      <span>{playerData.efficiency}% Eff</span>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className={`text-lg font-bold ${getPerformanceLevel(playerData.apm).color}`}>
-                      {getPerformanceLevel(playerData.apm).level}
-                    </div>
-                    <ChevronRight className={`h-4 w-4 transition-transform ${
-                      index === activePlayer ? 'rotate-90' : ''
-                    }`} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* Main Analysis Tabs */}
-      <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="overview">Übersicht</TabsTrigger>
-          <TabsTrigger value="performance">Performance</TabsTrigger>
-          <TabsTrigger value="buildorder">Build Order</TabsTrigger>
-          <TabsTrigger value="micro">Micro</TabsTrigger>
-          <TabsTrigger value="improvement">Verbesserung</TabsTrigger>
+      {/* Detailed Analysis Tabs */}
+      <Tabs defaultValue="build-order" className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="build-order">Build Order</TabsTrigger>
+          <TabsTrigger value="key-moments">Key Moments</TabsTrigger>
+          <TabsTrigger value="strengths">Stärken</TabsTrigger>
+          <TabsTrigger value="improvements">Verbesserungen</TabsTrigger>
         </TabsList>
-
-        {/* Overview Tab */}
-        <TabsContent value="overview" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Performance Level */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Trophy className="h-5 w-5" />
-                  Skill Level
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center">
-                  <div className={`text-3xl font-bold mb-2 ${performance.color}`}>
-                    {performance.level}
-                  </div>
-                  <Progress value={performance.progress} className="mb-2" />
-                  <div className="text-sm text-muted-foreground">
-                    {analysisData.players[activePlayer]?.apm || 0} APM • {analysisData.players[activePlayer]?.eapm || 0} EAPM
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Playstyle */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Brain className="h-5 w-5" />
-                  Spielstil
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center">
-                  <Badge variant="secondary" className="text-lg px-4 py-2 mb-3">
-                    {analysis?.playstyle || 'Balanced'}
-                  </Badge>
-                  <div className="text-sm text-muted-foreground">
-                    Strategischer Fokus
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Economic Efficiency */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <TrendingUp className="h-5 w-5" />
-                  Wirtschaft
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center">
-                  <div className="text-3xl font-bold mb-2">
-                    {analysis?.economicEfficiency || 75}%
-                  </div>
-                  <Progress value={analysis?.economicEfficiency || 75} className="mb-2" />
-                  <div className="text-sm text-muted-foreground">
-                    Effizienz Rating
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* APM Breakdown */}
+        
+        <TabsContent value="build-order" className="space-y-4">
           <Card>
             <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                <Activity className="h-5 w-5" />
-                APM Breakdown - {players[activePlayer]?.name || 'Player'}
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="w-5 h-5" />
+                Build Order Analyse
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-green-500">
-                    {analysis?.apmBreakdown?.economic || 0}
-                  </div>
-                  <div className="text-sm text-muted-foreground">Economic</div>
+              {data.buildOrder.length > 0 ? (
+                <div className="space-y-2">
+                  {data.buildOrder.slice(0, 15).map((item, index) => (
+                    <div key={index} className="flex items-center justify-between p-2 rounded border">
+                      <div className="flex items-center gap-4">
+                        <Badge variant="outline" className="w-16 text-center">
+                          {item.supply}
+                        </Badge>
+                        <span className="font-medium">{item.unitOrBuilding}</span>
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {item.gameTime}
+                      </div>
+                    </div>
+                  ))}
+                  {data.buildOrder.length > 15 && (
+                    <p className="text-sm text-muted-foreground text-center pt-2">
+                      ... und {data.buildOrder.length - 15} weitere Aktionen
+                    </p>
+                  )}
                 </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-blue-500">
-                    {analysis?.apmBreakdown?.micro || 0}
-                  </div>
-                  <div className="text-sm text-muted-foreground">Micro</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-purple-500">
-                    {analysis?.apmBreakdown?.selection || 0}
-                  </div>
-                  <div className="text-sm text-muted-foreground">Selection</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-orange-500">
-                    {analysis?.apmBreakdown?.spam || 0}
-                  </div>
-                  <div className="text-sm text-muted-foreground">Spam</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-primary">
-                    {analysis?.apmBreakdown?.effective || 0}
-                  </div>
-                  <div className="text-sm text-muted-foreground">Effective</div>
-                </div>
-              </div>
+              ) : (
+                <p className="text-muted-foreground text-center py-8">
+                  Keine Build Order Daten verfügbar
+                </p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
-
-        {/* Performance Tab */}
-        <TabsContent value="performance" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-green-600">
-                  <Star className="h-5 w-5" />
-                  Stärken
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2">
-                  {(analysis?.strengths || []).map((strength: string, i: number) => (
-                    <li key={i} className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                      {strength}
-                    </li>
+        
+        <TabsContent value="key-moments" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Target className="w-5 h-5" />
+                Wichtige Momente
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {data.keyMoments.length > 0 ? (
+                <div className="space-y-3">
+                  {data.keyMoments.map((moment, index) => (
+                    <div key={index} className="flex items-start gap-3 p-3 rounded border">
+                      <div className="w-2 h-2 rounded-full bg-primary mt-2"></div>
+                      <span>{moment}</span>
+                    </div>
                   ))}
-                </ul>
-              </CardContent>
-            </Card>
-
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-center py-8">
+                  Keine wichtigen Momente erkannt
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="strengths" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-green-600">
+                <CheckCircle className="w-5 h-5" />
+                Stärken
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {data.analysis.strengths.length > 0 ? (
+                <div className="space-y-3">
+                  {data.analysis.strengths.map((strength, index) => (
+                    <div key={index} className="flex items-start gap-3 p-3 rounded border border-green-200 bg-green-50">
+                      <CheckCircle className="w-4 h-4 text-green-600 mt-0.5" />
+                      <span>{strength}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted-foreground text-center py-8">
+                  Noch keine Stärken identifiziert
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="improvements" className="space-y-4">
+          <div className="grid gap-4">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-red-600">
-                  <Target className="h-5 w-5" />
+                <CardTitle className="flex items-center gap-2 text-orange-600">
+                  <AlertTriangle className="w-5 h-5" />
                   Schwächen
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ul className="space-y-2">
-                  {(analysis?.weaknesses || []).map((weakness: string, i: number) => (
-                    <li key={i} className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                      {weakness}
-                    </li>
-                  ))}
-                </ul>
+                {data.analysis.weaknesses.length > 0 ? (
+                  <div className="space-y-3">
+                    {data.analysis.weaknesses.map((weakness, index) => (
+                      <div key={index} className="flex items-start gap-3 p-3 rounded border border-orange-200 bg-orange-50">
+                        <AlertTriangle className="w-4 h-4 text-orange-600 mt-0.5" />
+                        <span>{weakness}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-center py-4">
+                    Keine Schwächen gefunden
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-blue-600">
+                  <TrendingUp className="w-5 h-5" />
+                  Empfehlungen
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {data.analysis.recommendations.length > 0 ? (
+                  <div className="space-y-3">
+                    {data.analysis.recommendations.map((rec, index) => (
+                      <div key={index} className="flex items-start gap-3 p-3 rounded border border-blue-200 bg-blue-50">
+                        <TrendingUp className="w-4 h-4 text-blue-600 mt-0.5" />
+                        <span>{rec}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-center py-4">
+                    Keine Empfehlungen verfügbar
+                  </p>
+                )}
               </CardContent>
             </Card>
           </div>
         </TabsContent>
-
-        {/* Build Order Tab */}
-        <TabsContent value="buildorder" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Building className="h-5 w-5" />
-                Build Order - {players[activePlayer]?.name || 'Player'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3 max-h-96 overflow-y-auto">
-                {Array.isArray(buildOrder) && buildOrder.length > 0 ? (
-                  buildOrder.slice(0, 20).map((entry: any, index: number) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-primary/20 rounded-full flex items-center justify-center text-sm font-medium">
-                          {index + 1}
-                        </div>
-                        <div>
-                          <div className="font-medium">{entry.actionType || entry.action} {entry.unit || entry.unitName}</div>
-                          <div className="text-sm text-muted-foreground flex items-center gap-2">
-                            <span>{entry.time}</span>
-                            <span>•</span>
-                            <span>Frame {entry.frame}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-medium">{entry.supply || '?/?'}</div>
-                        <Badge variant="outline" className="text-xs mt-1">
-                          Real Data
-                        </Badge>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Building className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p>Keine Build Order Daten verfügbar</p>
-                    {serverAnalysis ? (
-                      <p className="text-sm">Server-Analyse lief, aber keine Build Order extrahiert</p>
-                    ) : (
-                      <p className="text-sm">Server-Analyse nicht verfügbar - nur Metadaten</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Micro Tab */}
-        <TabsContent value="micro" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sword className="h-5 w-5" />
-                Micro Events
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {(analysis?.microEvents || []).map((event: any, index: number) => (
-                  <div key={index} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                      <div>
-                        <div className="font-medium capitalize">{event.action}</div>
-                        <div className="text-sm text-muted-foreground">{event.time}</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {Array.from({ length: event.intensity }).map((_, i) => (
-                        <Star key={i} className="h-3 w-3 fill-current text-yellow-500" />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Improvement Tab */}
-        <TabsContent value="improvement" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-blue-600">
-                <TrendingUp className="h-5 w-5" />
-                Verbesserungsempfehlungen
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {(analysis?.recommendations || []).map((rec: string, i: number) => (
-                  <div key={i} className="flex items-start gap-3 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
-                    <div className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm font-medium mt-0.5">
-                      {i + 1}
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm">{rec}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Next Steps */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Target className="h-5 w-5" />
-                Nächste Schritte zum Pro Level
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="p-3 border-l-4 border-primary bg-primary/5">
-                  <div className="font-medium">APM Ziel: {Math.min((analysisData.players[activePlayer]?.apm || 0) + 50, 400)}</div>
-                  <div className="text-sm text-muted-foreground">
-                    Erhöhe deine APM durch Build Order Training
-                  </div>
-                </div>
-                <div className="p-3 border-l-4 border-green-500 bg-green-50 dark:bg-green-950/30">
-                  <div className="font-medium">Efficiency Ziel: {Math.min((analysisData.players[activePlayer]?.efficiency || 0) + 10, 95)}%</div>
-                  <div className="text-sm text-muted-foreground">
-                    Reduziere Spam-Clicks und fokussiere auf effektive Aktionen
-                  </div>
-                </div>
-                <div className="p-3 border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950/30">
-                  <div className="font-medium">Micro Training</div>
-                  <div className="text-sm text-muted-foreground">
-                    Verbessere Einheiten-Kontrolle in kritischen Situationen
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
+
+      {/* Success Message */}
+      {data.message && (
+        <Card className="border-green-200 bg-green-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-green-700">
+              <CheckCircle className="w-4 h-4" />
+              <span className="font-medium">{data.message}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
