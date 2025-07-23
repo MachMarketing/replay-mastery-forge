@@ -216,6 +216,14 @@ class AuthenticSCRParser {
     this.position = Math.min(this.position + bytes, this.buffer.byteLength);
   }
 
+  private peek(offset: number = 0): number {
+    const pos = this.position + offset;
+    if (pos >= this.buffer.byteLength) {
+      throw new Error('Cannot peek beyond buffer end');
+    }
+    return new Uint8Array(this.buffer)[pos];
+  }
+
   // ============= AUTHENTISCHES SC:R PARSING BASIEREND AUF SCREP =============
 
   public parse(): ParsedReplay {
