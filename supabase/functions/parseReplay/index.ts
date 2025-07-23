@@ -161,22 +161,27 @@ class SCRReplayParser {
       console.log('[SCRParser] Using fallback frame count');
     }
 
-    // Read frame count (try multiple offsets)
-    let frameCount = 0;
-    try {
-      this.seekTo(8);
-      frameCount = this.readUInt32LE();
-      console.log('[SCRParser] Frame count at offset 8:', frameCount);
-      
-      // Sanity check - if frame count seems wrong, try other offsets
-      if (frameCount > 1000000 || frameCount < 100) {
-        this.seekTo(12);
-        frameCount = this.readUInt32LE();
-        console.log('[SCRParser] Frame count at offset 12:', frameCount);
+    // Try alternative frame count parsing if initial attempt failed
+    if (!isValidReplay || frameCount === 0) {
+      try {
+        this.seekTo(8);
+        const altFrameCount = this.readUInt32LE();
+        console.log('[SCRParser] Frame count at offset 8:', altFrameCount);
+        
+        // Sanity check - if frame count seems reasonable, use it
+        if (altFrameCount > 100 && altFrameCount < 1000000) {
+          frameCount = altFrameCount;
+        } else {
+          this.seekTo(12);
+          const altFrameCount2 = this.readUInt32LE();
+          console.log('[SCRParser] Frame count at offset 12:', altFrameCount2);
+          if (altFrameCount2 > 100 && altFrameCount2 < 1000000) {
+            frameCount = altFrameCount2;
+          }
+        }
+      } catch (e) {
+        console.log('[SCRParser] Could not read alternative frame count, keeping current');
       }
-    } catch (e) {
-      console.log('[SCRParser] Could not read frame count, using default');
-      frameCount = 10000; // Default fallback
     }
 
     // Read save time
@@ -200,7 +205,7 @@ class SCRReplayParser {
     const gameType = this.readUInt8();
 
     return {
-      signature,
+      signature: 'SC:R',
       frameCount,
       saveTime,
       players,
