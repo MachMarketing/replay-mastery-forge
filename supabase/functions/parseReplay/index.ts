@@ -184,13 +184,15 @@ class SCRReplayParser {
       }
     }
 
-    // Read save time
-    let saveTime = 0;
+    // Try to read save time from header
     try {
       this.seekTo(16);
-      saveTime = this.readUInt32LE();
+      const headerSaveTime = this.readUInt32LE();
+      if (headerSaveTime > 0) {
+        saveTime = headerSaveTime;
+      }
     } catch (e) {
-      saveTime = Date.now() / 1000; // Current time as fallback
+      console.log('[SCRParser] Could not read save time from header, using current time');
     }
     
     // Parse players section
