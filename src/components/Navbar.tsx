@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Menu, X, LogOut, Settings, User } from 'lucide-react';
@@ -10,7 +10,18 @@ import { useAuth } from '@/context/AuthContext';
 const Navbar = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLDivElement>(null);
-  const navigate = useNavigate();
+  
+  // Safe navigation hook usage with fallback
+  let navigate: any;
+  try {
+    navigate = useNavigate();
+  } catch (error) {
+    // Fallback when not in Router context
+    navigate = (path: string) => {
+      window.location.href = path;
+    };
+  }
+  
   const { user, signOut } = useAuth();
 
   const toggleMobileMenu = () => {
