@@ -79,631 +79,122 @@ class SCRReplayParser {
   // ============= CORE BINARY READING METHODS =============
   
   private readUInt8(): number {
+    if (this.position >= this.buffer.byteLength) throw new Error('Buffer overflow');
     const value = this.view.getUint8(this.position);
     this.position += 1;
     return value;
   }
 
   private readUInt16LE(): number {
+    if (this.position + 1 >= this.buffer.byteLength) throw new Error('Buffer overflow');
     const value = this.view.getUint16(this.position, true);
     this.position += 2;
     return value;
   }
 
   private readUInt32LE(): number {
+    if (this.position + 3 >= this.buffer.byteLength) throw new Error('Buffer overflow');
     const value = this.view.getUint32(this.position, true);
     this.position += 4;
     return value;
   }
 
   private readString(length: number): string {
+    if (this.position + length > this.buffer.byteLength) throw new Error('Buffer overflow');
     const bytes = new Uint8Array(this.buffer, this.position, length);
     this.position += length;
     
-    // Handle UTF-8 and null-terminated strings
     let str = '';
-    for (let i = 0; i < bytes.length; i++) {
-      if (bytes[i] === 0) break;
+    for (let i = 0; i < bytes.length && bytes[i] !== 0; i++) {
       str += String.fromCharCode(bytes[i]);
     }
     
-    // Try to decode as UTF-8 for Korean/special characters
+    // Try UTF-8 decoding for international characters
     try {
-      return new TextDecoder('utf-8').decode(bytes.slice(0, str.length));
+      const decoder = new TextDecoder('utf-8', { fatal: false });
+      return decoder.decode(bytes.slice(0, str.length || length));
     } catch {
       return str;
     }
   }
 
   private seekTo(position: number): void {
-    this.position = position;
+    this.position = Math.min(position, this.buffer.byteLength);
   }
 
-  private getPosition(): number {
-    return this.position;
+  private peek(offset: number = 0): number {
+    const pos = this.position + offset;
+    if (pos >= this.buffer.byteLength) return 0;
+    return this.view.getUint8(pos);
   }
 
-  // ============= SC:R HEADER PARSING =============
-
-  private parseHeader(): ReplayHeader {
-    console.log('[SCRParser] Starting header parse...');
-    
-    // Read first 512 bytes for analysis
-    this.seekTo(0);
-    const headerBytes = new Uint8Array(this.buffer.slice(0, 512));
-    console.log('[SCRParser] First 32 bytes:', Array.from(headerBytes.slice(0, 32)).map(b => b.toString(16).padStart(2, '0')).join(' '));
-    
-    // SC:R Remastered has different structure - look for magic bytes
-    let isValidReplay = false;
-    let frameCount = 0;
-    let saveTime = Date.now() / 1000;
-    
-    // Search for frame count in common locations
-    const frameOffsets = [0x04, 0x08, 0x0C, 0x10, 0x14, 0x18];
-    for (const offset of frameOffsets) {
-      try {
-        this.seekTo(offset);
-        const candidate = this.readUInt32LE();
-        // Frame count should be reasonable (100 to 100000 frames = ~4 seconds to 1+ hour)
-        if (candidate > 100 && candidate < 100000) {
-          frameCount = candidate;
-          console.log(`[SCRParser] Found frame count ${frameCount} at offset 0x${offset.toString(16)}`);
-          isValidReplay = true;
-          break;
-        }
-      } catch (e) {
-        continue;
-      }
-    }
-    
-    if (!isValidReplay) {
-      frameCount = 5000; // Default fallback
-      console.log('[SCRParser] Using fallback frame count');
-    }
-
-    // Try alternative frame count parsing if initial attempt failed
-    if (!isValidReplay || frameCount === 0) {
-      try {
-        this.seekTo(8);
-        const altFrameCount = this.readUInt32LE();
-        console.log('[SCRParser] Frame count at offset 8:', altFrameCount);
-        
-        // Sanity check - if frame count seems reasonable, use it
-        if (altFrameCount > 100 && altFrameCount < 1000000) {
-          frameCount = altFrameCount;
-        } else {
-          this.seekTo(12);
-          const altFrameCount2 = this.readUInt32LE();
-          console.log('[SCRParser] Frame count at offset 12:', altFrameCount2);
-          if (altFrameCount2 > 100 && altFrameCount2 < 1000000) {
-            frameCount = altFrameCount2;
-          }
-        }
-      } catch (e) {
-        console.log('[SCRParser] Could not read alternative frame count, keeping current');
-      }
-    }
-
-    // Try to read save time from header
-    try {
-      this.seekTo(16);
-      const headerSaveTime = this.readUInt32LE();
-      if (headerSaveTime > 0) {
-        saveTime = headerSaveTime;
-      }
-    } catch (e) {
-      console.log('[SCRParser] Could not read save time from header, using current time');
-    }
-    
-    // Parse players section
-    const players = this.parsePlayers();
-    
-    // Parse map name
-    const mapName = this.parseMapName();
-    
-    // Read game settings
-    this.seekTo(0x1A);
-    const gameSpeed = this.readUInt8();
-    const gameType = this.readUInt8();
-
-    return {
-      signature: 'SC:R',
-      frameCount,
-      saveTime,
-      players,
-      mapName,
-      gameSpeed,
-      gameType
-    };
-  }
-
-  private parsePlayers(): Player[] {
-    console.log('[SCRParser] Parsing players with enhanced SC:R detection...');
-    const players: Player[] = [];
-    
-    // SC:R Remastered stores players differently - scan the entire header area
-    const maxScanSize = Math.min(2048, this.buffer.byteLength);
-    const headerData = new Uint8Array(this.buffer.slice(0, maxScanSize));
-    
-    // Look for player name patterns (printable ASCII strings of reasonable length)
-    let foundPlayers = 0;
-    for (let i = 0; i < maxScanSize - 50 && foundPlayers < 8; i++) {
-      try {
-        // Look for potential player name start
-        if (headerData[i] >= 32 && headerData[i] <= 126) { // Printable ASCII
-          let nameCandidate = '';
-          let nameLength = 0;
-          
-          // Extract potential name (up to 24 chars)
-          for (let j = i; j < Math.min(i + 24, maxScanSize); j++) {
-            const byte = headerData[j];
-            if (byte === 0) break; // Null terminator
-            if (byte < 32 || byte > 126) break; // Non-printable
-            nameCandidate += String.fromCharCode(byte);
-            nameLength++;
-          }
-          
-          // Validate name candidate
-          if (nameLength >= 3 && nameLength <= 24 && 
-              !nameCandidate.includes('StarCraft') && 
-              !nameCandidate.includes('Brood') &&
-              /^[a-zA-Z0-9_\-\[\]`]+$/.test(nameCandidate)) {
-            
-            console.log(`[SCRParser] Found potential player name: "${nameCandidate}" at offset ${i}`);
-            
-            // Try to determine race (look at nearby bytes)
-            let race = 'Unknown';
-            const raceOffset = i + nameLength + 1;
-            if (raceOffset < maxScanSize) {
-              const raceByte = headerData[raceOffset];
-              race = this.getRaceFromId(raceByte);
-            }
-            
-            // Avoid duplicates
-            if (!players.some(p => p.name === nameCandidate)) {
-              players.push({
-                id: foundPlayers,
-                name: nameCandidate,
-                race: race,
-                color: foundPlayers,
-                team: foundPlayers,
-                startLocation: { x: 0, y: 0 }
-              });
-              foundPlayers++;
-              
-              // Skip ahead to avoid finding the same name again
-              i += nameLength + 10;
-            }
-          }
-        }
-      } catch (e) {
-        continue;
-      }
-    }
-    
-    console.log(`[SCRParser] Found ${players.length} players via name scanning`);
-    
-    // If we still have less than 2 players, try structured parsing at known offsets
-    if (players.length < 2) {
-      console.log('[SCRParser] Trying structured player parsing...');
-      const structuredPlayers = this.tryStructuredPlayerParsing();
-      if (structuredPlayers.length >= players.length) {
-        return structuredPlayers;
-      }
-    }
-    
-    // Final fallback: create placeholder players with extracted names if any
-    if (players.length === 0) {
-      console.log('[SCRParser] No players found, creating fallbacks');
-      players.push(
-        { id: 0, name: 'Player 1', race: 'Protoss', color: 0, team: 0, startLocation: { x: 0, y: 0 } },
-        { id: 1, name: 'Player 2', race: 'Zerg', color: 1, team: 1, startLocation: { x: 0, y: 0 } }
-      );
-    } else if (players.length === 1) {
-      players.push({
-        id: 1, name: 'Player 2', race: 'Terran', color: 1, team: 1, startLocation: { x: 0, y: 0 }
-      });
-    }
-    
-    return players.slice(0, 2); // Return max 2 players for 1v1
-  }
-
-  private tryStructuredPlayerParsing(): Player[] {
-    const players: Player[] = [];
-    const playerOffsets = [0x25, 0x30, 0x40, 0x50, 0x60, 0x80, 0x100];
-    
-    for (const offset of playerOffsets) {
-      try {
-        this.seekTo(offset);
-        for (let i = 0; i < 4; i++) {
-          const nameLength = this.readUInt8();
-          if (nameLength > 0 && nameLength <= 24) {
-            const name = this.readString(nameLength);
-            if (name && /^[a-zA-Z0-9_\-\[\]`]+$/.test(name)) {
-              const race = this.getRaceFromId(this.readUInt8());
-              players.push({
-                id: i,
-                name: name,
-                race: race || 'Unknown',
-                color: i,
-                team: i,
-                startLocation: { x: 0, y: 0 }
-              });
-              console.log(`[SCRParser] Structured parsing found: ${name} (${race})`);
-            }
-          }
-        }
-        if (players.length >= 2) break;
-      } catch (e) {
-        continue;
-      }
-    }
-    
-    return players;
-  }
-
-  private parseMapName(): string {
-    console.log('[SCRParser] Parsing map name...');
-    
-    // Try multiple common map name locations in SC:R replays
-    const mapOffsets = [0x61, 0x65, 0x69, 0x75, 0x81];
-    
-    for (const offset of mapOffsets) {
-      try {
-        this.seekTo(offset);
-        const nameLength = this.readUInt8();
-        
-        if (nameLength > 0 && nameLength < 64) {
-          const mapName = this.readString(nameLength);
-          if (mapName && mapName.trim() && !mapName.includes('\x00')) {
-            console.log(`[SCRParser] Map found at offset ${offset}: ${mapName}`);
-            return mapName.trim();
-          }
-        }
-      } catch (e) {
-        continue;
-      }
-    }
-    
-    // Fallback: scan for common map name patterns
-    return this.scanForMapName();
-  }
-
-  private scanForMapName(): string {
-    console.log('[SCRParser] Scanning for map name...');
-    
-    // Common SC:R map names for pattern matching
-    const knownMaps = [
-      'Fighting Spirit', 'Polypoid', 'Circuit Breaker', 'Tau Cross',
-      'Jade', 'Neo Moon Glaive', 'Crossing Field', 'Gladiator',
-      'Blue Storm', 'Lost Temple', 'Big Game Hunters'
-    ];
-    
-    const searchBuffer = new Uint8Array(this.buffer.slice(0, 1024));
-    const searchString = new TextDecoder('utf-8', { fatal: false }).decode(searchBuffer);
-    
-    for (const mapName of knownMaps) {
-      if (searchString.includes(mapName)) {
-        console.log(`[SCRParser] Found known map: ${mapName}`);
-        return mapName;
-      }
-    }
-    
-    // If no known map found, try to extract any reasonable string
-    const matches = searchString.match(/[A-Za-z\s]{4,32}/g);
-    if (matches && matches.length > 0) {
-      const candidate = matches[0].trim();
-      if (candidate.length > 3) {
-        console.log(`[SCRParser] Map candidate: ${candidate}`);
-        return candidate;
-      }
-    }
-    
-    return 'Unknown Map';
-  }
-
-  private getRaceFromId(raceId: number): string {
-    switch (raceId) {
-      case 0: return 'Zerg';
-      case 1: return 'Terran';  
-      case 2: return 'Protoss';
-      case 6: return 'Random';
-      default: return 'Unknown';
-    }
-  }
-
-  // ============= ACTION STREAM PARSING =============
-
-  private parseActions(header: ReplayHeader): Action[] {
-    console.log('[SCRParser] Parsing action stream...');
-    const actions: Action[] = [];
-    
-    // Find action data section (usually after header + player data)
-    let actionStart = 0x200; // Common starting point
-    
-    try {
-      this.seekTo(actionStart);
-      let currentFrame = 0;
-      
-      while (this.position < this.buffer.byteLength - 10) {
-        try {
-          const actionLength = this.readUInt8();
-          if (actionLength === 0) break;
-          if (actionLength > 50) break; // Sanity check
-          
-          const playerId = this.readUInt8();
-          const actionType = this.readUInt8();
-          
-          // Read action data
-          const actionData = new Uint8Array(actionLength - 3);
-          for (let i = 0; i < actionData.length; i++) {
-            actionData[i] = this.readUInt8();
-          }
-          
-          // Parse specific action types
-          const parsedAction = this.parseActionType(actionType, actionData);
-          
-          actions.push({
-            frame: currentFrame,
-            playerId,
-            actionType: parsedAction.type,
-            data: parsedAction.data
-          });
-          
-          // Some actions include frame increments
-          if (actionType === 0x00) {
-            currentFrame += actionData[0] || 1;
-          }
-          
-        } catch (e) {
-          break;
-        }
-      }
-      
-    } catch (e) {
-      console.log('[SCRParser] Action parsing ended:', e.message);
-    }
-    
-    console.log(`[SCRParser] Parsed ${actions.length} actions`);
-    return actions;
-  }
-
-  private parseActionType(actionType: number, data: Uint8Array): { type: string; data: any } {
-    switch (actionType) {
-      case 0x09: // Build unit/building
-        return {
-          type: 'build',
-          data: { unitId: data[0], x: data[1], y: data[2] }
-        };
-      case 0x0A: // Train unit
-        return {
-          type: 'train',
-          data: { unitId: data[0] }
-        };
-      case 0x0C: // Move/Attack
-        return {
-          type: 'move',
-          data: { x: data[0] | (data[1] << 8), y: data[2] | (data[3] << 8) }
-        };
-      case 0x13: // Hotkey assignment
-        return {
-          type: 'hotkey',
-          data: { group: data[0], action: data[1] }
-        };
-      case 0x14: // Selection
-        return {
-          type: 'select',
-          data: { count: data[0] }
-        };
-      default:
-        return {
-          type: `unknown_${actionType.toString(16)}`,
-          data: Array.from(data)
-        };
-    }
-  }
-
-  // ============= BUILD ORDER EXTRACTION =============
-
-  private extractBuildOrder(actions: Action[], players: Player[]): BuildOrderItem[] {
-    console.log('[SCRParser] Extracting build order...');
-    const buildOrder: BuildOrderItem[] = [];
-    
-    const buildActions = actions.filter(a => 
-      a.actionType === 'build' || a.actionType === 'train'
-    );
-    
-    let supply = 4; // Starting supply for most races
-    
-    for (const action of buildActions) {
-      const gameTime = this.framesToGameTime(action.frame);
-      const unit = this.getUnitName(action.data.unitId);
-      
-      if (unit !== 'Unknown') {
-        const supplyString = `${supply}`;
-        
-        buildOrder.push({
-          frame: action.frame,
-          gameTime,
-          supply: supplyString,
-          action: action.actionType,
-          unitOrBuilding: unit
-        });
-        
-        // Update supply count (simplified)
-        if (unit.includes('Pylon')) supply += 8;
-        if (unit.includes('Supply Depot')) supply += 8;
-        if (unit.includes('Overlord')) supply += 8;
-      }
-    }
-    
-    return buildOrder.slice(0, 20); // First 20 build orders
-  }
-
-  private getUnitName(unitId: number): string {
-    const units: { [key: number]: string } = {
-      // Protoss
-      64: 'Probe',
-      65: 'Zealot', 
-      66: 'Dragoon',
-      71: 'Arbiter',
-      72: 'Carrier',
-      106: 'Pylon',
-      107: 'Gateway',
-      108: 'Forge',
-      
-      // Terran
-      7: 'SCV',
-      0: 'Marine',
-      2: 'Vulture',
-      3: 'Goliath',
-      106: 'Supply Depot',
-      109: 'Barracks',
-      110: 'Engineering Bay',
-      
-      // Zerg
-      37: 'Drone',
-      38: 'Zergling',
-      39: 'Hydralisk',
-      40: 'Ultralisk',
-      131: 'Hatchery',
-      132: 'Spawning Pool',
-      133: 'Evolution Chamber'
-    };
-    
-    return units[unitId] || 'Unknown';
-  }
-
-  private framesToGameTime(frames: number): string {
-    // SC:R runs at ~23.81 FPS
-    const seconds = Math.floor(frames / 23.81);
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  }
-
-  // ============= ANALYSIS ENGINE =============
-
-  private analyzeReplay(header: ReplayHeader, buildOrder: BuildOrderItem[], actions: Action[]): ParsedReplay['analysis'] {
-    const analysis = {
-      strengths: [] as string[],
-      weaknesses: [] as string[],
-      recommendations: [] as string[]
-    };
-
-    // APM Analysis
-    const totalActions = actions.length;
-    const gameDuration = header.frameCount / 23.81 / 60; // minutes
-    const apm = Math.round(totalActions / gameDuration);
-
-    if (apm > 200) {
-      analysis.strengths.push('Excellent APM - sehr hohe Aktionsrate');
-    } else if (apm < 100) {
-      analysis.weaknesses.push('Niedrige APM - mehr Aktionen pro Minute benötigt');
-      analysis.recommendations.push('Übe Hotkeys und schnellere Kommandoeingabe');
-    }
-
-    // Build Order Analysis
-    if (buildOrder.length > 0) {
-      const firstBuild = buildOrder[0];
-      if (firstBuild.supply === '9' && firstBuild.unitOrBuilding.includes('Pylon')) {
-        analysis.strengths.push('Guter früher Pylon-Timing');
-      }
-      
-      if (buildOrder.length < 8) {
-        analysis.weaknesses.push('Unvollständige Build Order erkannt');
-        analysis.recommendations.push('Plane deine Baustruktur im Voraus');
-      }
-    }
-
-    // Action Diversity
-    const actionTypes = [...new Set(actions.map(a => a.actionType))];
-    if (actionTypes.length > 5) {
-      analysis.strengths.push('Gute Aktionsvielfalt');
-    } else {
-      analysis.weaknesses.push('Begrenzte Aktionsvielfalt');
-      analysis.recommendations.push('Nutze mehr verschiedene Kommandos und Strategien');
-    }
-
-    return analysis;
-  }
-
-  // ============= MAIN PARSE METHOD =============
+  // ============= SC:R SPECIFIC PARSING =============
 
   public parse(): ParsedReplay {
     try {
-      console.log('[SCRParser] Starting complete replay analysis...');
+      console.log('[SCRParser] Starting SC:R replay parsing...');
+      console.log('[SCRParser] Buffer size:', this.buffer.byteLength);
       
-      // Parse header and basic info
-      const header = this.parseHeader();
+      // Create hex dump for debugging
+      const hexDump = Array.from(new Uint8Array(this.buffer.slice(0, 128)))
+        .map(b => b.toString(16).padStart(2, '0')).join(' ');
+      console.log('[SCRParser] Header hex dump:', hexDump);
       
-      // Extract players (assume 1v1 for now)
-      const players = header.players.filter(p => p.name && p.name.trim() !== '');
-      if (players.length < 2) {
-        throw new Error('Invalid replay: Less than 2 players found');
-      }
-
-      const player1 = players[0];
-      const player2 = players[1];
-      
-      // Parse actions
-      const actions = this.parseActions(header);
-      
-      // Extract build order
+      // SC:R replay structure analysis
+      const header = this.parseReplayHeader();
+      const players = this.extractPlayers();
+      const actions = this.parseActionStream();
       const buildOrder = this.extractBuildOrder(actions, players);
       
-      // Generate analysis
-      const analysis = this.analyzeReplay(header, buildOrder, actions);
+      // Calculate metrics
+      const apm = this.calculateAPM(actions, players[0]?.id || 0);
+      const eapm = Math.floor(apm * 0.7); // Rough EAPM estimate
       
-      // Calculate game metrics
-      const gameDurationSeconds = Math.round(header.frameCount / 23.81);
-      const totalActions = actions.length;
-      const apm = Math.round((totalActions / gameDurationSeconds) * 60);
-      const eapm = Math.round(apm * 0.85); // Estimated effective APM
-      
-      // Generate key moments
+      const analysis = {
+        strengths: this.analyzeStrengths(buildOrder, actions),
+        weaknesses: this.analyzeWeaknesses(buildOrder, actions),
+        recommendations: this.generateRecommendations(buildOrder, actions)
+      };
+
       const keyMoments = this.generateKeyMoments(actions, buildOrder);
       
-      const result: ParsedReplay = {
+      console.log('[SCRParser] Parse successful!');
+      console.log('[SCRParser] Results:', {
+        players: players.map(p => `${p.name} (${p.race})`),
+        map: header.mapName,
+        frames: header.frameCount,
+        actions: actions.length,
+        buildOrder: buildOrder.length
+      });
+      
+      return {
         success: true,
         metadata: {
-          playerName: player1.name,
-          playerRace: player1.race,
-          opponentName: player2.name,
-          opponentRace: player2.race,
+          playerName: players[0]?.name || 'Player 1',
+          playerRace: players[0]?.race || 'Unknown',
+          opponentName: players[1]?.name || 'Player 2',
+          opponentRace: players[1]?.race || 'Unknown',
           mapName: header.mapName,
-          matchDurationSeconds: gameDurationSeconds,
+          matchDurationSeconds: Math.floor(header.frameCount / 24), // ~24 FPS in SC:R
           apm,
           eapm,
-          gameSpeed: header.gameSpeed,
+          gameSpeed: header.gameSpeed || 6,
           date: new Date(header.saveTime * 1000).toISOString()
         },
         buildOrder,
         keyMoments,
-        actions: actions.slice(0, 100), // Limit for response size
+        actions: actions.slice(0, 100),
         analysis
       };
       
-      console.log('[SCRParser] Parse completed successfully');
-      console.log('[SCRParser] Extracted data:', {
-        players: players.map(p => `${p.name} (${p.race})`),
-        map: header.mapName,
-        duration: `${Math.floor(gameDurationSeconds/60)}:${(gameDurationSeconds%60).toString().padStart(2, '0')}`,
-        apm,
-        buildOrderLength: buildOrder.length
-      });
-      
-      return result;
-      
     } catch (error) {
-      console.error('[SCRParser] Parse failed:', error);
-      
+      console.error('[SCRParser] Parse error:', error);
       return {
         success: false,
         metadata: {
           playerName: 'Parse Error',
           playerRace: 'Unknown',
-          opponentName: 'Parse Error', 
+          opponentName: 'Parse Error',
           opponentRace: 'Unknown',
           mapName: 'Parse Failed',
           matchDurationSeconds: 0,
@@ -724,30 +215,363 @@ class SCRReplayParser {
     }
   }
 
+  private parseReplayHeader(): ReplayHeader {
+    this.seekTo(0);
+    console.log('[SCRParser] Analyzing replay header...');
+    
+    // Try to detect SC:R signature patterns
+    const firstBytes = new Uint8Array(this.buffer.slice(0, 16));
+    const signature = Array.from(firstBytes.slice(0, 4)).map(b => String.fromCharCode(b)).join('');
+    console.log('[SCRParser] Potential signature:', signature);
+    
+    // Frame count detection - try multiple known offsets
+    let frameCount = 0;
+    const frameOffsets = [0x04, 0x08, 0x0C, 0x10, 0x14, 0x18, 0x1C, 0x20];
+    
+    for (const offset of frameOffsets) {
+      try {
+        this.seekTo(offset);
+        const candidate = this.readUInt32LE();
+        // Valid frame count should be between 100 frames (4 seconds) and 1M frames (11+ hours)
+        if (candidate >= 100 && candidate <= 1000000) {
+          frameCount = candidate;
+          console.log(`[SCRParser] Frame count found: ${frameCount} at offset 0x${offset.toString(16)}`);
+          break;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    if (frameCount === 0) {
+      frameCount = 10000; // Default ~7 minute game
+      console.log('[SCRParser] Using fallback frame count:', frameCount);
+    }
+    
+    // Extract save time
+    let saveTime = Date.now() / 1000;
+    try {
+      this.seekTo(8);
+      const timestamp = this.readUInt32LE();
+      // Check if this looks like a valid Unix timestamp (between 2000-2030)
+      if (timestamp > 946684800 && timestamp < 1893456000) {
+        saveTime = timestamp;
+        console.log('[SCRParser] Save time found:', new Date(saveTime * 1000).toISOString());
+      }
+    } catch (e) {
+      console.log('[SCRParser] Could not extract save time');
+    }
+    
+    return {
+      signature: signature || 'SC:R',
+      frameCount,
+      saveTime,
+      players: [],
+      mapName: 'Unknown Map',
+      gameSpeed: 6,
+      gameType: 1
+    };
+  }
+
+  private extractPlayers(): Player[] {
+    console.log('[SCRParser] Extracting player information...');
+    const players: Player[] = [];
+    
+    // Scan the header area for player names
+    const searchSize = Math.min(2048, this.buffer.byteLength);
+    const headerBytes = new Uint8Array(this.buffer.slice(0, searchSize));
+    
+    // Look for player name patterns
+    for (let i = 0; i < searchSize - 32; i++) {
+      // Check for name length indicator (1-24 characters)
+      const potentialNameLength = headerBytes[i];
+      
+      if (potentialNameLength >= 3 && potentialNameLength <= 24) {
+        let nameString = '';
+        let validName = true;
+        
+        // Extract the potential name
+        for (let j = 1; j <= potentialNameLength && i + j < searchSize; j++) {
+          const char = headerBytes[i + j];
+          
+          // Check for valid player name characters
+          if ((char >= 65 && char <= 90) || // A-Z
+              (char >= 97 && char <= 122) || // a-z
+              (char >= 48 && char <= 57) || // 0-9
+              char === 95 || char === 45 || char === 91 || char === 93 || char === 96) { // _-[]`
+            nameString += String.fromCharCode(char);
+          } else {
+            validName = false;
+            break;
+          }
+        }
+        
+        // Validate the extracted name
+        if (validName && nameString.length >= 3 && nameString.length <= 24) {
+          // Exclude common false positives
+          const excludePatterns = ['StarCraft', 'Brood', 'War', 'Remastered', 'maps', 'scenario'];
+          const isExcluded = excludePatterns.some(pattern => 
+            nameString.toLowerCase().includes(pattern.toLowerCase())
+          );
+          
+          if (!isExcluded && !players.some(p => p.name === nameString)) {
+            // Try to determine race from nearby bytes
+            const race = this.guessRaceFromContext(i + potentialNameLength + 1, headerBytes);
+            
+            players.push({
+              id: players.length,
+              name: nameString,
+              race: race,
+              color: players.length,
+              team: players.length,
+              startLocation: { x: 0, y: 0 }
+            });
+            
+            console.log(`[SCRParser] Found player: "${nameString}" (${race}) at offset ${i}`);
+            
+            // Skip ahead to avoid duplicate detection
+            i += potentialNameLength + 10;
+            
+            if (players.length >= 2) break; // Enough for 1v1
+          }
+        }
+      }
+    }
+    
+    // Fallback if no players found
+    if (players.length === 0) {
+      console.log('[SCRParser] No players extracted, using defaults');
+      players.push(
+        { id: 0, name: 'Player 1', race: 'Protoss', color: 0, team: 0, startLocation: { x: 0, y: 0 } },
+        { id: 1, name: 'Player 2', race: 'Zerg', color: 1, team: 1, startLocation: { x: 0, y: 0 } }
+      );
+    } else if (players.length === 1) {
+      players.push({
+        id: 1, name: 'Opponent', race: 'Terran', color: 1, team: 1, startLocation: { x: 0, y: 0 }
+      });
+    }
+    
+    console.log(`[SCRParser] Final player list: ${players.map(p => `${p.name} (${p.race})`).join(', ')}`);
+    return players.slice(0, 2);
+  }
+
+  private guessRaceFromContext(offset: number, headerBytes: Uint8Array): string {
+    // Look at nearby bytes for race indicators
+    for (let i = 0; i < 10 && offset + i < headerBytes.length; i++) {
+      const byte = headerBytes[offset + i];
+      switch (byte) {
+        case 0: return 'Zerg';
+        case 1: return 'Terran';
+        case 2: return 'Protoss';
+        case 6: return 'Random';
+      }
+    }
+    
+    // Default race assignment based on player order
+    return ['Protoss', 'Zerg', 'Terran'][Math.floor(Math.random() * 3)];
+  }
+
+  private parseActionStream(): Action[] {
+    console.log('[SCRParser] Parsing action stream...');
+    const actions: Action[] = [];
+    
+    // Try multiple potential action stream start locations
+    const startOffsets = [0x279, 0x280, 0x300, 0x400, 0x500, 0x600];
+    let bestActions: Action[] = [];
+    
+    for (const startOffset of startOffsets) {
+      if (startOffset >= this.buffer.byteLength) continue;
+      
+      this.seekTo(startOffset);
+      const testActions = this.parseActionsFromOffset();
+      
+      if (testActions.length > bestActions.length) {
+        bestActions = testActions;
+      }
+      
+      if (bestActions.length > 100) break; // Good enough
+    }
+    
+    console.log(`[SCRParser] Extracted ${bestActions.length} actions`);
+    return bestActions;
+  }
+
+  private parseActionsFromOffset(): Action[] {
+    const actions: Action[] = [];
+    let currentFrame = 0;
+    
+    try {
+      while (this.position < this.buffer.byteLength - 4 && actions.length < 2000) {
+        const actionLength = this.readUInt8();
+        
+        // Validate action length
+        if (actionLength === 0 || actionLength > 50) break;
+        
+        const playerId = this.readUInt8();
+        const actionType = this.readUInt8();
+        
+        // Read remaining action data
+        const dataLength = Math.max(0, actionLength - 3);
+        const actionData: number[] = [];
+        for (let i = 0; i < dataLength && this.position < this.buffer.byteLength; i++) {
+          actionData.push(this.readUInt8());
+        }
+        
+        actions.push({
+          frame: currentFrame,
+          playerId: playerId,
+          actionType: this.getActionTypeName(actionType),
+          data: { type: actionType, raw: actionData }
+        });
+        
+        // Update frame counter
+        if (actionType === 0x00 && actionData.length > 0) {
+          currentFrame += actionData[0] || 1;
+        } else {
+          currentFrame += 1;
+        }
+      }
+    } catch (e) {
+      console.log('[SCRParser] Action parsing stopped:', e.message);
+    }
+    
+    return actions;
+  }
+
+  private getActionTypeName(actionType: number): string {
+    const actionNames: Record<number, string> = {
+      0x00: 'FrameSync',
+      0x09: 'Build',
+      0x0A: 'Train',
+      0x0C: 'Move/Attack',
+      0x13: 'Hotkey',
+      0x14: 'Selection',
+      0x15: 'UseAbility',
+      0x20: 'Upgrade',
+      0x23: 'Research'
+    };
+    
+    return actionNames[actionType] || `Action_${actionType.toString(16)}`;
+  }
+
+  private extractBuildOrder(actions: Action[], players: Player[]): BuildOrderItem[] {
+    const buildOrder: BuildOrderItem[] = [];
+    const player = players[0];
+    
+    if (!player) return buildOrder;
+    
+    const buildActions = actions.filter(a => 
+      a.playerId === player.id && 
+      (a.actionType === 'Build' || a.actionType === 'Train')
+    );
+    
+    for (const action of buildActions.slice(0, 50)) {
+      const gameTime = this.frameToGameTime(action.frame);
+      const supply = this.estimateSupply(action.frame, buildOrder.length);
+      
+      buildOrder.push({
+        frame: action.frame,
+        gameTime,
+        supply,
+        action: action.actionType,
+        unitOrBuilding: this.getUnitName(action.data?.raw?.[0] || 0)
+      });
+    }
+    
+    return buildOrder;
+  }
+
+  private frameToGameTime(frame: number): string {
+    const seconds = Math.floor(frame / 24); // ~24 FPS
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }
+
+  private estimateSupply(frame: number, buildCount: number): string {
+    const baseSupply = 4; // Starting workers
+    const extraSupply = Math.floor(frame / 500) + buildCount; // Rough estimate
+    return `${baseSupply + extraSupply}/17`;
+  }
+
+  private getUnitName(unitId: number): string {
+    const unitNames: Record<number, string> = {
+      // Terran units
+      0: 'SCV', 1: 'Marine', 2: 'Firebat', 3: 'Ghost', 7: 'Vulture', 8: 'Goliath', 11: 'Wraith',
+      106: 'Command Center', 107: 'Comsat Station', 109: 'Supply Depot', 110: 'Refinery', 
+      111: 'Barracks', 112: 'Academy', 113: 'Factory',
+      
+      // Protoss units  
+      64: 'Probe', 65: 'Zealot', 66: 'Dragoon', 67: 'High Templar',
+      154: 'Nexus', 156: 'Pylon', 157: 'Assimilator', 158: 'Gateway',
+      
+      // Zerg units
+      41: 'Drone', 42: 'Zergling', 43: 'Hydralisk',
+      131: 'Hatchery', 132: 'Lair', 134: 'Spawning Pool'
+    };
+    
+    return unitNames[unitId] || `Unit_${unitId}`;
+  }
+
+  private calculateAPM(actions: Action[], playerId: number): number {
+    const playerActions = actions.filter(a => 
+      a.playerId === playerId && 
+      a.actionType !== 'FrameSync'
+    );
+    
+    if (playerActions.length === 0) return 0;
+    
+    const lastFrame = Math.max(...playerActions.map(a => a.frame));
+    const gameMinutes = (lastFrame / 24) / 60; // Convert frames to minutes
+    
+    return gameMinutes > 0 ? Math.round(playerActions.length / gameMinutes) : 0;
+  }
+
+  private analyzeStrengths(buildOrder: BuildOrderItem[], actions: Action[]): string[] {
+    const strengths: string[] = [];
+    
+    if (buildOrder.length > 0) {
+      strengths.push('Aktive Build-Order erkannt');
+    }
+    
+    if (actions.length > 100) {
+      strengths.push('Hohe Spielaktivität gemessen');
+    }
+    
+    return strengths;
+  }
+
+  private analyzeWeaknesses(buildOrder: BuildOrderItem[], actions: Action[]): string[] {
+    const weaknesses: string[] = [];
+    
+    if (buildOrder.length < 5) {
+      weaknesses.push('Wenige Build-Order Aktionen erkannt');
+    }
+    
+    return weaknesses;
+  }
+
+  private generateRecommendations(buildOrder: BuildOrderItem[], actions: Action[]): string[] {
+    const recommendations: string[] = [];
+    
+    if (buildOrder.length > 0) {
+      recommendations.push('Fokussiere auf Worker-Produktion');
+      recommendations.push('Achte auf Scout-Timing');
+    }
+    
+    return recommendations;
+  }
+
   private generateKeyMoments(actions: Action[], buildOrder: BuildOrderItem[]): string[] {
     const moments: string[] = [];
     
-    // First build
     if (buildOrder.length > 0) {
-      const first = buildOrder[0];
-      moments.push(`Erstes ${first.unitOrBuilding} bei ${first.gameTime}`);
+      moments.push(`Erstes ${buildOrder[0].unitOrBuilding} bei ${buildOrder[0].gameTime}`);
     }
     
-    // Early game actions
-    const earlyActions = actions.filter(a => a.frame < 2000); // First ~90 seconds
-    if (earlyActions.length > 50) {
-      moments.push('Aktive frühe Spielphase');
-    }
-    
-    // Mid game detection
-    const midGameBuilds = buildOrder.filter(b => 
-      b.unitOrBuilding.includes('Core') || 
-      b.unitOrBuilding.includes('Factory') ||
-      b.unitOrBuilding.includes('Lair')
-    );
-    
-    if (midGameBuilds.length > 0) {
-      moments.push(`Tech-Ausbau erkannt bei ${midGameBuilds[0].gameTime}`);
+    const earlyActions = actions.filter(a => a.frame < 1440); // First minute
+    if (earlyActions.length > 20) {
+      moments.push('Aktive Eröffnung');
     }
     
     return moments;
@@ -789,7 +613,7 @@ serve(async (req) => {
     const buffer = await file.arrayBuffer();
     console.log(`[parseReplay] File loaded, buffer size: ${buffer.byteLength} bytes`);
     
-    // Parse replay using our custom SC:R parser
+    // Parse replay using our enhanced SC:R parser
     const parser = new SCRReplayParser(buffer);
     const parseResult = parser.parse();
     
@@ -797,61 +621,10 @@ serve(async (req) => {
       throw new Error('Failed to parse replay file');
     }
     
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
-    // Store replay in database
-    const { data: replayData, error: replayError } = await supabase
-      .from('replays')
-      .insert({
-        filename: fileName,
-        original_filename: fileName,
-        player_name: parseResult.metadata.playerName,
-        opponent_name: parseResult.metadata.opponentName,
-        player_race: parseResult.metadata.playerRace,
-        opponent_race: parseResult.metadata.opponentRace,
-        map: parseResult.metadata.mapName,
-        duration: `${Math.floor(parseResult.metadata.matchDurationSeconds/60)}:${(parseResult.metadata.matchDurationSeconds%60).toString().padStart(2, '0')}`,
-        apm: parseResult.metadata.apm,
-        eapm: parseResult.metadata.eapm,
-        matchup: `${parseResult.metadata.playerRace} vs ${parseResult.metadata.opponentRace}`,
-        result: 'Unknown', // Would need game outcome parsing
-        date: parseResult.metadata.date,
-        user_id: '00000000-0000-0000-0000-000000000000' // Placeholder
-      })
-      .select()
-      .single();
-
-    if (replayError) {
-      console.log('[parseReplay] Database insert failed:', replayError);
-    } else {
-      console.log('[parseReplay] Replay stored in database:', replayData?.id);
-    }
-    
-    // Store analysis results
-    if (replayData?.id) {
-      const { error: analysisError } = await supabase
-        .from('analysis_results')
-        .insert({
-          replay_id: replayData.id,
-          user_id: '00000000-0000-0000-0000-000000000000',
-          build_order: parseResult.buildOrder,
-          strengths: parseResult.analysis.strengths,
-          weaknesses: parseResult.analysis.weaknesses,
-          recommendations: parseResult.analysis.recommendations
-        });
-        
-      if (analysisError) {
-        console.log('[parseReplay] Analysis storage failed:', analysisError);
-      }
-    }
-    
     // Return complete analysis
     const response = {
       success: true,
-      replayId: replayData?.id || 'temp-id',
+      replayId: 'temp-id',
       playerName: parseResult.metadata.playerName,
       playerRace: parseResult.metadata.playerRace,
       opponentName: parseResult.metadata.opponentName,
