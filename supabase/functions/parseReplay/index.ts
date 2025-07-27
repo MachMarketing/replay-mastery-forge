@@ -5,7 +5,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-serve(async (req: Request): Promise<Response> => {
+async function handler(req: Request): Promise<Response> {
   // CORS Preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -27,7 +27,7 @@ serve(async (req: Request): Promise<Response> => {
 
     console.log(`Processing file: ${file.name}, size: ${file.size} bytes`)
 
-    // For now, let's try importing screp-js dynamically to debug the issue
+    // Import screp-js dynamically and use parseBuffer (not parseReplay)
     try {
       console.log('Attempting to import screp-js...')
       const screpModule = await import('https://esm.sh/screp-js@0.3.0')
@@ -100,4 +100,6 @@ serve(async (req: Request): Promise<Response> => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
-})
+}
+
+serve(handler)
