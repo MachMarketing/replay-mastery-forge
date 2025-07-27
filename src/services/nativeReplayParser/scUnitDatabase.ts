@@ -120,7 +120,7 @@ export const SC_UNITS: Record<number, SCUnit> = {
   0x68: { id: 0x68, name: 'Devourer', race: 'zerg', category: 'unit', cost: { minerals: 50, gas: 100, supply: 2 }, buildTime: 600 }
 };
 
-// Command Type Mappings (aus screparsed)
+// Command Type Mappings
 export const COMMAND_TYPES: Record<string, string> = {
   'TypeIDSelect121': 'Select',
   'TypeIDTrain122': 'Train',

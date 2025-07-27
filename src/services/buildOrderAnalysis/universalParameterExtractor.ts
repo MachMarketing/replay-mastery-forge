@@ -1,6 +1,6 @@
 /**
  * Universal Parameter Extractor for StarCraft: Remastered
- * Step 2: Intelligent parameter extraction for both screparsed and native parsers
+ * Step 2: Intelligent parameter extraction for BWRemastered parser
  */
 
 export interface ExtractedParameters {

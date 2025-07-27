@@ -1,6 +1,6 @@
 /**
  * Command Structure Debugger for StarCraft: Remastered
- * Step 1: Analyzes command structures from both screparsed and native parsers
+ * Step 1: Analyzes command structures from BWRemastered parser
  */
 
 export interface CommandDebugInfo {

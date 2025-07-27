@@ -64,8 +64,8 @@ export default defineConfig(({ mode }) => ({
         }) as any,
       ],
     },
-    // Include jssuh and its dependencies in the optimization
-    include: ['screparsed', 'jssuh', 'react', 'react-dom', 'stream-browserify', 'process/browser', 'events', 'util'],
+    // Include native parser dependencies in the optimization
+    include: ['react', 'react-dom', 'stream-browserify', 'process/browser', 'events', 'util'],
   },
   build: {
     commonjsOptions: {
@@ -73,10 +73,10 @@ export default defineConfig(({ mode }) => ({
       include: [/node_modules/],
     },
     rollupOptions: {
-      // Ensure screparsed is properly bundled and not split into separate chunks
+      // Bundle native parser dependencies
       output: {
         manualChunks: {
-          'parser-core': ['screparsed', 'stream-browserify'],
+          'parser-core': ['stream-browserify', 'pako'],
           'react-vendor': ['react', 'react-dom'],
         }
       }

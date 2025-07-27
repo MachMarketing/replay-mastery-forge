@@ -18,12 +18,15 @@ interface BWReplayHeader {
 }
 
 interface BWPlayer {
+  id: number;
   name: string;
   race: number;
   raceString: 'Zerg' | 'Terran' | 'Protoss' | 'Random' | 'Unknown';
   slotId: number;
   team: number;
   color: number;
+  apm: number;
+  eapm: number;
 }
 
 interface BWCommand {
@@ -35,35 +38,25 @@ interface BWCommand {
   parameters: any;
 }
 
+interface BWBuildOrderItem {
+  frame: number;
+  timestamp: string;
+  supply: number;
+  action: 'Build' | 'Train' | 'Research' | 'Upgrade';
+  unitName: string;
+  unitId: number;
+  playerId: number;
+}
+
 interface ParsedReplay {
   success: boolean;
-  metadata: {
-    playerName: string;
-    playerRace: string;
-    opponentName: string;
-    opponentRace: string;
-    mapName: string;
-    matchDurationSeconds: number;
-    apm: number;
-    eapm: number;
-    gameSpeed: number;
-    date: string;
-  };
-  buildOrder: Array<{
-    frame: number;
-    gameTime: string;
-    supply: string;
-    action: string;
-    unitOrBuilding: string;
-  }>;
-  keyMoments: string[];
-  actions: Array<{
-    frame: number;
-    playerId: number;
-    actionType: string;
-    actionId: number;
-    data: any;
-  }>;
+  mapName: string;
+  totalFrames: number;
+  durationSeconds: number;
+  duration: string;
+  players: BWPlayer[];
+  buildOrders: Record<number, BWBuildOrderItem[]>;
+  gameType: string;
   analysis: {
     strengths: string[];
     weaknesses: string[];
@@ -180,57 +173,35 @@ class BWRemasteredParser {
         frames: header.totalFrames
       });
 
-      // Calculate metrics
-      const apm = this.calculateAPM(commands, players);
-      const buildOrder = this.extractBuildOrder(commands, players);
-      const analysis = this.generateAnalysis(commands, players);
-      const keyMoments = this.generateKeyMoments(commands, buildOrder);
+      // Calculate enhanced metrics
+      const playersWithMetrics = this.calculatePlayerMetrics(commands, players);
+      const buildOrders = this.extractBuildOrders(commands, playersWithMetrics);
+      const analysis = this.generateAnalysis(commands, playersWithMetrics);
+      const durationSeconds = Math.floor(header.totalFrames / 23.81);
 
       return {
         success: true,
-        metadata: {
-          playerName: players[0]?.name || 'Player 1',
-          playerRace: players[0]?.raceString || 'Unknown',
-          opponentName: players[1]?.name || 'Player 2', 
-          opponentRace: players[1]?.raceString || 'Unknown',
-          mapName: header.mapName,
-          matchDurationSeconds: Math.floor(header.totalFrames / 23.81),
-          apm: apm[0] || 0,
-          eapm: Math.floor((apm[0] || 0) * 0.8),
-          gameSpeed: 6,
-          date: new Date().toISOString()
-        },
-        buildOrder,
-        keyMoments,
-        actions: commands.slice(0, 100).map(cmd => ({
-          frame: cmd.frame,
-          playerId: cmd.userId,
-          actionType: cmd.typeString,
-          actionId: cmd.type,
-          data: cmd.parameters
-        })),
+        mapName: header.mapName,
+        totalFrames: header.totalFrames,
+        durationSeconds,
+        duration: this.frameToTime(header.totalFrames),
+        players: playersWithMetrics,
+        buildOrders,
+        gameType: 'Melee',
         analysis
       };
 
     } catch (error) {
       console.error('[BWRemastered] Parse error:', error);
-      return {
+        return {
         success: false,
-        metadata: {
-          playerName: 'Parse Error',
-          playerRace: 'Unknown',
-          opponentName: 'Parse Error',
-          opponentRace: 'Unknown',
-          mapName: 'Parse Failed',
-          matchDurationSeconds: 0,
-          apm: 0,
-          eapm: 0,
-          gameSpeed: 0,
-          date: new Date().toISOString()
-        },
-        buildOrder: [],
-        keyMoments: [`Parse Error: ${error.message}`],
-        actions: [],
+        mapName: 'Parse Failed',
+        totalFrames: 0,
+        durationSeconds: 0,
+        duration: '0:00',
+        players: [],
+        buildOrders: {},
+        gameType: 'Unknown',
         analysis: {
           strengths: [],
           weaknesses: ['Replay parsing failed'],
@@ -313,12 +284,15 @@ class BWRemasteredParser {
 
         if (name.length >= 2 && slotType >= 1) {
           players.push({
+            id: i,
             name: name.trim(),
             race: raceId,
             raceString: (races[raceId] || 'Unknown') as any,
             slotId: i,
             team,
-            color
+            color,
+            apm: 0, // Will be calculated later
+            eapm: 0 // Will be calculated later
           });
         }
 
@@ -332,20 +306,26 @@ class BWRemasteredParser {
     if (players.length === 0) {
       return [
         {
+          id: 0,
           name: 'Player 1',
           race: 2,
           raceString: 'Protoss',
           slotId: 0,
           team: 0,
-          color: 0
+          color: 0,
+          apm: 0,
+          eapm: 0
         },
         {
+          id: 1,
           name: 'Player 2', 
           race: 0,
           raceString: 'Zerg',
           slotId: 1,
           team: 1,
-          color: 1
+          color: 1,
+          apm: 0,
+          eapm: 0
         }
       ];
     }
@@ -430,58 +410,140 @@ class BWRemasteredParser {
     return types[type] || `Command_${type.toString(16)}`;
   }
 
-  private calculateAPM(commands: BWCommand[], players: BWPlayer[]): number[] {
-    const apmValues: number[] = [];
+  private calculatePlayerMetrics(commands: BWCommand[], players: BWPlayer[]): BWPlayer[] {
+    const lastFrame = Math.max(...commands.map(c => c.frame), 0);
+    const gameMinutes = lastFrame / (23.81 * 60);
     
-    for (const player of players) {
-      const playerCommands = commands.filter(cmd => 
-        cmd.userId === player.slotId && 
-        ![0x00, 0x01, 0x02].includes(cmd.type)
+    return players.map(player => {
+      const playerCommands = commands.filter(cmd => cmd.userId === player.slotId);
+      
+      // APM: All actionable commands (excluding sync commands)
+      const actionCommands = playerCommands.filter(cmd => 
+        ![0x00, 0x01, 0x02, 0x36].includes(cmd.type)
       );
       
-      const maxFrame = Math.max(...commands.map(c => c.frame), 1);
-      const gameMinutes = maxFrame / (23.81 * 60);
-      const apm = gameMinutes > 0 ? Math.round(playerCommands.length / gameMinutes) : 0;
+      // EAPM: Effective actions (build, train, attack, upgrade commands only)
+      const effectiveCommands = this.filterEffectiveActions(playerCommands);
       
-      apmValues.push(apm);
-    }
-    
-    return apmValues;
+      const apm = gameMinutes > 0 ? Math.round(actionCommands.length / gameMinutes) : 0;
+      const eapm = gameMinutes > 0 ? Math.round(effectiveCommands.length / gameMinutes) : 0;
+      
+      return {
+        ...player,
+        apm,
+        eapm
+      };
+    });
   }
 
-  private extractBuildOrder(commands: BWCommand[], players: BWPlayer[]): Array<{
-    frame: number;
-    gameTime: string;
-    supply: string;
-    action: string;
-    unitOrBuilding: string;
-  }> {
-    const buildOrder: Array<{
-      frame: number;
-      gameTime: string;
-      supply: string;
-      action: string;
-      unitOrBuilding: string;
-    }> = [];
-
-    const buildCommands = commands.filter(cmd => 
-      [0x0C, 0x14, 0x30].includes(cmd.type)
-    );
-
-    buildCommands.forEach(cmd => {
-      const timeString = this.frameToTime(cmd.frame);
-      const supply = Math.floor(cmd.frame / 100).toString();
+  private filterEffectiveActions(commands: BWCommand[]): BWCommand[] {
+    // Sort commands by frame
+    const sortedCommands = commands.sort((a, b) => a.frame - b.frame);
+    const effectiveCommands: BWCommand[] = [];
+    const recentCommands = new Map<number, number>(); // command type -> frame
+    
+    for (const cmd of sortedCommands) {
+      // Only count meaningful actions for EAPM
+      const isMeaningfulAction = this.isMeaningfulAction(cmd.type);
+      if (!isMeaningfulAction) continue;
       
-      buildOrder.push({
-        frame: cmd.frame,
-        gameTime: timeString,
-        supply,
-        action: cmd.typeString,
-        unitOrBuilding: this.getUnitName(cmd.type, cmd.data)
-      });
-    });
+      // Check for duplicates within 250ms (approximately 6 frames at 23.81 FPS)
+      const lastFrame = recentCommands.get(cmd.type) || 0;
+      const frameDiff = cmd.frame - lastFrame;
+      
+      if (frameDiff >= 6 || !recentCommands.has(cmd.type)) {
+        effectiveCommands.push(cmd);
+        recentCommands.set(cmd.type, cmd.frame);
+      }
+    }
+    
+    return effectiveCommands;
+  }
 
-    return buildOrder.sort((a, b) => a.frame - b.frame);
+  private isMeaningfulAction(commandType: number): boolean {
+    // Build, train, attack, upgrade, research commands
+    const meaningfulCommands = [
+      0x0C, // Build
+      0x14, 0x1D, 0x30, // Train
+      0x11, 0x13, 0x15, 0x23, // Attack/Move
+      0x1E, 0x2F, 0x31, 0x20, 0x40, // Research/Upgrade
+    ];
+    
+    return meaningfulCommands.includes(commandType);
+  }
+
+  private extractBuildOrders(commands: BWCommand[], players: BWPlayer[]): Record<number, BWBuildOrderItem[]> {
+    const buildOrders: Record<number, BWBuildOrderItem[]> = {};
+    
+    for (const player of players) {
+      buildOrders[player.id] = this.extractPlayerBuildOrder(commands, player.id);
+    }
+    
+    return buildOrders;
+  }
+
+  private extractPlayerBuildOrder(commands: BWCommand[], playerId: number): BWBuildOrderItem[] {
+    const playerCommands = commands
+      .filter(cmd => cmd.userId === playerId)
+      .filter(cmd => this.isBuildOrderCommand(cmd.type))
+      .sort((a, b) => a.frame - b.frame);
+    
+    const buildOrder: BWBuildOrderItem[] = [];
+    let currentSupply = 9; // Standard starting supply
+    
+    for (const cmd of playerCommands) {
+      const unitInfo = this.getUnitInfo(cmd.type, cmd.data);
+      if (unitInfo) {
+        buildOrder.push({
+          frame: cmd.frame,
+          timestamp: this.frameToTime(cmd.frame),
+          supply: currentSupply,
+          action: unitInfo.action,
+          unitName: unitInfo.unitName,
+          unitId: unitInfo.unitId,
+          playerId
+        });
+        
+        // Update supply based on unit type (simplified)
+        if (unitInfo.action === 'Train' && unitInfo.supplyCost) {
+          currentSupply += unitInfo.supplyCost;
+        }
+      }
+    }
+    
+    return buildOrder;
+  }
+
+  private isBuildOrderCommand(commandType: number): boolean {
+    const buildCommands = [
+      0x0C, // Build
+      0x14, 0x1D, 0x30, // Train
+      0x1E, 0x2F, 0x31, 0x20, 0x40, // Research/Upgrade
+    ];
+    
+    return buildCommands.includes(commandType);
+  }
+
+  private getUnitInfo(commandType: number, data: Uint8Array): { 
+    action: 'Build' | 'Train' | 'Research' | 'Upgrade';
+    unitName: string;
+    unitId: number;
+    supplyCost?: number;
+  } | null {
+    // Simple unit mapping - this would be enhanced with a complete unit database
+    const unitMappings: Record<number, any> = {
+      0x0C: { action: 'Build' as const, unitName: 'Building', unitId: 0x0C },
+      0x14: { action: 'Train' as const, unitName: 'Unit', unitId: 0x14, supplyCost: 1 },
+      0x1D: { action: 'Train' as const, unitName: 'Advanced Unit', unitId: 0x1D, supplyCost: 2 },
+      0x1E: { action: 'Research' as const, unitName: 'Research', unitId: 0x1E },
+      0x20: { action: 'Build' as const, unitName: 'Advanced Building', unitId: 0x20 },
+      0x2F: { action: 'Upgrade' as const, unitName: 'Upgrade', unitId: 0x2F },
+      0x31: { action: 'Upgrade' as const, unitName: 'Advanced Upgrade', unitId: 0x31 },
+      0x30: { action: 'Train' as const, unitName: 'Special Unit', unitId: 0x30, supplyCost: 3 },
+      0x40: { action: 'Research' as const, unitName: 'Technology', unitId: 0x40 },
+    };
+    
+    return unitMappings[commandType] || null;
   }
 
   private getUnitName(type: number, data: Uint8Array): string {
@@ -588,8 +650,8 @@ serve(async (req) => {
 
     console.log('[ParseReplay] Parse completed:', {
       success: result.success,
-      map: result.metadata.mapName,
-      player: result.metadata.playerName
+      map: result.mapName,
+      players: result.players.length
     });
 
     return new Response(JSON.stringify(result), {
@@ -602,21 +664,13 @@ serve(async (req) => {
     const errorResponse = {
       success: false,
       error: error.message,
-      metadata: {
-        playerName: 'Error',
-        playerRace: 'Unknown',
-        opponentName: 'Error',
-        opponentRace: 'Unknown',
-        mapName: 'Parse Failed',
-        matchDurationSeconds: 0,
-        apm: 0,
-        eapm: 0,
-        gameSpeed: 0,
-        date: new Date().toISOString()
-      },
-      buildOrder: [],
-      keyMoments: [],
-      actions: [],
+      mapName: 'Parse Failed',
+      totalFrames: 0,
+      durationSeconds: 0,
+      duration: '0:00',
+      players: [],
+      buildOrders: {},
+      gameType: 'Unknown',
       analysis: {
         strengths: [],
         weaknesses: ['Parsing failed'],

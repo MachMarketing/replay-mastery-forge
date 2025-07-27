@@ -65,9 +65,11 @@ export class BrowserSafeParser {
       mapName: header.mapName || 'Unknown Map',
       totalFrames: frameCount,
       duration: this.calculateGameLength(frameCount).string,
+      durationSeconds: this.calculateGameLength(frameCount).totalSeconds,
       players,
       commands,
-      gameType: 'Melee'
+      gameType: 'Melee',
+      buildOrders: {}
     };
   }
   
@@ -316,13 +318,14 @@ export class BrowserSafeParser {
     return races[raceId] || 'Unknown';
   }
   
-  private calculateGameLength(frames: number): { minutes: number; seconds: number; string: string } {
+  private calculateGameLength(frames: number): { minutes: number; seconds: number; totalSeconds: number; string: string } {
     const totalSeconds = Math.floor(frames / 24);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return {
       minutes,
       seconds,
+      totalSeconds,
       string: `${minutes}:${seconds.toString().padStart(2, '0')}`
     };
   }

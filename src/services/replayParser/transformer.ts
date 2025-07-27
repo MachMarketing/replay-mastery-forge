@@ -35,10 +35,10 @@ interface SCREPReplayData {
 }
 
 /**
- * Transform screparsed data to our application format
+ * Transform BWRemastered data to our application format
  */
 export function transformSCREPData(data: SCREPReplayData): ParsedReplayData {
-  console.log('[transformer] Processing screparsed data with', data.players.length, 'players');
+  console.log('[transformer] Processing BWRemastered data with', data.players.length, 'players');
   
   // Ensure we have at least one player
   if (!data.players || data.players.length === 0) {

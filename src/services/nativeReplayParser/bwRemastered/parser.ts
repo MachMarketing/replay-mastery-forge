@@ -8,7 +8,7 @@ import { BWBinaryReader } from './binaryReader';
 import { BWCommandParser } from './commandParser';
 import { BWHeaderParser } from './headerParser';
 import { BWPlayerParser } from './playerParser';
-import { BWReplayData, BWCommand } from './types';
+import { BWReplayData, BWCommand, BWPlayer, BWBuildOrderItem } from './types';
 
 export class BWRemasteredParser {
   private data: ArrayBuffer;
@@ -51,15 +51,22 @@ export class BWRemasteredParser {
 
       // Calculate game metrics
       const gameLength = this.calculateGameLength(header.totalFrames);
-      const apmData = this.calculateAPM(commands, players);
+      
+      // Calculate APM and EAPM for each player
+      const playersWithMetrics = this.calculatePlayerMetrics(commands, players);
+      
+      // Extract build orders for each player
+      const buildOrders = this.extractBuildOrders(commands, playersWithMetrics);
 
       const result: BWReplayData = {
         mapName: header.mapName,
         totalFrames: header.totalFrames,
         duration: gameLength.string,
-        players,
+        durationSeconds: gameLength.totalSeconds,
+        players: playersWithMetrics,
         commands,
-        gameType: this.getGameTypeString(header.gameType)
+        gameType: this.getGameTypeString(header.gameType),
+        buildOrders
       };
 
       console.log('[BWRemasteredParser] Parsing completed successfully');
@@ -150,7 +157,7 @@ export class BWRemasteredParser {
   /**
    * Calculate game length from frames
    */
-  private calculateGameLength(frames: number): { minutes: number; seconds: number; string: string } {
+  private calculateGameLength(frames: number): { minutes: number; seconds: number; totalSeconds: number; string: string } {
     // Remastered FPS is approximately 23.81
     const totalSeconds = Math.floor(frames / 23.81);
     const minutes = Math.floor(totalSeconds / 60);
@@ -159,33 +166,170 @@ export class BWRemasteredParser {
     return {
       minutes,
       seconds,
+      totalSeconds,
       string: `${minutes}:${seconds.toString().padStart(2, '0')}`
     };
   }
 
   /**
-   * Calculate APM for all players
+   * Calculate APM and EAPM for all players
    */
-  private calculateAPM(commands: BWCommand[], players: any[]): number[] {
-    const apmData: number[] = [];
+  private calculatePlayerMetrics(commands: BWCommand[], players: BWPlayer[]): BWPlayer[] {
+    const lastFrame = Math.max(...commands.map(c => c.frame), 0);
+    const gameLength = this.calculateGameLength(lastFrame);
+    const gameMinutes = gameLength.totalSeconds / 60;
     
-    for (const player of players) {
+    return players.map(player => {
       const playerCommands = commands.filter(cmd => cmd.userId === player.id);
       
-      // Filter out sync commands for APM calculation
+      // APM: All actionable commands (excluding sync commands)
       const actionCommands = playerCommands.filter(cmd => 
         ![0x00, 0x01, 0x02, 0x36].includes(cmd.type)
       );
       
-      // Calculate APM based on game length
-      const gameMinutes = this.calculateGameLength(Math.max(...commands.map(c => c.frame))).minutes + 
-                         this.calculateGameLength(Math.max(...commands.map(c => c.frame))).seconds / 60;
+      // EAPM: Effective actions (build, train, attack, upgrade commands only)
+      // Remove duplicates within 250ms window and filter for meaningful actions
+      const effectiveCommands = this.filterEffectiveActions(playerCommands);
       
       const apm = gameMinutes > 0 ? Math.round(actionCommands.length / gameMinutes) : 0;
-      apmData.push(apm);
+      const eapm = gameMinutes > 0 ? Math.round(effectiveCommands.length / gameMinutes) : 0;
+      
+      return {
+        ...player,
+        apm,
+        eapm
+      };
+    });
+  }
+
+  /**
+   * Filter commands for EAPM calculation
+   */
+  private filterEffectiveActions(commands: BWCommand[]): BWCommand[] {
+    // Sort commands by frame
+    const sortedCommands = commands.sort((a, b) => a.frame - b.frame);
+    const effectiveCommands: BWCommand[] = [];
+    const recentCommands = new Map<number, number>(); // command type -> frame
+    
+    for (const cmd of sortedCommands) {
+      // Only count meaningful actions for EAPM
+      const isMeaningfulAction = this.isMeaningfulAction(cmd.type);
+      if (!isMeaningfulAction) continue;
+      
+      // Check for duplicates within 250ms (approximately 6 frames at 23.81 FPS)
+      const lastFrame = recentCommands.get(cmd.type) || 0;
+      const frameDiff = cmd.frame - lastFrame;
+      
+      if (frameDiff >= 6 || !recentCommands.has(cmd.type)) {
+        effectiveCommands.push(cmd);
+        recentCommands.set(cmd.type, cmd.frame);
+      }
     }
     
-    return apmData;
+    return effectiveCommands;
+  }
+
+  /**
+   * Check if a command is meaningful for EAPM calculation
+   */
+  private isMeaningfulAction(commandType: number): boolean {
+    // Build, train, attack, upgrade, research commands
+    const meaningfulCommands = [
+      0x0C, // Build
+      0x14, 0x1D, // Train
+      0x11, 0x13, 0x15, // Attack/Move
+      0x1E, 0x2F, 0x31, // Research/Upgrade
+      0x20, // Advanced build
+    ];
+    
+    return meaningfulCommands.includes(commandType);
+  }
+
+  /**
+   * Extract build orders for all players
+   */
+  private extractBuildOrders(commands: BWCommand[], players: BWPlayer[]): Record<number, import('./types').BWBuildOrderItem[]> {
+    const buildOrders: Record<number, import('./types').BWBuildOrderItem[]> = {};
+    
+    for (const player of players) {
+      buildOrders[player.id] = this.extractPlayerBuildOrder(commands, player.id);
+    }
+    
+    return buildOrders;
+  }
+
+  /**
+   * Extract build order for a specific player
+   */
+  private extractPlayerBuildOrder(commands: BWCommand[], playerId: number): import('./types').BWBuildOrderItem[] {
+    const playerCommands = commands
+      .filter(cmd => cmd.userId === playerId)
+      .filter(cmd => this.isBuildOrderCommand(cmd.type))
+      .sort((a, b) => a.frame - b.frame);
+    
+    const buildOrder: import('./types').BWBuildOrderItem[] = [];
+    let currentSupply = 9; // Standard starting supply
+    
+    for (const cmd of playerCommands) {
+      const unitInfo = this.getUnitInfo(cmd.type, cmd.data);
+      if (unitInfo) {
+        const gameTime = this.calculateGameLength(cmd.frame);
+        
+        buildOrder.push({
+          frame: cmd.frame,
+          timestamp: gameTime.string,
+          supply: currentSupply,
+          action: unitInfo.action,
+          unitName: unitInfo.unitName,
+          unitId: unitInfo.unitId,
+          playerId
+        });
+        
+        // Update supply based on unit type (simplified)
+        if (unitInfo.action === 'Train' && unitInfo.supplyCost) {
+          currentSupply += unitInfo.supplyCost;
+        }
+      }
+    }
+    
+    return buildOrder;
+  }
+
+  /**
+   * Check if command is a build order related command
+   */
+  private isBuildOrderCommand(commandType: number): boolean {
+    const buildCommands = [
+      0x0C, // Build
+      0x14, 0x1D, // Train
+      0x1E, 0x2F, 0x31, // Research/Upgrade
+      0x20, // Advanced build
+    ];
+    
+    return buildCommands.includes(commandType);
+  }
+
+  /**
+   * Get unit information from command
+   */
+  private getUnitInfo(commandType: number, data: Uint8Array): { 
+    action: 'Build' | 'Train' | 'Research' | 'Upgrade';
+    unitName: string;
+    unitId: number;
+    supplyCost?: number;
+  } | null {
+    // Simple unit mapping - this would be enhanced with a complete unit database
+    const unitMappings: Record<number, any> = {
+      0x0C: { action: 'Build' as const, unitName: 'Building', unitId: 0x0C },
+      0x14: { action: 'Train' as const, unitName: 'Unit', unitId: 0x14, supplyCost: 1 },
+      0x1D: { action: 'Train' as const, unitName: 'Advanced Unit', unitId: 0x1D, supplyCost: 2 },
+      0x1E: { action: 'Research' as const, unitName: 'Research', unitId: 0x1E },
+      0x20: { action: 'Build' as const, unitName: 'Advanced Building', unitId: 0x20 },
+      0x2F: { action: 'Upgrade' as const, unitName: 'Upgrade', unitId: 0x2F },
+      0x31: { action: 'Upgrade' as const, unitName: 'Advanced Upgrade', unitId: 0x31 },
+    };
+    
+    return unitMappings[commandType] || null;
   }
 
   /**

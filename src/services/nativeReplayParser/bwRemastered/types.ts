@@ -16,12 +16,15 @@ export interface BWReplayHeader {
 }
 
 export interface BWPlayer {
+  id: number;
   name: string;
   race: number;
   raceString: 'Zerg' | 'Terran' | 'Protoss' | 'Random' | 'Unknown';
   slotId: number;
   team: number;
   color: number;
+  apm: number;
+  eapm: number;
 }
 
 export interface BWCommand {
@@ -33,11 +36,23 @@ export interface BWCommand {
   parameters: any; // Added parameters property to match BWAPICommand
 }
 
+export interface BWBuildOrderItem {
+  frame: number;
+  timestamp: string;
+  supply: number;
+  action: 'Build' | 'Train' | 'Research' | 'Upgrade';
+  unitName: string;
+  unitId: number;
+  playerId: number;
+}
+
 export interface BWReplayData {
   mapName: string;
   totalFrames: number;
   duration: string;
+  durationSeconds: number;
   players: BWPlayer[];
   commands: BWCommand[];
   gameType: string;
+  buildOrders: Record<number, BWBuildOrderItem[]>;
 }

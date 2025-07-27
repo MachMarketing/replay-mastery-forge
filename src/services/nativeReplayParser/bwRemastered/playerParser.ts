@@ -109,12 +109,15 @@ export class BWPlayerParser {
         }
         
         const player: BWPlayer = {
+          id: slotIndex,
           name: playerName.trim(),
           race,
           raceString: this.getRaceString(race),
           slotId: slotIndex,
           team: team,
-          color: color
+          color: color,
+          apm: 0, // Will be calculated later
+          eapm: 0, // Will be calculated later
         };
         
         players.push(player);
@@ -176,12 +179,15 @@ export class BWPlayerParser {
           }
           
           const player: BWPlayer = {
+            id: players.length,
             name: testName.trim(),
             race,
             raceString: this.getRaceString(race),
             slotId: players.length,
             team: 0,
-            color: players.length % 16
+            color: players.length % 16,
+            apm: 0, // Will be calculated later
+            eapm: 0, // Will be calculated later
           };
           
           players.push(player);
@@ -198,20 +204,26 @@ export class BWPlayerParser {
       console.log('[BWPlayerParser] No players found, creating fallback players');
       players.push(
         {
+          id: 0,
           name: 'Player 1',
           race: 0,
           raceString: 'Terran' as const,
           slotId: 0,
           team: 0,
-          color: 0
+          color: 0,
+          apm: 0,
+          eapm: 0
         },
         {
+          id: 1,
           name: 'Player 2',
           race: 1,
           raceString: 'Protoss' as const,
           slotId: 1,
           team: 1,
-          color: 1
+          color: 1,
+          apm: 0,
+          eapm: 0
         }
       );
     }

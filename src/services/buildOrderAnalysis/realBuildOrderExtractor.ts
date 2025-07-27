@@ -1,6 +1,6 @@
 /**
  * Real Build Order Extractor - Phase 1-3 Implementation
- * Extracts genuine build orders from screparsed commands
+ * Extracts genuine build orders from BWRemastered commands
  */
 
 import { CompleteUnitDatabase, SCUnitData } from './completeUnitDatabase';
