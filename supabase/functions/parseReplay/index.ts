@@ -73,7 +73,14 @@ serve(async (req: Request): Promise<Response> => {
       }))
 
       return new Response(
-        JSON.stringify({ mapName, durationSeconds, players, buildOrders, actions }),
+        JSON.stringify({ 
+          success: true,
+          mapName, 
+          durationSeconds, 
+          players, 
+          buildOrders, 
+          actions 
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     } catch (importError) {
