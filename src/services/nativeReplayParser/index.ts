@@ -1,18 +1,17 @@
-
 /**
- * Updated Einstiegspunkt - verwendet jetzt screp-core statt screp-js
+ * Unified Replay Parser - consolidates all parsing strategies
  */
 
-import { NewScrepParser, type NewFinalReplayResult } from './newScrepParser';
+import { UnifiedReplayParser } from '../replayParser/unifiedParser';
 
-// Verwende den neuen screp-core Parser
+// Use the unified parser as the main entry point
 export const parseReplay = async (file: File) => {
-  const parser = new NewScrepParser();
-  return await parser.parseReplay(file);
+  const buffer = await file.arrayBuffer();
+  return await UnifiedReplayParser.parseReplay(buffer);
 };
 
-export { NewScrepParser, type NewFinalReplayResult };
+export { UnifiedReplayParser };
 
-// Updated legacy exports für Kompatibilität - verwende jetzt screp-core types
-export type FinalReplayResult = NewFinalReplayResult;
-export { NewScrepParser as ScrepJsParser };
+// Legacy exports for compatibility
+export type FinalReplayResult = any; // Will be replaced with proper types
+export { UnifiedReplayParser as ScrepJsParser };

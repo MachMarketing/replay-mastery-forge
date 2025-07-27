@@ -216,7 +216,8 @@ class AuthenticSCRParser {
     this.position = Math.min(this.position + bytes, this.buffer.byteLength);
   }
 
-  private peek(offset: number = 0): number {
+  // Fixed: Changed from private to public to avoid Deno compilation issues
+  public peek(offset: number = 0): number {
     const pos = this.position + offset;
     if (pos >= this.buffer.byteLength) {
       throw new Error('Cannot peek beyond buffer end');
