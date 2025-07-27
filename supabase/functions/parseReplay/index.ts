@@ -27,53 +27,47 @@ async function handler(req: Request): Promise<Response> {
 
     console.log(`Processing file: ${file.name}, size: ${file.size} bytes`)
 
-    // Import screp-js dynamically and use parseBuffer (not parseReplay)
+    // Use our Go service for reliable parsing
     try {
-      console.log('Attempting to import screp-js...')
-      const screpModule = await import('https://esm.sh/screp-js@0.3.0')
-      console.log('screp-js imported successfully:', Object.keys(screpModule))
+      console.log('Using Go screp service for parsing...')
       
-      const buffer = new Uint8Array(await file.arrayBuffer())
-      console.log('File converted to buffer')
+      // Create FormData for the Go service
+      const formData = new FormData()
+      formData.append('replay', file)
       
-      // Use parseBuffer with options
-      const { parseBuffer } = screpModule
-      if (!parseBuffer) {
-        throw new Error('parseBuffer function not found in screp-js module')
+      // Call our Go service
+      const goServiceUrl = 'https://screp-go-service-production.up.railway.app/parse'
+      console.log('Calling Go service at:', goServiceUrl)
+      
+      const response = await fetch(goServiceUrl, {
+        method: 'POST',
+        body: formData
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Go service responded with status: ${response.status}`)
       }
       
-      console.log('Parsing replay with options...')
-      // Try with different options to ensure proper parsing
-      const options = {
-        withPlayers: true,
-        withCommands: true,
-        withChat: true,
-        parseActions: true
-      }
+      const goResult = await response.json()
+      console.log('Go service response:', goResult)
       
-      const replay = parseBuffer(buffer, options)
-      console.log('Replay object keys:', Object.keys(replay))
-      console.log('Replay header:', replay.header)
-      console.log('Replay players:', replay.players)
-      console.log('Replay commands length:', replay.commands?.length || 0)
-
-      // Map to frontend expected format
-      const players = (replay.players || []).map((p: any, index: number) => ({
-        name: p.name || `Player ${index + 1}`,
+      // Map Go service result to frontend format
+      const players = (goResult.players || []).map((p: any) => ({
+        name: p.name || 'Unknown',
         race: p.race || 'Unknown',
         apm: p.apm || 0
       }))
 
-      const buildOrder = (replay.commands || [])
-        .filter((cmd: any) => cmd.commandType === 'Build' || cmd.commandType === 'Train')
+      const buildOrder = (goResult.buildOrders || [])
+        .flatMap((bo: any) => bo.sequence || [])
         .map((cmd: any) => ({
-          time: `${Math.floor(cmd.frame / 16 / 60)}:${String(Math.floor((cmd.frame / 16) % 60)).padStart(2, '0')}`,
+          time: `${Math.floor(cmd.time / 60)}:${String(Math.floor(cmd.time % 60)).padStart(2, '0')}`,
           action: cmd.commandType || 'Build',
-          unit: cmd.unitName || cmd.abilityName || 'Unknown'
+          unit: cmd.abilityName || 'Unknown'
         }))
 
       const analysis = {
-        strengths: ['Replay successfully parsed'],
+        strengths: ['Replay successfully parsed with Go service'],
         weaknesses: [],
         recommendations: ['Continue analyzing your gameplay']
       }
@@ -81,25 +75,25 @@ async function handler(req: Request): Promise<Response> {
       console.log('Mapped data:', { 
         players: players.length, 
         buildOrder: buildOrder.length,
-        mapName: replay.mapName 
+        mapName: goResult.mapName 
       })
 
       return new Response(
         JSON.stringify({ 
           success: true,
-          mapName: replay.mapName || 'Unknown Map',
-          duration: `${Math.floor((replay.replayLength || 0) / 60)}:${String((replay.replayLength || 0) % 60).padStart(2, '0')}`,
+          mapName: goResult.mapName || 'Unknown Map',
+          duration: `${Math.floor(goResult.durationSeconds / 60)}:${String(Math.floor(goResult.durationSeconds % 60)).padStart(2, '0')}`,
           players,
           buildOrder,
           analysis
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
-    } catch (importError) {
-      console.error('screp-js import/parse error:', importError)
+    } catch (serviceError) {
+      console.error('Go service error:', serviceError)
       return new Response(JSON.stringify({ 
-        error: 'screp-js parsing failed', 
-        details: importError.message 
+        error: 'Go service parsing failed', 
+        details: serviceError.message 
       }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
