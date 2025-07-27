@@ -1,0 +1,4 @@
+github.com/gorilla/mux v1.8.1 h1:TuBL49tXwgrFYWhqrNgrUNNY/KQ3XY4Z6FAmp8qGj7M=
+github.com/gorilla/mux v1.8.1/go.mod h1:AKf9I4AEqPTmMytcMc0KkNouC66V3BtZ4qD5fmWSiMQ=
+github.com/icza/screp v1.12.11 h1:aEWHd4XHwWw7s7QdKg+hkd1X6vOiYDt5wGJXqT/hL4g=
+github.com/icza/screp v1.12.11/go.mod h1:KDfhwHHNDbOl9mxNdNZE9ixMmJCN2v4SLYTGdB8MQxU=
