@@ -38,10 +38,10 @@ Deno.serve(async (req) => {
     console.log('File converted to buffer, attempting to parse...')
 
     // Import screp-js dynamically
-    const { parseReplay } = await import('https://esm.sh/screp-js@latest')
+    const screpJs = await import('https://esm.sh/screp-js@latest')
     
-    // Parse the replay
-    const replay = parseReplay(buffer)
+    // Parse the replay - screp-js might be default export or have different structure
+    const replay = screpJs.default ? screpJs.default(buffer) : screpJs(buffer)
     
     console.log('Replay parsed successfully')
 
