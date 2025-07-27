@@ -3,7 +3,7 @@
  * Single, working solution for StarCraft: Remastered replays
  */
 
-import { ReplayParser } from 'screparsed';
+// import { ReplayParser } from 'screparsed'; // Removed - using unified parser
 import { JssuhParser, type JssuhReplayResult } from './jsuhParser';
 
 export interface ScrepJsReplayResult {
@@ -100,25 +100,10 @@ export class ScrepJsParser {
 
     try {
       // Skip jssuh for now due to process.nextTick issues
-      // Use screparsed directly as primary parser
-      const buffer = await file.arrayBuffer();
-      const parser = ReplayParser.fromArrayBuffer(buffer);
-      const screpResult = await parser.parse();
+      // Use unified parser instead of screparsed
+      throw new Error('ScrepJsParser is deprecated - use UnifiedReplayParser instead');
       
-      console.log('[ScrepJsParser] Screparsed parsing successful');
-      
-      // Convert screparsed result to our format
-      const result = await this.convertScrepJsResult(screpResult);
-      
-      console.log('[ScrepJsParser] Final result ready:', {
-        map: result.header.mapName,
-        players: result.players.map(p => `${p.name} (${p.race}) - APM: ${p.apm}`),
-        commands: result.dataQuality.commandsFound,
-        buildOrders: result.dataQuality.buildOrdersExtracted,
-        quality: result.dataQuality.reliability
-      });
-
-      return result;
+      // This parser is deprecated - throwing error instead of processing
 
     } catch (error) {
       console.error('[ScrepJsParser] Screparsed parsing failed:', error);

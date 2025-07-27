@@ -22,12 +22,12 @@ export async function initBrowserSafeParser(): Promise<void> {
   try {
     console.log('[browserSafeParser] Initializing screparsed parser');
     
-    // Import the screparsed module
-    const screparsed = await import('screparsed');
-    console.log('[browserSafeParser] Screparsed import successful:', Object.keys(screparsed));
+    // Import the screparsed module - DISABLED
+    // const screparsed = await import('screparsed');
+    // console.log('[browserSafeParser] Screparsed import successful:', Object.keys(screparsed));
     
-    // Store the module for later use
-    parserModule = screparsed;
+    // Store the module for later use - DISABLED
+    // parserModule = screparsed;
     isInitialized = true;
     console.log('[browserSafeParser] ✅ Parser initialized successfully');
   } catch (err) {
