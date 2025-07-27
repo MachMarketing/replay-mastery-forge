@@ -31,6 +31,25 @@ export interface BuildOrderItem {
   unitOrBuilding: string;
 }
 
+interface ParsedReplayResponse {
+  success: boolean;
+  mapName: string;
+  durationSeconds: number;
+  players: Array<{
+    id: number;
+    name: string;
+    race: string;
+    apm: number;
+    eapm: number;
+  }>;
+  buildOrders: Record<string, Array<{
+    timestamp: string;
+    action: string;
+    unitName: string;
+  }>>;
+  error?: string;
+}
+
 export const useEnhancedReplayParser = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,8 +73,7 @@ export const useEnhancedReplayParser = () => {
 
       // Prepare form data
       const formData = new FormData();
-      formData.append('file', file);
-      formData.append('fileName', file.name);
+      formData.append('replay', file);
 
       // Call our enhanced parseReplay edge function
       const { data, error: functionError } = await supabase.functions.invoke('parseReplay', {
@@ -72,35 +90,48 @@ export const useEnhancedReplayParser = () => {
         throw new Error(data?.error || 'Failed to parse replay');
       }
 
+      const parsedData = data as ParsedReplayResponse;
+      
       console.log('[Enhanced Parser] Success! Parsed data:', {
-        player: data.playerName,
-        race: data.playerRace,
-        opponent: data.opponentName,
-        opponentRace: data.opponentRace,
-        map: data.mapName,
-        apm: data.apm,
-        buildOrderLength: data.buildOrder?.length || 0
+        map: parsedData.mapName,
+        duration: parsedData.durationSeconds,
+        players: parsedData.players?.length || 0,
+        buildOrders: Object.keys(parsedData.buildOrders || {}).length
       });
+
+      // Transform the new API response to match existing interface
+      const players = parsedData.players || [];
+      const player = players[0] || { name: 'Player 1', race: 'Unknown', apm: 0, eapm: 0 };
+      const opponent = players[1] || { name: 'Player 2', race: 'Unknown', apm: 0, eapm: 0 };
+      
+      // Convert build orders format
+      const buildOrder = Object.values(parsedData.buildOrders || {})[0] || [];
+      const formattedBuildOrder = buildOrder.map((item) => ({
+        frame: 0,
+        gameTime: item.timestamp,
+        supply: '?',
+        action: item.action,
+        unitOrBuilding: item.unitName
+      }));
 
       return {
         success: true,
-        replayId: data.replayId,
-        playerName: data.playerName,
-        playerRace: data.playerRace,
-        opponentName: data.opponentName,
-        opponentRace: data.opponentRace,
-        mapName: data.mapName,
-        matchDurationSeconds: data.matchDurationSeconds,
-        apm: data.apm,
-        eapm: data.eapm,
-        buildOrder: data.buildOrder || [],
-        keyMoments: data.keyMoments || [],
-        analysis: data.analysis || {
-          strengths: [],
+        replayId: `replay_${Date.now()}`,
+        playerName: player.name,
+        playerRace: player.race,
+        opponentName: opponent.name,
+        opponentRace: opponent.race,
+        mapName: parsedData.mapName,
+        matchDurationSeconds: parsedData.durationSeconds,
+        apm: player.apm,
+        eapm: player.eapm,
+        buildOrder: formattedBuildOrder,
+        keyMoments: [`Game duration: ${Math.floor(parsedData.durationSeconds / 60)}:${(parsedData.durationSeconds % 60).toString().padStart(2, '0')}`],
+        analysis: {
+          strengths: [`APM: ${player.apm}`, `EAPM: ${player.eapm}`],
           weaknesses: [],
           recommendations: []
-        },
-        message: data.message
+        }
       };
 
     } catch (err) {

@@ -654,7 +654,31 @@ serve(async (req) => {
       players: result.players.length
     });
 
-    return new Response(JSON.stringify(result), {
+    // Transform to requested JSON structure
+    const responseData = {
+      success: result.success,
+      mapName: result.mapName,
+      durationSeconds: result.durationSeconds,
+      players: result.players.map(player => ({
+        id: player.id,
+        name: player.name,
+        race: player.raceString,
+        apm: player.apm,
+        eapm: player.eapm
+      })),
+      buildOrders: Object.fromEntries(
+        Object.entries(result.buildOrders).map(([playerId, items]) => [
+          playerId,
+          items.map(item => ({
+            timestamp: item.timestamp,
+            action: item.action,
+            unitName: item.unitName
+          }))
+        ])
+      )
+    };
+
+    return new Response(JSON.stringify(responseData), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
@@ -665,17 +689,9 @@ serve(async (req) => {
       success: false,
       error: error.message,
       mapName: 'Parse Failed',
-      totalFrames: 0,
       durationSeconds: 0,
-      duration: '0:00',
       players: [],
-      buildOrders: {},
-      gameType: 'Unknown',
-      analysis: {
-        strengths: [],
-        weaknesses: ['Parsing failed'],
-        recommendations: ['Check replay file format']
-      }
+      buildOrders: {}
     };
 
     return new Response(JSON.stringify(errorResponse), {
