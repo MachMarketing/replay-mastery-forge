@@ -44,7 +44,7 @@ serve(async (req: Request): Promise<Response> => {
       
       console.log('Parsing replay...')
       const replay = parseBuffer(buffer)
-      console.log('Replay parsed successfully')
+      console.log('Replay parsed successfully, structure:', JSON.stringify(replay, null, 2))
 
       const mapName = replay.header?.mapName || 'Unknown'
       const durationSeconds = replay.header?.replayLength || 0
