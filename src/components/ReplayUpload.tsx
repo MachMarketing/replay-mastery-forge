@@ -57,7 +57,7 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
 
       // Call the enhanced parseReplay edge function
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('replayFile', file);
 
       console.log('[ReplayUpload] Calling parseReplay edge function...');
       
