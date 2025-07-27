@@ -78,7 +78,7 @@ export class ProfessionalBuildOrderEngine {
    */
   public static extractBuildOrders(
     replayData: any, 
-    source: 'screparsed' | 'native' = 'screparsed'
+    source: 'bwremastered' = 'bwremastered'
   ): Record<number, ProfessionalPlayerBuildOrder> {
     
     console.log('[ProfessionalBuildOrderEngine] 🚀 Starting professional build order extraction');
@@ -155,7 +155,7 @@ export class ProfessionalBuildOrderEngine {
   /**
    * Extract commands for a specific player with enhanced filtering
    */
-  private static extractPlayerCommands(replayData: any, playerId: number, source: 'screparsed' | 'native'): any[] {
+  private static extractPlayerCommands(replayData: any, playerId: number, source: 'bwremastered'): any[] {
     const allCommands = replayData.commands || [];
     
     return allCommands.filter((cmd: any) => {
@@ -195,7 +195,7 @@ export class ProfessionalBuildOrderEngine {
   private static processPlayerCommands(
     commands: any[], 
     playerData: ProfessionalPlayerBuildOrder,
-    source: 'screparsed' | 'native'
+    source: 'bwremastered'
   ): Partial<ProfessionalPlayerBuildOrder> {
     
     const items: ProfessionalBuildOrderItem[] = [];

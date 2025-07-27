@@ -1,6 +1,6 @@
 
 /**
- * Intelligenter Build Order Extractor - Interpretiert screp-js Commands
+ * Intelligenter Build Order Extractor - Interpretiert BWRemastered Commands
  */
 
 import { UNIT_NAMES, UnitID, CommandType } from '../nativeReplayParser/repcore/constants';

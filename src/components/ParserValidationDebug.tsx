@@ -29,7 +29,7 @@ export function ParserValidationDebug({ enhancedData }: ParserValidationDebugPro
               <div className="text-2xl font-bold text-blue-600">
                 ✅
               </div>
-              <div className="text-sm">screp-js</div>
+              <div className="text-sm">BWRemastered</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-green-600">

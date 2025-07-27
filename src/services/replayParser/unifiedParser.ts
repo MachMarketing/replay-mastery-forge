@@ -3,8 +3,11 @@
  * Consolidates all parser implementations into a single, reliable parser
  */
 
-import { BWRemasteredParser } from '../nativeReplayParser/bwRemastered/parser';
+// Import BWRemastered components
 import { BWBinaryReader } from '../nativeReplayParser/bwRemastered/binaryReader';
+import { BWCommandParser } from '../nativeReplayParser/bwRemastered/commandParser';
+import { BWHeaderParser } from '../nativeReplayParser/bwRemastered/headerParser';
+import { BWPlayerParser } from '../nativeReplayParser/bwRemastered/playerParser';
 
 export interface UnifiedReplayData {
   mapName: string;
@@ -48,9 +51,28 @@ export class UnifiedReplayParser {
     console.log('[UnifiedParser] Buffer size:', buffer.byteLength);
 
     try {
-      // Use the BWRemastered parser as the primary parser
-      const parser = new BWRemasteredParser(buffer);
-      const replayData = await parser.parseReplay();
+      // Use the BWRemastered parser components directly
+      const reader = new BWBinaryReader(buffer);
+      
+      // Parse header and players
+      const headerParser = new BWHeaderParser(reader);
+      const header = headerParser.parseHeader();
+      
+      const playerParser = new BWPlayerParser(reader);
+      const players = playerParser.parsePlayers();
+      
+      // Parse commands
+      const commandParser = new BWCommandParser(reader);
+      const commands = await commandParser.parseCommands();
+      
+      const replayData = {
+        mapName: header.mapName,
+        totalFrames: header.totalFrames,
+        duration: this.frameToTime(header.totalFrames),
+        players,
+        commands,
+        gameType: 'StarCraft: Remastered'
+      };
 
       // Convert to unified format
       const result: UnifiedReplayData = {

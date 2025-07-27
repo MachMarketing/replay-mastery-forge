@@ -8,7 +8,7 @@ interface ServiceStatusCheckerProps {
 }
 
 const ServiceStatusChecker: React.FC<ServiceStatusCheckerProps> = ({ onStatusChange }) => {
-  // Since we're using screparsed (browser-based), the service is always available
+  // Since we're using BWRemastered parser (browser-based), the service is always available
   React.useEffect(() => {
     onStatusChange?.(true);
   }, [onStatusChange]);
@@ -18,7 +18,7 @@ const ServiceStatusChecker: React.FC<ServiceStatusCheckerProps> = ({ onStatusCha
       <Alert className="bg-green-50 border-green-200">
         <CheckCircle className="h-4 w-4 text-green-600" />
         <AlertDescription className="text-green-800">
-          <span className="font-medium">Screparsed Parser bereit</span>
+          <span className="font-medium">BWRemastered Parser bereit</span>
           <br />
           Browser-basierte Replay-Analyse (kein lokaler Service erforderlich)
         </AlertDescription>

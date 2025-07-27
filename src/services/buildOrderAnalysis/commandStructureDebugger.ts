@@ -11,7 +11,7 @@ export interface CommandDebugInfo {
   parameterKeys: string[];
   numericValues: number[];
   potentialUnitIds: number[];
-  source: 'screparsed' | 'native';
+  source: 'bwremastered';
   rawStructure: any;
 }
 
@@ -52,7 +52,7 @@ export class CommandStructureDebugger {
   /**
    * Analyze a single command structure
    */
-  public static analyzeCommand(cmd: any, source: 'screparsed' | 'native'): CommandDebugInfo {
+  public static analyzeCommand(cmd: any, source: 'bwremastered'): CommandDebugInfo {
     if (!this.debugSession) this.startDebugSession();
 
     const commandType = cmd.commandType || cmd.typeString || cmd.typeName || cmd.kind || 'Unknown';
@@ -98,7 +98,7 @@ export class CommandStructureDebugger {
   /**
    * Analyze all commands in replay data
    */
-  public static analyzeReplayCommands(replayData: any, source: 'screparsed' | 'native'): DebugSession {
+  public static analyzeReplayCommands(replayData: any, source: 'bwremastered'): DebugSession {
     this.startDebugSession();
 
     const commands = replayData.commands || [];

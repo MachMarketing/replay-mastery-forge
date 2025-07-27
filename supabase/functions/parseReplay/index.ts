@@ -1,54 +1,38 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// ================= AUTHENTISCHER SC:R REPLAY PARSER =================
-// Basierend auf der offiziellen screp Go-Implementation
-
-interface ReplayHeader {
-  signature: string;
-  engineVersion: number;
-  frameCount: number;
-  saveTime: number;
-  compInfo: {
-    playerBytes: number;
-    mapWidth: number;
-    mapHeight: number;
-  };
-  players: Player[];
+// BWRemastered Parser Types
+interface BWReplayHeader {
+  version: string;
+  seed: number;
+  totalFrames: number;
   mapName: string;
-  gameSpeed: number;
+  playerCount: number;
   gameType: number;
+  gameSubType: number;
+  saveTime: number;
 }
 
-interface Player {
-  id: number;
+interface BWPlayer {
   name: string;
-  race: string;
-  raceId: number;
-  color: number;
+  race: number;
+  raceString: 'Zerg' | 'Terran' | 'Protoss' | 'Random' | 'Unknown';
+  slotId: number;
   team: number;
-  slotType: number;
+  color: number;
 }
 
-interface Action {
+interface BWCommand {
   frame: number;
-  playerId: number;
-  actionType: string;
-  actionId: number;
-  data: any;
-}
-
-interface BuildOrderItem {
-  frame: number;
-  gameTime: string;
-  supply: string;
-  action: string;
-  unitOrBuilding: string;
+  userId: number;
+  type: number;
+  typeString: string;
+  data: Uint8Array;
+  parameters: any;
 }
 
 interface ParsedReplay {
@@ -65,9 +49,21 @@ interface ParsedReplay {
     gameSpeed: number;
     date: string;
   };
-  buildOrder: BuildOrderItem[];
+  buildOrder: Array<{
+    frame: number;
+    gameTime: string;
+    supply: string;
+    action: string;
+    unitOrBuilding: string;
+  }>;
   keyMoments: string[];
-  actions: Action[];
+  actions: Array<{
+    frame: number;
+    playerId: number;
+    actionType: string;
+    actionId: number;
+    data: any;
+  }>;
   analysis: {
     strengths: string[];
     weaknesses: string[];
@@ -75,213 +71,149 @@ interface ParsedReplay {
   };
 }
 
-class AuthenticSCRParser {
-  private buffer: ArrayBuffer;
+// BWBinaryReader - Simplified version for Edge Function
+class BWBinaryReader {
   private view: DataView;
   private position: number = 0;
-
-  // SC:R spezifische Konstanten basierend auf screp
-  private readonly RACE_NAMES = ['Zerg', 'Terran', 'Protoss', 'Invalid', 'Invalid', 'Invalid', 'Random'];
-  private readonly GAME_TYPES = ['', 'Melee', 'Free For All', 'Top vs Bottom', 'Team Melee', '', '', '', 'Use Map Settings'];
-  private readonly ACTION_NAMES: Record<number, string> = {
-    0x00: 'Pause',
-    0x01: 'Resume',
-    0x02: 'Set Speed',
-    0x03: 'Increase Speed',
-    0x04: 'Decrease Speed',
-    0x05: 'Save',
-    0x06: 'Load',
-    0x07: 'Restart',
-    0x08: 'Surrender',
-    0x09: 'Stop',
-    0x0A: 'Resume',
-    0x0B: 'Ally',
-    0x0C: 'Game Chat',
-    0x0D: 'Keep Alive',
-    0x0E: 'Minimap Ping',
-    0x10: 'Sync',
-    0x12: 'Latency',
-    0x13: 'Replay Speed',
-    0x14: 'Select Units',
-    0x15: 'Shift Select',
-    0x16: 'Shift Deselect',
-    0x18: 'Build',
-    0x19: 'Vision',
-    0x1A: 'Ally',
-    0x1E: 'Game Speed',
-    0x20: 'Hotkey',
-    0x23: 'Right Click',
-    0x26: 'Target Click',
-    0x27: 'Target Click',
-    0x28: 'Cancel Build',
-    0x2A: 'Cancel Morph',
-    0x2B: 'Stop',
-    0x2C: 'Carrier Stop',
-    0x2D: 'Reaver Stop',
-    0x2E: 'Order Nothing',
-    0x2F: 'Return Cargo',
-    0x30: 'Train',
-    0x31: 'Cancel Train',
-    0x32: 'Cloak',
-    0x33: 'Decloak',
-    0x34: 'Unit Morph',
-    0x35: 'Unsiege',
-    0x36: 'Siege',
-    0x37: 'Train Fighter',
-    0x38: 'Unload All',
-    0x39: 'Unload',
-    0x3A: 'Merge Archon',
-    0x3B: 'Hold Position',
-    0x3C: 'Burrow',
-    0x3D: 'Unburrow',
-    0x3E: 'Cancel Nuke',
-    0x3F: 'Lift',
-    0x40: 'Tech',
-    0x41: 'Cancel Tech',
-    0x42: 'Upgrade',
-    0x43: 'Cancel Upgrade',
-    0x44: 'Cancel Addon',
-    0x45: 'Building Morph',
-    0x46: 'Stim',
-    0x47: 'Sync',
-    0x48: 'Voice Enable1',
-    0x49: 'Voice Enable2',
-    0x4A: 'Voice Squelch1',
-    0x4B: 'Voice Squelch2',
-    0x4C: 'Start Game',
-    0x4D: 'Download Percentage',
-    0x4E: 'Change Game Slot',
-    0x4F: 'New Net Player',
-    0x50: 'Joined Game',
-    0x51: 'Change Race',
-    0x52: 'Team Game Team',
-    0x53: 'UMS Team',
-    0x54: 'Melee Team',
-    0x55: 'Swap Players',
-    0x56: 'Saved Data',
-    0x57: 'Replay Speed'
-  };
+  private length: number;
 
   constructor(buffer: ArrayBuffer) {
-    this.buffer = buffer;
     this.view = new DataView(buffer);
+    this.length = buffer.byteLength;
   }
 
-  // ============= AUTHENTISCHE BINARY READING METHODS =============
-  
-  private readUInt8(): number {
-    if (this.position >= this.buffer.byteLength) throw new Error('Buffer overflow');
+  setPosition(pos: number): void {
+    this.position = Math.max(0, Math.min(pos, this.length));
+  }
+
+  getPosition(): number {
+    return this.position;
+  }
+
+  getSize(): number {
+    return this.length;
+  }
+
+  canRead(bytes: number): boolean {
+    return this.position + bytes <= this.length;
+  }
+
+  readUInt8(): number {
+    if (!this.canRead(1)) {
+      throw new Error(`Cannot read UInt8 at position ${this.position}`);
+    }
     const value = this.view.getUint8(this.position);
     this.position += 1;
     return value;
   }
 
-  private readUInt16LE(): number {
-    if (this.position + 1 >= this.buffer.byteLength) throw new Error('Buffer overflow');
+  readUInt16LE(): number {
+    if (!this.canRead(2)) {
+      throw new Error(`Cannot read UInt16LE at position ${this.position}`);
+    }
     const value = this.view.getUint16(this.position, true);
     this.position += 2;
     return value;
   }
 
-  private readUInt32LE(): number {
-    if (this.position + 3 >= this.buffer.byteLength) throw new Error('Buffer overflow');
+  readUInt32LE(): number {
+    if (!this.canRead(4)) {
+      throw new Error(`Cannot read UInt32LE at position ${this.position}`);
+    }
     const value = this.view.getUint32(this.position, true);
     this.position += 4;
     return value;
   }
 
-  private readNullTerminatedString(maxLength: number = 256): string {
+  readFixedString(length: number): string {
+    const bytes = this.readBytes(length);
     let str = '';
-    let bytesRead = 0;
-    
-    while (this.position < this.buffer.byteLength && bytesRead < maxLength) {
-      const byte = this.readUInt8();
-      bytesRead++;
-      
-      if (byte === 0) break;
-      
-      if (byte >= 32 && byte <= 126) { // Printable ASCII
-        str += String.fromCharCode(byte);
+    for (let i = 0; i < bytes.length && bytes[i] !== 0; i++) {
+      if (bytes[i] >= 32 && bytes[i] <= 126) {
+        str += String.fromCharCode(bytes[i]);
       }
     }
-    
     return str;
   }
 
-  private seekTo(position: number): void {
-    this.position = Math.min(position, this.buffer.byteLength);
-  }
-
-  private skip(bytes: number): void {
-    this.position = Math.min(this.position + bytes, this.buffer.byteLength);
-  }
-
-  // Fixed: Changed from private to public to avoid Deno compilation issues
-  public peek(offset: number = 0): number {
-    const pos = this.position + offset;
-    if (pos >= this.buffer.byteLength) {
-      throw new Error('Cannot peek beyond buffer end');
+  readBytes(length: number): Uint8Array {
+    if (!this.canRead(length)) {
+      throw new Error(`Cannot read ${length} bytes at position ${this.position}`);
     }
-    return new Uint8Array(this.buffer)[pos];
+    const bytes = new Uint8Array(this.view.buffer, this.view.byteOffset + this.position, length);
+    this.position += length;
+    return bytes;
   }
 
-  // ============= AUTHENTISCHES SC:R PARSING BASIEREND AUF SCREP =============
+  skip(bytes: number): void {
+    this.position = Math.min(this.position + bytes, this.length);
+  }
 
-  public parse(): ParsedReplay {
+  peek(offset: number = 0): number {
+    const pos = this.position + offset;
+    if (pos >= this.length) return 0;
+    return this.view.getUint8(pos);
+  }
+}
+
+// BWRemastered Parser
+class BWRemasteredParser {
+  private reader: BWBinaryReader;
+
+  constructor(buffer: ArrayBuffer) {
+    this.reader = new BWBinaryReader(buffer);
+  }
+
+  async parseReplay(): Promise<ParsedReplay> {
     try {
-      console.log('[AuthenticSCR] Starting authentic SC:R replay parsing...');
-      console.log('[AuthenticSCR] Buffer size:', this.buffer.byteLength);
-      
-      // SC:R Header parsing nach screp-Standard
-      const header = this.parseAuthenticHeader();
-      const players = this.parseAuthenticPlayers(header);
-      const actions = this.parseAuthenticCommands();
-      const buildOrder = this.extractBuildOrder(actions, players);
-      
-      // Calculate metrics
-      const apm = this.calculateAPM(actions, players[0]?.id || 0);
-      const eapm = Math.floor(apm * 0.8); // More accurate EAPM estimate
-      
-      const analysis = {
-        strengths: this.analyzeStrengths(buildOrder, actions),
-        weaknesses: this.analyzeWeaknesses(buildOrder, actions),
-        recommendations: this.generateRecommendations(buildOrder, actions)
-      };
+      console.log('[BWRemastered] Starting replay parsing');
+      console.log('[BWRemastered] Buffer size:', this.reader.getSize());
 
-      const keyMoments = this.generateKeyMoments(actions, buildOrder);
-      
-      console.log('[AuthenticSCR] Parse successful!');
-      console.log('[AuthenticSCR] Results:', {
-        engineVersion: header.engineVersion,
-        players: players.map(p => `${p.name} (${p.race})`),
+      const header = this.parseHeader();
+      const players = this.parsePlayers();
+      const commands = this.parseCommands();
+
+      console.log('[BWRemastered] Parsed successfully:', {
         map: header.mapName,
-        frames: header.frameCount,
-        actions: actions.length,
-        buildOrder: buildOrder.length
+        players: players.length,
+        commands: commands.length,
+        frames: header.totalFrames
       });
-      
+
+      // Calculate metrics
+      const apm = this.calculateAPM(commands, players);
+      const buildOrder = this.extractBuildOrder(commands, players);
+      const analysis = this.generateAnalysis(commands, players);
+      const keyMoments = this.generateKeyMoments(commands, buildOrder);
+
       return {
         success: true,
         metadata: {
           playerName: players[0]?.name || 'Player 1',
-          playerRace: players[0]?.race || 'Unknown',
-          opponentName: players[1]?.name || 'Player 2',
-          opponentRace: players[1]?.race || 'Unknown',
+          playerRace: players[0]?.raceString || 'Unknown',
+          opponentName: players[1]?.name || 'Player 2', 
+          opponentRace: players[1]?.raceString || 'Unknown',
           mapName: header.mapName,
-          matchDurationSeconds: Math.floor(header.frameCount / 23.81), // Authentic SC:R FPS
-          apm,
-          eapm,
-          gameSpeed: header.gameSpeed || 6,
-          date: new Date(header.saveTime * 1000).toISOString()
+          matchDurationSeconds: Math.floor(header.totalFrames / 23.81),
+          apm: apm[0] || 0,
+          eapm: Math.floor((apm[0] || 0) * 0.8),
+          gameSpeed: 6,
+          date: new Date().toISOString()
         },
         buildOrder,
         keyMoments,
-        actions: actions.slice(0, 100),
+        actions: commands.slice(0, 100).map(cmd => ({
+          frame: cmd.frame,
+          playerId: cmd.userId,
+          actionType: cmd.typeString,
+          actionId: cmd.type,
+          data: cmd.parameters
+        })),
         analysis
       };
-      
+
     } catch (error) {
-      console.error('[AuthenticSCR] Parse error:', error);
+      console.error('[BWRemastered] Parse error:', error);
       return {
         success: false,
         metadata: {
@@ -301,452 +233,398 @@ class AuthenticSCRParser {
         actions: [],
         analysis: {
           strengths: [],
-          weaknesses: ['Replay konnte nicht geparst werden - authentische SC:R Parser'],
-          recommendations: ['Überprüfe die .rep-Datei auf SC:R Kompatibilität']
+          weaknesses: ['Replay parsing failed'],
+          recommendations: ['Check replay file format']
         }
       };
     }
   }
 
-  private parseAuthenticHeader(): ReplayHeader {
-    this.seekTo(0);
-    console.log('[AuthenticSCR] Parsing authentic SC:R header...');
+  private parseHeader(): BWReplayHeader {
+    this.reader.setPosition(0);
     
-    // SC:R Header hat eine spezifische Struktur laut screp
-    const signature = this.readUInt32LE();
-    const engineVersion = this.readUInt32LE();
-    const frameCount = this.readUInt32LE();
-    const saveTime = this.readUInt32LE();
-    
-    console.log('[AuthenticSCR] Header basics:', {
-      signature: signature.toString(16),
-      engineVersion,
-      frameCount,
-      saveTime: new Date(saveTime * 1000).toISOString()
-    });
-    
-    // Comp Info - wichtig für Player-Parsing
-    this.seekTo(16); // Nach den ersten 4 UInt32s
-    const playerBytes = this.readUInt32LE();
-    const mapWidth = this.readUInt16LE();
-    const mapHeight = this.readUInt16LE();
-    
-    console.log('[AuthenticSCR] Comp info:', { playerBytes, mapWidth, mapHeight });
-    
-    // Map Name parsing - normalerweise bei Offset nach Player-Daten
+    // Basic header structure
+    const version = this.reader.readFixedString(4);
+    const seed = this.reader.readUInt32LE();
+    const totalFrames = this.reader.readUInt32LE();
+    const saveTime = this.reader.readUInt32LE();
+
+    // Find map name
     let mapName = 'Unknown Map';
     try {
-      // Map name ist normalerweise nach den Player-Slots
-      this.seekTo(64); // Typischer Map-Name Start
-      mapName = this.readNullTerminatedString(32);
-      if (mapName.length < 3) {
-        // Alternative Offsets für Map-Name
-        for (const offset of [72, 80, 96, 128]) {
-          this.seekTo(offset);
-          const candidate = this.readNullTerminatedString(32);
-          if (candidate.length >= 3 && candidate.length <= 32) {
-            mapName = candidate;
-            break;
-          }
+      // Try different offsets for map name
+      for (const offset of [64, 72, 80, 96, 128]) {
+        this.reader.setPosition(offset);
+        const candidate = this.reader.readFixedString(32).trim();
+        if (candidate.length >= 3 && candidate.length <= 32) {
+          mapName = candidate;
+          break;
         }
       }
     } catch (e) {
-      console.log('[AuthenticSCR] Could not extract map name');
+      console.log('[BWRemastered] Could not extract map name');
     }
-    
-    console.log('[AuthenticSCR] Map name:', mapName);
-    
+
     return {
-      signature: signature.toString(16),
-      engineVersion,
-      frameCount,
-      saveTime,
-      compInfo: { playerBytes, mapWidth, mapHeight },
-      players: [],
+      version,
+      seed,
+      totalFrames,
       mapName,
-      gameSpeed: 6, // Default
-      gameType: 1   // Default Melee
+      playerCount: 2,
+      gameType: 1,
+      gameSubType: 0,
+      saveTime
     };
   }
 
-  private parseAuthenticPlayers(header: ReplayHeader): Player[] {
-    console.log('[AuthenticSCR] Parsing authentic player data...');
-    const players: Player[] = [];
-    
-    // SC:R Player-Slots beginnen typischerweise bei Offset 24 nach Header
-    this.seekTo(24);
-    
-    const maxPlayers = 12; // SC:R unterstützt bis zu 12 Spieler
-    
-    for (let i = 0; i < maxPlayers; i++) {
+  private parsePlayers(): BWPlayer[] {
+    const players: BWPlayer[] = [];
+    const races = ['Zerg', 'Terran', 'Protoss', 'Random'];
+
+    // Try to parse player data from typical offsets
+    this.reader.setPosition(24);
+
+    for (let i = 0; i < 8; i++) {
       try {
-        // Jeder Player-Slot ist ~36 Bytes lang
         const slotOffset = 24 + (i * 36);
-        if (slotOffset + 36 > this.buffer.byteLength) break;
+        if (slotOffset + 36 > this.reader.getSize()) break;
+
+        this.reader.setPosition(slotOffset);
         
-        this.seekTo(slotOffset);
-        
-        // Player Slot Structure nach SC:R Spezifikation
-        const slotType = this.readUInt8(); // 0=inactive, 1=computer, 2=human, etc.
-        const raceId = this.readUInt8();   // Race ID
-        const team = this.readUInt8();     // Team number
-        const nameLength = this.readUInt8(); // Name length
-        
+        const slotType = this.reader.readUInt8();
+        const raceId = this.reader.readUInt8();
+        const team = this.reader.readUInt8();
+        const nameLength = this.reader.readUInt8();
+
         if (slotType === 0 || nameLength === 0 || nameLength > 24) {
-          continue; // Inactive slot
+          continue;
         }
-        
-        // Read player name
+
         let name = '';
         for (let j = 0; j < Math.min(nameLength, 24); j++) {
-          const char = this.readUInt8();
-          if (char >= 32 && char <= 126) { // Printable ASCII
+          const char = this.reader.readUInt8();
+          if (char >= 32 && char <= 126) {
             name += String.fromCharCode(char);
           }
         }
-        
-        // Skip remaining name bytes if any
-        this.skip(24 - nameLength);
-        
-        // Read additional player data
-        const color = this.readUInt8();
-        
+
+        this.reader.skip(24 - nameLength);
+        const color = this.reader.readUInt8();
+
         if (name.length >= 2 && slotType >= 1) {
-          const race = this.RACE_NAMES[raceId] || 'Unknown';
-          
           players.push({
-            id: i,
             name: name.trim(),
-            race,
-            raceId,
-            color,
+            race: raceId,
+            raceString: (races[raceId] || 'Unknown') as any,
+            slotId: i,
             team,
-            slotType
+            color
           });
-          
-          console.log(`[AuthenticSCR] Player ${i}: "${name}" (${race}, Team ${team}, Slot ${slotType})`);
-          
-          if (players.length >= 8) break; // Reasonable limit
         }
-        
+
+        if (players.length >= 2) break;
       } catch (e) {
-        console.log(`[AuthenticSCR] Error parsing player slot ${i}:`, e.message);
         continue;
       }
     }
-    
-    // Filter für aktive menschliche Spieler (slotType 2)
-    const humanPlayers = players.filter(p => p.slotType === 2);
-    
-    if (humanPlayers.length === 0) {
-      console.log('[AuthenticSCR] No human players found, using fallback');
+
+    // Fallback if no players found
+    if (players.length === 0) {
       return [
-        { id: 0, name: 'Player 1', race: 'Protoss', raceId: 2, color: 0, team: 0, slotType: 2 },
-        { id: 1, name: 'Player 2', race: 'Zerg', raceId: 0, color: 1, team: 1, slotType: 2 }
+        {
+          name: 'Player 1',
+          race: 2,
+          raceString: 'Protoss',
+          slotId: 0,
+          team: 0,
+          color: 0
+        },
+        {
+          name: 'Player 2', 
+          race: 0,
+          raceString: 'Zerg',
+          slotId: 1,
+          team: 1,
+          color: 1
+        }
       ];
     }
-    
-    console.log(`[AuthenticSCR] Found ${humanPlayers.length} human players`);
-    return humanPlayers.slice(0, 2); // Limit to 2 for 1v1
+
+    return players.slice(0, 2);
   }
 
-  private parseAuthenticCommands(): Action[] {
-    console.log('[AuthenticSCR] Parsing authentic command stream...');
-    const actions: Action[] = [];
+  private parseCommands(): BWCommand[] {
+    const commands: BWCommand[] = [];
     
-    // SC:R Command Section beginnt typischerweise nach dem Header + Player-Daten
-    // Suche nach Command Section Signature
-    const commandSectionOffsets = [0x279, 0x280, 0x300, 0x400, 0x500, 0x600, 0x700];
-    let commandStart = 0x279; // Default
-    
-    for (const offset of commandSectionOffsets) {
-      if (offset >= this.buffer.byteLength - 100) continue;
+    // Find command section
+    const commandOffsets = [0x279, 0x280, 0x300, 0x400, 0x500];
+    let commandStart = 0x279;
+
+    for (const offset of commandOffsets) {
+      if (offset >= this.reader.getSize() - 100) continue;
       
-      this.seekTo(offset);
-      // Suche nach Command-Pattern (typischerweise beginnt mit Frame-Sync)
-      const potential = this.peek(0);
+      this.reader.setPosition(offset);
+      const potential = this.reader.peek(0);
       if (potential === 0x00 || potential === 0x01) {
         commandStart = offset;
-        console.log(`[AuthenticSCR] Command section detected at offset 0x${offset.toString(16)}`);
         break;
       }
     }
-    
-    this.seekTo(commandStart);
+
+    this.reader.setPosition(commandStart);
     let currentFrame = 0;
-    let lastActionId = 0;
-    
+
     try {
-      while (this.position < this.buffer.byteLength - 4 && actions.length < 5000) {
-        const commandLength = this.readUInt8();
+      while (this.reader.canRead(4) && commands.length < 1000) {
+        const commandLength = this.reader.readUInt8();
         
-        // Validate command length (SC:R commands are typically 1-50 bytes)
         if (commandLength === 0 || commandLength > 50) {
-          console.log(`[AuthenticSCR] Invalid command length ${commandLength}, stopping`);
           break;
         }
+
+        const userId = this.reader.readUInt8();
+        const type = this.reader.readUInt8();
         
-        const playerId = this.readUInt8();
-        const commandId = this.readUInt8();
-        
-        // Read command data
         const dataLength = Math.max(0, commandLength - 3);
-        const commandData: number[] = [];
-        for (let i = 0; i < dataLength && this.position < this.buffer.byteLength; i++) {
-          commandData.push(this.readUInt8());
+        const data = this.reader.readBytes(dataLength);
+
+        // Frame sync handling
+        if (type === 0x00 && dataLength > 0) {
+          currentFrame += data[0];
         }
-        
-        // Frame synchronization handling
-        if (commandId === 0x00 && commandData.length > 0) {
-          // Frame sync command - update frame counter
-          currentFrame += commandData[0] || 1;
-        } else {
-          // Regular action command
-          currentFrame += 1;
-        }
-        
-        const actionType = this.ACTION_NAMES[commandId] || `Command_0x${commandId.toString(16)}`;
-        
-        actions.push({
+
+        const typeString = this.getCommandTypeString(type);
+
+        commands.push({
           frame: currentFrame,
-          playerId,
-          actionType,
-          actionId: commandId,
-          data: { 
-            id: commandId, 
-            raw: commandData,
-            length: commandLength
-          }
+          userId,
+          type,
+          typeString,
+          data,
+          parameters: { data: Array.from(data) }
         });
-        
-        lastActionId = commandId;
-        
-        // Stop if we hit invalid patterns
-        if (commandId > 0x60 && commandId < 0x90) {
-          console.log(`[AuthenticSCR] Suspicious command ID 0x${commandId.toString(16)}, likely end of commands`);
-          break;
+
+        if (commands.length % 100 === 0) {
+          console.log(`[BWRemastered] Parsed ${commands.length} commands`);
         }
       }
     } catch (e) {
-      console.log('[AuthenticSCR] Command parsing stopped:', e.message);
+      console.log('[BWRemastered] Command parsing stopped:', e.message);
     }
-    
-    console.log(`[AuthenticSCR] Extracted ${actions.length} authentic commands, last frame: ${currentFrame}`);
-    return actions;
+
+    console.log(`[BWRemastered] Total commands parsed: ${commands.length}`);
+    return commands;
   }
 
-  private extractBuildOrder(actions: Action[], players: Player[]): BuildOrderItem[] {
-    const buildOrder: BuildOrderItem[] = [];
-    const player = players[0];
+  private getCommandTypeString(type: number): string {
+    const types: Record<number, string> = {
+      0x00: 'Sync',
+      0x0C: 'Build',
+      0x14: 'Train',
+      0x1E: 'Research',
+      0x20: 'Upgrade',
+      0x23: 'Move',
+      0x30: 'Train Unit',
+      0x40: 'Technology'
+    };
+    return types[type] || `Command_${type.toString(16)}`;
+  }
+
+  private calculateAPM(commands: BWCommand[], players: BWPlayer[]): number[] {
+    const apmValues: number[] = [];
     
-    if (!player) return buildOrder;
+    for (const player of players) {
+      const playerCommands = commands.filter(cmd => 
+        cmd.userId === player.slotId && 
+        ![0x00, 0x01, 0x02].includes(cmd.type)
+      );
+      
+      const maxFrame = Math.max(...commands.map(c => c.frame), 1);
+      const gameMinutes = maxFrame / (23.81 * 60);
+      const apm = gameMinutes > 0 ? Math.round(playerCommands.length / gameMinutes) : 0;
+      
+      apmValues.push(apm);
+    }
     
-    const buildActions = actions.filter(a => 
-      a.playerId === player.id && 
-      (a.actionType === 'Build' || a.actionType === 'Train')
+    return apmValues;
+  }
+
+  private extractBuildOrder(commands: BWCommand[], players: BWPlayer[]): Array<{
+    frame: number;
+    gameTime: string;
+    supply: string;
+    action: string;
+    unitOrBuilding: string;
+  }> {
+    const buildOrder: Array<{
+      frame: number;
+      gameTime: string;
+      supply: string;
+      action: string;
+      unitOrBuilding: string;
+    }> = [];
+
+    const buildCommands = commands.filter(cmd => 
+      [0x0C, 0x14, 0x30].includes(cmd.type)
     );
-    
-    for (const action of buildActions.slice(0, 50)) {
-      const gameTime = this.frameToGameTime(action.frame);
-      const supply = this.estimateSupply(action.frame, buildOrder.length);
+
+    buildCommands.forEach(cmd => {
+      const timeString = this.frameToTime(cmd.frame);
+      const supply = Math.floor(cmd.frame / 100).toString();
       
       buildOrder.push({
-        frame: action.frame,
-        gameTime,
+        frame: cmd.frame,
+        gameTime: timeString,
         supply,
-        action: action.actionType,
-        unitOrBuilding: this.getUnitName(action.data?.raw?.[0] || 0)
+        action: cmd.typeString,
+        unitOrBuilding: this.getUnitName(cmd.type, cmd.data)
       });
+    });
+
+    return buildOrder.sort((a, b) => a.frame - b.frame);
+  }
+
+  private getUnitName(type: number, data: Uint8Array): string {
+    if (type === 0x0C) return 'Building';
+    if (type === 0x14 || type === 0x30) return 'Unit';
+    return 'Unknown';
+  }
+
+  private frameToTime(frame: number): string {
+    const totalSeconds = Math.floor(frame / 23.81);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  }
+
+  private generateAnalysis(commands: BWCommand[], players: BWPlayer[]): {
+    strengths: string[];
+    weaknesses: string[];
+    recommendations: string[];
+  } {
+    const analysis = {
+      strengths: [] as string[],
+      weaknesses: [] as string[],
+      recommendations: [] as string[]
+    };
+
+    const totalCommands = commands.length;
+    const gameLength = Math.max(...commands.map(c => c.frame)) / (23.81 * 60);
+
+    if (totalCommands / gameLength > 150) {
+      analysis.strengths.push('High APM - Good micro management');
+    } else if (totalCommands / gameLength < 50) {
+      analysis.weaknesses.push('Low APM - Consider increasing actions per minute');
+      analysis.recommendations.push('Practice hotkeys and unit control');
+    }
+
+    const earlyCommands = commands.filter(c => c.frame < 23.81 * 60 * 5);
+    if (earlyCommands.length < 100) {
+      analysis.weaknesses.push('Slow early game development');
+      analysis.recommendations.push('Focus on faster early game build execution');
+    }
+
+    return analysis;
+  }
+
+  private generateKeyMoments(commands: BWCommand[], buildOrder: Array<any>): string[] {
+    const keyMoments: string[] = [];
+    
+    if (buildOrder.length > 0) {
+      keyMoments.push(`First building at ${buildOrder[0].gameTime}`);
     }
     
-    return buildOrder;
-  }
-
-  private frameToGameTime(frame: number): string {
-    const seconds = Math.floor(frame / 24); // ~24 FPS
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  }
-
-  private estimateSupply(frame: number, buildCount: number): string {
-    const baseSupply = 4; // Starting workers
-    const extraSupply = Math.floor(frame / 500) + buildCount; // Rough estimate
-    return `${baseSupply + extraSupply}/17`;
-  }
-
-  private getUnitName(unitId: number): string {
-    const unitNames: Record<number, string> = {
-      // Terran units
-      0: 'SCV', 1: 'Marine', 2: 'Firebat', 3: 'Ghost', 7: 'Vulture', 8: 'Goliath', 11: 'Wraith',
-      106: 'Command Center', 107: 'Comsat Station', 109: 'Supply Depot', 110: 'Refinery', 
-      111: 'Barracks', 112: 'Academy', 113: 'Factory',
-      
-      // Protoss units  
-      64: 'Probe', 65: 'Zealot', 66: 'Dragoon', 67: 'High Templar',
-      154: 'Nexus', 156: 'Pylon', 157: 'Assimilator', 158: 'Gateway',
-      
-      // Zerg units
-      41: 'Drone', 42: 'Zergling', 43: 'Hydralisk',
-      131: 'Hatchery', 132: 'Lair', 134: 'Spawning Pool'
-    };
-    
-    return unitNames[unitId] || `Unit_${unitId}`;
-  }
-
-  private calculateAPM(actions: Action[], playerId: number): number {
-    const playerActions = actions.filter(a => 
-      a.playerId === playerId && 
-      a.actionType !== 'FrameSync'
+    const importantCommands = commands.filter(cmd => 
+      [0x0C, 0x14, 0x40].includes(cmd.type)
     );
     
-    if (playerActions.length === 0) return 0;
+    importantCommands.slice(0, 3).forEach(cmd => {
+      keyMoments.push(`${cmd.typeString} at ${this.frameToTime(cmd.frame)}`);
+    });
     
-    const lastFrame = Math.max(...playerActions.map(a => a.frame));
-    const gameMinutes = (lastFrame / 24) / 60; // Convert frames to minutes
-    
-    return gameMinutes > 0 ? Math.round(playerActions.length / gameMinutes) : 0;
-  }
-
-  private analyzeStrengths(buildOrder: BuildOrderItem[], actions: Action[]): string[] {
-    const strengths: string[] = [];
-    
-    if (buildOrder.length > 0) {
-      strengths.push('Aktive Build-Order erkannt');
-    }
-    
-    if (actions.length > 100) {
-      strengths.push('Hohe Spielaktivität gemessen');
-    }
-    
-    return strengths;
-  }
-
-  private analyzeWeaknesses(buildOrder: BuildOrderItem[], actions: Action[]): string[] {
-    const weaknesses: string[] = [];
-    
-    if (buildOrder.length < 5) {
-      weaknesses.push('Wenige Build-Order Aktionen erkannt');
-    }
-    
-    return weaknesses;
-  }
-
-  private generateRecommendations(buildOrder: BuildOrderItem[], actions: Action[]): string[] {
-    const recommendations: string[] = [];
-    
-    if (buildOrder.length > 0) {
-      recommendations.push('Fokussiere auf Worker-Produktion');
-      recommendations.push('Achte auf Scout-Timing');
-    }
-    
-    return recommendations;
-  }
-
-  private generateKeyMoments(actions: Action[], buildOrder: BuildOrderItem[]): string[] {
-    const moments: string[] = [];
-    
-    if (buildOrder.length > 0) {
-      moments.push(`Erstes ${buildOrder[0].unitOrBuilding} bei ${buildOrder[0].gameTime}`);
-    }
-    
-    const earlyActions = actions.filter(a => a.frame < 1440); // First minute
-    if (earlyActions.length > 20) {
-      moments.push('Aktive Eröffnung');
-    }
-    
-    return moments;
+    return keyMoments;
   }
 }
 
-// ================= EDGE FUNCTION HANDLER =================
-
 serve(async (req) => {
-  console.log('[parseReplay] Starting SC:R replay analysis...');
-  
-  // Handle CORS
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Get file from request
+    console.log('[ParseReplay] Edge function called');
+    
+    // Parse the multipart form data
     const formData = await req.formData();
-    const file = formData.get('file') as File;
-    const fileName = formData.get('fileName') as string || 'unknown.rep';
+    const file = formData.get('replay') as File;
     
     if (!file) {
-      throw new Error('No file provided');
+      throw new Error('No replay file provided');
     }
 
-    console.log(`[parseReplay] Processing file: ${fileName} (${file.size} bytes)`);
-    
+    console.log('[ParseReplay] File received:', {
+      name: file.name,
+      size: file.size,
+      type: file.type
+    });
+
     // Validate file
-    if (!fileName.toLowerCase().endsWith('.rep')) {
-      throw new Error('Invalid file type. Only .rep files are supported.');
+    if (!file.name.endsWith('.rep')) {
+      throw new Error('Invalid file type. Please upload a .rep file');
     }
-    
-    if (file.size > 5 * 1024 * 1024) { // 5MB limit
-      throw new Error('File too large. Maximum size is 5MB.');
+
+    if (file.size > 10 * 1024 * 1024) {
+      throw new Error('File too large. Maximum size is 10MB');
     }
-    
+
     // Read file as ArrayBuffer
     const buffer = await file.arrayBuffer();
-    console.log(`[parseReplay] File loaded, buffer size: ${buffer.byteLength} bytes`);
-    
-    // Parse replay using our authentic SC:R parser
-    const parser = new AuthenticSCRParser(buffer);
-    const parseResult = parser.parse();
-    
-    if (!parseResult.success) {
-      throw new Error('Failed to parse replay file');
-    }
-    
-    // Return complete analysis
-    const response = {
-      success: true,
-      replayId: 'temp-id',
-      playerName: parseResult.metadata.playerName,
-      playerRace: parseResult.metadata.playerRace,
-      opponentName: parseResult.metadata.opponentName,
-      opponentRace: parseResult.metadata.opponentRace,
-      mapName: parseResult.metadata.mapName,
-      matchDurationSeconds: parseResult.metadata.matchDurationSeconds,
-      apm: parseResult.metadata.apm,
-      eapm: parseResult.metadata.eapm,
-      buildOrder: parseResult.buildOrder,
-      keyMoments: parseResult.keyMoments,
-      analysis: parseResult.analysis,
-      message: 'SC:R Replay erfolgreich analysiert!'
-    };
-    
-    console.log('[parseReplay] Analysis complete, returning results');
-    
-    return new Response(JSON.stringify(response), {
+    console.log('[ParseReplay] File read, buffer size:', buffer.byteLength);
+
+    // Parse using BWRemastered parser
+    const parser = new BWRemasteredParser(buffer);
+    const result = await parser.parseReplay();
+
+    console.log('[ParseReplay] Parse completed:', {
+      success: result.success,
+      map: result.metadata.mapName,
+      player: result.metadata.playerName
+    });
+
+    return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error('[parseReplay] Error:', error);
+    console.error('[ParseReplay] Error:', error);
     
-    return new Response(JSON.stringify({
+    const errorResponse = {
       success: false,
       error: error.message,
-      playerName: 'Parse Error',
-      playerRace: 'Unknown',
-      opponentName: 'Parse Error',
-      opponentRace: 'Unknown', 
-      mapName: 'Parse Failed',
-      apm: 0,
-      eapm: 0,
+      metadata: {
+        playerName: 'Error',
+        playerRace: 'Unknown',
+        opponentName: 'Error',
+        opponentRace: 'Unknown',
+        mapName: 'Parse Failed',
+        matchDurationSeconds: 0,
+        apm: 0,
+        eapm: 0,
+        gameSpeed: 0,
+        date: new Date().toISOString()
+      },
       buildOrder: [],
-      keyMoments: [`Fehler: ${error.message}`],
+      keyMoments: [],
+      actions: [],
       analysis: {
         strengths: [],
-        weaknesses: ['Replay konnte nicht verarbeitet werden'],
-        recommendations: ['Überprüfe die .rep-Datei und versuche es erneut']
+        weaknesses: ['Parsing failed'],
+        recommendations: ['Check replay file format']
       }
-    }), {
+    };
+
+    return new Response(JSON.stringify(errorResponse), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

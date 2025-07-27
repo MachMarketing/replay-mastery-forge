@@ -825,12 +825,12 @@ export class EnhancedBuildOrderExtractor {
     return result;
   }
 
-  // Neue Methode um direkt aus screparsed Daten zu extrahieren
-  public processScreparsedData(replayData: any): void {
-    console.log('[EnhancedBuildOrderExtractor] Processing screparsed data directly');
+  // Neue Methode um direkt aus BWRemastered Daten zu extrahieren
+  public processBWRemasteredData(replayData: any): void {
+    console.log('[EnhancedBuildOrderExtractor] Processing BWRemastered data directly');
     
     if (!replayData?.commands) {
-      console.log('[EnhancedBuildOrderExtractor] No commands in screparsed data');
+      console.log('[EnhancedBuildOrderExtractor] No commands in BWRemastered data');
       return;
     }
 
@@ -840,7 +840,7 @@ export class EnhancedBuildOrderExtractor {
       supplyTracking.set(playerId, this.getStartingSupply(this.raceMapping[playerId]));
     });
 
-    // Direkt aus screparsed commands extrahieren
+    // Direkt aus BWRemastered commands extrahieren
     replayData.commands.forEach((cmd: any) => {
       const playerId = cmd.playerId || 0;
       if (!this.buildOrders.has(playerId)) {
@@ -848,7 +848,7 @@ export class EnhancedBuildOrderExtractor {
       }
 
       // Schaue nach Build/Train/Research Commands in den rohen Daten
-      const entry = this.extractFromScreparsedCommand(cmd, supplyTracking.get(playerId) || 4);
+      const entry = this.extractFromBWRemasteredCommand(cmd, supplyTracking.get(playerId) || 4);
       if (entry) {
         this.buildOrders.get(playerId)!.push(entry);
         
@@ -858,7 +858,7 @@ export class EnhancedBuildOrderExtractor {
           supplyTracking.set(playerId, currentSupply + 1);
         }
         
-        console.log(`[EnhancedBuildOrderExtractor] Added screparsed entry for player ${playerId}:`, entry);
+        console.log(`[EnhancedBuildOrderExtractor] Added BWRemastered entry for player ${playerId}:`, entry);
       }
     });
 
@@ -868,8 +868,8 @@ export class EnhancedBuildOrderExtractor {
     });
   }
 
-  private extractFromScreparsedCommand(cmd: any, currentSupply: number): EnhancedBuildOrderEntry | null {
-    console.log('[extractFromScreparsedCommand] Processing command:', {
+  private extractFromBWRemasteredCommand(cmd: any, currentSupply: number): EnhancedBuildOrderEntry | null {
+    console.log('[extractFromBWRemasteredCommand] Processing command:', {
       typeName: cmd.typeName,
       parameters: cmd.parameters,
       data: cmd.data,
@@ -902,7 +902,7 @@ export class EnhancedBuildOrderExtractor {
       unitId = cmd.data[0] | (cmd.data[1] << 8);
     }
 
-    console.log('[extractFromScreparsedCommand] Extracted unitId:', unitId);
+    console.log('[extractFromBWRemasteredCommand] Extracted unitId:', unitId);
 
     if (unitId > 0) {
       const unitData = SC_UNITS[unitId];

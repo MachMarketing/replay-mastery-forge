@@ -21,7 +21,7 @@ export class UniversalParameterExtractor {
   /**
    * Extract unit ID with high confidence from any command structure
    */
-  public static extractUnitId(cmd: any, source: 'screparsed' | 'native' = 'screparsed'): ExtractedParameters {
+  public static extractUnitId(cmd: any, source: 'bwremastered' = 'bwremastered'): ExtractedParameters {
     const commandType = cmd.commandType || cmd.typeString || cmd.typeName || cmd.kind || '';
     const parameters = cmd.parameters || {};
     
@@ -45,10 +45,8 @@ export class UniversalParameterExtractor {
     this.extractFromNestedStructures(parameters, candidates);
 
     // Method 5: Parser-specific extraction
-    if (source === 'screparsed') {
-      this.extractScreparsedSpecific(cmd, candidates);
-    } else {
-      this.extractNativeSpecific(cmd, candidates);
+    if (source === 'bwremastered') {
+      this.extractBWRemasteredSpecific(cmd, candidates);
     }
 
     // Method 6: Heuristic analysis
@@ -194,24 +192,24 @@ export class UniversalParameterExtractor {
   }
 
   /**
-   * Screparsed-specific extraction
+   * BWRemastered-specific extraction
    */
-  private static extractScreparsedSpecific(cmd: any, candidates: Array<{ id: number; source: string; confidence: number }>): void {
-    // Screparsed often puts unit IDs in specific structures
-    const screparsedFields = [
+  private static extractBWRemasteredSpecific(cmd: any, candidates: Array<{ id: number; source: string; confidence: number }>): void {
+    // BWRemastered often puts unit IDs in specific structures
+    const bwRemasteredFields = [
       'data.unitId',
       'data.type',
-      'cmd.unitTypeId',
-      'args.unitType',
-      'args[0]'
+      'parameters.data',
+      'parameters.unit',
+      'typeString'
     ];
 
-    screparsedFields.forEach(fieldPath => {
+    bwRemasteredFields.forEach(fieldPath => {
       const value = this.getNestedValue(cmd, fieldPath);
       if (typeof value === 'number' && this.isValidUnitId(value)) {
         candidates.push({
           id: value,
-          source: `screparsed.${fieldPath}`,
+          source: `bwremastered.${fieldPath}`,
           confidence: 80
         });
       }

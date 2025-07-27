@@ -35,7 +35,7 @@ export class RealBuildOrderExtractor {
   
   /**
    * Phase 1: Command Analysis
-   * Analyze real screparsed commands and extract build orders
+   * Analyze real BWRemastered commands and extract build orders
    */
   static extractRealBuildOrder(
     commands: any[], 
@@ -90,7 +90,7 @@ export class RealBuildOrderExtractor {
   
   /**
    * Phase 2: Command Type Analysis - FIXED for all build orders
-   * Identify build-related commands from screparsed
+   * Identify build-related commands from BWRemastered
    */
   private static isBuildCommand(command: any): boolean {
     if (!command.data) return false;
@@ -125,7 +125,7 @@ export class RealBuildOrderExtractor {
   
   /**
    * Phase 3: Command-to-Unit Conversion
-   * Convert screparsed commands to build order items
+   * Convert BWRemastered commands to build order items
    */
   private static convertCommandToBuildOrder(
     command: any,
@@ -158,7 +158,7 @@ export class RealBuildOrderExtractor {
       cost: unitData.cost,
       efficiency: 95, // High confidence from real data
       confidence: 98, // Very high confidence from real commands
-      extractionMethod: 'screparsed-real',
+      extractionMethod: 'bwremastered-real',
       strategic: {
         priority: this.getPriority(unitData),
         timing: this.getTimingPhase(command.frame),

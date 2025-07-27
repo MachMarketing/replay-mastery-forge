@@ -103,7 +103,7 @@ const ParserDebug: React.FC = () => {
     <>
       <Navbar />
       <div className="container mx-auto py-12 mt-16">
-        <h1 className="text-3xl font-bold mb-8">Screparsed Parser Debug</h1>
+        <h1 className="text-3xl font-bold mb-8">BWRemastered Parser Debug</h1>
         
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <Card>
