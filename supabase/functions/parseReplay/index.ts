@@ -46,40 +46,41 @@ async function handler(req: Request): Promise<Response> {
       const replay = parseBuffer(buffer)
       console.log('Replay parsed successfully, structure:', JSON.stringify(replay, null, 2))
 
-      const mapName = replay.header?.mapName || 'Unknown'
-      const durationSeconds = replay.header?.replayLength || 0
-
-      const players = (replay.header?.players || []).map((p: any) => ({
-        id: p.playerId, 
-        name: p.name, 
-        race: p.race, 
-        apm: p.apm, 
-        eapm: p.eapm,
+      // Map to frontend expected format
+      const players = (replay.players || []).map((p: any, index: number) => ({
+        name: p.name || `Player ${index + 1}`,
+        race: p.race || 'Unknown',
+        apm: p.apm || 0
       }))
 
-      const actions = (replay.commands || []).map((c: any) => ({
-        playerId: c.playerId,
-        frame: c.frame,
-        time: +(c.frame / 16).toFixed(2),
-        commandType: c.commandType,
-        abilityName: c.abilityName,
-      }))
+      const buildOrder = (replay.commands || [])
+        .filter((cmd: any) => cmd.commandType === 'Build' || cmd.commandType === 'Train')
+        .map((cmd: any) => ({
+          time: `${Math.floor(cmd.frame / 16 / 60)}:${String(Math.floor((cmd.frame / 16) % 60)).padStart(2, '0')}`,
+          action: cmd.commandType || 'Build',
+          unit: cmd.unitName || cmd.abilityName || 'Unknown'
+        }))
 
-      const buildOrders = players.map((p: any) => ({
-        playerId: p.id,
-        sequence: actions
-          .filter((a: any) => a.playerId === p.id && ['Train','Build'].includes(a.commandType))
-          .map((a: any) => ({ unit: a.abilityName, action: a.commandType, frame: a.frame, time: a.time })),
-      }))
+      const analysis = {
+        strengths: ['Replay successfully parsed'],
+        weaknesses: [],
+        recommendations: ['Continue analyzing your gameplay']
+      }
+
+      console.log('Mapped data:', { 
+        players: players.length, 
+        buildOrder: buildOrder.length,
+        mapName: replay.mapName 
+      })
 
       return new Response(
         JSON.stringify({ 
           success: true,
-          mapName, 
-          durationSeconds, 
-          players, 
-          buildOrders, 
-          actions 
+          mapName: replay.mapName || 'Unknown Map',
+          duration: `${Math.floor((replay.replayLength || 0) / 60)}:${String((replay.replayLength || 0) % 60).padStart(2, '0')}`,
+          players,
+          buildOrder,
+          analysis
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
