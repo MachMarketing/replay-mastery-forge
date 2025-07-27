@@ -36,18 +36,14 @@ serve(async (req: Request): Promise<Response> => {
       const buffer = new Uint8Array(await file.arrayBuffer())
       console.log('File converted to buffer')
       
-      // Try different ways to access the parser
-      let parseReplay
-      if (screpModule.parseReplay) {
-        parseReplay = screpModule.parseReplay
-      } else if (screpModule.default) {
-        parseReplay = screpModule.default
-      } else {
-        throw new Error('Could not find parseReplay function in screp-js module')
+      // Use parseBuffer which is the correct function name in screp-js@0.3.0
+      const { parseBuffer } = screpModule
+      if (!parseBuffer) {
+        throw new Error('parseBuffer function not found in screp-js module')
       }
       
       console.log('Parsing replay...')
-      const replay = parseReplay(buffer)
+      const replay = parseBuffer(buffer)
       console.log('Replay parsed successfully')
 
       const mapName = replay.header?.mapName || 'Unknown'
