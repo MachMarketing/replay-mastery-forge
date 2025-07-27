@@ -36,15 +36,26 @@ async function handler(req: Request): Promise<Response> {
       const buffer = new Uint8Array(await file.arrayBuffer())
       console.log('File converted to buffer')
       
-      // Use parseBuffer which is the correct function name in screp-js@0.3.0
+      // Use parseBuffer with options
       const { parseBuffer } = screpModule
       if (!parseBuffer) {
         throw new Error('parseBuffer function not found in screp-js module')
       }
       
-      console.log('Parsing replay...')
-      const replay = parseBuffer(buffer)
-      console.log('Replay parsed successfully, structure:', JSON.stringify(replay, null, 2))
+      console.log('Parsing replay with options...')
+      // Try with different options to ensure proper parsing
+      const options = {
+        withPlayers: true,
+        withCommands: true,
+        withChat: true,
+        parseActions: true
+      }
+      
+      const replay = parseBuffer(buffer, options)
+      console.log('Replay object keys:', Object.keys(replay))
+      console.log('Replay header:', replay.header)
+      console.log('Replay players:', replay.players)
+      console.log('Replay commands length:', replay.commands?.length || 0)
 
       // Map to frontend expected format
       const players = (replay.players || []).map((p: any, index: number) => ({
