@@ -42,6 +42,18 @@ const ProAnalysisDashboard: React.FC<ProAnalysisDashboardProps> = ({ data }) => 
   const firstPlayerId = Object.keys(analysis)[0];
   const playerAnalysis = analysis[firstPlayerId];
 
+  // If no player analysis found, show error
+  if (!playerAnalysis) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-center">
+          <AlertTriangle className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
+          <p className="text-muted-foreground">No player data found in analysis</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   const getRaceColor = (race: string) => {
     const colors = {
       'Terran': 'from-blue-500 to-blue-600',
@@ -55,16 +67,16 @@ const ProAnalysisDashboard: React.FC<ProAnalysisDashboardProps> = ({ data }) => 
     let score = 0;
     
     // APM scoring (0-40 points)
-    score += Math.min(40, (player.apm / 200) * 40);
+    score += Math.min(40, ((player?.apm || 0) / 200) * 40);
     
     // EAPM scoring (0-30 points)  
-    score += Math.min(30, (player.eapm / 150) * 30);
+    score += Math.min(30, ((player?.eapm || 0) / 150) * 30);
     
     // Build efficiency (0-20 points)
-    score += (player.build_analysis?.efficiency || 0) * 0.2;
+    score += (player?.build_analysis?.efficiency || 0) * 0.2;
     
     // Bonus for strengths (0-10 points)
-    score += Math.min(10, player.strengths?.length * 2);
+    score += Math.min(10, (player?.strengths?.length || 0) * 2);
     
     return Math.round(score);
   };
