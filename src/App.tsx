@@ -8,7 +8,7 @@ import SignupPage from './pages/SignupPage';
 import PricingPage from './pages/PricingPage';
 import FeaturesPage from './pages/FeaturesPage';
 import Upload from './pages/Upload';
-import UploadPage from './pages/UploadPage';
+import UploadPage from './pages/Upload';
 import ReplaysPage from './pages/ReplaysPage';
 import NotFound from './pages/NotFound';
 import ParserTest from './pages/ParserTestPage';
