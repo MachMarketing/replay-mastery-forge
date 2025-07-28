@@ -591,7 +591,7 @@ async function handler(req: Request): Promise<Response> {
         overall_score: Math.min(100, Math.max(0, Math.round((apm * 0.6) + (eapm * 0.4)))),
         skill_level: apm > 150 ? 'Professional' : apm > 100 ? 'Advanced' : apm > 60 ? 'Intermediate' : 'Beginner',
         build_analysis: {
-          strategy: this.determineStrategy(buildOrder, player.race),
+          strategy: determineStrategy(buildOrder, player.race),
           timing: 'Standard',
           efficiency: Math.min(100, Math.max(20, eapm)),
           worker_count: Math.floor(Math.random() * 20) + 12,
@@ -600,9 +600,9 @@ async function handler(req: Request): Promise<Response> {
           military_timing: Math.random() * 8 + 3
         },
         build_order: buildOrder,
-        strengths: this.generateStrengths(apm, eapm, buildOrder.length),
-        weaknesses: this.generateWeaknesses(apm, eapm, buildOrder.length),
-        recommendations: this.generateRecommendations(apm, eapm, buildOrder.length)
+        strengths: generateStrengths(apm, eapm, buildOrder.length),
+        weaknesses: generateWeaknesses(apm, eapm, buildOrder.length),
+        recommendations: generateRecommendations(apm, eapm, buildOrder.length)
       };
     }
     
