@@ -103,8 +103,8 @@ export function useHybridReplayParser() {
         throw new Error('User not authenticated');
       }
 
-      console.log('[HybridParser] Calling server-side parser');
-      const { data: serverResult, error: serverError } = await supabase.functions.invoke('parseReplay', {
+      console.log('[HybridParser] Calling screparsed server-side parser');
+      const { data: serverResult, error: serverError } = await supabase.functions.invoke('parseReplayScreparsed', {
         body: {
           filePath: uploadResult.data!.path,
           userId: user.id
