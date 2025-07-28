@@ -320,34 +320,60 @@ async function tryScrepJS(file: File): Promise<any> {
       
       if (replay) {
         console.log('screp-js parsing successful');
+        console.log('Replay structure:', JSON.stringify(replay, null, 2));
         
-        // Convert screp-js format to our format
-        const players = replay.header?.players?.map((p: any, i: number) => ({
-          id: i,
-          name: p.name || `Player ${i + 1}`,
-          race: p.race || 'Unknown',
-          apm: Math.floor(Math.random() * 100 + 50),
-          eapm: Math.floor(Math.random() * 80 + 40)
-        })) || [];
+        // Extract real player data from screp-js
+        const realPlayers = [];
+        
+        // Try different ways to access player data in screp-js
+        if (replay.header?.players) {
+          replay.header.players.forEach((p: any, i: number) => {
+            if (p && (p.name || p.id !== undefined)) {
+              realPlayers.push({
+                id: i,
+                name: p.name || `Player ${i + 1}`,
+                race: getRaceFromScrep(p.race) || 'Unknown',
+                apm: calculateRealAPMFromScrep(replay.commands, i),
+                eapm: calculateRealEAPMFromScrep(replay.commands, i)
+              });
+            }
+          });
+        }
+        
+        // Fallback: check commands for player IDs
+        if (realPlayers.length === 0 && replay.commands) {
+          const playerIds = [...new Set(replay.commands.map((cmd: any) => cmd.playerID).filter((id: any) => id !== undefined))];
+          playerIds.forEach((playerId: any) => {
+            realPlayers.push({
+              id: playerId,
+              name: `Player ${playerId + 1}`,
+              race: 'Unknown',
+              apm: calculateRealAPMFromScrep(replay.commands, playerId),
+              eapm: calculateRealEAPMFromScrep(replay.commands, playerId)
+            });
+          });
+        }
+        
+        console.log(`Found ${realPlayers.length} players in replay`);
         
         const commands = replay.commands || [];
-        const buildOrders = players.map((p: any) => ({
+        const buildOrders = realPlayers.map((p: any) => ({
           playerId: p.id,
           sequence: commands
             .filter((cmd: any) => cmd.playerID === p.id)
             .filter((cmd: any) => cmd.typeString === 'Train' || cmd.typeString === 'Build')
-            .slice(0, 10)
-            .map((cmd: any) => ({
-              time: cmd.time || 0,
+            .slice(0, 15)
+            .map((cmd: any, index: number) => ({
+              time: cmd.frame ? Math.floor(cmd.frame / 23.81) : index * 30,
               commandType: cmd.typeString,
-              abilityName: cmd.typeString === 'Train' ? 'Unit' : 'Building'
+              abilityName: getUnitNameFromScrep(cmd) || cmd.typeString || 'Unknown Action'
             }))
         }));
         
         return {
           mapName: replay.header?.mapName || 'Unknown Map',
           durationSeconds: replay.header?.frames ? Math.floor(replay.header.frames / 23.81) : 600,
-          players,
+          players: realPlayers,
           buildOrders,
           actions: commands
         };
@@ -357,6 +383,46 @@ async function tryScrepJS(file: File): Promise<any> {
     console.log('screp-js failed:', error.message);
   }
   return null;
+}
+
+function getRaceFromScrep(raceId: any): string {
+  const raceMap: { [key: number]: string } = {
+    0: 'Zerg',
+    1: 'Terran', 
+    2: 'Protoss'
+  };
+  return raceMap[raceId] || 'Unknown';
+}
+
+function calculateRealAPMFromScrep(commands: any[], playerId: number): number {
+  if (!commands || commands.length === 0) return 60;
+  
+  const playerCommands = commands.filter(cmd => cmd.playerID === playerId);
+  const lastFrame = Math.max(...commands.map(cmd => cmd.frame || 0));
+  const gameMinutes = (lastFrame / 23.81) / 60;
+  
+  return gameMinutes > 0 ? Math.round(playerCommands.length / gameMinutes) : 60;
+}
+
+function calculateRealEAPMFromScrep(commands: any[], playerId: number): number {
+  if (!commands || commands.length === 0) return 45;
+  
+  const playerCommands = commands.filter(cmd => cmd.playerID === playerId);
+  const effectiveCommands = playerCommands.filter(cmd => {
+    const cmdType = cmd.typeString || '';
+    return !['Select', 'Deselect', 'RightClick', 'Stop'].includes(cmdType);
+  });
+  
+  const lastFrame = Math.max(...commands.map(cmd => cmd.frame || 0));
+  const gameMinutes = (lastFrame / 23.81) / 60;
+  
+  return gameMinutes > 0 ? Math.round(effectiveCommands.length / gameMinutes) : 45;
+}
+
+function getUnitNameFromScrep(cmd: any): string {
+  if (cmd.typeString === 'Train') return 'Unit Production';
+  if (cmd.typeString === 'Build') return 'Building Construction';
+  return cmd.typeString || 'Unknown Action';
 }
 
 async function handler(req: Request): Promise<Response> {
