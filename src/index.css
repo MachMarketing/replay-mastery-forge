@@ -29,16 +29,23 @@
     --ring: 240 4.9% 83.9%;
     --radius: 0.5rem;
     
-    /* Race colors */
+    /* Race colors - HSL format for proper theming */
     --terran: 217 76.7% 65.9%;
     --protoss: 46 100% 67%;
     --zerg: 340 82% 55%;
     
-    /* Performance indicators */
+    /* Performance indicators - HSL format */
     --strength: 142 76% 36%;
     --strength-dark: 142 72% 29%;
     --weakness: 0 76% 50%;
     --improvement: 31 100% 55%;
+    
+    /* Analysis specific colors */
+    --analysis-bg: 240 10% 6%;
+    --analysis-card: 240 10% 8%;
+    --analysis-border: 240 3.7% 15.9%;
+    --analysis-text: 0 0% 98%;
+    --analysis-muted: 240 5% 64.9%;
   }
 }
 
