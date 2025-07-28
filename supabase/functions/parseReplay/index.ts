@@ -617,25 +617,15 @@ async function handler(req: Request): Promise<Response> {
     });
 
   } catch (err: any) {
-    console.error('Caught error, returning success anyway:', err)
+    console.error('Parser failed completely:', err)
     
-    // Even on error, return success with minimal data
+    // Return actual error instead of mock data
     return new Response(JSON.stringify({
-      success: true,
-      mapName: 'SC:R Replay',
-      duration: '0:00', 
-      players: [
-        { name: 'Player 1', race: 'Unknown', apm: 0 },
-        { name: 'Player 2', race: 'Unknown', apm: 0 }
-      ],
-      buildOrder: [],
-      analysis: {
-        strengths: ['File received successfully'],
-        weaknesses: ['Parsing temporarily unavailable'],
-        recommendations: ['Your SC:R replay was uploaded successfully']
-      }
+      success: false,
+      error: 'Replay parsing failed: ' + err.message,
+      message: 'Could not parse replay file. Please check if it\'s a valid StarCraft replay.'
     }), {
-      status: 200,
+      status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
   }
