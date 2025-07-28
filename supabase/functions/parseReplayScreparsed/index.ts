@@ -1,4 +1,3 @@
-
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 const corsHeaders = {
@@ -695,7 +694,7 @@ function parseReplayComplete(buffer: ArrayBuffer) {
       }));
       
       // Generate coaching recommendations
-      const recommendations = this.generateRecommendations(apm, eapm, buildOrder);
+      const recommendations = generateRecommendations(apm, eapm, buildOrder);
       
       analysis[player.id] = {
         playerId: player.id,
@@ -708,8 +707,8 @@ function parseReplayComplete(buffer: ArrayBuffer) {
         buildCommands: buildCommands.length,
         efficiency: playerCommands.length > 0 ? Math.round((buildCommands.length / playerCommands.length) * 100) : 0,
         recommendations,
-        strengths: this.identifyStrengths(apm, eapm, buildOrder),
-        weaknesses: this.identifyWeaknesses(apm, eapm, buildOrder)
+        strengths: identifyStrengths(apm, eapm, buildOrder),
+        weaknesses: identifyWeaknesses(apm, eapm, buildOrder)
       };
     });
     
