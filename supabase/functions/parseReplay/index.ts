@@ -375,13 +375,10 @@ async function tryScrepJS(file: File): Promise<any> {
           });
         }
         
-        // Strategy 3: Emergency fallback - create mock players based on typical 1v1
+        // Strategy 3: Force return ACTUAL data instead of fallback
         if (realPlayers.length === 0) {
-          console.log('Strategy 3: Emergency fallback players');
-          realPlayers.push(
-            { id: 0, name: 'Player 1', race: 'Protoss', apm: 85, eapm: 65 },
-            { id: 1, name: 'Player 2', race: 'Zerg', apm: 92, eapm: 71 }
-          );
+          console.log('Strategy 3: NO FALLBACK - Return actual parsing failure');
+          throw new Error('No players found in replay - this indicates a parsing issue');
         }
         
         console.log(`Final player count: ${realPlayers.length}`);
