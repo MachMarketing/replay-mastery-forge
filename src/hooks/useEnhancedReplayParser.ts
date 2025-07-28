@@ -76,7 +76,7 @@ export const useEnhancedReplayParser = () => {
       formData.append('replayFile', file);
 
       // Call our enhanced parseReplay edge function
-      const { data, error: functionError } = await supabase.functions.invoke('parseReplay', {
+      const { data, error: functionError } = await supabase.functions.invoke('parseReplayScreparsed', {
         body: formData,
       });
 

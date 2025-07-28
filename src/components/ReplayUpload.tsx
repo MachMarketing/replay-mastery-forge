@@ -61,7 +61,7 @@ const ReplayUpload: React.FC<ReplayUploadProps> = ({ onParseComplete }) => {
 
       console.log('[ReplayUpload] Calling parseReplay edge function...');
       
-      const { data, error } = await supabase.functions.invoke('parseReplay', {
+      const { data, error } = await supabase.functions.invoke('parseReplayScreparsed', {
         body: formData,
       });
 
