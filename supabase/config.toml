@@ -37,3 +37,6 @@ port = 54329
 
 [functions.parseReplay]
 verify_jwt = false
+
+[functions.parseReplayScreparsed]
+verify_jwt = false
