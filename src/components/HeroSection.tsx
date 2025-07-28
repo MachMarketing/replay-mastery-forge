@@ -28,7 +28,7 @@ const HeroSection = () => {
   return <div className="pt-16 relative z-10">
       {/* Full screen background image with no overlay */}
       <div className="absolute inset-0 z-0" style={{
-      backgroundImage: "url('/lovable-uploads/d571fd6c-60f8-4930-9fdc-8f29054538e7.png')",
+      backgroundImage: "url('/background.jpg')",
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat',

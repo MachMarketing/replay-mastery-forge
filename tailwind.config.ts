@@ -53,15 +53,15 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        // StarCraft specific colors
-        terran: "#2563eb", // Blau für Terran
-        protoss: "#f59e0b", // Gold für Protoss
-        zerg: "#7e22ce", // Violett für Zerg
-        // Analytics colors
-        strength: "#10b981", // Grün für Stärken
-        "strength-dark": "#059669",
-        weakness: "#ef4444", // Rot für Schwächen
-        improvement: "#3b82f6", // Blau für Verbesserungen
+        // StarCraft specific colors (using HSL format)
+        terran: "hsl(var(--terran))",
+        protoss: "hsl(var(--protoss))",
+        zerg: "hsl(var(--zerg))",
+        // Analytics colors (using HSL format)
+        strength: "hsl(var(--strength))",
+        "strength-dark": "hsl(var(--strength-dark))",
+        weakness: "hsl(var(--weakness))",
+        improvement: "hsl(var(--improvement))",
       },
       borderRadius: {
         lg: "var(--radius)",
