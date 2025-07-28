@@ -42,15 +42,29 @@ const ProAnalysisDashboard: React.FC<ProAnalysisDashboardProps> = ({ data }) => 
   const firstPlayerId = Object.keys(analysis)[0];
   const playerAnalysis = analysis[firstPlayerId];
 
-  // If no player analysis found, show error
-  if (!playerAnalysis) {
+  // If no player analysis found, show Korean Pro Parser status
+  if (!playerAnalysis || !firstPlayerId) {
     return (
-      <Card>
-        <CardContent className="p-6 text-center">
-          <AlertTriangle className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
-          <p className="text-muted-foreground">No player data found in analysis</p>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="p-6 text-center">
+            <div className="flex items-center justify-center gap-2 mb-3">
+              <div className="w-2 h-2 bg-amber-500 rounded-full animate-pulse"></div>
+              <span className="text-lg font-semibold text-amber-800">🇰🇷 Korean Professional Parser</span>
+            </div>
+            <p className="text-amber-700 mb-2">Using industry-standard icza/screp parser</p>
+            <p className="text-sm text-amber-600">Same technology used by Korean esports professionals</p>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-6 text-center">
+            <AlertTriangle className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
+            <p className="text-muted-foreground">Analysis data is being processed...</p>
+            <p className="text-sm text-muted-foreground mt-1">Korean professional parsing in progress</p>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 

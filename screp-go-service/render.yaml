@@ -1,0 +1,15 @@
+# Production Deployment for Korean Professional Parser
+services:
+  - type: web
+    name: starcraft-replay-parser
+    env: go
+    plan: starter
+    buildCommand: go build -o parser .
+    startCommand: ./parser
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: ENV
+        value: production
+    healthCheckPath: /health
+    autoDeploy: true
