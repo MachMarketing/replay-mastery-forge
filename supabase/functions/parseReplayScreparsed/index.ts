@@ -5,11 +5,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Handle CORS preflight requests
-if (req.method === 'OPTIONS') {
-  return new Response(null, { headers: corsHeaders })
-}
-
 // screparsed-style Action Parsing Implementation
 // Based on: https://github.com/evanandrewrose/screparsed
 
@@ -741,6 +736,7 @@ function formatFrameTime(frame: number): string {
 }
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
