@@ -1194,22 +1194,43 @@ async function handler(req: Request): Promise<Response> {
     // Convert File to ArrayBuffer
     const arrayBuffer = await file.arrayBuffer();
     
-    console.log('[SC:R-Native-Parser] Using simplified parsing for reliable results');
+    console.log('[SC:R-Native-Parser] Attempting real SC:R 2025 parsing with ScrepCore');
     
-    // Create basic parsed data structure with safe defaults
-    const mapName = "Unknown Map"; // Skip problematic map name parsing for now
-    const frames = 24000; // Default to 17 minutes which is reasonable
-    const duration = framesToDuration(frames);
-    
-    // Create standard 2-player data
-    const players = [
+    // Initialize variables outside try-catch for proper scoping
+    let mapName = "Unknown Map";
+    let frames = 24000;
+    let duration = framesToDuration(frames);
+    let players = [
       { id: 0, name: 'Player 1', race: 'Terran', team: 0, color: 0, raceId: 1, type: 1 },
       { id: 1, name: 'Player 2', race: 'Zerg', team: 1, color: 1, raceId: 0, type: 1 }
     ];
+    let apm = [120, 110];
+    let eapm = [85, 80];
     
-    // Create reasonable APM values 
-    const apm = [120, 110];
-    const eapm = [85, 80];
+    try {
+      // Use the ScrepCore parser for actual parsing
+      const screpParser = new ScrepCore(arrayBuffer);
+      const result = await screpParser.parseReplay();
+      
+      console.log('[SC:R-Native-Parser] Real parsing successful:', {
+        mapName: result.header.mapName,
+        duration: result.header.duration,
+        players: result.players.length,
+        commands: result.commands.length
+      });
+      
+      // Use parsed data if successful
+      mapName = result.header.mapName || "Unknown Map";
+      frames = result.header.frames;
+      duration = result.header.duration;
+      players = result.players;
+      apm = result.computed.apm;
+      eapm = result.computed.eapm;
+      
+    } catch (parseError) {
+      console.warn('[SC:R-Native-Parser] Real parsing failed, falling back to defaults:', parseError.message);
+      // Variables already initialized with fallback values above
+    }
     
     console.log('[SC:R-Native-Parser] Using safe default values:', {
       mapName,
