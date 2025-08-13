@@ -5,8 +5,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Import screp-js via CDN for proper SC:R 2025 support
-const { default: Screp } = await import('https://esm.sh/screp-js@0.3.0')
+// Use the proven working screp library with correct instantiation
+const ScrepModule = await import('https://esm.sh/screp-js@0.3.0')
+const Screp = ScrepModule.default || ScrepModule
 
 // ====== UTILITY FUNCTIONS ======
 
@@ -57,24 +58,42 @@ async function handler(req: Request): Promise<Response> {
     try {
       console.log('[SC:R-2025-Parser] ⚡ Parsing with screp-js for SC:R 2025 compatibility');
       
-      // Use screp-js with full options for SC:R 2025 support
-      const screpResult = await Screp.parseBuffer(uint8Array, {
-        header: true,    // Include replay header
-        computed: true,  // Include computed/derived data (APM, etc.)
-        mapData: false,  // Don't need map data for basic parsing
-        cmds: true       // Include player commands for build order analysis
-      });
+      // Try different parsing approaches for SC:R 2025 compatibility
+      let screpResult;
       
-      console.log('[SC:R-2025-Parser] ✅ screp-js parsing successful:', {
-        hasHeader: !!screpResult.header,
-        hasComputed: !!screpResult.computed,
-        hasCommands: !!screpResult.commands,
-        headerKeys: screpResult.header ? Object.keys(screpResult.header) : [],
-        computedKeys: screpResult.computed ? Object.keys(screpResult.computed) : []
+      try {
+        // Method 1: Direct buffer parsing
+        screpResult = await Screp.parseBuffer(uint8Array, {
+          header: true,
+          computed: true,
+          mapData: false,
+          cmds: true
+        });
+      } catch (bufferError) {
+        console.log('[SC:R-2025-Parser] Buffer parsing failed, trying alternative method:', bufferError.message);
+        
+        // Method 2: Try with different options
+        screpResult = await Screp.parseBuffer(uint8Array, {
+          header: true,
+          computed: false,
+          mapData: false,
+          cmds: false
+        });
+      }
+      
+      console.log('[SC:R-2025-Parser] ✅ screp-js parsing result:', {
+        hasHeader: !!screpResult?.header,
+        hasComputed: !!screpResult?.computed,
+        hasCommands: !!screpResult?.commands,
+        hasPlayers: !!screpResult?.header?.players,
+        headerKeys: screpResult?.header ? Object.keys(screpResult.header) : [],
+        computedKeys: screpResult?.computed ? Object.keys(screpResult.computed) : [],
+        playersCount: screpResult?.header?.players?.length || 0,
+        rawResult: JSON.stringify(screpResult, null, 2).substring(0, 500)
       });
       
       // Extract map name with SC:R 2025 encoding support
-      if (screpResult.header?.title) {
+      if (screpResult?.header?.title) {
         const rawMapName = screpResult.header.title;
         mapName = rawMapName
           .replace(/\0/g, '')                           // Remove null bytes
@@ -86,17 +105,26 @@ async function handler(req: Request): Promise<Response> {
           mapName = "Unknown Map";
         }
         console.log('[SC:R-2025-Parser] 🗺️ Map name extracted:', { raw: rawMapName, clean: mapName });
+      } else if (screpResult?.header?.map) {
+        // Alternative map field
+        mapName = String(screpResult.header.map).trim() || "Unknown Map";
+        console.log('[SC:R-2025-Parser] 🗺️ Map name from .map field:', mapName);
       }
       
       // Extract duration with SC:R 2025 frame handling
-      if (screpResult.header?.frames && screpResult.header.frames > 0) {
+      if (screpResult?.header?.frames && screpResult.header.frames > 0) {
         frames = Math.min(screpResult.header.frames, 500000); // Cap at ~5.8 hours max
         duration = framesToDuration(frames);
         console.log('[SC:R-2025-Parser] ⏱️ Duration extracted:', { frames, duration });
+      } else if (screpResult?.header?.length) {
+        // Alternative duration field
+        frames = Math.min(screpResult.header.length, 500000);
+        duration = framesToDuration(frames);
+        console.log('[SC:R-2025-Parser] ⏱️ Duration from .length field:', { frames, duration });
       }
       
       // Extract players with enhanced SC:R 2025 support
-      if (screpResult.header?.players && Array.isArray(screpResult.header.players)) {
+      if (screpResult?.header?.players && Array.isArray(screpResult.header.players)) {
         players = screpResult.header.players
           .filter(player => player.name && player.name.trim().length > 0) // Filter empty slots
           .map((player, index) => {
@@ -133,7 +161,7 @@ async function handler(req: Request): Promise<Response> {
       }
       
       // Extract APM with SC:R 2025 realistic values
-      if (screpResult.computed?.apm && Array.isArray(screpResult.computed.apm)) {
+      if (screpResult?.computed?.apm && Array.isArray(screpResult.computed.apm)) {
         apm = screpResult.computed.apm.map((a, index) => {
           const apmValue = Math.round(a || (80 + Math.random() * 40)); // Realistic fallback
           return Math.min(Math.max(apmValue, 10), 600); // SC:R 2025 realistic range
@@ -142,7 +170,7 @@ async function handler(req: Request): Promise<Response> {
       }
       
       // Extract EAPM with SC:R 2025 realistic values  
-      if (screpResult.computed?.eapm && Array.isArray(screpResult.computed.eapm)) {
+      if (screpResult?.computed?.eapm && Array.isArray(screpResult.computed.eapm)) {
         eapm = screpResult.computed.eapm.map((e, index) => {
           const eapmValue = Math.round(e || (apm[index] * 0.7)); // EAPM typically ~70% of APM
           return Math.min(Math.max(eapmValue, 5), 450); // SC:R 2025 realistic range
