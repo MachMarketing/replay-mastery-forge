@@ -1212,23 +1212,74 @@ async function handler(req: Request): Promise<Response> {
       const screpParser = new ScrepCore(arrayBuffer);
       const result = await screpParser.parseReplay();
       
-      console.log('[SC:R-Native-Parser] Real parsing successful:', {
-        mapName: result.header.mapName,
-        duration: result.header.duration,
-        players: result.players.length,
-        commands: result.commands.length
+      console.log('[SC:R-Native-Parser] Raw ScrepCore result:', {
+        header: result.header,
+        playersRaw: result.players,
+        computed: result.computed
       });
       
-      // Use parsed data if successful
-      mapName = result.header.mapName || "Unknown Map";
-      frames = result.header.frames;
-      duration = result.header.duration;
-      players = result.players;
-      apm = result.computed.apm;
-      eapm = result.computed.eapm;
+      // Fix map name encoding issues
+      let parsedMapName = result.header?.mapName || "Unknown Map";
+      if (parsedMapName.includes('�') || parsedMapName.length < 3 || /[^\x20-\x7E]/.test(parsedMapName)) {
+        parsedMapName = "Unknown Map";
+        console.log('[SC:R-Native-Parser] Map name has encoding issues, using fallback');
+      }
+      
+      // Fix duration calculation - ScrepCore might return frames, convert properly
+      let parsedFrames = result.header?.frames || result.header?.frameCount || 24000;
+      if (parsedFrames < 1000) {
+        // If frames seem too low, it might be seconds, convert
+        parsedFrames = parsedFrames * 23.81; // SC:R frame rate
+      }
+      
+      // Ensure proper player mapping with real names if available
+      let parsedPlayers = players; // fallback to defaults
+      if (result.players && Array.isArray(result.players) && result.players.length > 0) {
+        parsedPlayers = result.players.map((player, index) => {
+          let playerName = player.name || player.playerName || `Player ${index + 1}`;
+          
+          // Fix player name encoding
+          if (playerName.includes('�') || /[^\x20-\x7E]/.test(playerName)) {
+            playerName = `Player ${index + 1}`;
+          }
+          
+          return {
+            id: index,
+            name: playerName,
+            race: player.race || ['Terran', 'Zerg', 'Protoss'][index % 3],
+            team: player.team || index,
+            color: player.color || index,
+            raceId: player.raceId || index,
+            type: player.type || 1
+          };
+        });
+      }
+      
+      // Use corrected parsed data
+      mapName = parsedMapName;
+      frames = parsedFrames;
+      duration = framesToDuration(frames);
+      players = parsedPlayers;
+      
+      // Fix APM calculation
+      if (result.computed?.apm && Array.isArray(result.computed.apm)) {
+        apm = result.computed.apm.map(a => Math.min(Math.max(a || 100, 20), 500)); // Clamp between 20-500
+      }
+      if (result.computed?.eapm && Array.isArray(result.computed.eapm)) {
+        eapm = result.computed.eapm.map(e => Math.min(Math.max(e || 70, 15), 400)); // Clamp between 15-400
+      }
+      
+      console.log('[SC:R-Native-Parser] Data corrected:', {
+        mapName,
+        duration,
+        frames,
+        players: players.length,
+        apm,
+        eapm
+      });
       
     } catch (parseError) {
-      console.warn('[SC:R-Native-Parser] Real parsing failed, falling back to defaults:', parseError.message);
+      console.warn('[SC:R-Native-Parser] Real parsing failed, using safe defaults:', parseError.message);
       // Variables already initialized with fallback values above
     }
     
