@@ -1193,10 +1193,11 @@ async function handler(req: Request): Promise<Response> {
     
     // Convert File to ArrayBuffer
     const arrayBuffer = await file.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
     
-    console.log('[SC:R-Native-Parser] Attempting real SC:R 2025 parsing with ScrepCore');
+    console.log('[SC:R-Native-Parser] Using correct screp-js API with parseBuffer');
     
-    // Initialize variables outside try-catch for proper scoping
+    // Initialize variables with fallback values
     let mapName = "Unknown Map";
     let frames = 24000;
     let duration = framesToDuration(frames);
@@ -1208,78 +1209,100 @@ async function handler(req: Request): Promise<Response> {
     let eapm = [85, 80];
     
     try {
-      // Use the ScrepCore parser for actual parsing
-      const screpParser = new ScrepCore(arrayBuffer);
-      const result = await screpParser.parseReplay();
-      
-      console.log('[SC:R-Native-Parser] Raw ScrepCore result:', {
-        header: result.header,
-        playersRaw: result.players,
-        computed: result.computed
+      // Use the CORRECT screp-js API with options
+      console.log('[SC:R-Native-Parser] Calling Screp.parseBuffer with options');
+      const screpResult = await Screp.parseBuffer(uint8Array, {
+        header: true,    // Include replay header
+        computed: true,  // Include computed/derived data (APM, etc.)
+        mapData: false,  // Don't need map data for basic parsing
+        cmds: true       // Include player commands for build order
       });
       
-      // Fix map name encoding issues
-      let parsedMapName = result.header?.mapName || "Unknown Map";
-      if (parsedMapName.includes('�') || parsedMapName.length < 3 || /[^\x20-\x7E]/.test(parsedMapName)) {
-        parsedMapName = "Unknown Map";
-        console.log('[SC:R-Native-Parser] Map name has encoding issues, using fallback');
+      console.log('[SC:R-Native-Parser] Raw Screp.parseBuffer result structure:', {
+        hasHeader: !!screpResult.header,
+        hasComputed: !!screpResult.computed,
+        hasCommands: !!screpResult.commands,
+        headerKeys: screpResult.header ? Object.keys(screpResult.header) : [],
+        computedKeys: screpResult.computed ? Object.keys(screpResult.computed) : []
+      });
+      
+      // Extract map name correctly from header
+      if (screpResult.header && screpResult.header.title) {
+        const rawMapName = screpResult.header.title;
+        // Clean up map name - remove null bytes and non-printable characters
+        const cleanMapName = rawMapName.replace(/\0/g, '').replace(/[^\x20-\x7E]/g, '').trim();
+        if (cleanMapName.length > 2) {
+          mapName = cleanMapName;
+        }
+        console.log('[SC:R-Native-Parser] Map name extracted:', { raw: rawMapName, clean: mapName });
       }
       
-      // Fix duration calculation - ScrepCore might return frames, convert properly
-      let parsedFrames = result.header?.frames || result.header?.frameCount || 24000;
-      if (parsedFrames < 1000) {
-        // If frames seem too low, it might be seconds, convert
-        parsedFrames = parsedFrames * 23.81; // SC:R frame rate
+      // Extract duration correctly from header
+      if (screpResult.header && screpResult.header.frames) {
+        frames = screpResult.header.frames;
+        duration = framesToDuration(frames);
+        console.log('[SC:R-Native-Parser] Duration extracted:', { frames, duration });
       }
       
-      // Ensure proper player mapping with real names if available
-      let parsedPlayers = players; // fallback to defaults
-      if (result.players && Array.isArray(result.players) && result.players.length > 0) {
-        parsedPlayers = result.players.map((player, index) => {
-          let playerName = player.name || player.playerName || `Player ${index + 1}`;
-          
-          // Fix player name encoding
-          if (playerName.includes('�') || /[^\x20-\x7E]/.test(playerName)) {
-            playerName = `Player ${index + 1}`;
+      // Extract players correctly from header
+      if (screpResult.header && screpResult.header.players && Array.isArray(screpResult.header.players)) {
+        players = screpResult.header.players.map((player, index) => {
+          // Clean player name
+          let playerName = player.name || `Player ${index + 1}`;
+          if (typeof playerName === 'string') {
+            playerName = playerName.replace(/\0/g, '').replace(/[^\x20-\x7E]/g, '').trim();
+            if (playerName.length === 0) {
+              playerName = `Player ${index + 1}`;
+            }
           }
+          
+          // Get race name correctly
+          const raceNames = ['Zerg', 'Terran', 'Protoss'];
+          const raceName = raceNames[player.race] || raceNames[index % 3];
           
           return {
             id: index,
             name: playerName,
-            race: player.race || ['Terran', 'Zerg', 'Protoss'][index % 3],
+            race: raceName,
             team: player.team || index,
             color: player.color || index,
-            raceId: player.raceId || index,
+            raceId: player.race || index,
             type: player.type || 1
           };
         });
+        console.log('[SC:R-Native-Parser] Players extracted:', players);
       }
       
-      // Use corrected parsed data
-      mapName = parsedMapName;
-      frames = parsedFrames;
-      duration = framesToDuration(frames);
-      players = parsedPlayers;
-      
-      // Fix APM calculation
-      if (result.computed?.apm && Array.isArray(result.computed.apm)) {
-        apm = result.computed.apm.map(a => Math.min(Math.max(a || 100, 20), 500)); // Clamp between 20-500
-      }
-      if (result.computed?.eapm && Array.isArray(result.computed.eapm)) {
-        eapm = result.computed.eapm.map(e => Math.min(Math.max(e || 70, 15), 400)); // Clamp between 15-400
+      // Extract APM from computed data
+      if (screpResult.computed && screpResult.computed.apm && Array.isArray(screpResult.computed.apm)) {
+        apm = screpResult.computed.apm.map(a => {
+          const apmValue = Math.round(a || 100);
+          return Math.min(Math.max(apmValue, 20), 500); // Clamp between 20-500
+        });
+        console.log('[SC:R-Native-Parser] APM extracted:', apm);
       }
       
-      console.log('[SC:R-Native-Parser] Data corrected:', {
+      // Extract EAPM from computed data
+      if (screpResult.computed && screpResult.computed.eapm && Array.isArray(screpResult.computed.eapm)) {
+        eapm = screpResult.computed.eapm.map(e => {
+          const eapmValue = Math.round(e || 70);
+          return Math.min(Math.max(eapmValue, 15), 400); // Clamp between 15-400
+        });
+        console.log('[SC:R-Native-Parser] EAPM extracted:', eapm);
+      }
+      
+      console.log('[SC:R-Native-Parser] Successfully parsed with screp-js API:', {
         mapName,
         duration,
         frames,
-        players: players.length,
+        playersCount: players.length,
         apm,
         eapm
       });
       
     } catch (parseError) {
-      console.warn('[SC:R-Native-Parser] Real parsing failed, using safe defaults:', parseError.message);
+      console.warn('[SC:R-Native-Parser] screp-js parsing failed, using safe defaults:', parseError.message);
+      console.warn('[SC:R-Native-Parser] Error details:', parseError);
       // Variables already initialized with fallback values above
     }
     
