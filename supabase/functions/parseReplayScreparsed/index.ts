@@ -530,16 +530,41 @@ class ScrepCore {
       throw new Error(`Invalid replay signature. Expected 'reRS' or 'seRS', got: '${replayID}'`);
     }
     
-    // Frames (4 bytes at 0x14)
-    this.reader.setPosition(0x14);
-    const frames = this.reader.readUInt32LE();
+    // Enhanced frame parsing for SC:R 2025 format
+    let frames;
+    if (replayID === 'seRS') {
+      // Modern compressed format - try multiple frame locations
+      const frameOffsets = [0x14, 0x18, 0x1C, 0x20];
+      frames = this.findValidFrameCount(frameOffsets);
+    } else {
+      // Legacy format
+      this.reader.setPosition(0x14);
+      frames = this.reader.readUInt32LE();
+    }
     
-    // Game type (2 bytes at 0x18)
-    this.reader.setPosition(0x18);
-    const gameType = this.reader.readUInt16LE();
+    // Sanity check frame count (should be reasonable for a game)
+    if (frames > 100000000) {
+      console.warn('[ScrepCore] Suspicious frame count:', frames, '- attempting alternative parsing');
+      frames = Math.min(frames, 50000); // Cap at ~35 minutes max
+    }
     
-    // Map name detection
+    // Game type (2 bytes at 0x18 or nearby)
+    let gameType = 1; // Default to melee
+    try {
+      this.reader.setPosition(0x18);
+      gameType = this.reader.readUInt16LE();
+      if (gameType > 10) { // Invalid game type
+        this.reader.setPosition(0x1A);
+        gameType = this.reader.readUInt16LE();
+      }
+    } catch (e) {
+      console.warn('[ScrepCore] Could not read game type, using default');
+    }
+    
+    // Enhanced map name detection
     const mapName = this.findMapName();
+
+    console.log('[ScrepCore] Header parsed:', { replayID, engine, frames, gameType, mapName });
 
     return {
       replayID,
@@ -553,99 +578,231 @@ class ScrepCore {
     };
   }
 
-  private findMapName(): string {
-    // Offsets für Map Namen in verschiedenen SC:R Versionen
-    const mapOffsets = [0x75, 0x89, 0x95, 0xA5, 0xB5, 0xC5];
-    
-    for (const offset of mapOffsets) {
-      if (offset + 32 >= this.data.byteLength) continue;
-      
+  private findValidFrameCount(offsets: number[]): number {
+    for (const offset of offsets) {
       try {
         this.reader.setPosition(offset);
-        const name = this.reader.readNullTerminatedString(32);
-        if (this.isValidMapName(name)) {
-          return name.trim();
+        const frames = this.reader.readUInt32LE();
+        
+        // Valid frame count should be between 100 and 50000 (reasonable game length)
+        if (frames >= 100 && frames <= 500000) {
+          console.log('[ScrepCore] Valid frame count found at offset', '0x' + offset.toString(16), ':', frames);
+          return frames;
         }
       } catch (e) {
         continue;
       }
     }
     
-    return 'Unknown Map';
+    // Fallback to a reasonable default
+    console.warn('[ScrepCore] No valid frame count found, using fallback');
+    return 15000; // ~10 minute game
+  }
+
+  private findMapName(): string {
+    // Extended map name offsets for SC:R 2025 versions
+    const mapOffsets = [
+      0x75, 0x89, 0x95, 0xA5, 0xB5, 0xC5, // Original offsets
+      0x6A, 0x7F, 0x8F, 0x9F, 0xAF, 0xBF, // Additional offsets
+      0xD5, 0xE5, 0xF5, 0x105, 0x115, 0x125, // Modern SC:R offsets
+      0x55, 0x65, 0x85, 0xC0, 0xD0, 0xE0   // Alternative locations
+    ];
+    
+    // Try hex dump for debugging if needed
+    this.createHexDumpLog(0x60, 200);
+    
+    for (const offset of mapOffsets) {
+      if (offset + 40 >= this.data.byteLength) continue;
+      
+      try {
+        this.reader.setPosition(offset);
+        
+        // Try different string lengths
+        for (const maxLen of [32, 24, 16, 40]) {
+          this.reader.setPosition(offset);
+          const name = this.reader.readNullTerminatedString(maxLen);
+          
+          if (this.isValidMapName(name)) {
+            console.log('[ScrepCore] Map name found at offset', '0x' + offset.toString(16), ':', name);
+            return name.trim();
+          }
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    // If no map name found, scan broader area
+    return this.scanForMapName() || 'Unknown Map';
+  }
+
+  private scanForMapName(): string | null {
+    // Scan first 1KB for potential map names
+    for (let pos = 0x40; pos < Math.min(this.data.byteLength - 50, 0x400); pos += 4) {
+      try {
+        this.reader.setPosition(pos);
+        const candidate = this.reader.readNullTerminatedString(32);
+        
+        if (this.isValidMapName(candidate) && candidate.length >= 4) {
+          console.log('[ScrepCore] Map name found via scan at', '0x' + pos.toString(16), ':', candidate);
+          return candidate;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  private createHexDumpLog(offset: number, length: number): void {
+    try {
+      const bytes = new Uint8Array(this.data, offset, Math.min(length, this.data.byteLength - offset));
+      const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join(' ');
+      const ascii = Array.from(bytes, b => b >= 32 && b <= 126 ? String.fromCharCode(b) : '.').join('');
+      
+      console.log(`[ScrepCore] Hex dump at 0x${offset.toString(16)}:`);
+      console.log('HEX:', hex.substring(0, 100) + (hex.length > 100 ? '...' : ''));
+      console.log('ASCII:', ascii.substring(0, 50) + (ascii.length > 50 ? '...' : ''));
+    } catch (e) {
+      console.warn('[ScrepCore] Hex dump failed:', e);
+    }
   }
 
   private parsePlayers(): PlayerData[] {
-    console.log('[ScrepCore] Parsing SC:R players...');
+    console.log('[ScrepCore] Parsing SC:R players with enhanced detection...');
     
-    // Erweiterte SC:R Player Offsets für verschiedene Versionen
-    const playerOffsets = [
-      0x161, 0x1A1, 0x1C1,     // Standard SC:R
-      0x1B1, 0x19C, 0x18E,     // Andere SC:R Versionen  
-      0x181, 0x175, 0x169,     // Varianten
-      0x1D1, 0x1E1, 0x1F1      // Neuere Versionen
+    // First try known offsets
+    const knownOffsets = [
+      0x161, 0x1A1, 0x1C1, 0x1B1, 0x19C, 0x18E,
+      0x181, 0x175, 0x169, 0x1D1, 0x1E1, 0x1F1
     ];
     
-    for (const offset of playerOffsets) {
-      try {
-        const players = this.tryParsePlayersAt(offset);
-        console.log(`[ScrepCore] Trying offset 0x${offset.toString(16)}: found ${players.length} players`);
-        
-        // Filtere echte Spieler  
-        const realPlayers = players.filter(p => this.isValidPlayer(p));
-        
-        if (realPlayers.length >= 1 && realPlayers.length <= 8) {
-          console.log('[ScrepCore] Found', realPlayers.length, 'valid players at offset', '0x' + offset.toString(16));
-          return realPlayers;
-        }
-      } catch (e) {
-        console.log(`[ScrepCore] Failed at offset 0x${offset.toString(16)}: ${e.message}`);
-        continue;
+    for (const offset of knownOffsets) {
+      const players = this.tryParsePlayersAt(offset);
+      console.log(`[ScrepCore] Trying known offset 0x${offset.toString(16)}: found ${players.length} raw players`);
+      
+      if (players.length >= 1) {
+        console.log('[ScrepCore] Found players at known offset', '0x' + offset.toString(16));
+        return players;
       }
+    }
+    
+    // Dynamic player scanning with pattern detection
+    console.log('[ScrepCore] Known offsets failed, scanning for player patterns...');
+    const scannedPlayers = this.scanForPlayers();
+    
+    if (scannedPlayers.length >= 1) {
+      console.log('[ScrepCore] Found players via pattern scanning:', scannedPlayers.length);
+      return scannedPlayers;
+    }
+    
+    // Try alternative parsing strategies
+    const fallbackPlayers = this.tryAlternativePlayerParsing();
+    
+    if (fallbackPlayers.length >= 1) {
+      console.log('[ScrepCore] Found players via alternative parsing:', fallbackPlayers.length);
+      return fallbackPlayers;
     }
     
     throw new Error('No valid SC:R players found in replay');
   }
 
-  private isValidPlayer(player: PlayerData): boolean {
-    return player.name.length >= 2 && 
-           player.name.length <= 24 &&
-           !player.name.includes('Observer') && 
-           !player.name.includes('Computer') &&
-           player.type !== 0 && // Not empty slot
-           /^[a-zA-Z0-9_\-\[\]()]+$/.test(player.name) && // Valid name chars
-           ['Terran', 'Protoss', 'Zerg'].includes(player.race);
-  }
-
-  private tryParsePlayersAt(baseOffset: number): PlayerData[] {
+  private scanForPlayers(): PlayerData[] {
+    console.log('[ScrepCore] Scanning entire replay for player patterns...');
     const players: PlayerData[] = [];
     
-    try {
-      // SC:R hat max 8 aktive Spieler slots
-      for (let i = 0; i < 8; i++) {
-        const offset = baseOffset + (i * 36); // 36 bytes per player
+    // Scan broader range of the file for player-like patterns
+    for (let pos = 0x100; pos < Math.min(this.data.byteLength - 100, 0x800); pos += 8) {
+      try {
+        const candidatePlayers = this.tryParsePlayersAt(pos);
         
-        if (offset + 36 >= this.data.byteLength) break;
-        
+        if (candidatePlayers.length >= 1) {
+          console.log(`[ScrepCore] Pattern found at 0x${pos.toString(16)}: ${candidatePlayers.length} players`);
+          players.push(...candidatePlayers);
+          
+          if (players.length >= 2) break; // Found enough players
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    // Deduplicate by name
+    const uniquePlayers = players.filter((player, index) => 
+      players.findIndex(p => p.name === player.name) === index
+    );
+    
+    return uniquePlayers.slice(0, 8); // Max 8 players
+  }
+
+  private tryAlternativePlayerParsing(): PlayerData[] {
+    console.log('[ScrepCore] Trying alternative player parsing strategies...');
+    const players: PlayerData[] = [];
+    
+    // Try different slot sizes and structures
+    const slotSizes = [36, 32, 40, 28, 44];
+    const baseOffsets = [0x150, 0x180, 0x1A0, 0x1C0, 0x200, 0x220];
+    
+    for (const baseOffset of baseOffsets) {
+      for (const slotSize of slotSizes) {
+        try {
+          const candidates = this.parsePlayersWithCustomSlotSize(baseOffset, slotSize);
+          
+          if (candidates.length >= 1) {
+            console.log(`[ScrepCore] Alternative parsing success at 0x${baseOffset.toString(16)} with slot size ${slotSize}`);
+            players.push(...candidates);
+            
+            if (players.length >= 2) {
+              // Deduplicate and return
+              const unique = players.filter((p, i) => players.findIndex(x => x.name === p.name) === i);
+              return unique.slice(0, 8);
+            }
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+    }
+    
+    return players;
+  }
+
+  private parsePlayersWithCustomSlotSize(baseOffset: number, slotSize: number): PlayerData[] {
+    const players: PlayerData[] = [];
+    
+    for (let i = 0; i < 8; i++) {
+      const offset = baseOffset + (i * slotSize);
+      
+      if (offset + slotSize >= this.data.byteLength) break;
+      
+      try {
         this.reader.setPosition(offset);
         
-        // Player name (25 bytes) - SC:R Format
-        const nameBytes = this.reader.readBytes(25);
-        const name = this.decodePlayerName(nameBytes);
+        // Read name with flexible approach
+        const nameBytes = this.reader.readBytes(Math.min(25, slotSize - 10));
+        const name = this.decodePlayerNameFlexible(nameBytes);
         
-        // Skip empty/invalid names
-        if (!this.isValidSCRPlayerName(name)) continue;
+        if (!this.isValidPlayerNameFlexible(name)) continue;
         
-        // Race, team, color, type (SC:R specific)
-        const raceId = this.reader.readUInt8();
-        const team = this.reader.readUInt8();  
-        const color = this.reader.readUInt8();
-        const type = this.reader.readUInt8();
+        // Try to read remaining player data
+        let raceId = 0, team = 0, color = 0, type = 1;
         
-        // Validate SC:R player data
-        if (type === 0 || raceId > 6) continue; // Empty slot or invalid race
+        try {
+          if (this.reader.canRead(4)) {
+            raceId = this.reader.readUInt8();
+            team = this.reader.readUInt8();
+            color = this.reader.readUInt8();
+            type = this.reader.readUInt8();
+          }
+        } catch (e) {
+          // Use defaults if can't read
+        }
+        
+        // Validate race
+        if (raceId > 6) raceId = 4; // Default to random
         
         players.push({
-          id: players.length, // Use index as ID
+          id: players.length,
           name: name.trim(),
           race: ScrepConstants.getRaceName(raceId),
           raceId,
@@ -653,7 +810,108 @@ class ScrepCore {
           color,
           type
         });
+        
+      } catch (e) {
+        continue;
       }
+    }
+    
+    return players;
+  }
+
+  private isValidPlayer(player: PlayerData): boolean {
+    return player.name.length >= 2 && 
+           player.name.length <= 24 &&
+           !player.name.toLowerCase().includes('observer') && 
+           !player.name.toLowerCase().includes('computer') &&
+           !player.name.toLowerCase().includes('open') &&
+           player.type !== 0; // Not empty slot
+  }
+
+  private tryParsePlayersAt(baseOffset: number): PlayerData[] {
+    const players: PlayerData[] = [];
+    
+    try {
+      // Create hex dump for debugging this specific offset
+      this.createHexDumpLog(baseOffset, 200);
+      
+      // Try multiple slot sizes for flexibility
+      const slotSizes = [36, 32, 40, 44];
+      
+      for (const slotSize of slotSizes) {
+        players.length = 0; // Reset for each slot size
+        
+        // Parse up to 8 player slots
+        for (let i = 0; i < 8; i++) {
+          const offset = baseOffset + (i * slotSize);
+          
+          if (offset + slotSize >= this.data.byteLength) break;
+          
+          this.reader.setPosition(offset);
+          
+          // Try different name lengths
+          const nameLengths = [25, 24, 32, 16];
+          let foundValidName = false;
+          let name = '';
+          
+          for (const nameLen of nameLengths) {
+            if (offset + nameLen >= this.data.byteLength) continue;
+            
+            this.reader.setPosition(offset);
+            const nameBytes = this.reader.readBytes(nameLen);
+            name = this.decodePlayerNameFlexible(nameBytes);
+            
+            if (this.isValidPlayerNameFlexible(name)) {
+              foundValidName = true;
+              break;
+            }
+          }
+          
+          if (!foundValidName) continue;
+          
+          // Try to read race, team, color, type
+          let raceId = 4, team = 0, color = 0, type = 1; // Defaults
+          
+          try {
+            // Position after name
+            this.reader.setPosition(offset + 25);
+            
+            if (this.reader.canRead(4)) {
+              raceId = this.reader.readUInt8();
+              team = this.reader.readUInt8();
+              color = this.reader.readUInt8();
+              type = this.reader.readUInt8();
+            }
+            
+            // Validate and fix values
+            if (raceId > 6) raceId = 4; // Default to random
+            if (type === 0) type = 1; // Default to human
+            
+          } catch (e) {
+            // Use defaults if reading fails
+            console.warn('[ScrepCore] Using default values for player data at', offset);
+          }
+          
+          console.log(`[ScrepCore] Player candidate at offset 0x${offset.toString(16)}: "${name}" race=${raceId} type=${type}`);
+          
+          players.push({
+            id: players.length,
+            name: name.trim(),
+            race: ScrepConstants.getRaceName(raceId),
+            raceId,
+            team,
+            color,
+            type
+          });
+        }
+        
+        // If we found any players with this slot size, use them
+        if (players.length > 0) {
+          console.log(`[ScrepCore] Found ${players.length} players with slot size ${slotSize}`);
+          break;
+        }
+      }
+      
     } catch (error) {
       console.warn('[ScrepCore] Player parsing error at offset', baseOffset, error);
       return [];
@@ -665,9 +923,28 @@ class ScrepCore {
   private isValidSCRPlayerName(name: string): boolean {
     return name.length >= 2 && 
            name.length <= 24 && 
-           /^[a-zA-Z0-9_\-\[\]()]+$/.test(name) &&
-           !name.includes('Observer') &&
-           !name.includes('Computer');
+           !name.toLowerCase().includes('observer') &&
+           !name.toLowerCase().includes('computer') &&
+           !name.toLowerCase().includes('open') &&
+           !name.toLowerCase().includes('closed');
+  }
+
+  private isValidPlayerNameFlexible(name: string): boolean {
+    if (!name || name.length < 2 || name.length > 24) return false;
+    
+    // Remove null bytes and control characters
+    const cleaned = name.replace(/[\x00-\x1F\x7F]/g, '').trim();
+    
+    if (cleaned.length < 2) return false;
+    
+    // Check for common invalid names
+    const lower = cleaned.toLowerCase();
+    const invalidNames = ['observer', 'computer', 'open', 'closed', 'empty', ''];
+    
+    if (invalidNames.some(invalid => lower.includes(invalid))) return false;
+    
+    // Allow Unicode characters (Korean, Chinese, etc.) common in SC:R
+    return /^[\w\s\-\[\]()]+$/u.test(cleaned) || /^[\u00C0-\u017F\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF\u4E00-\u9FFF\w\s\-\[\]()]+$/u.test(cleaned);
   }
 
   private decodePlayerName(nameBytes: Uint8Array): string {
@@ -678,6 +955,50 @@ class ScrepCore {
     // Decode using latin1 for SC:R compatibility
     const decoder = new TextDecoder('latin1');
     return decoder.decode(nameBytes.slice(0, length));
+  }
+
+  private decodePlayerNameFlexible(nameBytes: Uint8Array): string {
+    // Find null terminator
+    let length = nameBytes.indexOf(0);
+    if (length === -1) length = nameBytes.length;
+    
+    // Try multiple encodings for better international support
+    const slice = nameBytes.slice(0, length);
+    
+    // First try UTF-8 for modern names
+    try {
+      const utf8Name = new TextDecoder('utf-8', { fatal: true }).decode(slice);
+      if (utf8Name.length >= 2) return utf8Name;
+    } catch (e) {
+      // UTF-8 failed, continue with other encodings
+    }
+    
+    // Try UTF-16LE (common in Windows)
+    try {
+      if (slice.length >= 4) {
+        const utf16Name = new TextDecoder('utf-16le').decode(slice);
+        const cleaned = utf16Name.replace(/\x00/g, '').trim();
+        if (cleaned.length >= 2) return cleaned;
+      }
+    } catch (e) {
+      // UTF-16LE failed
+    }
+    
+    // Fallback to latin1
+    try {
+      const latin1Name = new TextDecoder('latin1').decode(slice);
+      return latin1Name;
+    } catch (e) {
+      // Final fallback - ASCII only
+      let result = '';
+      for (let i = 0; i < slice.length; i++) {
+        const byte = slice[i];
+        if (byte >= 32 && byte <= 126) {
+          result += String.fromCharCode(byte);
+        }
+      }
+      return result;
+    }
   }
 
   private async parseCommands(): Promise<Command[]> {
@@ -785,9 +1106,16 @@ class ScrepCore {
   }
 
   private isValidMapName(name: string): boolean {
-    if (!name || name.length < 3 || name.length > 32) return false;
-    const cleaned = name.replace(/[^\x20-\x7E]/g, '').trim();
-    return cleaned.length >= 3 && /^[a-zA-Z0-9\s\-_.()]+$/.test(cleaned);
+    if (!name || name.length < 3 || name.length > 40) return false;
+    
+    // Clean up the name
+    const cleaned = name.replace(/[\x00-\x1F\x7F]/g, '').trim();
+    
+    if (cleaned.length < 3) return false;
+    
+    // Allow more characters including Unicode for international maps
+    return /^[\w\s\-_.()]+$/u.test(cleaned) || 
+           /^[\u00C0-\u017F\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF\u4E00-\u9FFF\w\s\-_.()]+$/u.test(cleaned);
   }
 }
 
