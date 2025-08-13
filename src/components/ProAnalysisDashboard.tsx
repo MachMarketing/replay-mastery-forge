@@ -19,6 +19,46 @@ import {
   Star
 } from 'lucide-react';
 
+// Unit cost utility function
+const getUnitCost = (unitName: string, race: string) => {
+  const UNIT_DATABASE = {
+    protoss: {
+      'Probe': { minerals: 50, gas: 0 },
+      'Pylon': { minerals: 100, gas: 0 },
+      'Zealot': { minerals: 100, gas: 0 },
+      'Dragoon': { minerals: 125, gas: 50 },
+      'Gateway': { minerals: 150, gas: 0 },
+      'Nexus': { minerals: 400, gas: 0 },
+      'Forge': { minerals: 150, gas: 0 },
+      'Cybernetics Core': { minerals: 200, gas: 0 },
+    },
+    terran: {
+      'SCV': { minerals: 50, gas: 0 },
+      'Supply Depot': { minerals: 100, gas: 0 },
+      'Marine': { minerals: 50, gas: 0 },
+      'Barracks': { minerals: 150, gas: 0 },
+      'Command Center': { minerals: 400, gas: 0 },
+      'Factory': { minerals: 200, gas: 100 },
+      'Academy': { minerals: 150, gas: 0 },
+    },
+    zerg: {
+      'Drone': { minerals: 50, gas: 0 },
+      'Overlord': { minerals: 100, gas: 0 },
+      'Zergling': { minerals: 50, gas: 0 },
+      'Hydralisk': { minerals: 75, gas: 25 },
+      'Spawning Pool': { minerals: 200, gas: 0 },
+      'Hatchery': { minerals: 300, gas: 0 },
+    }
+  };
+  
+  const raceData = UNIT_DATABASE[race?.toLowerCase() as keyof typeof UNIT_DATABASE];
+  if (raceData && raceData[unitName as keyof typeof raceData]) {
+    return raceData[unitName as keyof typeof raceData];
+  }
+  
+  return { minerals: 100, gas: 0 }; // Default fallback
+};
+
 interface ProAnalysisDashboardProps {
   data: any;
 }
@@ -292,7 +332,10 @@ const ProAnalysisDashboard: React.FC<ProAnalysisDashboardProps> = ({ data }) => 
                 </div>
                 <div className="text-right">
                   <div className="text-sm font-mono text-card-foreground">
-                    {item.cost.minerals}m {item.cost.gas > 0 && `${item.cost.gas}g`}
+                    {(() => {
+                      const cost = getUnitCost(item.unitName || 'Unknown', playerAnalysis.race);
+                      return `${cost.minerals}m ${cost.gas > 0 ? `${cost.gas}g` : ''}`;
+                    })()}
                   </div>
                 </div>
               </div>
