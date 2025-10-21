@@ -1,344 +1,502 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+// ============================================================================
+// CONSTANTS - Based on SC:BW .rep specification
+// ============================================================================
 
-// ====== NATIVE BINARY PARSER FOR SC:R 2025 ======
+const FRAMES_PER_SECOND = 23.81; // Correct SC:R frame rate
 
-class SC2025Parser {
-  private buffer: Uint8Array;
+const RACE_MAPPING: Record<number, string> = {
+  0: 'Zerg',
+  1: 'Terran',
+  2: 'Protoss',
+  3: 'Random',
+  6: 'Random'
+};
+
+const COMMAND_NAMES: Record<number, string> = {
+  0x09: 'Select',
+  0x0A: 'Shift Select',
+  0x0B: 'Shift Deselect',
+  0x0C: 'Build',
+  0x14: 'Move',
+  0x15: 'Attack',
+  0x1D: 'Train',
+  0x20: 'Build Self',
+  0x2F: 'Research',
+  0x31: 'Upgrade',
+  0x34: 'Building Morph'
+};
+
+const UNIT_NAMES: Record<number, string> = {
+  0x00: 'Marine', 0x07: 'SCV', 0x29: 'Drone', 0x40: 'Probe',
+  0x25: 'Zergling', 0x41: 'Zealot', 0x26: 'Hydralisk', 0x42: 'Dragoon',
+  0x6F: 'Barracks', 0x6D: 'Supply Depot', 0x83: 'Hatchery', 0x9C: 'Pylon'
+};
+
+// ============================================================================
+// BINARY READER
+// ============================================================================
+
+class BinaryReader {
+  private view: DataView;
   private position: number = 0;
 
-  constructor(buffer: Uint8Array) {
-    this.buffer = buffer;
+  constructor(buffer: ArrayBuffer) {
+    this.view = new DataView(buffer);
   }
 
-  private readUint32(): number {
-    const value = new DataView(this.buffer.buffer, this.position, 4).getUint32(0, true);
-    this.position += 4;
-    return value;
-  }
-
-  private readUint16(): number {
-    const value = new DataView(this.buffer.buffer, this.position, 2).getUint16(0, true);
-    this.position += 2;
-    return value;
-  }
-
-  private readUint8(): number {
-    const value = this.buffer[this.position];
+  readUInt8(): number {
+    const value = this.view.getUint8(this.position);
     this.position += 1;
     return value;
   }
 
-  private readString(length: number): string {
-    const bytes = this.buffer.slice(this.position, this.position + length);
+  readUInt16LE(): number {
+    const value = this.view.getUint16(this.position, true);
+    this.position += 2;
+    return value;
+  }
+
+  readUInt32LE(): number {
+    const value = this.view.getUint32(this.position, true);
+    this.position += 4;
+    return value;
+  }
+
+  readBytes(length: number): Uint8Array {
+    const bytes = new Uint8Array(this.view.buffer, this.position, length);
     this.position += length;
-    
-    // Clean up string - remove null bytes and control characters
-    let str = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
-    str = str.replace(/\0/g, '').replace(/[\x00-\x1F\x7F]/g, '').trim();
-    return str || '';
+    return bytes;
   }
 
-  private findSection(sectionName: string): number {
-    // Reset position to start
-    this.position = 0;
-    
-    while (this.position < this.buffer.length - 4) {
-      try {
-        const str = this.readString(4);
-        if (str === sectionName) {
-          return this.position - 4;
-        }
-        this.position -= 3; // Overlap search
-      } catch {
-        this.position++;
-      }
+  readString(maxLength: number): string {
+    const bytes: number[] = [];
+    for (let i = 0; i < maxLength; i++) {
+      if (this.position >= this.view.byteLength) break;
+      const byte = this.readUInt8();
+      if (byte === 0) break;
+      bytes.push(byte);
     }
-    return -1;
+    return this.decodeString(new Uint8Array(bytes));
   }
 
-  public parseReplay(): any {
+  private decodeString(bytes: Uint8Array): string {
+    // Try multiple encodings for player names
     try {
-      console.log('[SC2025Parser] Starting native binary parsing of SC:R 2025 replay');
-      
-      // Parse header first
-      const header = this.parseHeader();
-      console.log('[SC2025Parser] Header parsed:', header);
-      
-      // Parse players
-      const players = this.parsePlayers();
-      console.log('[SC2025Parser] Players parsed:', players);
-      
-      // Parse game data
-      const gameData = this.parseGameData();
-      console.log('[SC2025Parser] Game data parsed:', gameData);
-      
-      return {
-        header,
-        players,
-        gameData,
-        success: true
-      };
-      
-    } catch (error) {
-      console.error('[SC2025Parser] Native parsing failed:', error);
-      return { success: false, error: error.message };
-    }
+      const decoder = new TextDecoder('utf-8', { fatal: false });
+      const str = decoder.decode(bytes);
+      if (str && str.trim().length > 0) return str.trim();
+    } catch {}
+    
+    // Fallback: manual ASCII-safe decoding
+    return Array.from(bytes)
+      .filter(b => b >= 32 && b < 127)
+      .map(b => String.fromCharCode(b))
+      .join('')
+      .trim();
   }
 
-  private parseHeader(): any {
-    this.position = 0;
-    
-    // SC:R 2025 header structure
-    if (this.buffer.length < 64) {
-      throw new Error('File too small');
-    }
+  setPosition(pos: number): void {
+    this.position = pos;
+  }
 
-    // Skip to potential header section
-    this.position = 28;
-    
-    let mapName = '';
-    let duration = 0;
-    
-    // Search for map name patterns
-    for (let i = 40; i < Math.min(400, this.buffer.length - 32); i++) {
-      this.position = i;
-      try {
-        const testString = this.readString(20);
-        // Look for typical SC map patterns
-        if (testString.length > 3 && testString.length < 32 && 
-            /^[a-zA-Z0-9\s\(\)\[\]\.\_\-\+\@]+$/.test(testString)) {
-          mapName = testString;
-          console.log('[SC2025Parser] Found potential map name:', mapName);
-          break;
-        }
-      } catch {
-        continue;
-      }
-    }
+  getPosition(): number {
+    return this.position;
+  }
 
-    // Search for frame count (duration)
-    this.position = 16;
-    try {
-      const frames1 = this.readUint32();
-      const frames2 = this.readUint32();
-      const frames3 = this.readUint32();
-      
-      // Pick the most reasonable frame count
-      const candidates = [frames1, frames2, frames3].filter(f => f > 1000 && f < 500000);
-      if (candidates.length > 0) {
-        duration = Math.min(...candidates);
-      }
-    } catch {
-      duration = 25000; // Default ~17 minutes
-    }
+  canRead(bytes: number): boolean {
+    return this.position + bytes <= this.view.byteLength;
+  }
 
+  get size(): number {
+    return this.view.byteLength;
+  }
+}
+
+// ============================================================================
+// REPLAY PARSER
+// ============================================================================
+
+interface PlayerInfo {
+  id: number;
+  name: string;
+  race: string;
+  team: number;
+  color: number;
+}
+
+interface Command {
+  frame: number;
+  playerId: number;
+  type: number;
+  typeName: string;
+  data: Uint8Array;
+}
+
+interface ParsedReplay {
+  mapName: string;
+  gameDuration: string;
+  totalFrames: number;
+  players: PlayerInfo[];
+  commands: Command[];
+}
+
+class SC2025Parser {
+  private reader: BinaryReader;
+
+  constructor(buffer: ArrayBuffer) {
+    this.reader = new BinaryReader(buffer);
+  }
+
+  parse(): ParsedReplay {
+    console.log('[SC2025Parser] Starting parse...');
+    
+    // Parse header
+    const header = this.parseHeader();
+    console.log('[SC2025Parser] Header parsed:', header);
+    
+    // Parse players
+    const players = this.parsePlayers();
+    console.log('[SC2025Parser] Players parsed:', players);
+    
+    // Parse commands
+    const commands = this.parseCommands();
+    console.log('[SC2025Parser] Commands parsed:', commands.length);
+    
     return {
-      mapName: mapName || 'Unknown Map',
-      frames: duration,
-      gameType: 'Melee'
+      mapName: header.mapName,
+      gameDuration: this.framesToDuration(header.frames),
+      totalFrames: header.frames,
+      players,
+      commands
     };
   }
 
-  private parsePlayers(): any[] {
-    const players = [];
+  private parseHeader(): { mapName: string; frames: number } {
+    console.log('[SC2025Parser] Parsing header...');
     
-    // Search for player name patterns in the file
-    this.position = 200; // Start after header
+    // Read engine version (offset 0x00)
+    this.reader.setPosition(0x00);
+    const engineVersion = this.reader.readUInt32LE();
+    console.log('[SC2025Parser] Engine version:', engineVersion.toString(16));
     
-    const playerNames = [];
-    const raceValues = [];
+    // Read frame count (offset 0x04)
+    const frames = this.reader.readUInt32LE();
+    console.log('[SC2025Parser] Frames:', frames);
     
-    // Scan for player names
-    while (this.position < Math.min(2000, this.buffer.length - 32)) {
-      try {
-        const testName = this.readString(12);
-        
-        // Check if this looks like a player name
-        if (testName.length >= 3 && testName.length <= 12 && 
-            /^[a-zA-Z0-9\[\]\(\)\`\_\-\.]+$/.test(testName) &&
-            !testName.includes('\x00')) {
-          playerNames.push(testName);
-          console.log('[SC2025Parser] Found potential player name:', testName);
-          
-          if (playerNames.length >= 8) break; // Max 8 players
+    // Try to find map name at common offsets
+    let mapName = 'Unknown Map';
+    const mapOffsets = [0xBD, 0xC1, 0xC5, 0xD0, 0xE0];
+    
+    for (const offset of mapOffsets) {
+      if (offset + 32 <= this.reader.size) {
+        this.reader.setPosition(offset);
+        const name = this.reader.readString(32);
+        if (name && name.length > 2 && this.isValidMapName(name)) {
+          mapName = name;
+          console.log(`[SC2025Parser] Map name found at offset ${offset}:`, mapName);
+          break;
         }
-      } catch {
-        this.position++;
       }
     }
+    
+    return { mapName, frames };
+  }
 
-    // Create player objects
-    const races = ['Zerg', 'Terran', 'Protoss'];
-    for (let i = 0; i < Math.max(2, playerNames.length); i++) {
-      players.push({
-        id: i,
-        name: playerNames[i] || `Player ${i + 1}`,
-        race: races[i % 3],
-        team: i,
-        color: i,
-        raceId: i % 3,
-        type: 1
-      });
+  private isValidMapName(name: string): boolean {
+    // Check if string looks like a valid map name
+    if (name.length < 2) return false;
+    if (/^[\x00-\x1F]+$/.test(name)) return false; // All control chars
+    if (/\.scm|\.scx/i.test(name)) return true; // Has extension
+    return /^[a-zA-Z0-9\s\-_()]+$/.test(name); // Alphanumeric with common chars
+  }
+
+  private parsePlayers(): PlayerInfo[] {
+    console.log('[SC2025Parser] Parsing players...');
+    const players: PlayerInfo[] = [];
+    
+    // Player data starts around offset 0x19-0x24
+    const playerSlotOffsets = [
+      0x19, 0x33, 0x4D, 0x67, 0x81, 0x9B, 0xB5, 0xCF
+    ];
+    
+    for (let i = 0; i < 8; i++) {
+      const offset = playerSlotOffsets[i];
+      if (offset + 36 > this.reader.size) break;
+      
+      this.reader.setPosition(offset);
+      const name = this.reader.readString(25);
+      
+      if (name && name.length > 0) {
+        // Read race (offset relative to player slot)
+        this.reader.setPosition(offset + 32);
+        const raceId = this.reader.readUInt8();
+        const race = RACE_MAPPING[raceId] || 'Unknown';
+        
+        players.push({
+          id: i,
+          name,
+          race,
+          team: 0,
+          color: i
+        });
+        
+        console.log(`[SC2025Parser] Player ${i}:`, name, race);
+      }
     }
-
+    
+    // If no players found, try alternative method
+    if (players.length === 0) {
+      console.log('[SC2025Parser] No players found via slot method, trying scan...');
+      return this.scanForPlayers();
+    }
+    
     return players;
   }
 
-  private parseGameData(): any {
-    // Calculate realistic APM/EAPM based on file size and complexity
-    const fileSize = this.buffer.length;
-    const baseAPM = Math.floor(40 + (fileSize / 1000) * 0.5);
+  private scanForPlayers(): PlayerInfo[] {
+    console.log('[SC2025Parser] Scanning for player names...');
+    const players: PlayerInfo[] = [];
+    const buffer = new Uint8Array(this.reader['view'].buffer);
+    
+    // Scan first 5000 bytes for player name patterns
+    for (let i = 0; i < Math.min(5000, buffer.length - 30); i++) {
+      const potential = this.tryReadPlayerName(buffer, i);
+      if (potential && potential.length >= 2 && this.isValidPlayerName(potential)) {
+        const race = this.guessRaceNearby(buffer, i);
+        players.push({
+          id: players.length,
+          name: potential,
+          race,
+          team: 0,
+          color: players.length
+        });
+        console.log(`[SC2025Parser] Found player at offset ${i}:`, potential, race);
+        i += 30; // Skip ahead to avoid duplicates
+        
+        if (players.length >= 8) break;
+      }
+    }
+    
+    return players;
+  }
+
+  private tryReadPlayerName(buffer: Uint8Array, offset: number): string {
+    const bytes: number[] = [];
+    for (let i = 0; i < 25; i++) {
+      const b = buffer[offset + i];
+      if (b === 0) break;
+      if (b < 32 || b > 126) break;
+      bytes.push(b);
+    }
+    return String.fromCharCode(...bytes).trim();
+  }
+
+  private isValidPlayerName(name: string): boolean {
+    if (name.length < 2 || name.length > 25) return false;
+    if (/^[\x00-\x1F]+$/.test(name)) return false;
+    return /^[a-zA-Z0-9_\-\[\]]+$/.test(name);
+  }
+
+  private guessRaceNearby(buffer: Uint8Array, offset: number): string {
+    // Check nearby bytes for race ID (0, 1, 2)
+    for (let i = offset + 25; i < offset + 40; i++) {
+      if (i >= buffer.length) break;
+      const byte = buffer[i];
+      if (RACE_MAPPING[byte]) return RACE_MAPPING[byte];
+    }
+    return 'Unknown';
+  }
+
+  private parseCommands(): Command[] {
+    console.log('[SC2025Parser] Parsing commands...');
+    const commands: Command[] = [];
+    
+    // Commands typically start around offset 0x279 (633)
+    const commandStartOffsets = [0x279, 0x300, 0x400, 0x500];
+    
+    for (const startOffset of commandStartOffsets) {
+      if (startOffset >= this.reader.size) continue;
+      
+      this.reader.setPosition(startOffset);
+      const extracted = this.extractCommands(1000);
+      
+      if (extracted.length > commands.length) {
+        console.log(`[SC2025Parser] Found ${extracted.length} commands at offset ${startOffset}`);
+        commands.length = 0;
+        commands.push(...extracted);
+      }
+    }
+    
+    return commands;
+  }
+
+  private extractCommands(maxCommands: number): Command[] {
+    const commands: Command[] = [];
+    let currentFrame = 0;
+    
+    while (commands.length < maxCommands && this.reader.canRead(1)) {
+      const byte = this.reader.readUInt8();
+      
+      // Frame sync bytes
+      if (byte === 0x00) {
+        currentFrame++;
+        continue;
+      } else if (byte === 0x01 && this.reader.canRead(1)) {
+        currentFrame += this.reader.readUInt8();
+        continue;
+      } else if (byte === 0x02 && this.reader.canRead(2)) {
+        currentFrame += this.reader.readUInt16LE();
+        continue;
+      }
+      
+      // Command bytes
+      if (COMMAND_NAMES[byte]) {
+        const length = this.getCommandLength(byte);
+        if (!this.reader.canRead(length)) break;
+        
+        const data = this.reader.readBytes(length);
+        const playerId = length > 0 ? data[0] : 0;
+        
+        if (playerId <= 7) {
+          commands.push({
+            frame: currentFrame,
+            playerId,
+            type: byte,
+            typeName: COMMAND_NAMES[byte],
+            data
+          });
+        }
+      }
+    }
+    
+    return commands;
+  }
+
+  private getCommandLength(commandType: number): number {
+    const lengths: Record<number, number> = {
+      0x09: 2, 0x0A: 2, 0x0B: 2, 0x0C: 10,
+      0x14: 4, 0x15: 6, 0x1D: 6, 0x20: 6,
+      0x2F: 2, 0x31: 2, 0x34: 2
+    };
+    return lengths[commandType] || 1;
+  }
+
+  private framesToDuration(frames: number): string {
+    const totalSeconds = Math.floor(frames / FRAMES_PER_SECOND);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  }
+}
+
+// ============================================================================
+// ANALYSIS
+// ============================================================================
+
+function calculatePlayerAPM(commands: Command[], playerId: number, totalFrames: number): { apm: number; eapm: number } {
+  const playerCommands = commands.filter(c => c.playerId === playerId);
+  const gameMinutes = (totalFrames / FRAMES_PER_SECOND) / 60;
+  
+  const apm = gameMinutes > 0 ? Math.round(playerCommands.length / gameMinutes) : 0;
+  
+  // Effective actions: build, train, attack, research, upgrade
+  const effectiveTypes = [0x0C, 0x14, 0x15, 0x1D, 0x20, 0x2F, 0x31, 0x34];
+  const effectiveCommands = playerCommands.filter(c => effectiveTypes.includes(c.type));
+  const eapm = gameMinutes > 0 ? Math.round(effectiveCommands.length / gameMinutes) : 0;
+  
+  return { apm, eapm };
+}
+
+function extractBuildOrder(commands: Command[], playerId: number): any[] {
+  const buildTypes = [0x0C, 0x1D, 0x20, 0x2F, 0x31, 0x34];
+  const buildCommands = commands.filter(c => 
+    c.playerId === playerId && buildTypes.includes(c.type)
+  );
+  
+  return buildCommands.slice(0, 20).map(cmd => {
+    const timestamp = Math.floor(cmd.frame / FRAMES_PER_SECOND);
+    const unitId = cmd.data.length > 2 ? cmd.data[2] : 0;
+    const unitName = UNIT_NAMES[unitId] || `Unit ${unitId}`;
     
     return {
-      apm: [baseAPM + 10, baseAPM - 5],
-      eapm: [Math.floor(baseAPM * 0.7), Math.floor((baseAPM - 5) * 0.7)],
-      commandCount: Math.floor(fileSize / 200)
+      frame: cmd.frame,
+      timestamp: `${Math.floor(timestamp / 60)}:${(timestamp % 60).toString().padStart(2, '0')}`,
+      action: cmd.typeName,
+      unit: unitName
     };
-  }
+  });
 }
 
-// ====== UTILITY FUNCTIONS ======
-
-function framesToDuration(frames: number): string {
-  const seconds = Math.floor(frames / 24);
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-}
-
-// ====== EDGE FUNCTION HANDLER ======
-
-async function handler(req: Request): Promise<Response> {
-  console.log('[SC:R-2025-Parser] Starting NATIVE SC:R 2025 parser');
-
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  try {
-    const formData = await req.formData();
-    const file = formData.get('replayFile') as File;
-    
-    if (!file) {
-      return new Response(JSON.stringify({ error: 'No file provided' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    }
-
-    console.log(`[SC:R-2025-Parser] Processing: ${file.name} (${file.size} bytes)`);
-    
-    // Convert to binary buffer
-    const arrayBuffer = await file.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-    
-    // Use native parser
-    const parser = new SC2025Parser(uint8Array);
-    const parseResult = await parser.parseReplay();
-    
-    if (!parseResult.success) {
-      throw new Error(`Native parsing failed: ${parseResult.error}`);
-    }
-
-    const { header, players, gameData } = parseResult;
-    
-    console.log('[SC:R-2025-Parser] ✅ Native parsing successful!', {
-      mapName: header.mapName,
-      playerCount: players.length,
-      duration: framesToDuration(header.frames)
-    });
-
-    // Build realistic analysis
-    const analysis: Record<string, any> = {};
-    
-    for (const [index, player] of players.entries()) {
-      const playerApm = gameData.apm[index] || (60 + Math.random() * 60);
-      const playerEapm = gameData.eapm[index] || (playerApm * 0.7);
+function generateAnalysis(replay: ParsedReplay): any {
+  return {
+    map_name: replay.mapName,
+    duration: replay.gameDuration,
+    durationSeconds: Math.floor(replay.totalFrames / FRAMES_PER_SECOND),
+    matchup: replay.players.map(p => p.race[0]).join('v'),
+    players: replay.players.map(player => {
+      const metrics = calculatePlayerAPM(replay.commands, player.id, replay.totalFrames);
+      const buildOrder = extractBuildOrder(replay.commands, player.id);
       
-      analysis[player.id] = {
+      return {
+        id: player.id,
         player_name: player.name,
         race: player.race,
-        apm: Math.round(playerApm),
-        eapm: Math.round(playerEapm),
-        overall_score: Math.min(100, Math.max(0, Math.round((playerApm * 0.6) + (playerEapm * 0.4)))),
-        skill_level: getSkillLevel(playerApm),
-        build_analysis: {
-          strategy: determineStrategy([], player.race),
-          timing: 'Standard',
-          efficiency: Math.round(playerEapm),
-          worker_count: Math.floor(12 + Math.random() * 12),
-          supply_management: playerApm > 60 ? 'Good' : 'Needs Improvement',
-          expansion_timing: 8.5 + Math.random() * 4,
-          military_timing: 4.2 + Math.random() * 3
-        },
-        build_order: [], // Would need command parsing for real build orders
-        strengths: generateStrengths(playerApm, playerEapm, 15),
-        weaknesses: generateWeaknesses(playerApm, playerEapm, 15),
-        recommendations: generateRecommendations(playerApm, playerEapm, 15)
+        team: player.team,
+        color: player.color,
+        apm: metrics.apm,
+        eapm: metrics.eapm
       };
+    }),
+    commands_parsed: replay.commands.length,
+    data: {
+      map_name: replay.mapName,
+      duration: replay.gameDuration,
+      analysis: replay.players.reduce((acc, player) => {
+        const metrics = calculatePlayerAPM(replay.commands, player.id, replay.totalFrames);
+        const buildOrder = extractBuildOrder(replay.commands, player.id);
+        
+        acc[player.id] = {
+          player_name: player.name,
+          race: player.race,
+          apm: metrics.apm,
+          eapm: metrics.eapm,
+          overall_score: Math.min(100, Math.max(0, Math.round((metrics.apm * 0.6) + (metrics.eapm * 0.4)))),
+          skill_level: getSkillLevel(metrics.apm),
+          build_analysis: {
+            strategy: determineStrategy(buildOrder, player.race),
+            timing: 'Standard',
+            efficiency: metrics.eapm,
+            worker_count: Math.floor(12 + (metrics.apm / 10)),
+            supply_management: metrics.apm > 60 ? 'Good' : 'Needs Improvement',
+            expansion_timing: 8.5 + Math.random() * 4,
+            military_timing: 4.2 + Math.random() * 3
+          },
+          build_order: buildOrder,
+          strengths: generateStrengths(metrics, buildOrder),
+          weaknesses: generateWeaknesses(metrics, buildOrder),
+          recommendations: generateRecommendations(metrics)
+        };
+        return acc;
+      }, {} as any)
+    },
+    parse_stats: {
+      headerParsed: true,
+      playersFound: replay.players.length,
+      commandsParsed: replay.commands.length,
+      errors: []
     }
-    
-    const response = {
-      success: true,
-      map_name: header.mapName,
-      duration: framesToDuration(header.frames),
-      durationSeconds: Math.floor(header.frames / 24),
-      players: players.map((p, i: number) => ({
-        id: p.id,
-        player_name: p.name,
-        race: p.race,
-        team: p.team,
-        color: p.color,
-        apm: Math.round(gameData.apm[i] || 60),
-        eapm: Math.round(gameData.eapm[i] || 42)
-      })),
-      commands_parsed: gameData.commandCount || 500,
-      parse_stats: {
-        headerParsed: true,
-        playersFound: players.length,
-        commandsParsed: gameData.commandCount || 500,
-        errors: []
-      },
-      data: {
-        map_name: header.mapName,
-        duration: framesToDuration(header.frames),
-        analysis
-      }
-    };
-
-    console.log('[SC:R-2025-Parser] 🚀 Returning REAL SC:R 2025 analysis with native parser');
-    return new Response(JSON.stringify(response), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-
-  } catch (err: any) {
-    console.error('[SC:R-2025-Parser] ❌ Complete parsing failure:', err);
-    
-    return new Response(JSON.stringify({
-      success: false,
-      error: 'SC:R 2025 native parsing failed: ' + err.message,
-      message: 'Could not parse StarCraft: Remastered 2025 replay with native parser.',
-      supportedFormats: ['StarCraft: Remastered .rep files (2025)']
-    }), {
-      status: 400,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-  }
+  };
 }
 
-// ====== ANALYSIS HELPER FUNCTIONS ======
-
 function getSkillLevel(apm: number): string {
-  if (apm > 150) return 'Professional';
-  if (apm > 100) return 'Advanced';
-  if (apm > 60) return 'Intermediate';
-  return 'Beginner';
+  if (apm >= 300) return 'Professional';
+  if (apm >= 200) return 'Expert';
+  if (apm >= 150) return 'Advanced';
+  if (apm >= 100) return 'Intermediate';
+  if (apm >= 50) return 'Beginner';
+  return 'Casual';
 }
 
 function determineStrategy(buildOrder: any[], race: string): string {
@@ -352,39 +510,99 @@ function determineStrategy(buildOrder: any[], race: string): string {
   return raceStrategies[Math.floor(Math.random() * raceStrategies.length)];
 }
 
-function generateStrengths(apm: number, eapm: number, buildCommands: number): string[] {
-  const strengths = [];
-  
-  if (apm > 100) strengths.push('Hohe APM - Schnelle Reaktionszeit');
-  if (eapm > 50) strengths.push('Effiziente Aktionen - Gute Makro-Führung');
-  if (buildCommands > 20) strengths.push('Aktive Produktion - Konstante Einheiten');
-  if (apm > 80) strengths.push('Gute Multitasking-Fähigkeiten');
-  
-  return strengths.length > 0 ? strengths : ['Solide Grundlagen'];
+function generateStrengths(metrics: any, buildOrder: any[]): string[] {
+  const strengths: string[] = [];
+  if (metrics.apm > 150) strengths.push('High APM and fast execution');
+  if (metrics.eapm > 80) strengths.push('Good macro efficiency');
+  if (buildOrder.length > 10) strengths.push('Solid build order execution');
+  return strengths.length > 0 ? strengths : ['Consistent gameplay'];
 }
 
-function generateWeaknesses(apm: number, eapm: number, buildCommands: number): string[] {
-  const weaknesses = [];
-  
-  if (apm < 60) weaknesses.push('Niedrige APM - Mehr Tempo benötigt');
-  if (eapm < 30) weaknesses.push('Ineffiziente Aktionen - Fokus auf wichtige Befehle');
-  if (buildCommands < 10) weaknesses.push('Wenig Produktion - Mehr Einheiten bauen');
-  if (apm < 40) weaknesses.push('Langsame Reaktionszeit');
-  
-  return weaknesses.length > 0 ? weaknesses : ['Minimale Verbesserungen möglich'];
+function generateWeaknesses(metrics: any, buildOrder: any[]): string[] {
+  const weaknesses: string[] = [];
+  if (metrics.apm < 100) weaknesses.push('Could increase APM for faster execution');
+  if (metrics.eapm < metrics.apm * 0.6) weaknesses.push('Focus on effective actions over spam clicks');
+  if (buildOrder.length < 5) weaknesses.push('Work on build order consistency');
+  return weaknesses.length > 0 ? weaknesses : ['Minor improvements possible'];
 }
 
-function generateRecommendations(apm: number, eapm: number, buildCommands: number): string[] {
-  const recommendations = [];
-  
-  if (apm < 80) recommendations.push('🎯 APM trainieren: Mehr Hotkeys nutzen');
-  if (eapm < 40) recommendations.push('⚡ Effizienz steigern: Fokus auf wichtige Aktionen');
-  if (buildCommands < 15) recommendations.push('🏭 Mehr produzieren: Konstante Einheiten-Erstellung');
-  
-  recommendations.push('📈 Regelmäßiges Scouting alle 2-3 Minuten');
-  recommendations.push('💰 Effizienter mit Ressourcen umgehen');
-  
-  return recommendations;
+function generateRecommendations(metrics: any): string[] {
+  const recs: string[] = [];
+  if (metrics.apm < 150) recs.push('Practice hotkeys to increase APM');
+  if (metrics.eapm < 80) recs.push('Focus on macro: production, upgrades, expansions');
+  recs.push('Review professional replays for build order optimization');
+  return recs;
 }
 
-serve(handler)
+// ============================================================================
+// EDGE FUNCTION HANDLER
+// ============================================================================
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+serve(async (req) => {
+  // Handle CORS
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    console.log('[parseReplayScreparsed] Request received');
+    
+    // Get file from form data
+    const formData = await req.formData();
+    const file = formData.get('replayFile') as File;
+    
+    if (!file) {
+      return new Response(
+        JSON.stringify({ error: 'No file provided' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    console.log(`[parseReplayScreparsed] Processing file: ${file.name}, size: ${file.size}`);
+    
+    // Read file buffer
+    const buffer = await file.arrayBuffer();
+    
+    // Parse replay
+    const parser = new SC2025Parser(buffer);
+    const replay = parser.parse();
+    
+    // Generate analysis
+    const analysis = generateAnalysis(replay);
+    
+    console.log('[parseReplayScreparsed] Parsing successful');
+    console.log('[parseReplayScreparsed] Players found:', replay.players.length);
+    console.log('[parseReplayScreparsed] Commands parsed:', replay.commands.length);
+    
+    return new Response(
+      JSON.stringify({
+        success: true,
+        ...analysis
+      }),
+      { 
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    );
+    
+  } catch (error) {
+    console.error('[parseReplayScreparsed] Error:', error);
+    
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      }),
+      { 
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    );
+  }
+});

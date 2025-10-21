@@ -315,7 +315,7 @@ export class RawCommandExtractor {
    * Parse commands from decompressed data
    */
   private static parseCommandsFromData(data: Uint8Array, startFrame: number): RawCommand[] {
-    const reader = new BWBinaryReader(data.buffer);
+    const reader = new BWBinaryReader(data.buffer as ArrayBuffer);
     const commands: RawCommand[] = [];
     let currentFrame = startFrame;
     

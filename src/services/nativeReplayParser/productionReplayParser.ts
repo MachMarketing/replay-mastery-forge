@@ -390,7 +390,7 @@ export class ProductionReplayParser {
       }
     }
     
-    return data.buffer.slice(bestOffset);
+    return data.buffer.slice(bestOffset) as ArrayBuffer;
   }
 
   private async extractPlayersAdvanced(reader: BWBinaryReader): Promise<any[]> {

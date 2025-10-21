@@ -49,7 +49,7 @@ export class BWCommandParser {
       
       // Strategy 3: Use raw command extractor on the entire buffer
       console.log('[BWCommandParser] Using raw extraction as fallback...');
-      const rawResult = await RawCommandExtractor.extractCommands(this.reader.data.buffer);
+      const rawResult = await RawCommandExtractor.extractCommands(this.reader.data.buffer as ArrayBuffer);
       
       if (rawResult.commands.length > 50) {
         console.log(`[BWCommandParser] Raw extraction successful: ${rawResult.commands.length} commands`);
@@ -90,7 +90,7 @@ export class BWCommandParser {
       if (extractionResult.success && extractionResult.combinedStream.length > 1000) {
         console.log(`[BWCommandParser] SmartZlibExtractor found ${extractionResult.totalCommands} commands in stream`);
         
-        const smartReader = new BWBinaryReader(extractionResult.combinedStream);
+        const smartReader = new BWBinaryReader(extractionResult.combinedStream.buffer as ArrayBuffer);
         const commands = this.parseCommandsFromReader(smartReader, [], maxCommands);
         
         console.log(`[BWCommandParser] Parsed ${commands.length} commands from SmartZlibExtractor stream`);
@@ -207,9 +207,9 @@ export class BWCommandParser {
     if (RemasteredDecompressor.isLikelyCompressed(sample)) {
       console.log('[BWCommandParser] Detected compressed data, attempting decompression...');
       try {
-        const decompressed = await RemasteredDecompressor.decompress(sample.buffer);
+        const decompressed = await RemasteredDecompressor.decompress(sample.buffer as ArrayBuffer);
         if (decompressed.success && decompressed.data) {
-          const decompressedReader = new BWBinaryReader(new Uint8Array(decompressed.data));
+          const decompressedReader = new BWBinaryReader(decompressed.data);
           this.parseCommandsFromReader(decompressedReader, commands, maxCommands);
           return;
         }

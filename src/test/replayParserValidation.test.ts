@@ -19,7 +19,7 @@ describe('SC:BW Remastered Parser Validation', () => {
     }
     
     const buffer = fs.readFileSync(filepath);
-    return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+    return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
   };
 
   // Test case for Fighting Spirit replay

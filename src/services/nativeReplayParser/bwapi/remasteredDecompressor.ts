@@ -46,7 +46,7 @@ export class RemasteredDecompressor {
         
         return {
           success: true,
-          data: extractionResult.combinedStream.buffer,
+          data: extractionResult.combinedStream.buffer as ArrayBuffer,
           method: 'SmartZlibExtractor',
           blocks: extractionResult.blocks.length,
           originalSize,
